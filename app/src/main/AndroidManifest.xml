@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Only permission needed. Storage goes through the Storage Access Framework:
+         no READ/WRITE_EXTERNAL_STORAGE, no MANAGE_EXTERNAL_STORAGE, no INTERNET. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+
+    <!-- Camera is optional so the viewer still installs on camera-less devices. -->
+    <uses-feature android:name="android.hardware.camera.any" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.flash" android:required="false" />
+
+    <application
+        android:name=".MainApplication"
+        android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:enableOnBackInvokedCallback="true"
+        android:fullBackupContent="false"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.Papyrus">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTop"
+            android:resizeableActivity="true"
+            android:windowSoftInputMode="adjustNothing"
+            android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation|keyboardHidden">
+            <!--
+              configChanges: the Activity survives a window resize or rotation, so Compose only
+              recomposes with the new bounds instead of the whole Activity being destroyed and rebuilt.
+              That is what keeps the scroll position, the zoom level and the find query alive during
+              a drag-resize instead of flashing an empty viewer. It is the documented approach for
+              Compose-only apps and matches what Android 17 does by default.
+
+              Deliberately NOT listed: uiMode, locale, layoutDirection and fontScale. Those change
+              resources rather than size, and the MarkdownViewer hosts an AndroidView that relies on
+              Activity recreation to re-resolve them, so handling them here would leave dark mode and
+              font scaling stale in that one surface.
+
+              windowSoftInputMode: adjustNothing, not the default adjustResize. Resizing on the IME
+              re-measures the viewer, which at 90% zoom is what made the page jump to the top when the
+              find field was focused; the find bar is the only thing that needs to move, and it does
+              that itself with imePadding. The viewer's own bounds are stable either way because the
+              keyboard only ever covers the bottom of the screen.
+            -->
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <!-- "Open with" from file managers / other apps -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" />
+                <data android:mimeType="application/pdf" />
+                <data android:mimeType="text/markdown" />
+                <data android:mimeType="text/x-markdown" />
+                <data android:mimeType="text/plain" />
+                <data android:mimeType="application/vnd.openxmlformats-officedocument.wordprocessingml.document" />
+                <data android:mimeType="application/vnd.oasis.opendocument.text" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

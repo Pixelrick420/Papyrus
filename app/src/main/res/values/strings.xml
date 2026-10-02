@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Papyrus</string>
+    <string name="action_back">Back</string>
+    <string name="action_open_file">Open file</string>
+    <string name="action_save_pdf">Save PDF</string>
+    <string name="cd_remove_from_list">Remove from list</string>
+    <string name="cd_remove_page">Remove page %1$d</string>
+    <string name="cd_capture">Capture page</string>
+    <string name="cd_pdf_page">Page %1$d</string>
+
+    <string name="home_empty_title">No documents yet</string>
+    <string name="home_removed">Removed from the list (the file itself is untouched)</string>
+    <string name="home_no_access">No
+access</string>
+    <string name="home_open_failed">Couldn\'t open that file</string>
+
+    <string name="scanner_permission_title">Camera access needed</string>
+    <string name="scanner_permission_body">Pages are captured and processed entirely on this device.</string>
+    <string name="scanner_grant">Grant access</string>
+    <string name="scanner_settings">App settings</string>
+    <string name="scanner_flash_off">Flash: Off</string>
+    <string name="scanner_flash_auto">Flash: Auto</string>
+    <string name="scanner_flash_on">Flash: On</string>
+    <string name="scanner_pages">Pages: %1$d</string>
+    <string name="scanner_processing">Processing…</string>
+    <string name="scanner_error_capture">Capture failed: %1$s</string>
+    <string name="scanner_error_camera">Camera unavailable: %1$s</string>
+    <string name="scanner_error_export">Couldn\'t save the PDF: %1$s</string>
+    <string name="filter_color">Color</string>
+    <string name="filter_grayscale">Grayscale</string>
+    <string name="filter_bw">B&amp;W</string>
+
+    <string name="viewer_error_not_found">This document is no longer in your list.</string>
+    <string name="viewer_error_access">Access to this file was lost. Open it again from Home.</string>
+    <string name="viewer_error_missing">The file was moved or deleted.</string>
+    <string name="viewer_error_password">Password-protected PDFs are not supported yet.</string>
+    <string name="viewer_error_unsupported">This file type isn\'t supported.</string>
+    <string name="viewer_error_empty">No readable text found in this document.</string>
+    <string name="viewer_error_generic">Couldn\'t open the document: %1$s</string>
+    <string name="viewer_truncated">… (file truncated for display)</string>
+    <string name="viewer_page_indicator">%1$d / %2$d</string>
+    <string name="viewer_office_image_loading">Loading image…</string>
+    <string name="viewer_office_image_failed">This image format can\'t be shown on Android.</string>
+
+    <string name="viewer_menu">More options</string>
+    <string name="viewer_find_title">Find in file</string>
+    <string name="viewer_info_title">File info</string>
+
+    <string name="viewer_find_hint">Find</string>
+    <string name="viewer_find_close">Close find</string>
+    <string name="viewer_find_next">Next match</string>
+    <string name="viewer_find_previous">Previous match</string>
+    <string name="viewer_find_none">No matches</string>
+    <string name="viewer_find_counter">%1$d of %2$d</string>
+    <string name="viewer_find_total">%1$d</string>
+
+    <string name="viewer_regrant_message">Access to this file was lost. Pick it again to restore it.</string>
+    <string name="viewer_regrant_action">Pick file</string>
+    <string name="viewer_regrant_mismatch">That\'s a different file. Pick the one named in the title bar.</string>
+
+    <string name="viewer_info_name">Name</string>
+    <string name="viewer_info_type">Type</string>
+    <string name="viewer_info_format">%1$s (%2$s)</string>
+    <string name="viewer_info_pages">Pages</string>
+    <string name="viewer_info_pages_value">%1$d</string>
+    <string name="viewer_info_uri">Content URI</string>
+    <string name="viewer_info_size">Size</string>
+    <string name="viewer_info_opened">Last opened</string>
+    <string name="viewer_info_added">Added</string>
+</resources>
