@@ -1,8 +1,7 @@
-# Papyrus (offline document scanner & viewer)
+# Papyrus (offline document viewer)
 
 Kotlin + Jetpack Compose. F-Droid-compatible: no GMS, Firebase, ML Kit, Play libraries, no INTERNET permission.
 
-* Scanner: CameraX -> OpenCV (Canny -> largest quad -> `warpPerspective`, adaptive threshold) -> PdfBox-Android
 * Viewer: `PdfRenderer` (mutex-serialised, LruCache, low-res placeholders while scrolling), Markwon, Compose `Text`,
   dependency-free DOCX/ODT text extraction
 * Storage: SAF only (`OPEN_DOCUMENT`, `CREATE_DOCUMENT`, persisted grants); Room index
@@ -57,10 +56,7 @@ Requires JDK 17 and the Android SDK (platform 36).
   thumbnail per document. A PDF thumbnail renders page 0 and closes the `PdfRenderer` immediately.
 * Core library desugaring is enabled as planned, but it does not provide `java.awt`/`javax.xml` APIs, so Apache POI
   would still not run on Android. DOCX/ODT therefore use `ZipInputStream` + `XmlPullParser` (Option A, minus POI/ODFDOM).
-* The scanner route is still registered in `NavGraph`, but nothing in the UI navigates to it. Deleting the route is a
-  one-line change once a non-Home entry point is no longer needed.
 * Rowspans are extracted correctly but render as one bordered cell followed by whitespace: a `Column` of `Row`s cannot
   overlap children, so growing the origin's box downward needs a custom `SubcomposeLayout` that measures the covered rows
   first. Covered columns draw no box, so a merged cell never has a border through its middle.
-* Before a Play release, check native-lib 16 KB alignment of the OpenCV AAR (`check_elf_alignment.sh`).
 * This scaffold has not been compiled in CI; first sync may need small version bumps.
