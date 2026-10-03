@@ -73,7 +73,6 @@ android {
         targetSdk = 36
         versionCode = 1
         versionName = "0.1"
-        ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64") }
     }
 
     signingConfigs {
@@ -120,19 +119,7 @@ android {
 
     packaging {
         resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
-        jniLibs.useLegacyPackaging = false // keep .so page-aligned for 16 KB devices
-    }
-
-    // OpenCV's libopencv_java4.so is ~60 MB per ABI, so an unsplit APK is unusable
-    // on both stores. Per-ABI APKs are what users actually download; the universal APK
-    // is what F-Droid builds/reproduces, so we emit both rather than choosing.
-    splits {
-        abi {
-            isEnable = true
-            reset()
-            include("arm64-v8a", "armeabi-v7a", "x86_64")
-            isUniversalApk = true
-        }
+        jniLibs.useLegacyPackaging = false // keep any .so page-aligned for 16 KB devices
     }
 }
 
@@ -173,15 +160,8 @@ dependencies {
     implementation("androidx.room:room-ktx:2.7.1")
     ksp("androidx.room:room-compiler:2.7.1")
 
-    // CameraX (AOSP-based, no GMS)
-    val cameraX = "1.4.2"
-    implementation("androidx.camera:camera-core:$cameraX")
-    implementation("androidx.camera:camera-camera2:$cameraX")
-    implementation("androidx.camera:camera-lifecycle:$cameraX")
-    implementation("androidx.camera:camera-view:$cameraX")
-
-    // Scanner pipeline: OpenCV (Apache-2.0, Maven Central) + PdfBox-Android (Apache-2.0)
-    implementation("org.opencv:opencv:4.12.0")
+    // PDF text extraction (find-in-file) and page geometry. PdfBox-Android is the Apache-2.0
+    // AAR port; the platform's PdfRenderer draws the pages.
     implementation("com.tom-roush:pdfbox-android:2.0.27.0")
 
     // Markdown (MIT) - Spannable output, no WebView, no image loader / network
@@ -197,8 +177,7 @@ dependencies {
     // `com.google.guava:listenablefuture` to `strictly 9999.0-empty-...` (an EMPTY
     // stub). Because AGP enables consistent resolution between the compile and
     // runtime classpaths, that stub also lands on the compile classpath and hides
-    // `ListenableFuture` from CameraX and concurrent-futures-ktx -- which breaks
-    // ProcessCameraProvider.getInstance().await() and startFocusAndMetering().
+    // `ListenableFuture` from concurrent-futures-ktx, which the SAF and Room helpers await on.
     // auto-service is only an annotation processor needed to build ACRA itself;
     // at runtime our sender is wired through the app's own
     // META-INF/services/org.acra.sender.ReportSenderFactory file.
@@ -256,34 +235,16 @@ fun runCommand(command: List<String>): String {
 fun runAdb(vararg args: String): String = runCommand(listOf(adb.absolutePath) + args)
 
 /**
- * Resolves one APK output, trying the signed name before the unsigned one. AGP writes
- * `*-<variant>-unsigned.apk` when the variant has no signing config and `*-<variant>.apk`
- * when it does, so both have to be probed: `release` only gets a signing config when the
- * build was given PAPYRUS_* properties.
+ * Resolves the single APK for [variant], trying the signed name before the unsigned one. AGP
+ * writes `app-<variant>-unsigned.apk` when the variant has no signing config and
+ * `app-<variant>.apk` when it does, so both have to be probed: `release` only gets a signing
+ * config when the build was given PAPYRUS_* properties.
  */
-fun findApk(out: File, stem: String, variant: String): File? =
-    listOf(File(out, "$stem-$variant.apk"), File(out, "$stem-$variant-unsigned.apk"))
-        .firstOrNull { it.isFile }
-
-/**
- * Picks the ABI split matching the connected device's primary ABI, falling back to the
- * universal APK. Installing the 32 MB arm64 split beats pushing the 102 MB universal APK
- * over USB, and the per-ABI APKs are what a store would serve the device anyway.
- */
-fun pickSplitApk(variant: String): File {
+fun pickApk(variant: String): File {
     val out = layout.buildDirectory.dir("outputs/apk/$variant").get().asFile
-
-    val primaryAbi = runCatching { runAdb("shell", "getprop", "ro.product.cpu.abi") }
-        .getOrNull()
-        .orEmpty()
-        .trim()
-    if (primaryAbi.isNotEmpty()) {
-        val split = findApk(out, "app-$primaryAbi", variant)
-        if (split != null) return split
-        logger.lifecycle("No $primaryAbi split for $variant; falling back to the universal APK.")
-    }
-
-    return findApk(out, "app-universal", variant) ?: File(out, "app-$variant.apk")
+    return listOf(File(out, "app-$variant.apk"), File(out, "app-$variant-unsigned.apk"))
+        .firstOrNull { it.isFile }
+        ?: error("No APK for $variant in ${out.absolutePath}. Did assemble$variant run?")
 }
 
 /** True when AGP already signed this output. `apksigner` would reject a second signature. */
@@ -342,11 +303,11 @@ fun registerLocalInstall(
 registerLocalInstall(
     name = "installLocalDebug",
     variant = "Debug",
-    apkProvider = { pickSplitApk("debug") },
+    apkProvider = { pickApk("debug") },
 )
 
 registerLocalInstall(
     name = "installLocalRelease",
     variant = "Release",
-    apkProvider = { pickSplitApk("release") },
+    apkProvider = { pickApk("release") },
 )

@@ -1,15 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- Only permission needed. Storage goes through the Storage Access Framework:
-         no READ/WRITE_EXTERNAL_STORAGE, no MANAGE_EXTERNAL_STORAGE, no INTERNET. -->
-    <uses-permission android:name="android.permission.CAMERA" />
-
-    <!-- Camera is optional so the viewer still installs on camera-less devices. -->
-    <uses-feature android:name="android.hardware.camera.any" android:required="false" />
-    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
-    <uses-feature android:name="android.hardware.camera.flash" android:required="false" />
-
     <application
         android:name=".MainApplication"
         android:allowBackup="false"
