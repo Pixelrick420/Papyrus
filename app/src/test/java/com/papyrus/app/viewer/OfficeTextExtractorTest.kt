@@ -471,4 +471,273 @@ class OfficeTextExtractorTest {
         assertEquals("image/jpeg", OfficeTextExtractor.guessMimeType("photo.JPEG"))
         assertEquals("image/*", OfficeTextExtractor.guessMimeType("archive.bin"))
     }
+
+    // ---- Real-file regressions: each case below was reproduced on a LibreOffice-written document. ----
+
+    @Test
+    fun `docx tab stop definitions are not tab characters`() {
+        // <w:tabs><w:tab/></w:tabs> declares a stop; it used to add one "\t" per stop before the text.
+        val bytes = OfficeFixtures.docx(
+            OfficeFixtures.docxBody(
+                """
+                <w:p>
+                  <w:pPr><w:tabs><w:tab w:val="left" w:pos="720"/><w:tab w:val="right" w:pos="9000"/></w:tabs></w:pPr>
+                  <w:r><w:t>Name</w:t></w:r><w:r><w:tab/></w:r><w:r><w:t>Role</w:t></w:r>
+                </w:p>
+                """.trimIndent(),
+            ),
+        )
+
+        assertEquals(listOf<OfficeBlock>(OfficeBlock.Paragraph("Name\tRole")), extractDocx(bytes))
+    }
+
+    @Test
+    fun `docx non-breaking hyphen is kept`() {
+        val bytes = OfficeFixtures.docx(
+            OfficeFixtures.docxBody("<w:p><w:r><w:t>e</w:t><w:noBreakHyphen/><w:t>mail</w:t></w:r></w:p>"),
+        )
+
+        assertEquals(listOf<OfficeBlock>(OfficeBlock.Paragraph("e-mail")), extractDocx(bytes))
+    }
+
+    @Test
+    fun `docx images stay between the paragraphs they were between`() {
+        // Insert positions were recorded before any image went in, so images drifted upward and clustered.
+        fun imageParagraph() = """<w:p><w:r><w:drawing><a:blip r:embed="rId1"/></w:drawing></w:r></w:p>"""
+        val bytes = OfficeFixtures.docx(
+            OfficeFixtures.docxBody(
+                """
+                <w:p><w:r><w:t>one</w:t></w:r></w:p>${imageParagraph()}
+                <w:p><w:r><w:t>two</w:t></w:r></w:p>${imageParagraph()}
+                <w:p><w:r><w:t>three</w:t></w:r></w:p>${imageParagraph()}
+                """.trimIndent(),
+            ),
+            relsXml = OfficeFixtures.docxRels("rId1" to "media/a.png"),
+            media = mapOf("a.png" to OfficeFixtures.PNG_1X1),
+        )
+
+        val kinds = extractDocx(bytes, temp.newFolder("media")).map {
+            when (it) {
+                is OfficeBlock.Paragraph -> it.text
+                is OfficeBlock.Image -> "<img>"
+                else -> "?"
+            }
+        }
+
+        assertEquals(listOf("one", "<img>", "two", "<img>", "three", "<img>"), kinds)
+    }
+
+    @Test
+    fun `docx text box is read once from mc Choice and the fallback copy is ignored`() {
+        fun box() = """<w:r><w:txbxContent><w:p><w:r><w:t>In the box</w:t></w:r></w:p></w:txbxContent></w:r>"""
+        val bytes = OfficeFixtures.docx(
+            OfficeFixtures.docxBody(
+                """
+                <w:p>
+                  <w:r><w:t>Anchor</w:t></w:r>
+                  <mc:AlternateContent>
+                    <mc:Choice Requires="wps">${box()}</mc:Choice>
+                    <mc:Fallback>${box()}<w:r><v:imagedata r:id="rId1"/></w:r></mc:Fallback>
+                  </mc:AlternateContent>
+                </w:p>
+                """.trimIndent(),
+            ),
+            relsXml = OfficeFixtures.docxRels("rId1" to "media/a.png"),
+            media = mapOf("a.png" to OfficeFixtures.PNG_1X1),
+        )
+
+        val blocks = extractDocx(bytes, temp.newFolder("media"))
+
+        assertEquals(
+            listOf<OfficeBlock>(OfficeBlock.Paragraph("In the box"), OfficeBlock.Paragraph("Anchor")),
+            blocks,
+        )
+    }
+
+    @Test
+    fun `docx text box paragraphs are separate blocks and the anchor keeps its own text`() {
+        val bytes = OfficeFixtures.docx(
+            OfficeFixtures.docxBody(
+                """
+                <w:p>
+                  <w:r><w:t>Before</w:t></w:r>
+                  <w:r><w:txbxContent>
+                    <w:p><w:r><w:t>Box A</w:t></w:r></w:p>
+                    <w:p><w:r><w:t>Box B</w:t></w:r></w:p>
+                  </w:txbxContent></w:r>
+                  <w:r><w:t xml:space="preserve"> after</w:t></w:r>
+                </w:p>
+                """.trimIndent(),
+            ),
+        )
+
+        assertEquals(
+            listOf<OfficeBlock>(
+                OfficeBlock.Paragraph("Box A"),
+                OfficeBlock.Paragraph("Box B"),
+                OfficeBlock.Paragraph("Before after"),
+            ),
+            extractDocx(bytes),
+        )
+    }
+
+    @Test
+    fun `odt text after a footnote survives and the footnote is not merged into the body`() {
+        val bytes = OfficeFixtures.odt(
+            OfficeFixtures.odtContent(
+                """
+                <text:p>Revenue grew<text:note text:note-class="footnote"><text:note-citation>1</text:note-citation>
+                <text:note-body><text:p>Unaudited figure.</text:p></text:note-body></text:note> by ten percent.</text:p>
+                """.trimIndent(),
+            ),
+        )
+
+        assertEquals(listOf<OfficeBlock>(OfficeBlock.Paragraph("Revenue grew by ten percent.")), extractOdt(bytes))
+    }
+
+    @Test
+    fun `odt comment text author and date stay out of the paragraph`() {
+        val bytes = OfficeFixtures.odt(
+            OfficeFixtures.odtContent(
+                """
+                <text:p>Check this <office:annotation><dc:creator>Alice</dc:creator>
+                <dc:date>2024-05-01T10:00:00</dc:date><text:p>Is it right?</text:p></office:annotation>number twice.</text:p>
+                """.trimIndent(),
+            ),
+        )
+
+        assertEquals(listOf<OfficeBlock>(OfficeBlock.Paragraph("Check this number twice.")), extractOdt(bytes))
+    }
+
+    @Test
+    fun `odt deleted tracked change text is not a paragraph`() {
+        val bytes = OfficeFixtures.odt(
+            OfficeFixtures.odtContent(
+                """
+                <text:tracked-changes><text:changed-region text:id="ct1"><text:deletion>
+                  <text:p>This sentence was deleted.</text:p></text:deletion></text:changed-region></text:tracked-changes>
+                <text:p>Kept.</text:p>
+                """.trimIndent(),
+            ),
+        )
+
+        assertEquals(listOf<OfficeBlock>(OfficeBlock.Paragraph("Kept.")), extractOdt(bytes))
+    }
+
+    @Test
+    fun `odt text around a text box is kept and the box is its own paragraph`() {
+        // LibreOffice writes the frame first, so the paragraph's own text comes after the nested </text:p>.
+        val bytes = OfficeFixtures.odt(
+            OfficeFixtures.odtContent(
+                """
+                <text:p><draw:frame><draw:text-box><text:p>Inside the box.</text:p></draw:text-box></draw:frame>Before frame after frame.</text:p>
+                """.trimIndent(),
+            ),
+        )
+
+        assertEquals(
+            listOf<OfficeBlock>(OfficeBlock.Paragraph("Inside the box."), OfficeBlock.Paragraph("Before frame after frame.")),
+            extractOdt(bytes),
+        )
+    }
+
+    @Test
+    fun `odt vertical merge in a middle column does not stretch the neighbouring cell`() {
+        val bytes = OfficeFixtures.odt(
+            OfficeFixtures.odtContent(
+                """
+                <table:table>
+                  <table:table-column table:number-columns-repeated="3"/>
+                  <table:table-row>
+                    <table:table-cell><text:p>A1</text:p></table:table-cell>
+                    <table:table-cell table:number-rows-spanned="2"><text:p>tall</text:p></table:table-cell>
+                    <table:table-cell><text:p>C1</text:p></table:table-cell>
+                  </table:table-row>
+                  <table:table-row>
+                    <table:table-cell><text:p>A2</text:p></table:table-cell>
+                    <table:covered-table-cell/>
+                    <table:table-cell><text:p>C2</text:p></table:table-cell>
+                  </table:table-row>
+                </table:table>
+                """.trimIndent(),
+            ),
+        )
+
+        val table = extractOdt(bytes).single() as OfficeBlock.Table
+
+        assertEquals(2, table.rowCells(0)[1].rowspan)
+        assertEquals(listOf("A2", "C2"), table.rowCells(1).map { it.text })
+        assertEquals(listOf(1, 1), table.rowCells(1).map { it.colspan })
+        assertEquals(listOf(0, 2), table.rowCells(1).map { it.column })
+    }
+
+    @Test
+    fun `odt column span from the attribute places later cells correctly`() {
+        val bytes = OfficeFixtures.odt(
+            OfficeFixtures.odtContent(
+                """
+                <table:table>
+                  <table:table-row>
+                    <table:table-cell table:number-columns-spanned="2"><text:p>wide</text:p></table:table-cell>
+                    <table:covered-table-cell/>
+                    <table:table-cell><text:p>right</text:p></table:table-cell>
+                  </table:table-row>
+                </table:table>
+                """.trimIndent(),
+            ),
+        )
+
+        val cells = (extractOdt(bytes).single() as OfficeBlock.Table).rowCells(0)
+
+        assertEquals(listOf(0, 2), cells.map { it.column })
+        assertEquals(2, cells.first().colspan)
+    }
+
+    @Test
+    fun `odt repeated cells expand but never past the declared columns`() {
+        val bytes = OfficeFixtures.odt(
+            OfficeFixtures.odtContent(
+                """
+                <table:table>
+                  <table:table-column table:number-columns-repeated="4"/>
+                  <table:table-row>
+                    <table:table-cell><text:p>a</text:p></table:table-cell>
+                    <table:table-cell table:number-columns-repeated="2"/>
+                    <table:table-cell><text:p>last</text:p></table:table-cell>
+                  </table:table-row>
+                  <table:table-row>
+                    <table:table-cell><text:p>x</text:p></table:table-cell>
+                    <table:table-cell table:number-columns-repeated="60"/>
+                  </table:table-row>
+                </table:table>
+                """.trimIndent(),
+            ),
+        )
+
+        val table = extractOdt(bytes).single() as OfficeBlock.Table
+
+        assertEquals(listOf(0, 1, 2, 3), table.rowCells(0).map { it.column })
+        assertEquals(listOf(0, 1, 2, 3), table.rowCells(1).map { it.column })
+    }
+
+    @Test
+    fun `odt images stay between the paragraphs they were between`() {
+        fun image() = """<text:p><draw:frame><draw:image xlink:href="Pictures/a.png"/></draw:frame></text:p>"""
+        val bytes = OfficeFixtures.odt(
+            OfficeFixtures.odtContent(
+                "<text:p>one</text:p>${image()}<text:p>two</text:p>${image()}<text:p>three</text:p>",
+            ),
+            media = mapOf("a.png" to OfficeFixtures.PNG_1X1),
+        )
+
+        val kinds = extractOdt(bytes, temp.newFolder("media")).map {
+            when (it) {
+                is OfficeBlock.Paragraph -> it.text
+                is OfficeBlock.Image -> "<img>"
+                else -> "?"
+            }
+        }
+
+        assertEquals(listOf("one", "<img>", "two", "<img>", "three"), kinds)
+    }
 }

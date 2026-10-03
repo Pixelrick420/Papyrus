@@ -45,7 +45,7 @@ Needs JDK 17 and the Android SDK (platform 36, build-tools 36.0.0). Runs on Andr
 ./gradlew testDebugUnitTest
 ```
 
-137 JVM unit tests. The DOCX/ODT extractor runs against archives the tests build in memory (kxml2 stands in for the
+156 JVM unit tests. The DOCX/ODT extractor runs against archives the tests build in memory (kxml2 stands in for the
 platform's `XmlPullParser`), and the Room 1 -> 2 migration runs its real statements against SQLite via JDBC.
 
 ## Releases
