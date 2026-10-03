@@ -1,6 +1,6 @@
 # Papyrus
 
-Offline document viewer and scanner for Android. Kotlin, Jetpack Compose, Room.
+Offline document viewer for Android. Kotlin, Jetpack Compose, Room.
 
 Documents are opened through the Storage Access Framework, indexed in a local Room database and rendered on-device.
 
@@ -24,8 +24,6 @@ overwhelmingly printable means text.
 - **Find in file** works on every format. Text and Office step between chunks, blocks and pages; Markdown highlights
   every match in place, so its counter shows the total.
 - **Zoom** scales the type size on text surfaces, so content re-wraps and the scroll bounds stay correct.
-- **Scanner** — CameraX capture, OpenCV page-edge detection (Canny plus contour fit), colour / grayscale / B&W filters,
-  exported as a PDF via PdfBox.
 - **Index** — Room holds documents and page order, updated incrementally as files are opened.
 - **Thumbnails** — in-memory `LruCache`, one representative thumbnail per document, with low-resolution PDF
   placeholders while scrolling.
