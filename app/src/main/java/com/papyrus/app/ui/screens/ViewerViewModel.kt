@@ -20,6 +20,7 @@ import com.papyrus.app.viewer.PdfPageText
 import com.papyrus.app.viewer.PdfPasswordException
 import com.papyrus.app.viewer.PdfTextExtractor
 import com.papyrus.app.viewer.TextSniffer
+import com.papyrus.app.viewer.decodeText
 import com.papyrus.app.ui.viewer.countOccurrences
 import com.papyrus.app.ui.viewer.findBlockHits
 import com.papyrus.app.ui.viewer.findChunkHits
@@ -46,7 +47,11 @@ import kotlin.coroutines.cancellation.CancellationException
 sealed interface ViewerContent {
     data object Loading : ViewerContent
     data class Pdf(val source: PdfPageSource, val aspectRatios: List<Float>) : ViewerContent
-    data class Markdown(val markwon: Markwon, val text: Spanned) : ViewerContent
+    /**
+     * [text] is the parse used for find counting; [source] is kept so the viewer can render a fresh
+     * `Spanned` when a table needs to re-snapshot the TextView's paint (see `MarkdownViewer`).
+     */
+    data class Markdown(val markwon: Markwon, val source: String, val text: Spanned) : ViewerContent
     data class PlainText(val chunks: List<String>) : ViewerContent
     data class Office(val blocks: List<OfficeBlock>) : ViewerContent
     data class Failed(val message: UiText) : ViewerContent
@@ -178,7 +183,8 @@ class ViewerViewModel(
                     .usePlugin(StrikethroughPlugin.create())
                     .usePlugin(TablePlugin.create(app))
                     .build()
-                ViewerContent.Markdown(markwon, markwon.toMarkdown(readText(uri)))
+                val source = readText(uri)
+                ViewerContent.Markdown(markwon, source, markwon.toMarkdown(source))
             }
             // CODE renders through the same surface as TEXT: monospace, chunked, selectable.
             DocumentFormat.TEXT, DocumentFormat.CODE ->
@@ -323,7 +329,7 @@ class ViewerViewModel(
             total += n
         }
         val truncated = total >= MAX_TEXT_BYTES && input.read() != -1
-        out.toString(Charsets.UTF_8.name()) + if (truncated) "\n\n" + app.getString(R.string.viewer_truncated) else ""
+        decodeText(out.toByteArray()) + if (truncated) "\n\n" + app.getString(R.string.viewer_truncated) else ""
     }
 
     override fun onCleared() {
