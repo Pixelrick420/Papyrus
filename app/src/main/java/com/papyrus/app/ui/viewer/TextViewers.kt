@@ -189,10 +189,9 @@ fun PlainTextViewer(
 ) {
     val listState = rememberLazyListState()
     val geometry = rememberLazyScrollGeometry(listState)
-    val findBarClearancePx = with(LocalDensity.current) { FindBarClearance.toPx() }
 
     LaunchedEffect(activeHit) {
-        activeHit?.let { listState.scrollToItemBelowFindBar(it, findBarClearancePx) }
+        activeHit?.let { listState.scrollToItem(it) }
     }
 
     LaunchedEffect(zoom.lastCommit) {
@@ -237,11 +236,9 @@ fun OfficeViewer(
     val listState = rememberLazyListState()
     val geometry = rememberLazyScrollGeometry(listState)
 
-    val findBarClearancePx = with(LocalDensity.current) { FindBarClearance.toPx() }
-
     // Block indices equal LazyColumn indices, so a hit scrolls straight to its own item, no offset.
     LaunchedEffect(activeHit) {
-        activeHit?.let { listState.scrollToItemBelowFindBar(it, findBarClearancePx) }
+        activeHit?.let { listState.scrollToItem(it) }
     }
 
     LaunchedEffect(zoom.lastCommit) {

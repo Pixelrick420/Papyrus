@@ -6,20 +6,15 @@ import android.text.format.Formatter
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.ExitTransition
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.DragInteraction
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -34,17 +29,12 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -63,10 +53,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
@@ -77,7 +63,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -94,7 +79,9 @@ import com.papyrus.app.data.ThumbnailLoader
 import com.papyrus.app.ui.AppViewModelProvider
 import com.papyrus.app.ui.UiText
 import com.papyrus.app.ui.asString
+import com.papyrus.app.ui.components.ControlHeight
 import com.papyrus.app.ui.components.DocumentThumbnail
+import com.papyrus.app.ui.components.SearchPill
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -174,9 +161,6 @@ class HomeViewModel(
     }
 }
 
-/** Search field and Open file button share this, so the two controls are the same height. */
-private val ControlHeight = 48.dp
-
 /** Same inset for title, controls and list, so everything hangs off one left edge. */
 private val ScreenPadding = 16.dp
 
@@ -243,7 +227,7 @@ fun HomeScreen(
                     .semantics { heading() },
             )
 
-            SearchField(
+            SearchPill(
                 text = text,
                 onTextChange = { value ->
                     text = value
@@ -252,13 +236,23 @@ fun HomeScreen(
                     // part-way down with its first rows out of view.
                     if (listState.canScrollBackward) scope.launch { listState.scrollToItem(0) }
                 },
-                onClear = {
-                    text = ""
-                    viewModel.onQueryChange("")
-                },
-                onSubmit = dismissKeyboard,
+                hint = stringResource(R.string.home_search_hint),
+                // Search keeps the filter and just puts the keyboard away.
+                onSearch = dismissKeyboard,
+                iconContentDescription = stringResource(R.string.cd_search),
                 // Padding first, then fill: the pill gets exactly the button's width.
                 modifier = Modifier.padding(horizontal = ScreenPadding),
+                trailing = {
+                    // The slot is always reserved: only the icon fades, so the text never shifts sideways
+                    // when the first character is typed.
+                    ClearSearchButton(
+                        visible = text.isNotEmpty(),
+                        onClear = {
+                            text = ""
+                            viewModel.onQueryChange("")
+                        },
+                    )
+                },
             )
 
             Spacer(Modifier.height(8.dp))
@@ -325,111 +319,6 @@ fun HomeScreen(
 }
 
 /**
- * Drawn from the same defaults as the Open file button (shape, border, transparent interior), so
- * the two read as one family. Deliberately not Material's `SearchBar`: that fixes its own colors,
- * elevation and width rules, adds its own status-bar padding, and takes over the screen when expanded.
- */
-@Composable
-private fun SearchField(
-    text: String,
-    onTextChange: (String) -> Unit,
-    onClear: () -> Unit,
-    onSubmit: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val keyboard = LocalSoftwareKeyboardController.current
-    val focusRequester = remember { FocusRequester() }
-    val interactionSource = remember { MutableInteractionSource() }
-    val focused by interactionSource.collectIsFocusedAsState()
-
-    // At rest the border is whatever the button's is, read from the same place.
-    val restingBorder = ButtonDefaults.outlinedButtonBorder(enabled = true)
-    val restingColor = (restingBorder.brush as? SolidColor)?.value ?: MaterialTheme.colorScheme.outline
-    val borderColor by animateColorAsState(
-        targetValue = if (focused) MaterialTheme.colorScheme.primary else restingColor,
-        animationSpec = tween(FOCUS_ANIMATION_MS),
-        label = "searchBorderColor",
-    )
-    val borderWidth by animateDpAsState(
-        targetValue = if (focused) restingBorder.width + 1.dp else restingBorder.width,
-        animationSpec = tween(FOCUS_ANIMATION_MS),
-        label = "searchBorderWidth",
-    )
-    val iconColor by animateColorAsState(
-        targetValue = if (focused) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-        animationSpec = tween(FOCUS_ANIMATION_MS),
-        label = "searchIconColor",
-    )
-
-    Surface(
-        modifier = modifier
-            .fillMaxWidth()
-            .heightIn(min = ControlHeight),
-        shape = ButtonDefaults.outlinedShape,
-        color = Color.Transparent,
-        border = BorderStroke(borderWidth, borderColor),
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                // The whole pill focuses the field, not just its one line of text. A raw tap detector
-                // rather than `clickable`, which would merge the text field into one semantics node.
-                .pointerInput(Unit) {
-                    detectTapGestures(onTap = {
-                        focusRequester.requestFocus()
-                        keyboard?.show()
-                    })
-                }
-                .padding(start = 16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(
-                painter = painterResource(R.drawable.ic_search),
-                contentDescription = stringResource(R.string.cd_search),
-                tint = iconColor,
-            )
-            Spacer(Modifier.width(12.dp))
-
-            BasicTextField(
-                value = text,
-                onValueChange = onTextChange,
-                modifier = Modifier
-                    .weight(1f)
-                    .focusRequester(focusRequester),
-                singleLine = true,
-                textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
-                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                // Search keeps the filter and just puts the keyboard away.
-                keyboardActions = KeyboardActions(onSearch = { onSubmit() }),
-                interactionSource = interactionSource,
-                decorationBox = { innerTextField ->
-                    Box(contentAlignment = Alignment.CenterStart) {
-                        if (text.isEmpty()) {
-                            Text(
-                                text = stringResource(R.string.home_search_hint),
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        }
-                        innerTextField()
-                    }
-                },
-            )
-
-            // The slot is always reserved: only the icon fades, so the text never shifts sideways
-            // when the first character is typed.
-            ClearSearchButton(
-                visible = text.isNotEmpty(),
-                onClear = onClear,
-            )
-        }
-    }
-}
-
-/**
  * Empty state drawn over the list. Its own composable rather than inline in the `Box` above: the
  * scope-aware overloads of `AnimatedVisibility` need a `Column`/`Row` receiver, and this one is a
  * child of a `Box`, so only the plain overload applies.
@@ -486,8 +375,6 @@ private fun ClearSearchButton(
         }
     }
 }
-
-private const val FOCUS_ANIMATION_MS = 180
 
 /**
  * One layout for both "nothing here" states. A first-run library is centred with its illustration;
