@@ -1,5 +1,3 @@
-# OpenCV: JNI binds by class/method name
--keep class org.opencv.** { *; }
 # PdfBox-Android: optional JPX / crypto providers are not bundled
 -dontwarn com.gemalto.jp2.**
 -dontwarn org.bouncycastle.**

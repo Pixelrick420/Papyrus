@@ -3,7 +3,6 @@ package com.papyrus.app.data
 import android.content.Context
 import android.net.Uri
 import androidx.core.net.toUri
-import com.papyrus.app.scanner.ScanFilter
 import com.papyrus.app.viewer.TextSniffer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -27,14 +26,6 @@ class DocumentRepository(
         val id = dao.upsertByUri(buildEntity(uri))
         dao.touch(id, System.currentTimeMillis())
         id
-    }
-
-    /** Takes a write grant too, unlike register: the export path deletes and rewrites the file as pages are captured. */
-    suspend fun registerScan(uri: Uri, pageCount: Int, filter: ScanFilter): Long = withContext(Dispatchers.IO) {
-        SafStorage.persistPermission(resolver, uri, write = true)
-        val entity = buildEntity(uri).copy(format = DocumentFormat.PDF, pageCount = pageCount)
-        val pages = List(pageCount) { ScanPageEntity(documentId = 0, position = it, filter = filter) }
-        dao.insertWithPages(entity, pages)
     }
 
     /** Removes the index entry only; the user's file is never deleted. */

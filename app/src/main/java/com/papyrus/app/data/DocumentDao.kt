@@ -14,10 +14,6 @@ interface DocumentDao {
     @Query("SELECT * FROM documents ORDER BY lastOpenedAt DESC")
     fun observeAll(): Flow<List<DocumentEntity>>
 
-    @Transaction
-    @Query("SELECT * FROM documents WHERE id = :id")
-    fun observeWithPages(id: Long): Flow<DocumentWithPages?>
-
     @Query("SELECT * FROM documents WHERE id = :id")
     suspend fun getById(id: Long): DocumentEntity?
 
@@ -33,7 +29,7 @@ interface DocumentDao {
     @Query("UPDATE documents SET lastOpenedAt = :timestamp WHERE id = :id")
     suspend fun touch(id: Long, timestamp: Long)
 
-    /** A SAF re-pick returns a new URI for the same document, so the row is re-bound to it, keeping its pages and history. */
+    /** A SAF re-pick returns a new URI for the same document, so the row is re-bound to it, keeping its history. */
     @Query("UPDATE documents SET uri = :uri WHERE id = :id")
     suspend fun updateUri(id: Long, uri: String)
 
@@ -47,18 +43,6 @@ interface DocumentDao {
     @Query("DELETE FROM documents WHERE id = :id")
     suspend fun deleteById(id: Long)
 
-    @Insert
-    suspend fun insertPages(pages: List<ScanPageEntity>)
-
-    @Query("SELECT * FROM scan_pages WHERE documentId = :documentId ORDER BY position ASC")
-    suspend fun getPages(documentId: Long): List<ScanPageEntity>
-
-    @Query("DELETE FROM scan_pages WHERE documentId = :documentId")
-    suspend fun deletePages(documentId: Long)
-
-    @Query("UPDATE scan_pages SET position = :position WHERE id = :pageId")
-    suspend fun setPagePosition(pageId: Long, position: Int)
-
     @Transaction
     suspend fun upsertByUri(document: DocumentEntity): Long {
         val existing = getByUri(document.uri) ?: return insertIgnore(document)
@@ -71,18 +55,5 @@ interface DocumentDao {
             ),
         )
         return existing.id
-    }
-
-    @Transaction
-    suspend fun insertWithPages(document: DocumentEntity, pages: List<ScanPageEntity>): Long {
-        val id = upsertByUri(document)
-        deletePages(id)
-        insertPages(pages.mapIndexed { index, page -> page.copy(id = 0, documentId = id, position = index) })
-        return id
-    }
-
-    @Transaction
-    suspend fun reorderPages(orderedPageIds: List<Long>) {
-        orderedPageIds.forEachIndexed { index, pageId -> setPagePosition(pageId, index) }
     }
 }

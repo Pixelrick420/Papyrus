@@ -6,8 +6,8 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 
 @Database(
-    entities = [DocumentEntity::class, ScanPageEntity::class],
-    version = 2,
+    entities = [DocumentEntity::class],
+    version = 3,
     exportSchema = true, // schemas land in app/schemas (committed) so migrations can be tested
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -23,8 +23,8 @@ abstract class AppDatabase : RoomDatabase() {
         fun getInstance(context: Context): AppDatabase =
             instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, DB_NAME)
-                    // No destructive fallback: page metadata is not cheap to rebuild. Add a Migration when bumping version.
-                    .addMigrations(MIGRATION_1_2)
+                    // No destructive fallback: the index is the user's document history. Add a Migration when bumping version.
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                     .build()
                     .also { instance = it }
             }

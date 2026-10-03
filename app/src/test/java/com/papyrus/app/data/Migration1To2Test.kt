@@ -93,7 +93,7 @@ class Migration1To2Test {
 
     @Test
     fun `sourceTreeUri is gone and every other column is untouched`() {
-        insertV1(1, "content://a", "A", "image/jpeg", "SCANNED", 10, 1, 100, 200, "content://tree")
+        insertV1(1, "content://a", "A", "application/pdf", "PDF", 10, 1, 100, 200, "content://tree")
         migrate()
 
         assertEquals(
@@ -104,7 +104,7 @@ class Migration1To2Test {
 
     @Test
     fun `rows survive the rebuild with every value intact`() {
-        insertV1(1, "content://a", "Scan", "image/jpeg", "SCANNED", 2048, 3, 111, 999, "content://tree")
+        insertV1(1, "content://a", "Report", "application/pdf", "PDF", 2048, 3, 111, 999, "content://tree")
         insertV1(2, "content://b", "Note", null, "MARKDOWN", 0, 0, 222, 888, null)
         migrate()
 
@@ -113,9 +113,9 @@ class Migration1To2Test {
         ) { rs ->
             if (rs.getLong("id") == 1L) {
                 assertEquals("content://a", rs.getString("uri"))
-                assertEquals("Scan", rs.getString("title"))
-                assertEquals("image/jpeg", rs.getString("mimeType"))
-                assertEquals("SCANNED", rs.getString("format"))
+                assertEquals("Report", rs.getString("title"))
+                assertEquals("application/pdf", rs.getString("mimeType"))
+                assertEquals("PDF", rs.getString("format"))
                 assertEquals(2048L, rs.getLong("sizeBytes"))
                 assertEquals(3, rs.getInt("pageCount"))
                 assertEquals(111L, rs.getLong("createdAt"))
@@ -133,11 +133,11 @@ class Migration1To2Test {
 
     @Test
     fun `the autoincrement sequence continues past the highest id`() {
-        insertV1(7, "content://a", "A", null, "SCANNED", 1, 1, 1, 1, null)
+        insertV1(7, "content://a", "A", null, "PDF", 1, 1, 1, 1, null)
         migrate()
 
         connection.prepareStatement(
-            "INSERT INTO documents (uri, title, mimeType, format, sizeBytes, pageCount, createdAt, lastOpenedAt) VALUES (?, 'C', NULL, 'SCANNED', 1, 1, 1, 1)",
+            "INSERT INTO documents (uri, title, mimeType, format, sizeBytes, pageCount, createdAt, lastOpenedAt) VALUES (?, 'C', NULL, 'PDF', 1, 1, 1, 1)",
         ).use { statement ->
             statement.setString(1, "content://c")
             statement.executeUpdate()
@@ -165,13 +165,13 @@ class Migration1To2Test {
 
     @Test
     fun `the uri index is still unique so the same document cannot be indexed twice`() {
-        insertV1(1, "content://a", "A", null, "SCANNED", 1, 1, 1, 1, null)
+        insertV1(1, "content://a", "A", null, "PDF", 1, 1, 1, 1, null)
         migrate()
 
         // Re-importing a document goes through the unique index; a dropped index lists it twice.
         val failure = runCatching {
             connection.prepareStatement(
-                "INSERT INTO documents (uri, title, mimeType, format, sizeBytes, pageCount, createdAt, lastOpenedAt) VALUES (?, 'dup', NULL, 'SCANNED', 1, 1, 1, 1)",
+                "INSERT INTO documents (uri, title, mimeType, format, sizeBytes, pageCount, createdAt, lastOpenedAt) VALUES (?, 'dup', NULL, 'PDF', 1, 1, 1, 1)",
             ).use { statement ->
                 statement.setString(1, "content://a")
                 statement.executeUpdate()

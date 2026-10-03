@@ -1,12 +1,8 @@
 package com.papyrus.app.data
 
-import androidx.room.Embedded
 import androidx.room.Entity
-import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
-import androidx.room.Relation
-import com.papyrus.app.scanner.ScanFilter
 
 enum class DocumentFormat(
     val label: String,
@@ -74,28 +70,4 @@ data class DocumentEntity(
     val pageCount: Int = 0,
     val createdAt: Long,
     val lastOpenedAt: Long,
-)
-
-@Entity(
-    tableName = "scan_pages",
-    foreignKeys = [
-        ForeignKey(
-            entity = DocumentEntity::class,
-            parentColumns = ["id"],
-            childColumns = ["documentId"],
-            onDelete = ForeignKey.CASCADE,
-        ),
-    ],
-    indices = [Index(value = ["documentId", "position"])],
-)
-data class ScanPageEntity(
-    @PrimaryKey(autoGenerate = true) val id: Long = 0,
-    val documentId: Long,
-    val position: Int,
-    val filter: ScanFilter,
-)
-
-data class DocumentWithPages(
-    @Embedded val document: DocumentEntity,
-    @Relation(parentColumn = "id", entityColumn = "documentId") val pages: List<ScanPageEntity>,
 )

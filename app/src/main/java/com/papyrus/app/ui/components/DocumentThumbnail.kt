@@ -47,7 +47,7 @@ fun DocumentThumbnail(
         modifier
             .size(TILE_SIZE)
             .clip(shape)
-            // surfaceVariant, never white: a scanned page is mostly white, which made loaded, loading and failed indistinguishable.
+            // surfaceVariant, never white: a document page is mostly white, which made loaded, loading and failed indistinguishable.
             .background(MaterialTheme.colorScheme.surfaceVariant)
             // Hairline for the same reason: a white page on a near-white card has no edge otherwise.
             .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f), shape),

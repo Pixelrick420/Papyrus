@@ -8,13 +8,11 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.papyrus.app.MainApplication
 import com.papyrus.app.ui.screens.HomeViewModel
-import com.papyrus.app.ui.screens.ScannerViewModel
 import com.papyrus.app.ui.screens.ViewerViewModel
 
 object AppViewModelProvider {
     val Factory: ViewModelProvider.Factory = viewModelFactory {
         initializer { HomeViewModel(app().repository, app().thumbnailLoader) }
-        initializer { ScannerViewModel(app()) }
         initializer { ViewerViewModel(app(), createSavedStateHandle()) }
     }
 }

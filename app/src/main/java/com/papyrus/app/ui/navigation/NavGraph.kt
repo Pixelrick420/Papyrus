@@ -18,12 +18,10 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.papyrus.app.ui.screens.HomeScreen
-import com.papyrus.app.ui.screens.ScannerScreen
 import com.papyrus.app.ui.screens.ViewerScreen
 
 object Routes {
     const val HOME = "home"
-    const val SCANNER = "scanner"
     const val ARG_DOCUMENT_ID = "documentId"
     const val VIEWER = "viewer/{$ARG_DOCUMENT_ID}"
 
@@ -68,16 +66,8 @@ fun PapyrusNavGraph(
         },
     ) {
         composable(Routes.HOME) {
-            // Still registered for hardware scanners and share intents, though no UI navigates here.
+            // Still registered for share intents and hardware keyboards, though no UI navigates here.
             HomeScreen(onOpenDocument = { id -> navController.navigate(Routes.viewer(id)) })
-        }
-        composable(Routes.SCANNER) {
-            ScannerScreen(
-                onBack = { navController.popBackStack() },
-                onDocumentSaved = { id ->
-                    navController.navigate(Routes.viewer(id)) { popUpTo(Routes.HOME) }
-                },
-            )
         }
         composable(
             route = Routes.VIEWER,

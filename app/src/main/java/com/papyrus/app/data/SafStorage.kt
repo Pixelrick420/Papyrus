@@ -16,16 +16,6 @@ class OpenPersistableDocument : ActivityResultContracts.OpenDocument() {
         )
 }
 
-/** ACTION_CREATE_DOCUMENT with persistable read/write grants, for the exported PDF target. */
-class CreatePersistableDocument(mimeType: String) : ActivityResultContracts.CreateDocument(mimeType) {
-    override fun createIntent(context: Context, input: String): Intent =
-        super.createIntent(context, input).addFlags(
-            Intent.FLAG_GRANT_READ_URI_PERMISSION or
-                Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
-                Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION,
-        )
-}
-
 object SafStorage {
     data class Metadata(val displayName: String, val sizeBytes: Long, val mimeType: String?)
 
