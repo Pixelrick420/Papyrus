@@ -279,11 +279,8 @@ fun HomeScreen(
             Modifier
                 .fillMaxSize()
                 .padding(padding)
-                // The keyboard only shrinks the list region, so the no-results message and the last
-                // rows stay above it. Consuming the Scaffold padding first stops the navigation-bar
-                // inset being counted twice.
+                // Consuming the Scaffold padding first stops the navigation-bar inset being counted twice.
                 .consumeWindowInsets(padding)
-                .imePadding()
                 // Taps nothing else claimed (gaps, empty space) put the keyboard away.
                 .pointerInput(Unit) { detectTapGestures(onTap = { dismissKeyboard() }) },
         ) {
@@ -364,7 +361,7 @@ fun HomeScreen(
                 // at once and the rows fade in, which reads cleaner than two things cross-fading.
                 EmptyStateOverlay(
                     visible = state.loaded && state.results.isEmpty(),
-                    libraryEmpty = state.libraryEmpty,
+                    libraryEmpty = state.libraryEmpty && state.query.isEmpty(),
                     query = state.query,
                 )
             }
@@ -390,15 +387,15 @@ private fun EmptyStateOverlay(
         enter = fadeIn(tween(300, delayMillis = 120)),
         exit = ExitTransition.None,
     ) {
-        EmptyState(
-            title = if (libraryEmpty) {
-                stringResource(R.string.home_empty_title)
-            } else {
-                stringResource(R.string.home_search_none, query)
-            },
-            libraryEmpty = libraryEmpty,
-            modifier = Modifier.fillMaxSize(),
-        )
+                EmptyState(
+                    title = if (libraryEmpty && query.isEmpty()) {
+                        stringResource(R.string.home_empty_title)
+                    } else {
+                        stringResource(R.string.home_search_none, query)
+                    },
+                    libraryEmpty = libraryEmpty && query.isEmpty(),
+                    modifier = Modifier.fillMaxSize(),
+                )
     }
 }
 
