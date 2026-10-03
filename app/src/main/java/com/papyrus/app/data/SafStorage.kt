@@ -16,6 +16,15 @@ class OpenPersistableDocument : ActivityResultContracts.OpenDocument() {
         )
 }
 
+/** Multi-select variant of [OpenPersistableDocument]. */
+class OpenPersistableDocuments : ActivityResultContracts.OpenMultipleDocuments() {
+    override fun createIntent(context: Context, input: Array<String>): Intent =
+        super.createIntent(context, input).addFlags(
+            Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION,
+        )
+}
+
 object SafStorage {
     data class Metadata(val displayName: String, val sizeBytes: Long, val mimeType: String?)
 

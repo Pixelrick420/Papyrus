@@ -3,6 +3,8 @@
     <string name="app_name">Papyrus</string>
     <string name="action_back">Back</string>
     <string name="action_open_file">Open file</string>
+    <string name="cd_add_files">Add files</string>
+    <string name="home_added_files">Added %d files</string>
     <string name="cd_remove_from_list">Remove from list</string>
     <string name="cd_remove_page">Remove page %1$d</string>
     <string name="cd_pdf_page">Page %1$d</string>
