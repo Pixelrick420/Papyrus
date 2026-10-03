@@ -273,17 +273,35 @@ suspend fun ScrollState.reanchorHorizontallyTo(commit: ScaleCommit) {
     }
 }
 
+/**
+ * Scroll distance that puts the point [fraction] of the way down an item back under [focal].
+ * [itemTop] and [focal] are in the same space. Positive scrolls forward, which moves content up,
+ * so an item sitting below where it should be needs a positive delta: current minus wanted.
+ */
+fun lazyAnchorDelta(focal: Float, fraction: Float, itemTop: Float, itemSize: Float): Float =
+    itemTop - (focal - fraction * itemSize)
+
 /** Holds the focal fraction of the item, measured each pass: text re-wraps, the ratio does not. */
 suspend fun LazyListState.reanchorTo(commit: ScaleCommit) {
     val focal = commit.focal
     if (commit.ratio == 1f || focal == Offset.Unspecified) return
-    val anchor = layoutInfo.visibleItemsInfo
-        .firstOrNull { it.size > 0 && focal.y >= it.offset && focal.y < it.offset + it.size } ?: return
-    val fraction = (focal.y - anchor.offset) / anchor.size
+    // Item offsets start at the content origin, but the focal point is a viewport coordinate.
+    val before = layoutInfo.beforeContentPadding
+    val items = layoutInfo.visibleItemsInfo.filter { it.size > 0 }
+    // A pinch can start in the gap between items, so fall back to the nearest one.
+    val anchor = items.firstOrNull { focal.y >= it.offset + before && focal.y < it.offset + before + it.size }
+        ?: items.minByOrNull {
+            val top = (it.offset + before).toFloat()
+            val bottom = top + it.size
+            if (focal.y < top) top - focal.y else focal.y - bottom
+        }
+        ?: return
+    val fraction = ((focal.y - (anchor.offset + before)) / anchor.size).coerceIn(0f, 1f)
     repeat(REANCHOR_FRAMES) {
         withFrameNanos {}
         val current = layoutInfo.visibleItemsInfo.firstOrNull { it.index == anchor.index } ?: return
-        val delta = (focal.y - fraction * current.size) - current.offset
+        val top = (current.offset + layoutInfo.beforeContentPadding).toFloat()
+        val delta = lazyAnchorDelta(focal.y, fraction, top, current.size.toFloat())
         if (delta != 0f) scrollBy(delta)
     }
 }
