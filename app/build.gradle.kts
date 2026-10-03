@@ -42,13 +42,18 @@ configurations.configureEach {
 // stays unsigned exactly as before, so the default build can never accidentally
 // produce a debug-signed artifact that looks shippable.
 //
-// CI supplies a throwaway keystore through the environment:
-//   ./gradlew assembleRelease \
-//     -PPAPYRUS_STORE_FILE=ci.keystore -PPAPYRUS_STORE_PASSWORD=android \
-//     -PPAPYRUS_KEY_ALIAS=androiddebugkey -PPAPYRUS_KEY_PASSWORD=android
+// Release signing is supplied per build, never committed. CI passes the real
+// keystore in through these four variables from repository secrets:
+//   PAPYRUS_STORE_FILE=/path/to/papyrus-release.jks
+//   PAPYRUS_STORE_PASSWORD=<store password>
+//   PAPYRUS_KEY_ALIAS=<key alias>
+//   PAPYRUS_KEY_PASSWORD=<key password>
 //
-// Swap these for real release credentials (or a GitHub secret-backed keystore)
-// before shipping to a store.
+// The keystore itself is deliberately absent from the repository. It is also
+// deliberately not reproducible per build: a key generated inside the runner
+// differs on every run, which makes each release mutually uninstallable and
+// unusable as an app-store upload. Back the one keystore up somewhere private
+// and permanent -- losing it means never shipping an update to an installed app.
 // ---------------------------------------------------------------------------
 fun signingSetting(name: String): String? =
     providers.gradleProperty(name).orNull?.takeIf { it.isNotBlank() }
