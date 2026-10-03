@@ -342,6 +342,30 @@ class ZoomAnchoringTest {
         assertEquals("200%", zoom.percentLabel())
     }
 
+    @Test
+    fun `an item that grew below the focal point is scrolled forward`() {
+        // Item was 1000px tall at the top, the finger at 400px sat 40% down it. At 2x it is 2000px
+        // tall and the same spot is 800px down, so the list must scroll forward by 400.
+        val delta = lazyAnchorDelta(focal = 400f, fraction = 0.4f, itemTop = 0f, itemSize = 2000f)
+        assertEquals(400f, delta, 0.01f)
+    }
+
+    @Test
+    fun `scrolling by the lazy anchor delta lands the anchored point under the focal point`() {
+        val fraction = 0.25f
+        val size = 1600f
+        val top = -300f
+        val delta = lazyAnchorDelta(focal.y, fraction, top, size)
+
+        // Scrolling forward by delta moves the item up by delta.
+        assertEquals(focal.y, (top - delta) + fraction * size, 0.01f)
+    }
+
+    @Test
+    fun `an item already at its anchor needs no scroll`() {
+        assertEquals(0f, lazyAnchorDelta(400f, 0.5f, 100f, 600f), 0.01f)
+    }
+
     private fun commit(pair: Pair<Float, Float>) = ScaleCommit(pair.first, pair.second, focal)
 
     /** No frame clock in a plain JVM test, so snap-back settles through set() instead. */
