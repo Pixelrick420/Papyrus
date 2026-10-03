@@ -25,7 +25,6 @@ import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -35,10 +34,15 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.vector.path
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -74,7 +78,7 @@ import com.papyrus.app.R
 import com.papyrus.app.data.DocumentEntity
 import com.papyrus.app.data.DocumentFormat
 import com.papyrus.app.data.DocumentRepository
-import com.papyrus.app.data.OpenPersistableDocument
+import com.papyrus.app.data.OpenPersistableDocuments
 import com.papyrus.app.data.ThumbnailLoader
 import com.papyrus.app.ui.AppViewModelProvider
 import com.papyrus.app.ui.UiText
@@ -141,13 +145,38 @@ class HomeViewModel(
     private val _messages = Channel<UiText>(Channel.BUFFERED)
     val messages = _messages.receiveAsFlow()
 
-    fun onDocumentPicked(uri: Uri, open: (Long) -> Unit) {
+    /**
+     * One file opens straight away. Several are only added to the library: the person stays on the
+     * home screen, where the new rows appear.
+     */
+    fun onDocumentsPicked(uris: List<Uri>, open: (Long) -> Unit, onAdded: () -> Unit) {
+        if (uris.isEmpty()) return
         viewModelScope.launch {
-            try {
-                open(repository.register(uri))
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
+            if (uris.size == 1) {
+                try {
+                    open(repository.register(uris.first()))
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    _messages.send(UiText(R.string.home_open_failed))
+                }
+                return@launch
+            }
+            var added = 0
+            for (uri in uris) {
+                try {
+                    repository.register(uri)
+                    added++
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    // Skip the unreadable one; the rest are still added.
+                }
+            }
+            if (added > 0) {
+                onAdded()
+                _messages.send(UiText(R.string.home_added_files, added))
+            } else {
                 _messages.send(UiText(R.string.home_open_failed))
             }
         }
@@ -160,6 +189,26 @@ class HomeViewModel(
         }
     }
 }
+
+/** A plus drawn as two strokes on a 24dp grid; tinted by [Icon]. */
+private val PlusIcon: ImageVector = ImageVector.Builder(
+    name = "Plus",
+    defaultWidth = 24.dp,
+    defaultHeight = 24.dp,
+    viewportWidth = 24f,
+    viewportHeight = 24f,
+).apply {
+    path(
+        stroke = SolidColor(Color.Black),
+        strokeLineWidth = 2f,
+        strokeLineCap = StrokeCap.Round,
+    ) {
+        moveTo(12f, 5f)
+        lineTo(12f, 19f)
+        moveTo(5f, 12f)
+        lineTo(19f, 12f)
+    }
+}.build()
 
 /** Same inset for title, controls and list, so everything hangs off one left edge. */
 private val ScreenPadding = 16.dp
@@ -186,8 +235,12 @@ fun HomeScreen(
         focusManager.clearFocus()
     }
 
-    val openFile = rememberLauncherForActivityResult(OpenPersistableDocument()) { uri ->
-        if (uri != null) viewModel.onDocumentPicked(uri, onOpenDocument)
+    val openFiles = rememberLauncherForActivityResult(OpenPersistableDocuments()) { uris ->
+        viewModel.onDocumentsPicked(
+            uris = uris,
+            open = onOpenDocument,
+            onAdded = { scope.launch { listState.scrollToItem(0) } },
+        )
     }
 
     // Per-document read grant is enough: the app never writes to a document it opened.
@@ -205,7 +258,23 @@ fun HomeScreen(
         }
     }
 
-    Scaffold(snackbarHost = { SnackbarHost(snackbar) }) { padding ->
+    Scaffold(
+        snackbarHost = { SnackbarHost(snackbar) },
+        floatingActionButton = {
+            FloatingActionButton(
+                onClick = {
+                    dismissKeyboard()
+                    openFiles.launch(DocumentFormat.pickerMimeTypes)
+                },
+            ) {
+                Icon(
+                    imageVector = PlusIcon,
+                    contentDescription = stringResource(R.string.cd_add_files),
+                    modifier = Modifier.size(24.dp),
+                )
+            }
+        },
+    ) { padding ->
         Column(
             Modifier
                 .fillMaxSize()
@@ -255,21 +324,6 @@ fun HomeScreen(
                 },
             )
 
-            Spacer(Modifier.height(8.dp))
-
-            OutlinedButton(
-                onClick = {
-                    dismissKeyboard()
-                    openFile.launch(DocumentFormat.pickerMimeTypes)
-                },
-                modifier = Modifier
-                    .padding(horizontal = ScreenPadding)
-                    .fillMaxWidth()
-                    .heightIn(min = ControlHeight),
-            ) {
-                Text(stringResource(R.string.action_open_file))
-            }
-
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 // Fades in once, on the first load. Already loaded when the screen is re-entered, so
                 // it starts at 1 and does not replay.
@@ -284,7 +338,7 @@ fun HomeScreen(
                     modifier = Modifier
                         .fillMaxSize()
                         .graphicsLayer { alpha = listAlpha },
-                    contentPadding = PaddingValues(start = ScreenPadding, top = 12.dp, end = ScreenPadding, bottom = 16.dp),
+                    contentPadding = PaddingValues(start = ScreenPadding, top = 12.dp, end = ScreenPadding, bottom = 88.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     items(state.results, key = { it.id }) { doc ->
