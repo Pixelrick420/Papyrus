@@ -33,6 +33,36 @@ configurations.configureEach {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Opt-in release signing.
+//
+// Signing credentials are read from Gradle properties first, then environment
+// variables, and the `release` signing config is only created when all four are
+// present. With none of them set -- the normal local and F-Droid case -- `release`
+// stays unsigned exactly as before, so the default build can never accidentally
+// produce a debug-signed artifact that looks shippable.
+//
+// CI supplies a throwaway keystore through the environment:
+//   ./gradlew assembleRelease \
+//     -PPAPYRUS_STORE_FILE=ci.keystore -PPAPYRUS_STORE_PASSWORD=android \
+//     -PPAPYRUS_KEY_ALIAS=androiddebugkey -PPAPYRUS_KEY_PASSWORD=android
+//
+// Swap these for real release credentials (or a GitHub secret-backed keystore)
+// before shipping to a store.
+// ---------------------------------------------------------------------------
+fun signingSetting(name: String): String? =
+    providers.gradleProperty(name).orNull?.takeIf { it.isNotBlank() }
+        ?: providers.environmentVariable(name).orNull?.takeIf { it.isNotBlank() }
+
+val releaseSigning = listOf(
+    "PAPYRUS_STORE_FILE",
+    "PAPYRUS_STORE_PASSWORD",
+    "PAPYRUS_KEY_ALIAS",
+    "PAPYRUS_KEY_PASSWORD",
+).map { it to signingSetting(it) }.toMap()
+
+val hasReleaseSigning = releaseSigning.values.all { it != null }
+
 android {
     namespace = "com.papyrus.app"
     compileSdk = 36
@@ -42,8 +72,19 @@ android {
         minSdk = 26
         targetSdk = 36
         versionCode = 1
-        versionName = "0.1.0"
+        versionName = "0.1"
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64") }
+    }
+
+    signingConfigs {
+        if (hasReleaseSigning) {
+            create("release") {
+                storeFile = file(releaseSigning.getValue("PAPYRUS_STORE_FILE"))
+                storePassword = releaseSigning.getValue("PAPYRUS_STORE_PASSWORD")
+                keyAlias = releaseSigning.getValue("PAPYRUS_KEY_ALIAS")
+                keyPassword = releaseSigning.getValue("PAPYRUS_KEY_PASSWORD")
+            }
+        }
     }
 
     buildTypes {
@@ -55,6 +96,8 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            // Null when no signing properties were supplied, which leaves the APK unsigned.
+            signingConfig = signingConfigs.findByName("release")
         }
     }
 
@@ -183,11 +226,13 @@ dependencies {
 // ---------------------------------------------------------------------------
 // Local device install helpers
 //
-// `installLocalRelease` deliberately does NOT attach a signingConfig to the
-// `release` build type. The release artifact stays unsigned and store-ready; we
-// sign a throwaway copy with the local debug keystore purely so adb will accept
-// it. Attaching the debug key to `release` would produce an APK that looks
-// shippable but must never reach F-Droid or Play.
+// `release` carries no signingConfig unless the build was given PAPYRUS_*
+// properties (see the block above), so a plain local `assembleRelease` still
+// produces an unsigned, store-ready artifact. What we hand to adb is a throwaway
+// copy signed with the local debug keystore, purely so adb will accept it. The
+// debug key must never become the release build type's permanent signing config:
+// that would produce an APK that looks shippable but must never reach F-Droid or
+// Play.
 // ---------------------------------------------------------------------------
 
 val adb = android.sdkDirectory.resolve("platform-tools/adb")
@@ -211,6 +256,16 @@ fun runCommand(command: List<String>): String {
 fun runAdb(vararg args: String): String = runCommand(listOf(adb.absolutePath) + args)
 
 /**
+ * Resolves one APK output, trying the signed name before the unsigned one. AGP writes
+ * `*-<variant>-unsigned.apk` when the variant has no signing config and `*-<variant>.apk`
+ * when it does, so both have to be probed: `release` only gets a signing config when the
+ * build was given PAPYRUS_* properties.
+ */
+fun findApk(out: File, stem: String, variant: String): File? =
+    listOf(File(out, "$stem-$variant.apk"), File(out, "$stem-$variant-unsigned.apk"))
+        .firstOrNull { it.isFile }
+
+/**
  * Picks the ABI split matching the connected device's primary ABI, falling back to the
  * universal APK. Installing the 32 MB arm64 split beats pushing the 102 MB universal APK
  * over USB, and the per-ABI APKs are what a store would serve the device anyway.
@@ -223,14 +278,16 @@ fun pickSplitApk(variant: String): File {
         .orEmpty()
         .trim()
     if (primaryAbi.isNotEmpty()) {
-        val split = File(out, "app-$primaryAbi-$variant-unsigned.apk")
-        if (split.isFile) return split
+        val split = findApk(out, "app-$primaryAbi", variant)
+        if (split != null) return split
         logger.lifecycle("No $primaryAbi split for $variant; falling back to the universal APK.")
     }
 
-    val universal = File(out, "app-universal-$variant-unsigned.apk")
-    return if (universal.isFile) universal else File(out, "app-$variant-unsigned.apk")
+    return findApk(out, "app-universal", variant) ?: File(out, "app-$variant.apk")
 }
+
+/** True when AGP already signed this output. `apksigner` would reject a second signature. */
+fun isAlreadySigned(apk: File): Boolean = !apk.name.contains("-unsigned")
 
 /** Copies [apk] aside and signs the copy with the local debug keystore. */
 fun signForLocalInstall(apk: File): File {
@@ -256,12 +313,16 @@ fun signForLocalInstall(apk: File): File {
     return signed
 }
 
-/** Registers a task that builds [variant], signs if needed, and adb-installs it. */
+/**
+ * Registers a task that builds [variant], signs the result if AGP left it unsigned, and
+ * adb-installs it. Whether signing is needed is read off the artifact rather than declared,
+ * because `release` is unsigned by default and signed when the build supplied PAPYRUS_*
+ * properties.
+ */
 fun registerLocalInstall(
     name: String,
     variant: String,
     apkProvider: () -> File,
-    signFirst: Boolean,
 ) {
     tasks.register(name) {
         group = "install"
@@ -269,7 +330,8 @@ fun registerLocalInstall(
         dependsOn("assemble$variant")
 
         doLast {
-            val toInstall = apkProvider().let { if (signFirst) signForLocalInstall(it) else it }
+            val picked = apkProvider()
+            val toInstall = if (isAlreadySigned(picked)) picked else signForLocalInstall(picked)
             logger.lifecycle("Installing ${toInstall.name} (${toInstall.length() / 1024 / 1024} MB)")
             val result = runAdb("install", "-r", "-t", toInstall.absolutePath)
             logger.lifecycle(result)
@@ -280,15 +342,11 @@ fun registerLocalInstall(
 registerLocalInstall(
     name = "installLocalDebug",
     variant = "Debug",
-    // Debug is already signed by AGP with the debug keystore; no re-signing needed.
     apkProvider = { pickSplitApk("debug") },
-    signFirst = false,
 )
 
 registerLocalInstall(
     name = "installLocalRelease",
     variant = "Release",
-    // Release ships unsigned on purpose; the copy handed to adb is signed locally.
     apkProvider = { pickSplitApk("release") },
-    signFirst = true,
 )

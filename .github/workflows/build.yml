@@ -1,0 +1,141 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    name: Test and build
+    # Tag pushes get the release job instead, which re-runs the same build.
+    if: github.ref_type == 'branch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Set up the Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install SDK packages
+        run: |
+          sdkmanager --install 'platform-tools' 'platforms;android-36' 'build-tools;36.0.0'
+          yes | sdkmanager --licenses > /dev/null || true
+
+      - name: Unit tests
+        run: ./gradlew --no-daemon testDebugUnitTest
+
+      - name: Assemble release
+        run: ./gradlew --no-daemon assembleRelease
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: papyrus-apk
+          path: app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
+
+  release:
+    name: Publish release
+    # `always()` is load-bearing. A tag push skips `ci` (its `if` is branch-only), and a
+    # skipped job skips everything that `needs` it -- so without this the release would
+    # never publish. The release job runs the unit tests itself, so gating on `ci` buys
+    # nothing anyway; this ordering just keeps the tag build behind the branch build.
+    if: always() && github.ref_type == 'tag'
+    needs: ci
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Set up the Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install SDK packages
+        run: |
+          sdkmanager --install 'platform-tools' 'platforms;android-36' 'build-tools;36.0.0'
+          yes | sdkmanager --licenses > /dev/null || true
+
+      - name: Unit tests
+        run: ./gradlew --no-daemon testDebugUnitTest
+
+      # Temporary: the release is signed with a throwaway debug key so the pipeline is
+      # end-to-end green before real release credentials exist. Replace this step with
+      # the release keystore (kept in a repository secret) and delete the comment above
+      # before publishing to any store.
+      - name: Generate a temporary signing key
+        run: |
+          keytool -genkeypair -v \
+            -keystore "$RUNNER_TEMP/ci-release.keystore" \
+            -storepass android -keypass android \
+            -alias androiddebugkey \
+            -keyalg RSA -keysize 2048 -validity 10000 \
+            -dname "CN=Papyrus CI, OU=CI, O=Papyrus, C=NO"
+
+      - name: Assemble signed release
+        env:
+          PAPYRUS_STORE_FILE: ${{ runner.temp }}/ci-release.keystore
+          PAPYRUS_STORE_PASSWORD: android
+          PAPYRUS_KEY_ALIAS: androiddebugkey
+          PAPYRUS_KEY_PASSWORD: android
+        run: ./gradlew --no-daemon assembleRelease
+
+      - name: Verify signatures
+        run: |
+          set -euo pipefail
+          build_tools="$ANDROID_HOME/build-tools/36.0.0"
+          count=0
+          for apk in app/build/outputs/apk/release/*.apk; do
+            echo "::group::$apk"
+            "$build_tools/apksigner" verify --print-certs --verbose "$apk"
+            echo "::endgroup::"
+            count=$((count + 1))
+          done
+          echo "Verified $count signed APK(s)"
+          test "$count" -eq 4
+
+      - name: Assert the tag matches versionName
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME#v}"
+          actual=$(grep -oP 'versionName\s*=\s*"\K[^"]+' app/build.gradle.kts | head -1)
+          echo "tag=$tag versionName=$actual"
+          if [ "$tag" != "$actual" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match versionName $actual in app/build.gradle.kts"
+            exit 1
+          fi
+
+      - name: Publish to GitHub Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Papyrus ${{ github.ref_name }}
+          prerelease: true
+          generate_release_notes: true
+          files: |
+            app/build/outputs/apk/release/app-arm64-v8a-release.apk
+            app/build/outputs/apk/release/app-armeabi-v7a-release.apk
+            app/build/outputs/apk/release/app-x86_64-release.apk
+            app/build/outputs/apk/release/app-universal-release.apk
+          fail_on_unmatched_files: true
