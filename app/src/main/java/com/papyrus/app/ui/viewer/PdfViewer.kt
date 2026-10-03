@@ -70,11 +70,9 @@ fun PdfViewer(
     // One state for the whole document; per-page state would reset the offset on every page change.
     val hScroll = rememberScrollState()
 
-    val findBarClearancePx = with(LocalDensity.current) { FindBarClearance.toPx() }
-
     LaunchedEffect(activePage) {
         activePage?.takeIf { it >= 0 && it < source.pageCount }
-            ?.let { listState.scrollToItemBelowFindBar(it, findBarClearancePx) }
+            ?.let { listState.scrollToItem(it) }
     }
 
     // Keyed on the commit, not the scale: one gesture, one correction, not one per recomposition.
