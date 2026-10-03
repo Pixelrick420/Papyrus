@@ -24,10 +24,10 @@ overwhelmingly printable means text.
 - **Find in file** works on every format. Text and Office step between chunks, blocks and pages; Markdown highlights
   every match in place, so its counter shows the total.
 - **Zoom** scales the type size on text surfaces, so content re-wraps and the scroll bounds stay correct.
-- **Index** — Room holds documents and page order, updated incrementally as files are opened.
-- **Thumbnails** — in-memory `LruCache`, one representative thumbnail per document, with low-resolution PDF
+- **Index** holds documents and page order in Room, updated incrementally as files are opened.
+- **Thumbnails** sit in an in-memory `LruCache`, one representative thumbnail per document, with low-resolution PDF
   placeholders while scrolling.
-- **Crash reports** — ACRA writes JSON to `filesDir/crash-reports/`.
+- **Crash reports** are JSON files in `filesDir/crash-reports/`, written by ACRA.
 
 ## Build
 
@@ -45,12 +45,14 @@ Needs JDK 17 and the Android SDK (platform 36, build-tools 36.0.0). Runs on Andr
 ./gradlew testDebugUnitTest
 ```
 
-131 JVM unit tests. The DOCX/ODT extractor runs against archives the tests build in memory (kxml2 stands in for the
+137 JVM unit tests. The DOCX/ODT extractor runs against archives the tests build in memory (kxml2 stands in for the
 platform's `XmlPullParser`), and the Room 1 -> 2 migration runs its real statements against SQLite via JDBC.
 
 ## Releases
 
-Push a `v*` tag to build the release APK and publish it to [Releases](../../releases).
+CI runs the tests on every push to `main`. Pushing a `v*` tag publishes a signed APK to
+[Releases](../../releases); the tag must match `versionName` in `app/build.gradle.kts` or the publish fails.
+Signing uses a release keystore supplied from repository secrets, never committed to the repo.
 
 ## License
 

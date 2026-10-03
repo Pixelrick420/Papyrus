@@ -11,3 +11,6 @@
 .kotlin/
 /notes.txt
 *.json
+*.jks
+*.keystore
+key/
