@@ -1,32 +1,38 @@
 package com.papyrus.app.ui.screens
 
+import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -43,12 +49,13 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.papyrus.app.R
@@ -56,16 +63,26 @@ import com.papyrus.app.data.DocumentFormat
 import com.papyrus.app.data.OpenPersistableDocument
 import com.papyrus.app.ui.AppViewModelProvider
 import com.papyrus.app.ui.asString
+import com.papyrus.app.ui.components.ControlHeight
 import com.papyrus.app.ui.viewer.FileInfoSheet
 import com.papyrus.app.ui.viewer.FindInFileBar
 import com.papyrus.app.ui.viewer.MarkdownViewer
 import com.papyrus.app.ui.viewer.OfficeViewer
 import com.papyrus.app.ui.viewer.PdfViewer
 import com.papyrus.app.ui.viewer.PlainTextViewer
+import com.papyrus.app.ui.viewer.ZoomState
 import com.papyrus.app.ui.viewer.rememberZoomState
 
-/** Find, zoom and overflow state live here so a format switch does not reset them. */
-@OptIn(ExperimentalMaterial3Api::class)
+/** Same inset as Home, so the find pill lines up with the Home search pill. */
+private val ScreenPadding = 16.dp
+
+/**
+ * Find, zoom and overflow state live here so a format switch does not reset them.
+ *
+ * Laid out like Home: no app-bar surface, just a flat header, then a column. The find bar is a
+ * sibling of the document inside that column, never an overlay, so opening it pushes the document
+ * down instead of covering its first lines.
+ */
 @Composable
 fun ViewerScreen(
     onBack: () -> Unit,
@@ -88,6 +105,14 @@ fun ViewerScreen(
         else -> false
     }
 
+    val closeFind: () -> Unit = {
+        focusManager.clearFocus()
+        viewModel.closeFind()
+    }
+
+    // Back dismisses find first; a second press leaves the document.
+    BackHandler(enabled = find.open, onBack = closeFind)
+
     // SAF grants have no runtime dialog, so re-access means a re-pick through the picker.
     val regrantFile = rememberLauncherForActivityResult(OpenPersistableDocument()) { uri ->
         if (uri != null) viewModel.regrant(uri) else viewModel.consumeRegrantRequest()
@@ -100,64 +125,58 @@ fun ViewerScreen(
         }
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
-                    Text(state.document?.title.orEmpty(), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
-                    }
-                },
-                actions = {
-                    if (find.open) {
-                        IconButton(onClick = { focusManager.clearFocus(); viewModel.closeFind() }) {
-                            Icon(painterResource(R.drawable.ic_search), contentDescription = stringResource(R.string.viewer_find_close))
-                        }
-                    }
-                    Box {
-                        IconButton(onClick = { menuOpen = true }) {
-                            Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.viewer_menu))
-                        }
-                        DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.viewer_find_title)) },
-                                enabled = findAvailable,
-                                onClick = { menuOpen = false; viewModel.openFind() },
-                            )
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.viewer_info_title)) },
-                                onClick = { menuOpen = false; infoOpen = true },
-                            )
-                        }
-                    }
-                },
-            )
-        },
-        snackbarHost = { SnackbarHost(snackbar) },
-    ) { padding ->
-        Box(
+    Scaffold(snackbarHost = { SnackbarHost(snackbar) }) { padding ->
+        Column(
             Modifier
+                .fillMaxSize()
                 .padding(padding)
-                .fillMaxSize(),
+                // Preview key handling so Ctrl+F wins over a focused text field. On the column, not
+                // the document, so it also covers the find field itself.
+                .onPreviewKeyEvent { event ->
+                    if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                    // Ctrl only: no connected Android keyboard emits Meta, so it is untestable.
+                    if (event.key == Key.F && event.isCtrlPressed && findAvailable) {
+                        viewModel.openFind()
+                        true
+                    } else {
+                        false
+                    }
+                },
         ) {
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    // Preview key handling so Ctrl+F wins over a focused text field.
-                    .onPreviewKeyEvent { event ->
-                        if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
-                        // Ctrl only: no connected Android keyboard emits Meta, so it is untestable.
-                        if (event.key == Key.F && event.isCtrlPressed && findAvailable) {
-                            viewModel.openFind()
-                            true
-                        } else {
-                            false
-                        }
-                    },
+            ViewerHeader(
+                title = state.document?.title.orEmpty(),
+                findAvailable = findAvailable,
+                menuOpen = menuOpen,
+                onMenuOpenChange = { menuOpen = it },
+                onBack = onBack,
+                onFind = viewModel::openFind,
+                onInfo = { infoOpen = true },
+            )
+
+            // In the flow, so the document below simply gets less height while this is shown.
+            // The activity uses adjustNothing, so the keyboard never resizes the document too.
+            AnimatedVisibility(
+                visible = find.open,
+                enter = expandVertically(tween(FIND_ANIMATION_MS)) + fadeIn(tween(FIND_ANIMATION_MS)),
+                exit = shrinkVertically(tween(FIND_ANIMATION_MS)) + fadeOut(tween(FIND_ANIMATION_MS)),
             ) {
+                FindInFileBar(
+                    query = find.query,
+                    matchCount = find.count,
+                    currentMatch = find.position.coerceAtLeast(0),
+                    // Markdown has no step target, so the bar shows the total and greys the arrows.
+                    canNavigate = find.navigable,
+                    onQueryChange = viewModel::updateFindQuery,
+                    onNext = viewModel::nextMatch,
+                    onPrevious = viewModel::previousMatch,
+                    onClose = closeFind,
+                    // End inset is smaller than the start: the close button carries its own 12dp
+                    // of padding, which brings its glyph to the same 16dp edge as the pill.
+                    modifier = Modifier.padding(start = ScreenPadding, end = 4.dp, bottom = 8.dp),
+                )
+            }
+
+            Box(Modifier.weight(1f).fillMaxWidth()) {
                 when (val content = state.content) {
                     ViewerContent.Loading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
                     is ViewerContent.Pdf -> PdfViewer(
@@ -191,8 +210,16 @@ fun ViewerScreen(
                         verticalArrangement = Arrangement.Center,
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
-                        Text(content.message.asString(), textAlign = TextAlign.Center)
-                        Button(onClick = onBack, modifier = Modifier.padding(top = 16.dp)) {
+                        Text(
+                            text = content.message.asString(),
+                            style = MaterialTheme.typography.titleMedium,
+                            textAlign = TextAlign.Center,
+                        )
+                        // The same outlined button as Home's Open file.
+                        OutlinedButton(
+                            onClick = onBack,
+                            modifier = Modifier.padding(top = 16.dp).heightIn(min = ControlHeight),
+                        ) {
                             Text(stringResource(R.string.action_back))
                         }
                     }
@@ -205,31 +232,7 @@ fun ViewerScreen(
                     }
                 }
 
-                // Top-anchored: the activity uses adjustNothing, so no IME inset handling is needed.
-                Column(
-                    Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(8.dp),
-                    horizontalAlignment = Alignment.End,
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    if (find.open) {
-                        FindInFileBar(
-                            query = find.query,
-                            matchCount = find.count,
-                            currentMatch = find.position.coerceAtLeast(0),
-                            // Markdown has no step target, so the bar shows the total and greys the arrows.
-                            canNavigate = find.navigable,
-                            onQueryChange = viewModel::updateFindQuery,
-                            onNext = viewModel::nextMatch,
-                            onPrevious = viewModel::previousMatch,
-                            onClose = { focusManager.clearFocus(); viewModel.closeFind() },
-                            // Caps width so tablets get a corner card; portrait phones are narrower and fill it.
-                            modifier = Modifier.widthIn(max = FIND_BAR_MAX_WIDTH),
-                        )
-                    }
-                    ZoomBadge(zoom)
-                }
+                ZoomBadge(zoom, Modifier.align(Alignment.TopEnd).padding(12.dp))
             }
         }
     }
@@ -239,14 +242,74 @@ fun ViewerScreen(
     }
 }
 
-private val FIND_BAR_MAX_WIDTH = 420.dp
+private const val FIND_ANIMATION_MS = 200
+
+/**
+ * Flat, like Home's title row: no filled app-bar surface, a semibold title, and the same 16dp
+ * edge for the first icon. The title is one line because a long file name must not eat the page.
+ */
+@Composable
+private fun ViewerHeader(
+    title: String,
+    findAvailable: Boolean,
+    menuOpen: Boolean,
+    onMenuOpenChange: (Boolean) -> Unit,
+    onBack: () -> Unit,
+    onFind: () -> Unit,
+    onInfo: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 4.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        IconButton(onClick = onBack) {
+            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
+        }
+
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier
+                .weight(1f)
+                .padding(horizontal = 4.dp)
+                .semantics { heading() },
+        )
+
+        Box {
+            IconButton(onClick = { onMenuOpenChange(true) }) {
+                Icon(
+                    Icons.Default.MoreVert,
+                    contentDescription = stringResource(R.string.viewer_menu),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            DropdownMenu(expanded = menuOpen, onDismissRequest = { onMenuOpenChange(false) }) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.viewer_find_title)) },
+                    enabled = findAvailable,
+                    onClick = { onMenuOpenChange(false); onFind() },
+                )
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.viewer_info_title)) },
+                    onClick = { onMenuOpenChange(false); onInfo() },
+                )
+            }
+        }
+    }
+}
 
 /** Stays until acted on: until the re-pick, what the viewer shows is stale. */
 @Composable
 private fun RegrantBanner(modifier: Modifier = Modifier, onRegrant: () -> Unit) {
     Surface(
         modifier = modifier,
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(16.dp),
         color = MaterialTheme.colorScheme.errorContainer,
         contentColor = MaterialTheme.colorScheme.onErrorContainer,
     ) {
@@ -267,11 +330,11 @@ private fun RegrantBanner(modifier: Modifier = Modifier, onRegrant: () -> Unit) 
 
 /** Readout only: pinch and double-tap are the interaction; the scale has no step size. */
 @Composable
-private fun ZoomBadge(zoom: com.papyrus.app.ui.viewer.ZoomState, modifier: Modifier = Modifier) {
+private fun ZoomBadge(zoom: ZoomState, modifier: Modifier = Modifier) {
     if (!zoom.isZoomed) return
     Surface(
         modifier = modifier,
-        shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(16.dp),
         color = MaterialTheme.colorScheme.inverseSurface.copy(alpha = 0.8f),
     ) {
         Text(
