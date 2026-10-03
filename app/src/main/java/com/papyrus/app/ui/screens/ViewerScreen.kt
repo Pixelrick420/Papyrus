@@ -189,6 +189,7 @@ fun ViewerScreen(
                     )
                     is ViewerContent.Markdown -> MarkdownViewer(
                         markwon = content.markwon,
+                        source = content.source,
                         text = content.text,
                         findQuery = find.query,
                         zoom = zoom,

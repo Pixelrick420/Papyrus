@@ -93,17 +93,25 @@ class OfficeTextExtractor(
                 written[zipName] = OfficeBlock.Image(file, mimeByName(zipName))
             }
             // Insert at the recorded position so images land where they appeared rather than being appended.
+            var inserted = 0
             pending.forEach { image ->
                 // A dangling relationship or a budget rejection lands here as null; the text still renders.
                 val block = written[image.zipName] ?: return@forEach
                 if (blocks.size >= MAX_BLOCKS) return@forEach
-                blocks.add(image.index.coerceIn(0, blocks.size), block)
+                // `index` was recorded against the list before any image went in, so every image already
+                // inserted has pushed this position down by one. Without the offset, images drifted upward
+                // and ended up clustered together near the first one.
+                blocks.add((image.index + inserted).coerceIn(0, blocks.size), block)
+                inserted++
             }
         }
         return blocks
     }
 
     private class PendingImage(val zipName: String, val index: Int)
+
+    /** The anchoring paragraph's state while a text box's own paragraphs are parsed. */
+    private class SetAsideParagraph(val text: String, val depth: Int, val headingLevel: Int)
 
     /**
      * Byte budget so a document full of photographs cannot fill the disk or the heap. Reserve then
@@ -340,6 +348,13 @@ class OfficeTextExtractor(
         var cellColspan = 1
         var cellMerge = MergeState.NONE
         var tableUsable = true
+        // `w:tab` is also a tab-stop *definition* inside `w:tabs`; only a run's `w:tab` is a character.
+        var inTabStops = false
+        // Inside `mc:Fallback`: the legacy copy of what `mc:Choice` already said.
+        var fallbackDepth = 0
+        // A text box's paragraphs nest inside the paragraph that anchors it; they are set aside so the
+        // box reads as its own paragraphs instead of being glued onto the anchor's text.
+        val textBoxes = ArrayDeque<SetAsideParagraph>()
 
         fun emitParagraph() {
             val text = paragraph.toString()
@@ -366,7 +381,11 @@ class OfficeTextExtractor(
 
         var event = p.eventType
         while (event != XmlPullParser.END_DOCUMENT && blocks.size < MAX_BLOCKS) {
-            when (event) {
+            val isFallbackTag = (event == XmlPullParser.START_TAG || event == XmlPullParser.END_TAG) &&
+                p.name == "mc:Fallback"
+            if (isFallbackTag) {
+                if (event == XmlPullParser.START_TAG) fallbackDepth++ else if (fallbackDepth > 0) fallbackDepth--
+            } else if (fallbackDepth == 0) when (event) {
                 XmlPullParser.START_TAG -> when (p.name) {
                     "w:tbl" -> {
                         if (tableDepth == 0) {
@@ -417,14 +436,31 @@ class OfficeTextExtractor(
                         rels[id]?.let { target -> pending += PendingImage(target, blocks.size) }
                     }
                     "w:t" -> inText = true
-                    "w:tab" -> appendText("\t", element = true)
+                    "w:tabs" -> inTabStops = true
+                    "w:tab" -> if (!inTabStops) appendText("\t", element = true)
+                    "w:ptab" -> appendText("\t", element = true)
+                    "w:noBreakHyphen" -> appendText("-", element = true)
                     "w:br", "w:cr" -> appendText("\n", element = true)
+                    "w:txbxContent" -> if (tableDepth == 0) {
+                        textBoxes.addLast(SetAsideParagraph(paragraph.toString(), paragraphDepth, headingLevel))
+                        paragraph.setLength(0)
+                        paragraphDepth = 0
+                        headingLevel = 0
+                    }
                 }
 
                 XmlPullParser.TEXT -> appendText(p.text)
 
                 XmlPullParser.END_TAG -> when (p.name) {
                     "w:t" -> inText = false
+                    "w:tabs" -> inTabStops = false
+                    "w:txbxContent" -> if (tableDepth == 0 && textBoxes.isNotEmpty()) {
+                        emitParagraph() // text in the box that no `</w:p>` closed
+                        val host = textBoxes.removeLast()
+                        paragraph.append(host.text)
+                        paragraphDepth = host.depth
+                        headingLevel = host.headingLevel
+                    }
                     "w:tc" -> if (inCell && tableDepth == 1) {
                         inCell = false
                         grid.openCellAt(column, cellBuffer.toString().trim('\n'), cellColspan, cellMerge)
@@ -474,9 +510,23 @@ class OfficeTextExtractor(
         // attribute, so there is no merge state to track here, only a column cursor to advance.
         var column = 0
         var tableUsable = true
-        // True between <text:p>/<text:h> and its end tag: ODF producers indent their XML just like
-        // DOCX ones, so only text inside a paragraph element is content.
-        var inParagraphElement = false
+        // How many <text:p>/<text:h> are open: ODF producers indent their XML just like DOCX ones, so only
+        // text inside a paragraph element is content. A depth, not a flag: a frame or text box nests a
+        // paragraph inside one, and the inner end tag must not switch off the outer paragraph's remaining text.
+        var paragraphElementDepth = 0
+        // Footnote bodies, comments and deleted text sit *inside* the paragraph they annotate. Their
+        // text is not part of it, and (for comments) includes the author and timestamp.
+        var skipDepth = 0
+        val textBoxes = ArrayDeque<SetAsideOdtParagraph>()
+        // Merge geometry. Real files declare spans as attributes, then add covered cells as placeholders.
+        var cellColspan = 1
+        var cellRowspan = 1
+        var cellRepeat = 1
+        var rowIndex = -1
+        var tableColumns = 0
+        var horizontalCoversLeft = 0
+        // column -> last row index that a rowspan from above still covers
+        val verticalCoveredUntil = HashMap<Int, Int>()
 
         fun emitParagraph() {
             val text = paragraph.toString()
@@ -489,38 +539,75 @@ class OfficeTextExtractor(
         }
 
         fun appendText(text: String) {
-            if (!inParagraphElement) return
+            if (paragraphElementDepth == 0) return
             if (inCell) cellBuffer.append(text) else paragraph.append(text)
         }
 
         var event = p.eventType
         while (event != XmlPullParser.END_DOCUMENT && blocks.size < MAX_BLOCKS) {
-            when (event) {
+            val skippedTag = (event == XmlPullParser.START_TAG || event == XmlPullParser.END_TAG) &&
+                p.name in ODT_SKIPPED
+            if (skippedTag) {
+                if (event == XmlPullParser.START_TAG) skipDepth++ else if (skipDepth > 0) skipDepth--
+            } else if (skipDepth == 0) when (event) {
                 XmlPullParser.START_TAG -> when (p.name) {
                     "table:table" -> {
                         if (tableDepth == 0) {
                             emitParagraph()
                             grid.reset()
                             tableUsable = true
+                            rowIndex = -1
+                            tableColumns = 0
+                            verticalCoveredUntil.clear()
                         }
                         tableDepth++
+                    }
+                    "table:table-column" -> if (tableDepth == 1) {
+                        tableColumns += p.intAttr("table:number-columns-repeated")
                     }
                     "table:table-row" -> if (tableDepth == 1) {
                         // Depth 1 only, as in DOCX: a nested row must not reset the outer grid's in-progress row.
                         grid.startRow()
                         column = 0
+                        rowIndex++
+                        horizontalCoversLeft = 0
                     }
                     "table:table-cell" -> if (tableDepth == 1) {
                         inCell = true
                         cellBuffer = StringBuilder()
+                        cellColspan = p.intAttr("table:number-columns-spanned")
+                        cellRowspan = p.intAttr("table:number-rows-spanned")
+                        cellRepeat = p.intAttr("table:number-columns-repeated")
                     }
                     "table:covered-table-cell" -> if (tableDepth == 1) {
-                        // A covered cell extends the cell to its left and occupies the next column.
-                        grid.widenLastColumn()
-                        column++
+                        repeat(p.intAttr("table:number-columns-repeated")) {
+                            when {
+                                // Right of a cell that declared `number-columns-spanned`: the cell already carries
+                                // the span and moved the column cursor past it, so there is nothing left to do.
+                                horizontalCoversLeft > 0 -> horizontalCoversLeft--
+                                // Under a rowspan from above: absent, as in DOCX, but it does occupy its column.
+                                // Widening the left neighbour here used to make a vertical merge in a middle
+                                // column stretch the cell beside it.
+                                (verticalCoveredUntil[column] ?: -1) >= rowIndex -> column++
+                                // A producer that omits the spanned attribute: a covered cell extends its left neighbour.
+                                else -> {
+                                    grid.widenLastColumn()
+                                    column++
+                                }
+                            }
+                        }
+                    }
+                    "draw:text-box" -> if (tableDepth == 0) {
+                        textBoxes.addLast(
+                            SetAsideOdtParagraph(paragraph.toString(), paragraphDepth, headingLevel, paragraphElementDepth),
+                        )
+                        paragraph.setLength(0)
+                        paragraphDepth = 0
+                        headingLevel = 0
+                        paragraphElementDepth = 0
                     }
                     "text:p", "text:h" -> {
-                        inParagraphElement = true
+                        paragraphElementDepth++
                         if (tableDepth == 0 && paragraphDepth++ == 0) {
                             paragraph.setLength(0)
                             headingLevel = if (p.name == "text:h") p.outlineLevel() else 0
@@ -545,9 +632,29 @@ class OfficeTextExtractor(
                     }
                     "table:table-cell" -> if (inCell && tableDepth == 1) {
                         inCell = false
-                        grid.openCellAt(column, cellBuffer.toString().trim('\n'), 1, MergeState.NONE)
-                        column++
+                        val text = cellBuffer.toString().trim('\n')
+                        // A repeat cannot run past the declared columns, or a spreadsheet-style
+                        // "repeat 1000 empty cells" would add a thousand columns.
+                        val room = if (tableColumns > 0) (tableColumns - column).coerceAtLeast(1) else cellRepeat
+                        repeat(minOf(cellRepeat, room)) {
+                            grid.openCellAt(column, text, cellColspan, MergeState.NONE).rowspan = cellRowspan
+                            if (cellRowspan > 1) {
+                                for (c in column until column + cellColspan) {
+                                    verticalCoveredUntil[c] = rowIndex + cellRowspan - 1
+                                }
+                            }
+                            column += cellColspan
+                        }
+                        horizontalCoversLeft = cellColspan - 1
                         cellBuffer = StringBuilder()
+                    }
+                    "draw:text-box" -> if (tableDepth == 0 && textBoxes.isNotEmpty()) {
+                        emitParagraph() // text in the box that no `</text:p>` closed
+                        val host = textBoxes.removeLast()
+                        paragraph.append(host.text)
+                        paragraphDepth = host.depth
+                        headingLevel = host.headingLevel
+                        paragraphElementDepth = host.elementDepth
                     }
                     "table:table" -> {
                         tableDepth--
@@ -557,7 +664,7 @@ class OfficeTextExtractor(
                         }
                     }
                     "text:p", "text:h" -> {
-                        inParagraphElement = false
+                        if (paragraphElementDepth > 0) paragraphElementDepth--
                         when {
                             // One newline between a cell's paragraphs, as in DOCX: without it a cell holding two
                             // paragraphs, or an outer cell holding a nested table's cell, reads as one run-on line.
@@ -572,6 +679,13 @@ class OfficeTextExtractor(
         return blocks
     }
 
+    /** A positive count attribute, 1 when absent or unusable, capped so a bad file cannot ask for thousands. */
+    private fun XmlPullParser.intAttr(name: String): Int =
+        getAttributeValue(null, name)?.toIntOrNull()?.coerceIn(1, MAX_MERGE_SPAN) ?: 1
+
+    /** The anchoring paragraph's state while a text box's own paragraphs are parsed. */
+    private class SetAsideOdtParagraph(val text: String, val depth: Int, val headingLevel: Int, val elementDepth: Int)
+
     /** ODT heading depth comes from an automatic style, so the attribute sits on the element here. */
     private fun XmlPullParser.outlineLevel(): Int =
         getAttributeValue(null, "text:outline-level")?.toIntOrNull()?.coerceIn(1, 6) ?: 1
@@ -581,6 +695,9 @@ class OfficeTextExtractor(
         private const val DOCX_BODY = "word/document.xml"
         private const val DOCX_RELS = "word/_rels/document.xml.rels"
         private const val ODT_BODY = "content.xml"
+
+        /** Subtrees whose text is annotation rather than body: footnotes and endnotes, comments, deleted text. */
+        private val ODT_SKIPPED = setOf("text:note", "office:annotation", "text:tracked-changes")
 
         const val MAX_BLOCKS = 20_000
         const val MAX_TABLE_ROWS = 2_000

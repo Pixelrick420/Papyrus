@@ -4,6 +4,7 @@ import android.text.Spanned
 import android.text.SpannableString
 import android.text.style.BackgroundColorSpan
 import android.text.style.ForegroundColorSpan
+import android.util.TypedValue
 import android.widget.TextView
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Box
@@ -39,6 +40,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.papyrus.app.viewer.OfficeBlock
 import io.noties.markwon.Markwon
+import io.noties.markwon.ext.tables.TableRowSpan
 
 /** [findChunkHits] over flattened block text. Stays here because it needs [OfficeBlock]. */
 fun findBlockHits(blocks: List<OfficeBlock>, query: String): List<Int> {
@@ -94,6 +96,7 @@ private fun ScaledTypography(scale: Float, content: @Composable () -> Unit) {
 @Composable
 fun MarkdownViewer(
     markwon: Markwon,
+    source: String,
     text: Spanned,
     findQuery: String,
     zoom: ZoomState,
@@ -103,8 +106,11 @@ fun MarkdownViewer(
     val geometry = rememberScrollGeometry(scroll)
     val textColor = MaterialTheme.colorScheme.onSurface.toArgb()
     val linkColor = MaterialTheme.colorScheme.primary.toArgb()
-    val highlighted = rememberHighlightedText(text, findQuery)
     val baseTextPx = with(LocalDensity.current) { MARKDOWN_BASE_SP.toPx() }
+    // Pixels, not sp: `TextView.textSize` reads sp, so handing it `toPx()` scaled the body by the density twice.
+    val textPx = baseTextPx * zoom.committedScale
+    val rendered = rememberRenderedMarkdown(markwon, source, text, textPx, textColor, linkColor)
+    val highlighted = rememberHighlightedText(rendered, findQuery)
 
     // A commit re-wraps the text, so re-anchor or the paragraph under the finger slides away.
     LaunchedEffect(zoom.lastCommit) {
@@ -124,7 +130,7 @@ fun MarkdownViewer(
                         // The native TextView is outside the Compose type system; its size tracks that scale.
                         factory = { context ->
                             TextView(context).apply {
-                                textSize = baseTextPx
+                                setTextSize(TypedValue.COMPLEX_UNIT_PX, textPx)
                                 setLineSpacing(0f, LINE_SPACING_MULTIPLIER)
                             }
                         },
@@ -133,7 +139,7 @@ fun MarkdownViewer(
                             view.setLinkTextColor(linkColor)
                             // Committed scale, not live: the preview layer paints the in-flight gesture,
                             // gesture, and resizing per frame relaid out the whole document.
-                            view.textSize = baseTextPx * zoom.committedScale
+                            view.setTextSize(TypedValue.COMPLEX_UNIT_PX, textPx)
                             markwon.setParsedMarkdown(view, highlighted)
                         },
                     )
@@ -143,10 +149,36 @@ fun MarkdownViewer(
     }
 }
 
+/**
+ * A table row span lays its cells out once per canvas width, copying the TextView's paint (size and
+ * colours) at that moment. Zooming or switching theme changes the paint but not the width, so cells
+ * kept the size and colour of the first draw: huge after the first draw, and unmoved by zoom. The
+ * spans cannot be reset from outside, so a document with tables gets a fresh `Spanned` whenever the
+ * paint changes. A document without tables keeps the shared parse and pays nothing.
+ */
+@Composable
+private fun rememberRenderedMarkdown(
+    markwon: Markwon,
+    source: String,
+    parsed: Spanned,
+    textPx: Float,
+    textColor: Int,
+    linkColor: Int,
+): Spanned {
+    val hasTables = remember(parsed) { parsed.getSpans(0, parsed.length, TableRowSpan::class.java).isNotEmpty() }
+    return if (hasTables) {
+        remember(markwon, source, textPx, textColor, linkColor) { markwon.toMarkdown(source) }
+    } else {
+        parsed
+    }
+}
+
 /** Debounced: applying spans walks the whole document, which a fast typist would feel. */
 @Composable
 private fun rememberHighlightedText(text: Spanned, query: String): Spanned {
-    var highlighted by remember(text) { mutableStateOf(text) }
+    // Seeded with the highlight, not the bare text: a new `text` (a table re-render) would otherwise blank
+    // the matches until the debounce fires.
+    var highlighted by remember(text) { mutableStateOf(if (query.isBlank()) text else text.withHighlight(query)) }
     LaunchedEffect(text, query) {
         if (query.isBlank()) {
             highlighted = text
