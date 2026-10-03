@@ -10,10 +10,16 @@
     <string name="cd_pdf_page">Page %1$d</string>
 
     <string name="home_empty_title">No documents yet</string>
-    <string name="home_removed">Removed from the list (the file itself is untouched)</string>
+    <string name="home_empty_hint">Files you open will appear here.</string>
+    <string name="home_removed">Removed from the list</string>
     <string name="home_no_access">No
 access</string>
     <string name="home_open_failed">Couldn\'t open that file</string>
+
+    <string name="home_search_hint">Search files</string>
+    <string name="home_search_none">No files match “%1$s”</string>
+    <string name="cd_search">Search files</string>
+    <string name="cd_clear_search">Clear search</string>
 
     <string name="scanner_permission_title">Camera access needed</string>
     <string name="scanner_permission_body">Pages are captured and processed entirely on this device.</string>

@@ -12,7 +12,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -44,6 +43,7 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -114,7 +114,7 @@ fun ViewerScreen(
                 actions = {
                     if (find.open) {
                         IconButton(onClick = { focusManager.clearFocus(); viewModel.closeFind() }) {
-                            Icon(Icons.Default.Search, contentDescription = stringResource(R.string.viewer_find_close))
+                            Icon(painterResource(R.drawable.ic_search), contentDescription = stringResource(R.string.viewer_find_close))
                         }
                     }
                     Box {

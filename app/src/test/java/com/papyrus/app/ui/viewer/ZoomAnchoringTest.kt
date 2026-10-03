@@ -95,10 +95,14 @@ class ZoomAnchoringTest {
         val zoom = zoom()
         zoom.set(1f)
         zoom.onPointersChanged(2, focal)
-        repeat(40) { zoom.applyGesture(0.8f) }
+        repeat(4) { zoom.applyGesture(0.8f) }
         assertTrue("expected an undershoot, was ${zoom.gestureScale}", zoom.gestureScale < MIN_SCALE)
-        // Bounded so the page stays recognisable rather than collapsing.
-        assertTrue("rubber band let the page collapse to ${zoom.gestureScale}", zoom.gestureScale > 0.5f)
+
+        // The band converges on MIN_SCALE from below, so a pinch held open settles just under the
+        // bound instead of collapsing the page. Asserted loosely: past a handful of steps the
+        // remaining gap is below float resolution and the scale reads as exactly MIN_SCALE.
+        repeat(36) { zoom.applyGesture(0.8f) }
+        assertTrue("rubber band let the page collapse to ${zoom.gestureScale}", zoom.gestureScale >= MIN_SCALE - 0.05f)
 
         zoom.onPointersChanged(0, Offset.Unspecified)
         settle(zoom)
@@ -319,7 +323,7 @@ class ZoomAnchoringTest {
 
     @Test
     fun `isZoomed is false at rest and after zooming out below rest`() {
-        // 90% is a legitimate resting state, so double-tap must not zoom further in from it.
+        // Below rest is a legitimate resting state, so double-tap must not zoom further in from it.
         val zoom = zoom()
         assertFalse(zoom.isZoomed)
         zoom.set(MIN_SCALE)

@@ -16,7 +16,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -29,6 +28,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.Dp
@@ -93,7 +93,8 @@ fun FindInFileBar(
                 .then(focusRequester?.let { Modifier.focusRequester(it) } ?: Modifier),
             singleLine = true,
             placeholder = { Text(stringResource(R.string.viewer_find_hint)) },
-            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+            // The same drawable as the home search field, so both searches share one icon.
+            leadingIcon = { Icon(painterResource(R.drawable.ic_search), contentDescription = null) },
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
             keyboardActions = KeyboardActions(onSearch = { if (canNavigate) onNext() }),
             textStyle = MaterialTheme.typography.bodyMedium,

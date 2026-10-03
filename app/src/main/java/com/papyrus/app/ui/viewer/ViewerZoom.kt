@@ -30,11 +30,11 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
-/** Not zoomed. Sits above [MIN_SCALE] because 90% is a real, useful fit. */
+/** Not zoomed. Sits above [MIN_SCALE], so pulling in is always a deliberate move. */
 const val REST_SCALE = 1f
 
-/** The user can pull *in* slightly, to fit a wide page on a narrow screen. */
-const val MIN_SCALE = 0.9f
+/** The user can pull in far enough to fit a wide page on a narrow screen, or read it as an overview. */
+const val MIN_SCALE = 0.5f
 
 const val MAX_SCALE = 5f
 

@@ -1,6 +1,14 @@
 package com.papyrus.app.ui.navigation
 
 import android.net.Uri
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.navigation.NavHostController
@@ -23,6 +31,11 @@ object Routes {
     fun viewer(documentId: Long) = "viewer/$documentId"
 }
 
+private const val NAV_DURATION_MS = 300
+
+/** Material's "emphasized decelerate": fast off the mark, long soft landing. */
+private val NavEasing = CubicBezierEasing(0.2f, 0f, 0f, 1f)
+
 @Composable
 fun PapyrusNavGraph(
     navController: NavHostController = rememberNavController(),
@@ -37,7 +50,23 @@ fun PapyrusNavGraph(
         if (id != null) navController.navigate(Routes.viewer(id)) { launchSingleTop = true }
     }
 
-    NavHost(navController = navController, startDestination = Routes.HOME) {
+    // Stacked rather than cross-faded: only the screen on top moves, sliding a short way in while it
+    // fades up, and the one underneath stays put and opaque. The default is a 700 ms fade of both,
+    // which is slow to open a file and shows the window background through the middle of it.
+    NavHost(
+        navController = navController,
+        startDestination = Routes.HOME,
+        enterTransition = {
+            fadeIn(tween(NAV_DURATION_MS, easing = NavEasing)) +
+                slideInHorizontally(tween(NAV_DURATION_MS, easing = NavEasing)) { it / 10 }
+        },
+        exitTransition = { ExitTransition.None },
+        popEnterTransition = { EnterTransition.None },
+        popExitTransition = {
+            fadeOut(tween(NAV_DURATION_MS - 50, easing = NavEasing)) +
+                slideOutHorizontally(tween(NAV_DURATION_MS, easing = NavEasing)) { it / 10 }
+        },
+    ) {
         composable(Routes.HOME) {
             // Still registered for hardware scanners and share intents, though no UI navigates here.
             HomeScreen(onOpenDocument = { id -> navController.navigate(Routes.viewer(id)) })
