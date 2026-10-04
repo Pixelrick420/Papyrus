@@ -84,7 +84,7 @@ class DocumentRepository(
         val now = System.currentTimeMillis()
         return DocumentEntity(
             uri = uri.toString(),
-            title = meta.displayName.substringBeforeLast('.').ifBlank { meta.displayName },
+            title = meta.displayName.ifBlank { "untitled" },
             mimeType = meta.mimeType,
             format = resolveFormat(uri, meta.displayName, meta.mimeType),
             sizeBytes = meta.sizeBytes,
