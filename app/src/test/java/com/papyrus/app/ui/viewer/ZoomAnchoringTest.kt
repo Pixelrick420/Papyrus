@@ -366,6 +366,147 @@ class ZoomAnchoringTest {
         assertEquals(0f, lazyAnchorDelta(400f, 0.5f, 100f, 600f), 0.01f)
     }
 
+    @Test
+    fun `the requested scroll offset puts the focal fraction of the grown item under the finger`() {
+        // Item was 1000px, the finger sat 40% down it. At 2x it is 2000px and 800px of it must sit
+        // above the finger, so the item's top is 400 - 800 = -400 relative to the viewport.
+        val before = 8
+        val offset = lazyAnchorScrollOffset(focal = 400f, fraction = 0.4f, newItemSize = 2000f, before = before)
+
+        // An item at offset 0 sits `before` px down; each px of scroll offset lifts it by one.
+        val top = before - offset
+        assertEquals(400f, top + 0.4f * 2000f, 0.51f)
+    }
+
+    @Test
+    fun `an item that did not change size and was not moved keeps its offset`() {
+        // Anchored at the top of an item with no content padding: nothing to do.
+        assertEquals(0, lazyAnchorScrollOffset(focal = 0f, fraction = 0f, newItemSize = 1000f, before = 0))
+    }
+
+    @Test
+    fun `the requested offset agrees with the delta the settle pass would apply`() {
+        // The atomic request and the measured trim are two views of one equation: after the request
+        // lands on an item of the predicted size, the trim must find nothing left to do.
+        val fraction = 0.3f
+        val size = 1800f
+        val before = 24
+        val offset = lazyAnchorScrollOffset(focal.y, fraction, size, before)
+        val itemTopInViewport = (before - offset).toFloat()
+        assertEquals(0f, lazyAnchorDelta(focal.y, fraction, itemTopInViewport, size), 0.51f)
+    }
+
+    @Test
+    fun `anchors are told about a commit before the new scale is published`() {
+        // Their one chance to read the content under the finger off the layout the pinch previewed.
+        val zoom = zoom()
+        var scaleSeen = -1f
+        var commitSeen: ScaleCommit? = null
+        zoom.addAnchor(object : ZoomAnchor {
+            override fun onCommit(commit: ScaleCommit) {
+                scaleSeen = zoom.committedScale
+                commitSeen = commit
+            }
+        })
+
+        zoom.set(2f, focal)
+
+        assertEquals("the anchor ran after the scale was published", 1f, scaleSeen, 0.0001f)
+        assertEquals(ScaleCommit(1f, 2f, focal), commitSeen)
+        assertEquals(2f, zoom.committedScale, 0.0001f)
+    }
+
+    @Test
+    fun `anchors hear about a pinch commit with the focal point it began at`() {
+        val zoom = zoom()
+        var seen: ScaleCommit? = null
+        zoom.addAnchor(object : ZoomAnchor {
+            override fun onCommit(commit: ScaleCommit) { seen = commit }
+        })
+
+        zoom.onPointersChanged(2, focal)
+        zoom.applyGesture(1.5f)
+        zoom.onPointersChanged(0, Offset.Unspecified)
+
+        assertEquals(focal, seen!!.focal)
+        assertEquals(1.5f, seen!!.ratio, 0.01f)
+    }
+
+    @Test
+    fun `anchors are not told about a commit that changed nothing`() {
+        val zoom = zoom()
+        var calls = 0
+        zoom.set(2f)
+        zoom.addAnchor(object : ZoomAnchor {
+            override fun onCommit(commit: ScaleCommit) { calls++ }
+        })
+
+        zoom.set(2f)
+
+        assertEquals(0, calls)
+    }
+
+    @Test
+    fun `a removed anchor is no longer told`() {
+        val zoom = zoom()
+        var calls = 0
+        val anchor = object : ZoomAnchor {
+            override fun onCommit(commit: ScaleCommit) { calls++ }
+        }
+        zoom.addAnchor(anchor)
+        zoom.removeAnchor(anchor)
+
+        zoom.set(2f, focal)
+
+        assertEquals(0, calls)
+    }
+
+    @Test
+    fun `an anchor added twice is still told once`() {
+        val zoom = zoom()
+        var calls = 0
+        val anchor = object : ZoomAnchor {
+            override fun onCommit(commit: ScaleCommit) { calls++ }
+        }
+        zoom.addAnchor(anchor)
+        zoom.addAnchor(anchor)
+
+        zoom.set(2f, focal)
+
+        assertEquals(1, calls)
+    }
+
+    @Test
+    fun `scrolling stays locked after the first finger of a pinch lifts`() {
+        // Fingers never leave together: the one still down must not scroll the document.
+        val zoom = zoom()
+        zoom.onPointersChanged(2, focal)
+        assertTrue(zoom.isScrollLocked)
+
+        zoom.onPointersChanged(1, Offset.Unspecified)
+
+        assertFalse("the pinch is over", zoom.isPinching)
+        assertTrue("the straggler scrolled the page", zoom.isScrollLocked)
+    }
+
+    @Test
+    fun `scrolling comes back once the last finger is up`() {
+        val zoom = zoom()
+        zoom.onPointersChanged(2, focal)
+        zoom.onPointersChanged(1, Offset.Unspecified)
+
+        zoom.onPointersChanged(0, Offset.Unspecified)
+
+        assertFalse(zoom.isScrollLocked)
+    }
+
+    @Test
+    fun `a single finger never locks scrolling`() {
+        val zoom = zoom()
+        zoom.onPointersChanged(1, Offset.Unspecified)
+        assertFalse(zoom.isScrollLocked)
+    }
+
     private fun commit(pair: Pair<Float, Float>) = ScaleCommit(pair.first, pair.second, focal)
 
     /** No frame clock in a plain JVM test, so snap-back settles through set() instead. */
