@@ -11,9 +11,6 @@ class FindHighlightTest {
     private fun colours(text: String, highlight: FindHighlight?) =
         highlightedText(text, highlight).spanStyles.map { it.item.background }
 
-    private fun starts(text: String, highlight: FindHighlight?) =
-        highlightedText(text, highlight).spanStyles.map { it.start }
-
     @Test
     fun `with no current match every match is yellow`() {
         val text = "needle needle needle"

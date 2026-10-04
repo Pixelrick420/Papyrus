@@ -28,18 +28,6 @@ class OpenPersistableDocuments : ActivityResultContracts.OpenMultipleDocuments()
 object SafStorage {
     data class Metadata(val displayName: String, val sizeBytes: Long, val mimeType: String?)
 
-    data class Access(val readable: Boolean, val writable: Boolean) {
-        val canRead: Boolean get() = readable
-        val lost: Boolean get() = !readable
-    }
-
-    /** A hint, not a verdict: an intent-opened document or a granted-tree child is readable with no persistedUriPermissions entry. */
-    fun access(resolver: ContentResolver, uri: Uri): Access {
-        val held = resolver.persistedUriPermissions.firstOrNull { it.uri == uri }
-            ?: return Access(readable = false, writable = false)
-        return Access(held.isReadPermission, held.isWritePermission)
-    }
-
     /** Call right after the pick or the OS drops the grant on reboot. Read only by default: some providers refuse a write request outright. */
     fun persistPermission(resolver: ContentResolver, uri: Uri, write: Boolean = false): Boolean {
         val read = Intent.FLAG_GRANT_READ_URI_PERMISSION
