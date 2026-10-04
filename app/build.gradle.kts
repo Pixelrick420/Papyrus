@@ -8,6 +8,7 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
     id("com.google.devtools.ksp")
     id("androidx.room")
+    id("io.gitlab.arturbosch.detekt")
 }
 
 // ---------------------------------------------------------------------------
@@ -71,6 +72,14 @@ val hasReleaseSigning = releaseSigning.values.all { it != null }
 android {
     namespace = "com.papyrus.app"
     compileSdk = 36
+
+    // Pinned so `stripReleaseDebugSymbols` can find a strip tool. Without it AGP falls back to
+    // its own built-in NDK default (27.0.120779), which is not what is installed here, so the
+    // task logs "Unable to strip ... missing strip tool for ABI" for every prebuilt .so that a
+    // dependency ships -- currently just androidx.graphics.path, pulled in by Compose. The app
+    // compiles no native code of its own; the NDK is here for that strip step alone. Keep this
+    // line and the `ndk;` entry in .github/workflows/build.yml in step.
+    ndkVersion = "28.2.13676358"
 
     defaultConfig {
         applicationId = "com.papyrus.app"
@@ -204,6 +213,19 @@ dependencies {
     // MigrationTestHelper, but that artifact pulls in Robolectric and an instrumentation runner; the
     // raw driver covers the same ground for a migration that is plain SQL.
     testImplementation("org.xerial:sqlite-jdbc:3.41.2.2")
+}
+
+// Static analysis, scoped to dead code and correctness. The rule selection and the
+// reasons each borderline ruleset is off live in config/detekt/detekt.yml.
+detekt {
+    buildUponDefaultConfig = false
+    allRules = false
+    config.setFrom(rootProject.file("config/detekt/detekt.yml"))
+    baseline = file("$rootDir/config/detekt/baseline.xml")
+    // Type resolution is left off: it would require detekt to run against the
+    // compiled classpath (and therefore after every Kotlin compile). Every rule
+    // enabled in the config works on the AST alone.
+    ignoreFailures = false
 }
 
 // ---------------------------------------------------------------------------
