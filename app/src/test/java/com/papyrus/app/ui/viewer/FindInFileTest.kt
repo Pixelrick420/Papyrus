@@ -34,9 +34,27 @@ class FindInFileTest {
     }
 
     @Test
-    fun `several matches inside one chunk are one hit`() {
-        // Navigation steps by chunk, not occurrence, so the counter matches the number of jumps.
-        assertEquals(listOf(0), findChunkHits(listOf("needle a needle b needle"), "needle"))
+    fun `every match inside one chunk is its own hit`() {
+        // Regression: matches close together were counted as one, so the counter skipped them and the
+        // whole cluster lit up as a single match. A chunk's index repeats once per match in it.
+        assertEquals(listOf(0, 0, 0), findChunkHits(listOf("needle a needle b needle"), "needle"))
+    }
+
+    @Test
+    fun `adjacent matches with nothing between them are still separate hits`() {
+        assertEquals(listOf(0, 0, 0), findChunkHits(listOf("needleneedleneedle"), "needle"))
+    }
+
+    @Test
+    fun `hits repeat per match and stay in document order across chunks`() {
+        val chunks = listOf("needle needle", "nothing", "needle", "Needle NEEDLE needle")
+        assertEquals(listOf(0, 0, 2, 3, 3, 3), findChunkHits(chunks, "needle"))
+    }
+
+    @Test
+    fun `overlapping candidates are counted once, as the highlights are drawn`() {
+        // "aa" in "aaaaa" paints two highlights, so it must count two hits, not four.
+        assertEquals(listOf(0, 0), findChunkHits(listOf("aaaaa"), "aa"))
     }
 
     @Test
@@ -65,6 +83,46 @@ class FindInFileTest {
     fun `headings paragraphs and table cells are all searched`() {
         assertEquals(listOf(1, 2), findBlockHits(blocks(), "needle"))
         assertEquals(listOf(0), findBlockHits(blocks(), "report"))
+    }
+
+    @Test
+    fun `every match inside one block is its own hit`() {
+        val blocks = listOf(
+            OfficeBlock.Paragraph("needle needle"),
+            OfficeBlock.Heading("no match", 2),
+            OfficeBlock.Paragraph("a Needle, a NEEDLE and one more needle"),
+        )
+        assertEquals(listOf(0, 0, 2, 2, 2), findBlockHits(blocks, "needle"))
+    }
+
+    @Test
+    fun `matches in separate cells and paragraphs of a table are counted one by one`() {
+        val table = OfficeBlock.Table(
+            listOf(
+                listOf(OfficeCell("needle needle", 0), OfficeCell("none", 1)),
+                listOf(OfficeCell("first needle\nsecond needle", 0), OfficeCell("needle", 1)),
+            ),
+        )
+        // 2 in the first cell, 1 + 1 in the two paragraphs of the next, then 1 in the last: 5 in all.
+        assertEquals(listOf(0, 0, 0, 0, 0), findBlockHits(listOf(table), "needle"))
+    }
+
+    @Test
+    fun `a match is never counted across two pieces of text that are drawn separately`() {
+        // Cells and a cell's paragraphs are separate Texts, so a query spanning them could be counted but
+        // never highlighted, and the counter would step onto a match with nothing lit.
+        val table = OfficeBlock.Table(
+            listOf(listOf(OfficeCell("alpha", 0), OfficeCell("beta", 1)), listOf(OfficeCell("one\ntwo", 0))),
+        )
+        assertEquals(emptyList<Int>(), findBlockHits(listOf(table), "alpha beta"))
+        assertEquals(emptyList<Int>(), findBlockHits(listOf(table), "one two"))
+        assertEquals(listOf(0), findBlockHits(listOf(table), "alpha"))
+    }
+
+    @Test
+    fun `the cell line split is what the renderer draws`() {
+        assertEquals(listOf("a", "b"), officeCellLines(OfficeCell("a\n\nb\n", 0)))
+        assertEquals(emptyList<String>(), officeCellLines(OfficeCell("", 0)))
     }
 
     @Test

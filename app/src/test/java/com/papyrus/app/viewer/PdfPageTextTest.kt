@@ -132,6 +132,106 @@ class PdfPageTextTest {
         assertTrue(page(text, line(text)).contains("a  fine"))
     }
 
+    // Rectangles are grouped per match: a wrapped match is several rectangles but one match, so the
+    // find bar's count (matches) and its colouring (which rectangles are orange) can both be right.
+
+    @Test
+    fun `each match is its own group`() {
+        val text = "needle and needle and needle"
+        val groups = page(text, line(text)).matchGroups("needle")
+
+        assertEquals(3, groups.size)
+        assertTrue(groups.all { it.size == 1 })
+        assertEquals(0.00f, groups[0][0].left, 0.0001f)
+        assertEquals(0.11f, groups[1][0].left, 0.0001f)
+        assertEquals(0.22f, groups[2][0].left, 0.0001f)
+    }
+
+    @Test
+    fun `matches that touch stay separate groups`() {
+        // The reported bug at the geometry level: close matches must not merge into one rectangle.
+        val text = "needleneedle needle"
+        val groups = page(text, line(text)).matchGroups("needle")
+
+        assertEquals(3, groups.size)
+        assertEquals(0.06f, groups[0][0].right, 0.0001f)
+        assertEquals(0.06f, groups[1][0].left, 0.0001f)
+    }
+
+    @Test
+    fun `a match that wraps is one group of two rectangles`() {
+        val text = "two lines of a long paragraph and a long tail"
+        val wrapAt = text.indexOf("a long paragraph") + 1
+        val boxes = text.mapIndexed { i, ch ->
+            val second = i > wrapAt
+            val top = if (second) 0.30f else 0.10f
+            val left = (if (second) i - wrapAt - 1 else i) * 0.01f
+            if (ch == ' ') floatArrayOf(Float.NaN, Float.NaN, Float.NaN, Float.NaN)
+            else floatArrayOf(left, top, left + 0.01f, top + 0.02f)
+        }
+        val groups = page(text, boxes, setOf(wrapAt)).matchGroups("a long paragraph")
+
+        assertEquals(1, groups.size)
+        assertEquals(2, groups[0].size)
+    }
+
+    @Test
+    fun `the group count equals the match count`() {
+        val text = "aa aa aa aaaa"
+        val page = page(text, line(text))
+        assertEquals(page.countMatches("aa"), page.matchGroups("aa").size)
+        assertEquals(5, page.countMatches("aa"))
+    }
+
+    @Test
+    fun `counting does not overlap matches`() {
+        // "aa" in "aaaaa" paints two highlights, so it is two matches.
+        assertEquals(2, PdfPageText("aaaaa", FloatArray(0)).countMatches("aa"))
+    }
+
+    @Test
+    fun `a page past the box budget still counts every match but has no groups`() {
+        // Searchable but not highlightable: the count feeds the find bar, the groups feed the page.
+        val page = PdfPageText("needle needle needle", FloatArray(0))
+
+        assertEquals(3, page.countMatches("needle"))
+        assertTrue(page.matchGroups("needle").isEmpty())
+    }
+
+    @Test
+    fun `counting follows the same normalising as matching`() {
+        val text = "a fine day, fine"
+        val page = page(text, line(text))
+        assertEquals(2, page.countMatches("\uFB01ne"))
+        assertEquals(2, page.matchGroups("\uFB01ne").size)
+        assertEquals(0, page.countMatches(""))
+    }
+
+    @Test
+    fun `a match with no drawable glyph keeps its place so groups stay aligned with matches`() {
+        // The middle match has no boxes at all. Dropping its entry would make the third match's
+        // rectangles read as the second's, and the wrong word would turn orange.
+        val text = "ab ab ab"
+        val boxes = text.mapIndexed { i, ch ->
+            if (ch == ' ' || i in 3..4) floatArrayOf(Float.NaN, Float.NaN, Float.NaN, Float.NaN)
+            else floatArrayOf(i * 0.01f, 0.1f, (i + 1) * 0.01f, 0.12f)
+        }
+        val groups = page(text, boxes).matchGroups("ab")
+
+        assertEquals(3, groups.size)
+        assertTrue(groups[1].isEmpty())
+        assertEquals(0.06f, groups[2][0].left, 0.0001f)
+    }
+
+    @Test
+    fun `the limit cuts off later matches but never splits the order`() {
+        val text = "a ".repeat(50)
+        val groups = page(text, line(text)).matchGroups("a", limit = 10)
+
+        assertEquals(10, groups.size)
+        assertEquals(50, page(text, line(text)).countMatches("a"))
+    }
+
     @Test
     fun `boxes must line up one to one with the text`() {
         var failed = false
