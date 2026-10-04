@@ -23,13 +23,13 @@ import kotlinx.coroutines.flow.first
 
 /*
  * Matches are stepped one at a time, but a chunk, block or page can be taller than the screen, so
- * moving to the next match inside it has to scroll to that match, not just to its container.
+ * moving to the next match inside one has to scroll to that match, not just to its container.
  */
 
 /**
  * One navigation to a match. Whoever draws that match scrolls to it once and marks this consumed.
- * It is owned above the lazy list, where it outlives its items: an effect left in an item would
- * run again when the item is recomposed after the reader scrolled away, and pull the view back.
+ * Owned above the lazy list, where it outlives its items: an effect left in an item would rerun when
+ * the item is recomposed after the reader scrolled away, and pull the view back.
  */
 internal class RevealTicket {
     var consumed = false
@@ -76,8 +76,8 @@ internal fun FindText(
 }
 
 /**
- * Brings [index] into composition so its own match can be revealed. An item already on screen is
- * left where it is: jumping it to the top first made every step inside it twitch before settling.
+ * Brings [index] into composition so its own match can be revealed. An item already on screen stays
+ * put: jumping it to the top first made every step inside it twitch before settling.
  */
 internal suspend fun LazyListState.scrollToItemUnlessVisible(index: Int) {
     if (layoutInfo.visibleItemsInfo.none { it.index == index }) scrollToItem(index)

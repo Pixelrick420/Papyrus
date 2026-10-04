@@ -98,7 +98,7 @@ import kotlinx.coroutines.launch
 
 /**
  * Everything the list needs in one value, so "still loading", "library is empty" and "nothing
- * matches" are decided together and can never disagree for a frame.
+ * matches" are decided together and never disagree for a frame.
  */
 data class HomeUiState(
     val loaded: Boolean = false,
@@ -118,8 +118,8 @@ class HomeViewModel(
 
     /**
      * Filtered in memory: the whole list is already held, so a query would only add a second source.
-     * Starts as "not loaded" rather than empty: otherwise a library with documents flashes the
-     * empty state for the frames before the first database emission.
+     * Starts as "not loaded" rather than empty, or a library with documents flashes the empty state
+     * for the frames before the first database emission.
      */
     val uiState: StateFlow<HomeUiState> = combine(repository.documents, _query) { docs, q ->
         val needle = q.trim()
@@ -145,8 +145,8 @@ class HomeViewModel(
     val messages = _messages.receiveAsFlow()
 
     /**
-     * One file opens straight away. Several are only added to the library: the person stays on the
-     * home screen, where the new rows appear.
+     * One file opens straight away; several are only added to the library, leaving the person on the
+     * home screen where the new rows appear.
      */
     fun onDocumentsPicked(uris: List<Uri>, open: (Long) -> Unit, onAdded: () -> Unit) {
         if (uris.isEmpty()) return
@@ -374,8 +374,8 @@ fun HomeScreen(
 
 /**
  * Empty state drawn over the list. Its own composable rather than inline in the `Box` above: the
- * scope-aware overloads of `AnimatedVisibility` need a `Column`/`Row` receiver, and this one is a
- * child of a `Box`, so only the plain overload applies.
+ * scope-aware `AnimatedVisibility` overloads need a `Column`/`Row` receiver and this is a child of a
+ * `Box`, so only the plain overload applies.
  */
 @Composable
 private fun EmptyStateOverlay(
@@ -404,7 +404,7 @@ private fun EmptyStateOverlay(
 
 /**
  * Clear button fading in and out inside a slot that never changes size. Extracted for the same
- * reason as [EmptyStateOverlay]: it is a child of a `Box`, not of the `Row` around it.
+ * reason as [EmptyStateOverlay]: a child of a `Box`, not of the `Row` around it.
  */
 @Composable
 private fun ClearSearchButton(
@@ -431,9 +431,9 @@ private fun ClearSearchButton(
 }
 
 /**
- * One layout for both "nothing here" states. A first-run library is centred with its illustration;
- * a failed search sits near the top instead, because the keyboard is up and a vertically centred
- * message would land behind it on a short screen.
+ * One layout for both "nothing here" states. A first-run library is centred with its illustration; a
+ * failed search sits near the top, because the keyboard is up and a centred message would land
+ * behind it on a short screen.
  */
 @Composable
 private fun EmptyState(

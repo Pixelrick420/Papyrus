@@ -84,7 +84,7 @@ fun rememberScrollGeometry(state: ScrollState): State<ScrollGeometry> {
  *
  * @param onScrollBy suspend, so a fire-and-forget launch cannot drop or reorder drags.
  * @param color thumb colour; [Color.Unspecified] (the default) means `onSurfaceVariant`, so the
- *   thumb follows the theme instead of being a fixed grey.
+ *   thumb follows the theme rather than staying a fixed grey.
  */
 @OptIn(FlowPreview::class)
 @Composable

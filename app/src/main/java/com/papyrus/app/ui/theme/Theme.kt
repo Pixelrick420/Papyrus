@@ -10,31 +10,23 @@ import androidx.compose.ui.graphics.Color
 
 /**
  * The app's blue, read off the launcher icon background
- * (`res/values/ic_launcher_background.xml`) so the icon and the UI are one colour. It is the
- * `primary` of *both* schemes -- not a light tint in one and the tone-80 step in the other -- so the
- * same pixel of blue turns up in light mode and dark mode alike.
+ * (`res/values/ic_launcher_background.xml`) so icon and UI are one colour. It is `primary` in
+ * *both* schemes -- not a tint in one and the tone-80 step in the other -- so the same blue shows
+ * in light and dark.
  */
 private val Blue = Color(0xFF326AE3)
 
 /**
- * Fixed, not wallpaper-derived. Android 12's `dynamicLightColorScheme` tinted every surface role
- * with the wallpaper's hue, and stock M3 below it fell back to its baseline `background`
- * (#FFFBFE). Three surfaces paint from a surface role -- the PDF letterbox, the home list cards and
- * the Office table cells -- so a white document page sat on a coloured field.
+ * Fixed, not wallpaper-derived: Android 12's `dynamicLightColorScheme` tinted every surface role
+ * with the wallpaper hue, and stock M3 below it fell back to a lavender `background` (#FFFBFE =
+ * 255/251/254). Three surfaces paint from a surface role -- PDF letterbox, home cards, Office table
+ * cells -- so a white page sat on a coloured field.
  *
- * Two rules hold across both schemes:
- *
- * 1. **One blue.** Every accent role is [Blue] itself or a tonal step of that one hue. The
- *    containers stay steps so a filled `primaryContainer` never reads as a second brand colour.
- * 2. **Every neutral has R == G == B.** The M3 baseline "neutrals" are not neutral: `background`
- *    #FFFBFE is 255/251/254, and `surfaceVariant` #E7E0EC is visibly lavender. On a full-screen
- *    background a one-step difference per channel is enough to tint the whole app, which is what
- *    made light mode look lavender. So each neutral below is written as a true grey, repeated three
- *    times. `background` is #FBFBFB, not pure white, to keep the app off a glaring full-screen
- *    white without reintroducing a cast.
- *
- * `error` and its containers are left at the M3 baseline: the re-grant banner needs a red that
- * reads as a warning, and red is not an accent here.
+ * One blue: every accent role is [Blue] or a tonal step of it, containers included, so a filled
+ * `primaryContainer` never reads as a second brand colour. Neutrals are true greys (R == G == B):
+ * M3's `surfaceVariant` #E7E0EC is visibly lavender, and one step per channel is enough to tint a
+ * full-screen background. `background` is #FBFBFB, not white, to avoid glare without a cast.
+ * `error` keeps the M3 baseline -- the re-grant banner needs a warning red, and red is not an accent.
  */
 private val LightColors: ColorScheme = lightColorScheme(
     primary = Blue,
