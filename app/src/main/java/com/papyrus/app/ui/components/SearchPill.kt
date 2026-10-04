@@ -7,6 +7,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
@@ -43,6 +44,12 @@ import com.papyrus.app.R
 /** Search pill, Open file button and find bar share this, so every control is the same height. */
 val ControlHeight = 48.dp
 
+/**
+ * Tone 80 of the brand blue (#326AE3), used for the focused pill's border and glyph in dark mode
+ * only. Both search fields in the app are this one composable, so Home and find-in-file follow.
+ */
+private val FocusBlueDark = Color(0xFFA9C3FF)
+
 private const val FOCUS_ANIMATION_MS = 180
 
 /**
@@ -72,8 +79,13 @@ fun SearchPill(
     // At rest the border is whatever the button's is, read from the same place.
     val restingBorder = ButtonDefaults.outlinedButtonBorder(enabled = true)
     val restingColor = (restingBorder.brush as? SolidColor)?.value ?: MaterialTheme.colorScheme.outline
+    // The brand blue is #326AE3 in both schemes, but on the dark surface it is only 3.9:1 -- too dim
+    // for a 1dp border and a 24dp glyph. Dark mode therefore steps the same hue up to tone 80
+    // (#A9C3FF, 10.6:1 on #121212); light mode reads `primary` unchanged, where #326AE3 clears 4.5:1
+    // on #FBFBFB. Same hue either way, so the control stays the app's blue.
+    val focusAccent = if (isSystemInDarkTheme()) FocusBlueDark else MaterialTheme.colorScheme.primary
     val borderColor by animateColorAsState(
-        targetValue = if (focused) MaterialTheme.colorScheme.primary else restingColor,
+        targetValue = if (focused) focusAccent else restingColor,
         animationSpec = tween(FOCUS_ANIMATION_MS),
         label = "searchBorderColor",
     )
@@ -83,7 +95,7 @@ fun SearchPill(
         label = "searchBorderWidth",
     )
     val iconColor by animateColorAsState(
-        targetValue = if (focused) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+        targetValue = if (focused) focusAccent else MaterialTheme.colorScheme.onSurfaceVariant,
         animationSpec = tween(FOCUS_ANIMATION_MS),
         label = "searchIconColor",
     )
