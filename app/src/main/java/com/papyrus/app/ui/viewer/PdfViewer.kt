@@ -45,9 +45,13 @@ import com.papyrus.app.R
 import com.papyrus.app.viewer.NormRect
 import com.papyrus.app.viewer.PdfPageSource
 import kotlinx.coroutines.delay
+import kotlin.math.roundToInt
 
 private const val LOW_RES_DIVISOR = 4
 private val PAGE_HIT_BORDER = 3.dp
+
+/** Gap between pages, and the margin above and beside the first one, at 100%. */
+private val PAGE_GAP = 8.dp
 
 /** A drag emits a size change per frame, and each queues a rasterisation behind the source's mutex. */
 private const val RESIZE_SETTLE_MILLIS = 150L
@@ -75,34 +79,48 @@ fun PdfViewer(
             ?.let { listState.scrollToItem(it) }
     }
 
-    // Keyed on the commit, not the scale: one gesture, one correction, not one per recomposition.
+    // Each anchor reads the content under the pinch at the commit itself, while the layout on screen
+    // is still the one the pinch previewed. The list is moved in that same frame; only the trim
+    // for rounding runs afterwards, keyed on the commit so it is one pass per gesture.
+    val listAnchor = remember(listState) { LazyZoomAnchor(listState, paddingScalesWithZoom = true) }
+    ZoomAnchorEffect(zoom, listAnchor)
     LaunchedEffect(zoom.lastCommit) {
-        zoom.lastCommit?.let { listState.reanchorTo(it) }
+        zoom.lastCommit?.let { listAnchor.settle(zoom) }
     }
 
-    // The horizontal axis needs its own effect: a page wider than the screen is panned sideways.
+    // The horizontal axis is its own scroll state: a page wider than the screen is panned sideways.
+    // It cannot scroll past the old extent until the new width is measured, so it is bridged.
+    val hAnchor = remember(hScroll) { ScrollZoomAnchor(hScroll, horizontal = true) }
+    ZoomAnchorEffect(zoom, hAnchor)
     LaunchedEffect(zoom.lastCommit) {
-        zoom.lastCommit?.let { hScroll.reanchorHorizontallyTo(it) }
+        zoom.lastCommit?.let { hAnchor.settle(zoom) }
     }
 
     BoxWithConstraints(modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant)) {
         val baseWidthPx = with(LocalDensity.current) { maxWidth.roundToPx() }
+        val scale = zoom.committedScale
         // Committed scale only. Distinct widths are distinct cache keys, so a live scale churns.
-        val renderWidthPx = quantise(baseWidthPx * zoom.committedScale)
+        // Exact, not stepped to a grid: a layout at the committed scale has to be the size the pinch
+        // was previewing, or releasing the fingers resizes every page by up to a step.
+        val renderWidthPx = (baseWidthPx * scale).roundToInt().coerceAtLeast(1)
         // A page narrower than the viewport is centred, or zooming out slides the document sideways.
         val pageSlotWidth = with(LocalDensity.current) { maxOf(renderWidthPx, baseWidthPx).toDp() }
+        // Scaled with the pages. Fixed gaps would put the layout at the new scale off the preview by
+        // (ratio - 1) of a gap per page, which adds up across the pages that are in view.
+        val pageGap = PAGE_GAP * scale
 
         Box(Modifier.fillMaxSize()) {
             LazyColumn(
                 state = listState,
-                // Both axes off while pinching: `zoomable` eats the pinch, so a running scroll stops.
+                // Both axes off from the first pinch until every finger is up, so the finger that lingers cannot scroll.
                 modifier = Modifier.fillMaxSize()
-                    .horizontalScroll(hScroll, enabled = !zoom.isPinching)
-                    .zoomable(zoom),
-                userScrollEnabled = !zoom.isPinching,
+                    .horizontalScroll(hScroll, enabled = !zoom.isScrollLocked)
+                    .zoomable(zoom)
+                    .anchorBridge(hAnchor),
+                userScrollEnabled = !zoom.isScrollLocked,
                 // Trailing padding clears the scrollbar; the bottom clears the page indicator.
-                contentPadding = PaddingValues(start = 8.dp, top = 8.dp, end = 20.dp, bottom = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+                contentPadding = PaddingValues(start = pageGap, top = pageGap, end = 20.dp, bottom = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(pageGap),
             ) {
                 items(source.pageCount, key = { it }) { index ->
                     Box(Modifier.width(pageSlotWidth), contentAlignment = Alignment.TopCenter) {
@@ -146,10 +164,6 @@ fun PdfViewer(
 }
 
 private const val DEFAULT_ASPECT = 1.414f
-
-/** Rounds the width to a multiple of [step], so a pinch re-renders every 16px, not every frame. */
-private fun quantise(width: Float, step: Int = 16): Int =
-    (width / step).toInt().coerceAtLeast(1) * step
 
 @Composable
 private fun PdfPage(

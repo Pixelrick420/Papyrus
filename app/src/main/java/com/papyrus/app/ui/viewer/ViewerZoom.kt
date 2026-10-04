@@ -11,6 +11,7 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -28,6 +29,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /** Not zoomed. Sits above [MIN_SCALE], so pulling in is always a deliberate move. */
@@ -48,6 +50,9 @@ private const val RUBBER_BAND = 0.35f
 /** Frames per re-anchor: maxValue lags a re-measure, so one pass clamps wrong. */
 private const val REANCHOR_FRAMES = 3
 
+/** A residual smaller than this is rounding, and chasing it only makes the list shimmer. */
+private const val SETTLE_TOLERANCE_PX = 1f
+
 /** Scale change and its focal point. Scroll offsets move by the same growth. */
 data class ScaleCommit(val from: Float, val to: Float, val focal: Offset) {
     val ratio: Float get() = if (from > 0f) to / from else 1f
@@ -56,6 +61,19 @@ data class ScaleCommit(val from: Float, val to: Float, val focal: Offset) {
 /** Keeps the pixel under [focal] fixed: scroll + focal before, ratio * that after. */
 fun anchoredScroll(scroll: Float, focal: Float, commit: ScaleCommit): Float =
     commit.ratio * (scroll + focal) - focal
+
+/**
+ * A scrollable surface that keeps the content under a pinch where the fingers left it.
+ *
+ * [onCommit] runs inside [ZoomState] just before the new scale is published, so the layout on
+ * screen is still the one the pinch was previewing and the content under the focal point can be
+ * read straight off it. An effect keyed on the commit runs after the frame that already laid
+ * out the new scale, and by then the list is at the new size but the old offset: whatever sits
+ * under the finger is no longer what the user pinched.
+ */
+interface ZoomAnchor {
+    fun onCommit(commit: ScaleCommit)
+}
 
 /** Gesture scale paints a live graphicsLayer multiplier, committed scale drives layout. */
 @Stable
@@ -77,6 +95,14 @@ class ZoomState(private val scope: CoroutineScope) {
     var isPinching by mutableStateOf(false)
         private set
 
+    /**
+     * True from the first frame of a pinch until every finger is up. Fingers never leave together,
+     * so for a few ms after the pinch one is still down, and read as a drag it would scroll the
+     * document out from under the commit. [isPinching] ends with the first finger; this does not.
+     */
+    var isScrollLocked by mutableStateOf(false)
+        private set
+
     /** Pinned for the gesture. Moving it shifts the pivot and slides content the wrong way. */
     var focalPoint by mutableStateOf(Offset.Unspecified)
         private set
@@ -88,6 +114,7 @@ class ZoomState(private val scope: CoroutineScope) {
     private val anim = Animatable(REST_SCALE)
     private var settleJob: Job? = null
     private var snapping = false
+    private val anchors = mutableListOf<ZoomAnchor>()
 
     /** The scale actually on screen, mid-gesture or at rest. */
     val effectiveScale: Float get() = if (isZooming) gestureScale else committedScale
@@ -102,6 +129,7 @@ class ZoomState(private val scope: CoroutineScope) {
     fun onPointersChanged(count: Int, centroid: Offset) {
         val pinching = count >= 2
         isPinching = pinching
+        if (pinching) isScrollLocked = true else if (count == 0) isScrollLocked = false
         if (!pinching) {
             if (isZooming && !snapping) endGesture()
             return
@@ -159,12 +187,14 @@ class ZoomState(private val scope: CoroutineScope) {
 
     private fun commit(target: Float) {
         val from = committedScale
+        val change = if (from != target) ScaleCommit(from, target, focalPoint) else null
+        // Before anything is published: the layout is still the one the pinch was previewing, and
+        // the surfaces' scroll writes land in the same frame as the new scale.
+        if (change != null) for (anchor in anchors.toList()) anchor.onCommit(change)
         committedScale = target
         gestureScale = target
         isZooming = false
-        if (from != target) {
-            lastCommit = ScaleCommit(from, target, focalPoint)
-        }
+        if (change != null) lastCommit = change
     }
 
     /** Past the bound, only RUBBER_BAND of the excess passes, so resistance grows with distance. */
@@ -172,6 +202,14 @@ class ZoomState(private val scope: CoroutineScope) {
         desired > MAX_SCALE -> MAX_SCALE + (desired - MAX_SCALE) * RUBBER_BAND
         desired < MIN_SCALE -> MIN_SCALE - (MIN_SCALE - desired) * RUBBER_BAND
         else -> desired
+    }
+
+    fun addAnchor(anchor: ZoomAnchor) {
+        if (anchor !in anchors) anchors += anchor
+    }
+
+    fun removeAnchor(anchor: ZoomAnchor) {
+        anchors -= anchor
     }
 
     fun stepUp() = set(committedScale * STEP_FACTOR)
@@ -206,6 +244,7 @@ fun rememberZoomState(): ZoomState {
 fun Modifier.zoomable(state: ZoomState): Modifier = this
     .pointerInput(state) {
         awaitEachGesture {
+            var pinched = false
             try {
                 awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
                 do {
@@ -223,12 +262,16 @@ fun Modifier.zoomable(state: ZoomState): Modifier = this
                         )
                         state.applyGesture(event.calculateZoom())
                         event.changes.forEach { it.consume() }
+                        pinched = true
                     } else {
                         state.onPointersChanged(pressed.size, Offset.Unspecified)
+                        // The finger that stays down a moment after a pinch is not a drag, a tap or a
+                        // scrollbar grab: consumed here, nothing downstream can act on it.
+                        if (pinched) event.changes.forEach { it.consume() }
                     }
                 } while (event.changes.any { it.pressed })
             } finally {
-                // In a `finally` so a torn-down gesture clears `isPinching` and scrolling comes back on.
+                // In a `finally` so a torn-down gesture clears the locks and scrolling comes back on.
                 state.onPointersChanged(0, Offset.Unspecified)
             }
         }
@@ -249,29 +292,13 @@ fun Modifier.zoomable(state: ZoomState): Modifier = this
         }
     }
 
-/** Holds the focal fraction, not the offset: text reflow grows the height by more than the ratio. */
-suspend fun ScrollState.reanchorTo(commit: ScaleCommit) {
-    val focal = commit.focal
-    if (commit.ratio == 1f || focal == Offset.Unspecified || focal.y <= 0f) return
-    val fraction = (value + focal.y) / (maxValue + viewportSize).toFloat().coerceAtLeast(1f)
-    repeat(REANCHOR_FRAMES) {
-        withFrameNanos {}
-        val target = fraction * (maxValue + viewportSize) - focal.y
-        scrollTo(target.roundToInt().coerceIn(0, maxValue))
-    }
-}
-
-/** Focal is in content coordinates: screen x is `focal.x - value`. A page grows by exactly the ratio. */
-suspend fun ScrollState.reanchorHorizontallyTo(commit: ScaleCommit) {
-    val focal = commit.focal
-    if (commit.ratio == 1f || focal == Offset.Unspecified) return
-    val start = value
-    val target = anchoredScroll(start.toFloat(), focal.x - start, commit)
-    repeat(REANCHOR_FRAMES) {
-        withFrameNanos {}
-        scrollTo(target.roundToInt().coerceIn(0, maxValue))
-    }
-}
+/**
+ * `firstVisibleItemScrollOffset` that puts the point [fraction] of the way down an item back under
+ * [focal] once the item is [newItemSize] tall. [before] is the list's start content padding: an item
+ * at offset 0 sits [before] below the viewport's edge, and each px of scroll offset lifts it by one.
+ */
+fun lazyAnchorScrollOffset(focal: Float, fraction: Float, newItemSize: Float, before: Int): Int =
+    (before - (focal - fraction * newItemSize)).roundToInt()
 
 /**
  * Scroll distance that puts the point [fraction] of the way down an item back under [focal].
@@ -281,27 +308,138 @@ suspend fun ScrollState.reanchorHorizontallyTo(commit: ScaleCommit) {
 fun lazyAnchorDelta(focal: Float, fraction: Float, itemTop: Float, itemSize: Float): Float =
     itemTop - (focal - fraction * itemSize)
 
-/** Holds the focal fraction of the item, measured each pass: text re-wraps, the ratio does not. */
-suspend fun LazyListState.reanchorTo(commit: ScaleCommit) {
-    val focal = commit.focal
-    if (commit.ratio == 1f || focal == Offset.Unspecified) return
-    // Item offsets start at the content origin, but the focal point is a viewport coordinate.
-    val before = layoutInfo.beforeContentPadding
-    val items = layoutInfo.visibleItemsInfo.filter { it.size > 0 }
-    // A pinch can start in the gap between items, so fall back to the nearest one.
-    val anchor = items.firstOrNull { focal.y >= it.offset + before && focal.y < it.offset + before + it.size }
-        ?: items.minByOrNull {
-            val top = (it.offset + before).toFloat()
-            val bottom = top + it.size
-            if (focal.y < top) top - focal.y else focal.y - bottom
+/**
+ * Pins the list item under the focal point.
+ *
+ * The scroll position is requested inside [onCommit], against the size the item is about to have
+ * (the old size times the ratio), so the very first frame at the new scale is already anchored.
+ * That also covers an item the new layout would push out of view, which a correction made after
+ * the fact cannot find. [settle] then trims the difference between that prediction and what was
+ * measured, which is nothing for a page that scales linearly and a few px for re-wrapped text.
+ *
+ * [paddingScalesWithZoom] says whether the list's start content padding grows with the scale (the
+ * PDF list's does) or stays put (the text lists'); the offset is measured from the new padding.
+ */
+class LazyZoomAnchor(
+    private val list: LazyListState,
+    private val paddingScalesWithZoom: Boolean = false,
+) : ZoomAnchor {
+
+    private class Pin(val index: Int, val fraction: Float, val focalY: Float)
+
+    private var pin: Pin? = null
+
+    override fun onCommit(commit: ScaleCommit) {
+        pin = null
+        val focal = commit.focal
+        if (commit.ratio == 1f || focal == Offset.Unspecified) return
+        val info = list.layoutInfo
+        // Item offsets start at the content origin, but the focal point is a viewport coordinate.
+        val before = info.beforeContentPadding
+        val items = info.visibleItemsInfo.filter { it.size > 0 }
+        // A pinch can start in the gap between items, so fall back to the nearest one.
+        val anchor = items.firstOrNull { focal.y >= it.offset + before && focal.y < it.offset + before + it.size }
+            ?: items.minByOrNull {
+                val top = (it.offset + before).toFloat()
+                val bottom = top + it.size
+                if (focal.y < top) top - focal.y else focal.y - bottom
+            }
+            ?: return
+        val fraction = ((focal.y - (anchor.offset + before)) / anchor.size).coerceIn(0f, 1f)
+        pin = Pin(anchor.index, fraction, focal.y)
+        val beforeAfter = if (paddingScalesWithZoom) (before * commit.ratio).roundToInt() else before
+        list.requestScrollToItem(
+            anchor.index,
+            lazyAnchorScrollOffset(focal.y, fraction, anchor.size * commit.ratio, beforeAfter),
+        )
+    }
+
+    /** Holds the focal fraction of the item, measured each pass: text re-wraps, the ratio does not. */
+    suspend fun settle(zoom: ZoomState) {
+        val pinned = pin ?: return
+        pin = null
+        repeat(REANCHOR_FRAMES) {
+            withFrameNanos {}
+            if (zoom.isZooming || list.isScrollInProgress) return
+            val info = list.layoutInfo
+            val current = info.visibleItemsInfo.firstOrNull { it.index == pinned.index } ?: return
+            val top = (current.offset + info.beforeContentPadding).toFloat()
+            val delta = lazyAnchorDelta(pinned.focalY, pinned.fraction, top, current.size.toFloat())
+            if (abs(delta) >= SETTLE_TOLERANCE_PX) list.scrollBy(delta)
         }
-        ?: return
-    val fraction = ((focal.y - (anchor.offset + before)) / anchor.size).coerceIn(0f, 1f)
-    repeat(REANCHOR_FRAMES) {
-        withFrameNanos {}
-        val current = layoutInfo.visibleItemsInfo.firstOrNull { it.index == anchor.index } ?: return
-        val top = (current.offset + layoutInfo.beforeContentPadding).toFloat()
-        val delta = lazyAnchorDelta(focal.y, fraction, top, current.size.toFloat())
-        if (delta != 0f) scrollBy(delta)
+    }
+}
+
+/**
+ * Pins the content under the focal point along one axis of a [ScrollState].
+ *
+ * A [ScrollState] cannot be moved past the extent it had at the last measure, so it can only reach
+ * the anchored position after the new scale has been laid out. [onCommit] therefore records what the
+ * position has to be, [settle] scrolls there once there is room, and [pendingShift] is the part of
+ * the way still to go. [anchorBridge] paints that part, so the frames before the scroll lands look
+ * the same as the ones after it, instead of flashing the old offset at the new size.
+ *
+ * [horizontal] picks the formula: a page grows by exactly the ratio, so its x position is computed
+ * once. Text reflows, so its y position is a fraction of the document, re-read from each measure.
+ */
+class ScrollZoomAnchor(private val scroll: ScrollState, val horizontal: Boolean) : ZoomAnchor {
+
+    private class Goal(val target: () -> Float)
+
+    private var goal by mutableStateOf<Goal?>(null)
+
+    override fun onCommit(commit: ScaleCommit) {
+        goal = null
+        val focal = commit.focal
+        if (commit.ratio == 1f || focal == Offset.Unspecified) return
+        goal = if (horizontal) {
+            // Focal is in content coordinates: screen x is `focal.x - value`. A page grows by exactly the ratio.
+            val start = scroll.value
+            val target = anchoredScroll(start.toFloat(), focal.x - start, commit)
+            Goal { target }
+        } else {
+            // Held as a fraction, not an offset: text reflow grows the height by more than the ratio.
+            val content = (scroll.maxValue.toFloat() + scroll.viewportSize).coerceAtLeast(1f)
+            val fraction = (scroll.value + focal.y) / content
+            Goal { fraction * (scroll.maxValue.toFloat() + scroll.viewportSize) - focal.y }
+        }
+    }
+
+    private fun Goal.reachable(): Int = target().coerceIn(0f, scroll.maxValue.toFloat()).roundToInt()
+
+    /** Px still to scroll forward to reach the anchored position, 0 once it is reached. */
+    fun pendingShift(): Float {
+        val g = goal ?: return 0f
+        return (g.reachable() - scroll.value).toFloat()
+    }
+
+    suspend fun settle(zoom: ZoomState) {
+        val mine = goal ?: return
+        try {
+            repeat(REANCHOR_FRAMES) {
+                withFrameNanos {}
+                if (zoom.isZooming || scroll.isScrollInProgress || goal !== mine) return
+                val wanted = mine.reachable()
+                if (wanted != scroll.value) scroll.scrollTo(wanted)
+            }
+        } finally {
+            // Not when a newer commit replaced it: that one's bridge has not been paid yet.
+            if (goal === mine) goal = null
+        }
+    }
+}
+
+/** Paints the scroll [anchor] still owes, as a shift of the content inside the scrolled node. */
+fun Modifier.anchorBridge(anchor: ScrollZoomAnchor): Modifier = graphicsLayer {
+    val shift = anchor.pendingShift()
+    if (anchor.horizontal) translationX = -shift else translationY = -shift
+}
+
+/** Registers [anchor] with [zoom] for as long as the surface is composed. */
+@Composable
+fun ZoomAnchorEffect(zoom: ZoomState, anchor: ZoomAnchor) {
+    DisposableEffect(zoom, anchor) {
+        zoom.addAnchor(anchor)
+        onDispose { zoom.removeAnchor(anchor) }
     }
 }

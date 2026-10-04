@@ -112,9 +112,13 @@ fun MarkdownViewer(
     val rendered = rememberRenderedMarkdown(markwon, source, text, textPx, textColor, linkColor)
     val highlighted = rememberHighlightedText(rendered, findQuery)
 
-    // A commit re-wraps the text, so re-anchor or the paragraph under the finger slides away.
+    // A commit re-wraps the text, so the paragraph under the finger has to be pinned across it. The
+    // anchor reads that paragraph at the commit, before the re-wrap; the text only reaches its new
+    // height a measure later, so the scroll follows, and the bridge paints it until it has.
+    val anchor = remember(scroll) { ScrollZoomAnchor(scroll, horizontal = false) }
+    ZoomAnchorEffect(zoom, anchor)
     LaunchedEffect(zoom.lastCommit) {
-        zoom.lastCommit?.let { scroll.reanchorTo(it) }
+        zoom.lastCommit?.let { anchor.settle(zoom) }
     }
 
     ZoomableScrollArea(geometry, { scroll.scrollBy(it) }, zoom, modifier) { scrollModifier ->
@@ -122,7 +126,8 @@ fun MarkdownViewer(
             SelectionContainer {
                 Column(
                     scrollModifier
-                        .verticalScroll(scroll, enabled = !zoom.isPinching)
+                        .verticalScroll(scroll, enabled = !zoom.isScrollLocked)
+                        .anchorBridge(anchor)
                         .padding(16.dp),
                 ) {
                     AndroidView(
@@ -226,8 +231,10 @@ fun PlainTextViewer(
         activeHit?.let { listState.scrollToItem(it) }
     }
 
+    val anchor = remember(listState) { LazyZoomAnchor(listState) }
+    ZoomAnchorEffect(zoom, anchor)
     LaunchedEffect(zoom.lastCommit) {
-        zoom.lastCommit?.let { listState.reanchorTo(it) }
+        zoom.lastCommit?.let { anchor.settle(zoom) }
     }
 
     ZoomableScrollArea(geometry, { listState.scrollBy(it) }, zoom, modifier) { scrollModifier ->
@@ -235,7 +242,7 @@ fun PlainTextViewer(
             SelectionContainer {
                 LazyColumn(
                     scrollModifier,
-                    userScrollEnabled = !zoom.isPinching,
+                    userScrollEnabled = !zoom.isScrollLocked,
                     // Trailing pad clears the scrollbar overlay.
                     contentPadding = PaddingValues(start = 16.dp, end = 20.dp, top = 16.dp, bottom = 16.dp),
                 ) {
@@ -273,8 +280,10 @@ fun OfficeViewer(
         activeHit?.let { listState.scrollToItem(it) }
     }
 
+    val anchor = remember(listState) { LazyZoomAnchor(listState) }
+    ZoomAnchorEffect(zoom, anchor)
     LaunchedEffect(zoom.lastCommit) {
-        zoom.lastCommit?.let { listState.reanchorTo(it) }
+        zoom.lastCommit?.let { anchor.settle(zoom) }
     }
 
     ZoomableScrollArea(geometry, { listState.scrollBy(it) }, zoom, modifier) { scrollModifier ->
@@ -282,7 +291,7 @@ fun OfficeViewer(
             SelectionContainer {
                 LazyColumn(
                     scrollModifier,
-                    userScrollEnabled = !zoom.isPinching,
+                    userScrollEnabled = !zoom.isScrollLocked,
                     contentPadding = PaddingValues(start = 16.dp, end = 20.dp, top = 16.dp, bottom = 16.dp),
                 ) {
                     items(blocks.size, key = { it }) { index ->
