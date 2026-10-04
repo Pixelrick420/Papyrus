@@ -266,6 +266,10 @@ fun HomeScreen(
                     dismissKeyboard()
                     openFiles.launch(DocumentFormat.pickerMimeTypes)
                 },
+                // Solid `primary`, not Material 3's default `primaryContainer`: the pale tint read
+                // as a washed-out blob rather than as the app's blue.
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
             ) {
                 Icon(
                     imageVector = PlusIcon,

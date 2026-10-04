@@ -4,6 +4,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
@@ -82,6 +83,8 @@ fun rememberScrollGeometry(state: ScrollState): State<ScrollGeometry> {
 /** Auto-hiding scrollbar overlay. The thumb is an absolute handle, not a relative indicator.
  *
  * @param onScrollBy suspend, so a fire-and-forget launch cannot drop or reorder drags.
+ * @param color thumb colour; [Color.Unspecified] (the default) means `onSurfaceVariant`, so the
+ *   thumb follows the theme instead of being a fixed grey.
  */
 @OptIn(FlowPreview::class)
 @Composable
@@ -91,7 +94,7 @@ fun Modifier.autoHideScrollbar(
     fadeAfterMillis: Long = 800,
     thickness: Dp = 6.dp,
     inset: Dp = 3.dp,
-    color: Color = Color(0xFF757575),
+    color: Color = Color.Unspecified,
 ): Modifier {
     // Wrapped so the input and draw blocks cannot act on a stale `onScrollBy`.
     val currentGeometry by rememberUpdatedState(geometry.value)
@@ -115,6 +118,9 @@ fun Modifier.autoHideScrollbar(
     }
 
     val density = LocalDensity.current
+    // Resolved here, not inside `drawWithCache`: that block is not composable, and a fixed grey here
+    // would be the one accent in the viewer that ignored the theme.
+    val thumbColor = if (color == Color.Unspecified) MaterialTheme.colorScheme.onSurfaceVariant else color
     val thicknessPx = with(density) { thickness.toPx() }
     val insetPx = with(density) { inset.toPx() }
     val minThumbPx = with(density) { MIN_THUMB_HEIGHT.toPx() }
@@ -136,7 +142,7 @@ fun Modifier.autoHideScrollbar(
             val y = travel * (g.offset / maxScroll).coerceIn(0f, 1f)
             onDrawBehind {
                 drawRoundRect(
-                    color = color.copy(alpha = 0.55f * alpha),
+                    color = thumbColor.copy(alpha = 0.55f * alpha),
                     topLeft = Offset(size.width - thicknessPx - insetPx, y + insetPx),
                     size = Size(thicknessPx, thumbHeight),
                     cornerRadius = CornerRadius(thicknessPx / 2f),
