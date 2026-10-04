@@ -20,7 +20,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -41,20 +40,6 @@ import androidx.compose.ui.viewinterop.AndroidView
 import com.papyrus.app.viewer.OfficeBlock
 import io.noties.markwon.Markwon
 import io.noties.markwon.ext.tables.TableRowSpan
-
-/** [findChunkHits] over flattened block text. Stays here because it needs [OfficeBlock]. */
-fun findBlockHits(blocks: List<OfficeBlock>, query: String): List<Int> {
-    if (query.isBlank()) return emptyList()
-    return blocks.mapIndexedNotNull { index, block ->
-        val text = when (block) {
-            is OfficeBlock.Heading -> block.text
-            is OfficeBlock.Paragraph -> block.text
-            is OfficeBlock.Table -> block.rows.flatten().joinToString(" ") { it.text }
-            is OfficeBlock.Image -> ""
-        }
-        index.takeIf { text.contains(query, ignoreCase = true) }
-    }
-}
 
 /** Zoom and scrollbar are overlays, so showing them never re-measures the scrollable. */
 @Composable
@@ -221,14 +206,18 @@ fun PlainTextViewer(
     chunks: List<String>,
     findQuery: String,
     activeHit: Int?,
+    activeOccurrence: Int?,
     zoom: ZoomState,
     modifier: Modifier = Modifier,
 ) {
     val listState = rememberLazyListState()
     val geometry = rememberLazyScrollGeometry(listState)
 
-    LaunchedEffect(activeHit) {
-        activeHit?.let { listState.scrollToItem(it) }
+    // A chunk is 40 lines, so it can be taller than the screen. This brings the chunk in; its own
+    // `FindText` then scrolls to the current match inside it, once per step.
+    val reveal = remember(activeHit, activeOccurrence, findQuery) { RevealTicket() }
+    LaunchedEffect(reveal) {
+        activeHit?.let { listState.scrollToItemUnlessVisible(it) }
     }
 
     val anchor = remember(listState) { LazyZoomAnchor(listState) }
@@ -248,14 +237,16 @@ fun PlainTextViewer(
                 ) {
                     items(chunks.size) { index ->
                         // Every match in the chunk, but only in composed chunks, so big files stay cheap.
-                        val highlight = findHighlightFor(findQuery, active = index == activeHit)
-                        val text = remember(chunks[index], highlight) { highlightedText(chunks[index], highlight) }
-                        Text(
-                            text,
+                        // Only the active chunk knows which of its matches is current; the rest are all yellow.
+                        val isActive = index == activeHit
+                        FindText(
+                            text = chunks[index],
+                            highlight = findHighlightFor(findQuery, activeOccurrence = activeOccurrence.takeIf { isActive }),
                             style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(vertical = 2.dp),
+                            reveal = reveal.takeIf { isActive },
                         )
                     }
                 }
@@ -269,6 +260,7 @@ fun OfficeViewer(
     blocks: List<OfficeBlock>,
     findQuery: String,
     activeHit: Int?,
+    activeOccurrence: Int?,
     zoom: ZoomState,
     modifier: Modifier = Modifier,
 ) {
@@ -276,8 +268,11 @@ fun OfficeViewer(
     val geometry = rememberLazyScrollGeometry(listState)
 
     // Block indices equal LazyColumn indices, so a hit scrolls straight to its own item, no offset.
-    LaunchedEffect(activeHit) {
-        activeHit?.let { listState.scrollToItem(it) }
+    // A long paragraph or table can hold several matches, so the block's own text then scrolls to
+    // the current one.
+    val reveal = remember(activeHit, activeOccurrence, findQuery) { RevealTicket() }
+    LaunchedEffect(reveal) {
+        activeHit?.let { listState.scrollToItemUnlessVisible(it) }
     }
 
     val anchor = remember(listState) { LazyZoomAnchor(listState) }
@@ -295,10 +290,12 @@ fun OfficeViewer(
                     contentPadding = PaddingValues(start = 16.dp, end = 20.dp, top = 16.dp, bottom = 16.dp),
                 ) {
                     items(blocks.size, key = { it }) { index ->
+                        val isActive = index == activeHit
                         OfficeBlockView(
                             blocks[index],
                             Modifier.fillMaxWidth(),
-                            highlight = findHighlightFor(findQuery, active = index == activeHit),
+                            highlight = findHighlightFor(findQuery, activeOccurrence = activeOccurrence.takeIf { isActive }),
+                            reveal = reveal.takeIf { isActive },
                         )
                     }
                 }

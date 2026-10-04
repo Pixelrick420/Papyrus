@@ -3,6 +3,7 @@ package com.papyrus.app.ui.viewer
 import android.graphics.Bitmap
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.scrollBy
@@ -17,6 +18,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
@@ -30,21 +33,26 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import com.papyrus.app.R
 import com.papyrus.app.viewer.NormRect
 import com.papyrus.app.viewer.PdfPageSource
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlin.math.roundToInt
 
 private const val LOW_RES_DIVISOR = 4
@@ -64,8 +72,9 @@ fun PdfViewer(
     zoom: ZoomState,
     modifier: Modifier = Modifier,
     pageHits: List<Int> = emptyList(),
-    pageRects: Map<Int, List<NormRect>> = emptyMap(),
+    pageMatches: Map<Int, List<List<NormRect>>> = emptyMap(),
     activePage: Int? = null,
+    activeOccurrence: Int? = null,
 ) {
     val listState = rememberLazyListState()
     val geometry = rememberLazyScrollGeometry(listState)
@@ -74,9 +83,15 @@ fun PdfViewer(
     // One state for the whole document; per-page state would reset the offset on every page change.
     val hScroll = rememberScrollState()
 
-    LaunchedEffect(activePage) {
+    // Hits repeat a page once per match; the page only needs to be known once.
+    val hitPages = remember(pageHits) { pageHits.toSet() }
+
+    // A page can be taller than the screen, so a step to another match on it has to scroll to that
+    // match. This brings the page in; the page then scrolls to its own current match, once per step.
+    val reveal = remember(activePage, activeOccurrence, pageMatches) { RevealTicket() }
+    LaunchedEffect(reveal) {
         activePage?.takeIf { it >= 0 && it < source.pageCount }
-            ?.let { listState.scrollToItem(it) }
+            ?.let { listState.scrollToItemUnlessVisible(it) }
     }
 
     // Each anchor reads the content under the pinch at the commit itself, while the layout on screen
@@ -130,9 +145,11 @@ fun PdfViewer(
                             widthPx = renderWidthPx,
                             aspect = aspectRatios.getOrElse(index) { DEFAULT_ASPECT },
                             scrolling = scrolling,
-                            isHit = index in pageHits,
-                            isActive = index == activePage,
-                            matchRects = pageRects[index].orEmpty(),
+                            isHit = index in hitPages,
+                            // Only the active page knows which of its matches is current.
+                            activeMatch = activeOccurrence.takeIf { index == activePage },
+                            matches = pageMatches[index].orEmpty(),
+                            reveal = reveal.takeIf { index == activePage },
                         )
                     }
                 }
@@ -165,6 +182,11 @@ fun PdfViewer(
 
 private const val DEFAULT_ASPECT = 1.414f
 
+/**
+ * [matches] holds one list of rectangles per match on the page, in order; [activeMatch] is the index
+ * of the current one, or null on a page that does not hold it.
+ */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun PdfPage(
     source: PdfPageSource,
@@ -173,8 +195,9 @@ private fun PdfPage(
     aspect: Float,
     scrolling: Boolean,
     isHit: Boolean,
-    isActive: Boolean,
-    matchRects: List<NormRect>,
+    activeMatch: Int?,
+    matches: List<List<NormRect>>,
+    reveal: RevealTicket?,
 ) {
     // Keyed on page identity only; keying on widthPx blanked the page on every quantisation step.
     var bitmap by remember(source, index) { mutableStateOf<Bitmap?>(source.cached(index, widthPx)) }
@@ -199,12 +222,33 @@ private fun PdfPage(
         }
     }
 
+    // Measured, not derived from widthPx and aspect: the box is what a rectangle is relative to.
+    var pageSize by remember { mutableStateOf(IntSize.Zero) }
+    val requester = remember { BringIntoViewRequester() }
+    val margin = with(LocalDensity.current) { RevealMargin.toPx() }
+    val activeRect = activeMatch?.let { matches.getOrNull(it) }?.firstOrNull()
+    LaunchedEffect(activeRect, reveal) {
+        if (activeRect == null || reveal == null || reveal.consumed) return@LaunchedEffect
+        val size = snapshotFlow { pageSize }.first { it != IntSize.Zero }
+        reveal.consumed = true
+        requester.bringIntoView(
+            Rect(
+                left = activeRect.left * size.width,
+                top = activeRect.top * size.height - margin,
+                right = activeRect.right * size.width,
+                bottom = activeRect.bottom * size.height + margin,
+            ),
+        )
+    }
+
     Box(
         Modifier
             // The exact render width, not a fraction of the slot, which would clamp if they differ.
             .width(with(LocalDensity.current) { widthPx.toDp() })
             .aspectRatio(1f / aspect)
-            .background(Color.White),
+            .background(Color.White)
+            .onSizeChanged { pageSize = it }
+            .bringIntoViewRequester(requester),
     ) {
         bitmap?.let { bmp ->
             Image(
@@ -214,28 +258,38 @@ private fun PdfPage(
                 modifier = Modifier.fillMaxSize(),
             )
         }
-        if (matchRects.isNotEmpty()) {
+        if (matches.isNotEmpty()) {
             // Matched words in page-relative units, so they stay put at any width. Translucent.
-            val color = (if (isActive) ActiveMatchColor else OtherMatchColor).copy(alpha = MATCH_ALPHA)
+            val otherColor = OtherMatchColor.copy(alpha = MATCH_ALPHA)
+            val activeColor = ActiveMatchColor.copy(alpha = MATCH_ALPHA)
             val corner = with(LocalDensity.current) { 2.dp.toPx() }
             Canvas(Modifier.fillMaxSize()) {
-                for (rect in matchRects) {
-                    drawRoundRect(
-                        color = color,
-                        topLeft = Offset(rect.left * size.width, rect.top * size.height),
-                        size = Size((rect.right - rect.left) * size.width, (rect.bottom - rect.top) * size.height),
-                        cornerRadius = CornerRadius(corner),
-                    )
+                fun drawMatch(rects: List<NormRect>, color: Color) {
+                    for (rect in rects) {
+                        drawRoundRect(
+                            color = color,
+                            topLeft = Offset(rect.left * size.width, rect.top * size.height),
+                            size = Size((rect.right - rect.left) * size.width, (rect.bottom - rect.top) * size.height),
+                            cornerRadius = CornerRadius(corner),
+                        )
+                    }
                 }
+                matches.forEachIndexed { i, rects -> if (i != activeMatch) drawMatch(rects, otherColor) }
+                // Last, so the current match sits on top of any neighbour it touches.
+                activeMatch?.let { matches.getOrNull(it) }?.let { drawMatch(it, activeColor) }
             }
-        } else if (isHit || isActive) {
-            // Matched but no rectangles (past the extractor's budget), so a border is the only signal.
+        }
+        // No rectangles to show (past the extractor's budget), so a border is the only signal. That
+        // is the page when it has none at all, and the current match when only it is missing.
+        val activeMissing = activeMatch != null && matches.getOrNull(activeMatch).isNullOrEmpty()
+        val needsBorder = if (matches.isEmpty()) isHit else activeMissing
+        if (needsBorder) {
             Surface(
                 Modifier.fillMaxSize(),
                 color = Color.Transparent,
                 border = BorderStroke(
-                    if (isActive) ACTIVE_HIT_BORDER else PAGE_HIT_BORDER,
-                    if (isActive) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.primary,
+                    if (activeMatch != null) ACTIVE_HIT_BORDER else PAGE_HIT_BORDER,
+                    if (activeMatch != null) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.primary,
                 ),
             ) {}
         }

@@ -21,8 +21,9 @@ overwhelmingly printable means text.
 
 ## Features
 
-- **Find in file** works on every format. Text and Office step between chunks, blocks and pages; Markdown highlights
-  every match in place, so its counter shows the total.
+- **Find in file** works on every format. PDF, text and Office step through matches one at a time: each match counts
+  separately, the current one is orange and the rest yellow, and the view scrolls to it. Markdown highlights every
+  match in place, so its counter shows the total.
 - **Zoom** scales the type size on text surfaces, so content re-wraps and the scroll bounds stay correct.
 - **Index** holds documents and page order in Room, updated incrementally as files are opened.
 - **Thumbnails** sit in an in-memory `LruCache`, one representative thumbnail per document, with low-resolution PDF

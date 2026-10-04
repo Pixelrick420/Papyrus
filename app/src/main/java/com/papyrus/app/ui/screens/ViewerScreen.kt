@@ -184,8 +184,9 @@ fun ViewerScreen(
                         aspectRatios = content.aspectRatios,
                         zoom = zoom,
                         pageHits = find.hits,
-                        pageRects = find.pageRects,
+                        pageMatches = find.pageMatches,
                         activePage = find.activeIndex,
+                        activeOccurrence = find.activeOccurrence,
                     )
                     is ViewerContent.Markdown -> MarkdownViewer(
                         markwon = content.markwon,
@@ -198,12 +199,14 @@ fun ViewerScreen(
                         chunks = content.chunks,
                         findQuery = find.query,
                         activeHit = find.activeIndex,
+                        activeOccurrence = find.activeOccurrence,
                         zoom = zoom,
                     )
                     is ViewerContent.Office -> OfficeViewer(
                         blocks = content.blocks,
                         findQuery = find.query,
                         activeHit = find.activeIndex,
+                        activeOccurrence = find.activeOccurrence,
                         zoom = zoom,
                     )
                     is ViewerContent.Failed -> Column(
