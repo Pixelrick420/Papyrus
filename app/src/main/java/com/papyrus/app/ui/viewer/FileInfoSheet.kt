@@ -44,11 +44,16 @@ private fun InfoRow(label: String, value: String, selectable: Boolean = false) {
     }
 }
 
-/** Shows only what the app already holds, nothing probed from disk, so it cannot fail. */
+/**
+ * Stored fields come from [document]. [pageCount] and [mimeType] are live values the caller supplies;
+ * a null one, because it is not known yet or the provider would not say, just hides its row.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FileInfoSheet(
     document: DocumentEntity,
+    pageCount: Int?,
+    mimeType: String?,
     onDismiss: () -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState()
@@ -81,11 +86,11 @@ fun FileInfoSheet(
                 stringResource(R.string.viewer_info_size),
                 formatSize(document.sizeBytes),
             )
-            document.mimeType?.let { InfoRow(stringResource(R.string.viewer_info_type), it) }
-            if (document.format == DocumentFormat.PDF) {
+            mimeType?.let { InfoRow(stringResource(R.string.viewer_info_type), it) }
+            if (document.format == DocumentFormat.PDF && pageCount != null) {
                 InfoRow(
                     stringResource(R.string.viewer_info_pages),
-                    stringResource(R.string.viewer_info_pages_value, document.pageCount),
+                    stringResource(R.string.viewer_info_pages_value, pageCount),
                 )
             }
             InfoRow(

@@ -20,6 +20,16 @@ val MIGRATION_2_3 = object : Migration(2, 3) {
     }
 }
 
+/**
+ * Drops the `mimeType` and `pageCount` columns and the `lastOpenedAt` index. Another table rebuild,
+ * for the reason given on [MIGRATION_1_2].
+ */
+val MIGRATION_3_4 = object : Migration(3, 4) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        DOCUMENTS_REBUILD_3_4.forEach(db::execSQL)
+    }
+}
+
 internal val DROP_SCAN_PAGES: List<String> = listOf(
     "DROP TABLE IF EXISTS `scan_pages`",
 )
@@ -49,6 +59,33 @@ internal val DOCUMENTS_REBUILD_1_2: List<String> = listOf(
     // Room expects the entity's declared indices to exist by name after a migration.
     "CREATE UNIQUE INDEX IF NOT EXISTS index_documents_uri ON documents (uri)",
     "CREATE INDEX IF NOT EXISTS index_documents_lastOpenedAt ON documents (lastOpenedAt)",
+)
+
+/**
+ * Ids are copied across, so every row keeps its identity. DROP TABLE takes the old
+ * `index_documents_lastOpenedAt` with it, which is how that index goes: nothing recreates it, and
+ * Room's post-migration check wants only the `uri` index the entity still declares.
+ */
+internal val DOCUMENTS_REBUILD_3_4: List<String> = listOf(
+    """
+    CREATE TABLE IF NOT EXISTS documents_new (
+        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+        uri TEXT NOT NULL,
+        title TEXT NOT NULL,
+        format TEXT NOT NULL,
+        sizeBytes INTEGER NOT NULL,
+        createdAt INTEGER NOT NULL,
+        lastOpenedAt INTEGER NOT NULL
+    )
+    """.trimIndent(),
+    """
+    INSERT INTO documents_new (id, uri, title, format, sizeBytes, createdAt, lastOpenedAt)
+    SELECT id, uri, title, format, sizeBytes, createdAt, lastOpenedAt
+    FROM documents
+    """.trimIndent(),
+    "DROP TABLE documents",
+    "ALTER TABLE documents_new RENAME TO documents",
+    "CREATE UNIQUE INDEX IF NOT EXISTS index_documents_uri ON documents (uri)",
 )
 
 internal val DOCUMENTS_TABLE_V1: List<String> = listOf(

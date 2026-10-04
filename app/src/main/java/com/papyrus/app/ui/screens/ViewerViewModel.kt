@@ -204,7 +204,6 @@ class ViewerViewModel(
         return when (format) {
             DocumentFormat.PDF -> {
                 val source = PdfPageSource.open(app, uri)
-                if (source.pageCount != doc.pageCount) repository.updatePageCount(doc.id, source.pageCount)
                 ViewerContent.Pdf(source, source.loadAspectRatios())
             }
             DocumentFormat.MARKDOWN -> {
@@ -230,6 +229,9 @@ class ViewerViewModel(
     private fun sniffsAsText(uri: Uri): Boolean = runCatching {
         openStream(uri).use(TextSniffer::looksLikeText)
     }.getOrDefault(false)
+
+    /** Asked for by the info sheet when it opens, so a document nobody inspects never pays the provider call. */
+    suspend fun mimeType(document: DocumentEntity): String? = repository.mimeTypeOf(document)
 
     fun openFind() {
         _state.update { it.copy(find = it.find.copy(open = true)) }

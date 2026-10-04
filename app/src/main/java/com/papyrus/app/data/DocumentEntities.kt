@@ -55,19 +55,22 @@ enum class DocumentFormat(
     }
 }
 
+/**
+ * No MIME type or page count: the info sheet is the only reader of either, so it takes them live
+ * from the provider and the open PDF. No `lastOpenedAt` index either: the one list query reads
+ * every row, so SQLite gains nothing from it. Add it back with the sort and filter work.
+ */
 @Entity(
     tableName = "documents",
-    indices = [Index(value = ["uri"], unique = true), Index(value = ["lastOpenedAt"])],
+    indices = [Index(value = ["uri"], unique = true)],
 )
 data class DocumentEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     /** SAF content URI (document or tree child). */
     val uri: String,
     val title: String,
-    val mimeType: String?,
     val format: DocumentFormat,
     val sizeBytes: Long,
-    val pageCount: Int = 0,
     val createdAt: Long,
     val lastOpenedAt: Long,
 )
