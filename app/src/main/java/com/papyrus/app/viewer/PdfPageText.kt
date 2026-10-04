@@ -26,19 +26,51 @@ class PdfPageText(
         return needle.isNotEmpty() && text.contains(needle, ignoreCase = true)
     }
 
-    /** One rect per matched run per line; empty when no match or no boxes, so [contains] tells the two apart. */
-    fun matchRects(query: String, limit: Int = MAX_RECTS_PER_PAGE): List<NormRect> {
+    /**
+     * Number of matches on the page, whether or not their boxes were kept. Non-overlapping, like the
+     * highlights, so it is also the length of [matchGroups] when nothing is cut off by the limit.
+     */
+    fun countMatches(query: String): Int {
+        val needle = normalizeQuery(query)
+        if (needle.isEmpty()) return 0
+        return matchStarts(needle).count()
+    }
+
+    /**
+     * One entry per match, in order, each holding that match's rectangles: one per line it covers,
+     * so a match that wraps is two or more rectangles but still one match. A match with no drawable
+     * glyph keeps an empty entry rather than being skipped, so entry `i` is always the `i`-th match.
+     * Stops once [limit] rectangles are collected; empty when there are no boxes or no match, so
+     * [contains] tells the two apart.
+     */
+    fun matchGroups(query: String, limit: Int = MAX_RECTS_PER_PAGE): List<List<NormRect>> {
         val needle = normalizeQuery(query)
         if (needle.isEmpty() || boxes.isEmpty()) return emptyList()
-        val rects = ArrayList<NormRect>()
+        val groups = ArrayList<List<NormRect>>()
+        var collected = 0
+        for (at in matchStarts(needle)) {
+            if (collected >= limit) break
+            val rects = ArrayList<NormRect>()
+            appendLineRects(at, at + needle.length, rects, limit - collected)
+            groups += rects
+            collected += rects.size
+        }
+        return groups
+    }
+
+    /** Every rectangle of every match, flattened; see [matchGroups] for which match each belongs to. */
+    fun matchRects(query: String, limit: Int = MAX_RECTS_PER_PAGE): List<NormRect> =
+        matchGroups(query, limit).flatten()
+
+    /** Start of each non-overlapping match: the next search resumes after the whole match. */
+    private fun matchStarts(needle: String): Sequence<Int> = sequence {
         var from = 0
-        while (rects.size < limit) {
+        while (true) {
             val at = text.indexOf(needle, from, ignoreCase = true)
-            if (at < 0) break
-            appendLineRects(at, at + needle.length, rects, limit)
+            if (at < 0) return@sequence
+            yield(at)
             from = at + needle.length
         }
-        return rects
     }
 
     private fun appendLineRects(start: Int, end: Int, out: MutableList<NormRect>, limit: Int) {
