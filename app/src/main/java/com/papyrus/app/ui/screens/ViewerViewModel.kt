@@ -61,13 +61,21 @@ sealed interface ViewerContent {
 data class FindState(
     val open: Boolean = false,
     val query: String = "",
-    /** Chunk/block indices (or page indices for PDF) containing a hit, in document order. */
+    /**
+     * One entry per match, in document order, holding the index of the chunk, block or page it is
+     * in. A container with three matches appears three times, so the list is the thing the find
+     * bar steps through and [count] is the true number of matches.
+     */
     val hits: List<Int> = emptyList(),
     val position: Int = -1,
     /** Markdown is one `Spanned`, so matches highlight with no target to step between. */
     val occurrences: Int = 0,
-    /** Match rects by page index; a hit page can lack one past the extractor's budget. */
-    val pageRects: Map<Int, List<NormRect>> = emptyMap(),
+    /**
+     * PDF only: by page index, one list of rectangles per match on that page, in match order.
+     * A match that wraps lines is several rectangles but still one entry. A hit page can lack
+     * an entry past the extractor's budget.
+     */
+    val pageMatches: Map<Int, List<List<NormRect>>> = emptyMap(),
 ) {
     /** What the counter shows: navigable targets if there are any, otherwise raw occurrences. */
     val count: Int get() = if (hits.isNotEmpty()) hits.size else occurrences
@@ -76,6 +84,16 @@ data class FindState(
 
     /** Derived, so the hit list and the highlight position cannot disagree. */
     val activeIndex: Int? get() = if (position in hits.indices) hits[position] else null
+
+    /**
+     * Which match inside [activeIndex]'s container is the current one: 0 for the first, 1 for the
+     * second. Derived from [position] because [hits] is sorted and a container's matches are
+     * contiguous, so it is that container's first entry subtracted from the cursor.
+     */
+    val activeOccurrence: Int? get() {
+        val container = activeIndex ?: return null
+        return position - hits.firstIndexOf(container)
+    }
 
     /** Applies the query synchronously; delaying it reverts the typed character. */
     fun withQueryEchoed(query: String): FindState = copy(
@@ -88,17 +106,28 @@ data class FindState(
         query: String,
         hits: List<Int>,
         occurrences: Int,
-        pageRects: Map<Int, List<NormRect>> = emptyMap(),
+        pageMatches: Map<Int, List<List<NormRect>>> = emptyMap(),
     ): FindState {
         if (this.query != query) return this
         return copy(
             hits = hits,
             occurrences = occurrences,
-            pageRects = pageRects,
+            pageMatches = pageMatches,
             // Reset to the first hit; the old index can point past a shorter list.
             position = if (hits.isEmpty()) -1 else 0,
         )
     }
+}
+
+/** Index of the first element equal to [value] in an ascending list: a lower-bound binary search. */
+private fun List<Int>.firstIndexOf(value: Int): Int {
+    var low = 0
+    var high = size
+    while (low < high) {
+        val mid = (low + high) ushr 1
+        if (this[mid] < value) low = mid + 1 else high = mid
+    }
+    return low
 }
 
 data class ViewerUiState(
@@ -218,7 +247,7 @@ class ViewerViewModel(
             delay(FIND_DEBOUNCE_MILLIS)
             val result = withContext(Dispatchers.IO) { computeHits(query) }
             _state.update {
-                it.copy(find = it.find.withSearched(query, result.hits, result.occurrences, result.pageRects))
+                it.copy(find = it.find.withSearched(query, result.hits, result.occurrences, result.pageMatches))
             }
         }
     }
@@ -239,7 +268,7 @@ class ViewerViewModel(
     private data class FindResult(
         val hits: List<Int> = emptyList(),
         val occurrences: Int = 0,
-        val pageRects: Map<Int, List<NormRect>> = emptyMap(),
+        val pageMatches: Map<Int, List<List<NormRect>>> = emptyMap(),
     )
 
     private suspend fun computeHits(query: String): FindResult {
@@ -255,14 +284,23 @@ class ViewerViewModel(
         }
     }
 
-    /** Navigation is per page, not per match; scans have no text layer. */
+    /**
+     * A page is repeated in the hits once per match on it, so the counter and the stepping are per
+     * match. Counting does not need the rectangles, so a page past the extractor's box budget still
+     * counts every match; it just has nothing to draw. Scans have no text layer.
+     */
     private suspend fun findPdfPages(query: String): FindResult {
         val pages = pdfPageText ?: extractPageText().also { pdfPageText = it }
-        val hits = pages.mapIndexedNotNull { index, page -> index.takeIf { page.contains(query) } }
-        return FindResult(
-            hits = hits,
-            pageRects = hits.associateWith { pages[it].matchRects(query) }.filterValues { it.isNotEmpty() },
-        )
+        val hits = ArrayList<Int>()
+        val pageMatches = HashMap<Int, List<List<NormRect>>>()
+        pages.forEachIndexed { index, page ->
+            val count = page.countMatches(query)
+            if (count == 0) return@forEachIndexed
+            repeat(count) { hits += index }
+            val groups = page.matchGroups(query)
+            if (groups.any { it.isNotEmpty() }) pageMatches[index] = groups
+        }
+        return FindResult(hits = hits, pageMatches = pageMatches)
     }
 
     /** Rethrows CancellationException; catching it caches empty text and breaks find. */

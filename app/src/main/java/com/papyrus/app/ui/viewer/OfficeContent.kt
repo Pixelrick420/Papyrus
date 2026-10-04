@@ -45,19 +45,28 @@ import java.io.File
 
 /** EMF and WMF have no Android decoder, so a bad image shows a placeholder, not a dead document. */
 @Composable
-fun OfficeBlockView(block: OfficeBlock, modifier: Modifier = Modifier, highlight: FindHighlight? = null) {
+internal fun OfficeBlockView(
+    block: OfficeBlock,
+    modifier: Modifier = Modifier,
+    highlight: FindHighlight? = null,
+    reveal: RevealTicket? = null,
+) {
     when (block) {
-        is OfficeBlock.Heading -> Text(
-            remember(block.text, highlight) { highlightedText(block.text, highlight) },
+        is OfficeBlock.Heading -> FindText(
+            text = block.text,
+            highlight = highlight,
             style = headingStyle(block.level),
             modifier = modifier.padding(top = 16.dp, bottom = 4.dp),
+            reveal = reveal,
         )
-        is OfficeBlock.Paragraph -> Text(
-            remember(block.text, highlight) { highlightedText(block.text, highlight) },
+        is OfficeBlock.Paragraph -> FindText(
+            text = block.text,
+            highlight = highlight,
             style = MaterialTheme.typography.bodyLarge,
             modifier = modifier.padding(vertical = 4.dp),
+            reveal = reveal,
         )
-        is OfficeBlock.Table -> OfficeTableView(block, modifier.padding(vertical = 8.dp), highlight)
+        is OfficeBlock.Table -> OfficeTableView(block, modifier.padding(vertical = 8.dp), highlight, reveal)
         is OfficeBlock.Image -> OfficeImageView(block, modifier.padding(vertical = 8.dp))
     }
 }
@@ -74,10 +83,26 @@ private fun headingStyle(level: Int) = when (level.coerceIn(1, 6)) {
 
 /** Column is the layout unit: merged cells span several. Rowspan needs [SubcomposeLayout]. */
 @Composable
-private fun OfficeTableView(table: OfficeBlock.Table, modifier: Modifier = Modifier, highlight: FindHighlight? = null) {
+private fun OfficeTableView(
+    table: OfficeBlock.Table,
+    modifier: Modifier = Modifier,
+    highlight: FindHighlight? = null,
+    reveal: RevealTicket? = null,
+) {
     val columnCount = remember(table) { table.rows.maxOfOrNull { row -> row.maxOf { it.lastColumn } + 1 } ?: 0 }
     if (columnCount == 0) return
     val hScroll = rememberScrollState()
+    // The table's current match is numbered across the whole table, in reading order. Each cell needs
+    // to know how many matches came before it to tell which, if any, is its own.
+    val matchesBefore = remember(table, highlight?.query) {
+        val query = highlight?.query
+        var seen = 0
+        table.rows.map { row ->
+            row.map { cell ->
+                seen.also { if (query != null) seen += countOccurrences(cell, query) }
+            }
+        }
+    }
     // (row, column) pairs an earlier rowspan owns. The extractor omits those, so re-derive them.
     val covered = remember(table) {
         buildSet {
@@ -99,20 +124,22 @@ private fun OfficeTableView(table: OfficeBlock.Table, modifier: Modifier = Modif
         table.rows.forEachIndexed { rowIndex, row ->
             Row(Modifier.width(COLUMN_WIDTH * columnCount)) {
                 repeat(columnCount) { column ->
-                    val owner = row.firstOrNull { column in it.column..it.lastColumn }
+                    val ownerIndex = row.indexOfFirst { column in it.column..it.lastColumn }
+                    val owner = row.getOrNull(ownerIndex)
                     when {
                         owner != null ->
                             CellBox(
                                 cell = owner,
                                 width = COLUMN_WIDTH * (owner.lastColumn - owner.column + 1),
-                                highlight = highlight,
+                                highlight = highlight?.skipping(matchesBefore[rowIndex][ownerIndex]),
+                                reveal = reveal,
                             )
                         // Covered column: no box, so the merge has no internal border. The width is
                         // reserved, which aligns later cells with the rows above.
                         (rowIndex to column) in covered -> Spacer(Modifier.width(COLUMN_WIDTH))
                         // An uncovered column is a real gap in the source, so it still needs a box
                         // or the cells after it reflow leftward and misalign.
-                        else -> CellBox(cell = null, width = COLUMN_WIDTH, highlight = null)
+                        else -> CellBox(cell = null, width = COLUMN_WIDTH, highlight = null, reveal = null)
                     }
                 }
             }
@@ -127,7 +154,7 @@ private val MIN_CELL_HEIGHT = 40.dp
 
 /** Gaps and borders are per-box, so a merged cell shows no internal border. */
 @Composable
-private fun CellBox(cell: OfficeCell?, width: Dp, highlight: FindHighlight?) {
+private fun CellBox(cell: OfficeCell?, width: Dp, highlight: FindHighlight?, reveal: RevealTicket?) {
     Column(
         Modifier
             .width(width)
@@ -146,12 +173,18 @@ private fun CellBox(cell: OfficeCell?, width: Dp, highlight: FindHighlight?) {
             if (cell == null) return@Box
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 // The extractor joins a cell's paragraphs with newlines; re-splitting here makes
-                // intra-cell spacing independent of the cell's font size.
-                cell.text.split('\n').filter { it.isNotEmpty() }.forEach { line ->
-                    Text(
-                        remember(line, highlight) { highlightedText(line, highlight) },
+                // intra-cell spacing independent of the cell's font size. Each line is its own text,
+                // so the cell's current match is numbered across them the same way the table's is
+                // across its cells.
+                var before = 0
+                officeCellLines(cell).forEach { line ->
+                    FindText(
+                        text = line,
+                        highlight = highlight?.skipping(before),
                         style = MaterialTheme.typography.bodySmall,
+                        reveal = reveal,
                     )
+                    if (highlight != null) before += countOccurrences(line, highlight.query)
                 }
             }
         }
