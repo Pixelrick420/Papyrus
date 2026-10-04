@@ -37,6 +37,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -241,8 +242,18 @@ fun ViewerScreen(
         }
     }
 
-    if (infoOpen && state.document != null) {
-        FileInfoSheet(document = state.document!!, onDismiss = { infoOpen = false })
+    val infoDocument = state.document
+    if (infoOpen && infoDocument != null) {
+        // Both are read live: the provider's type, and the page count of the PDF already open.
+        val mimeType by produceState<String?>(null, infoDocument) {
+            value = viewModel.mimeType(infoDocument)
+        }
+        FileInfoSheet(
+            document = infoDocument,
+            pageCount = (state.content as? ViewerContent.Pdf)?.source?.pageCount,
+            mimeType = mimeType,
+            onDismiss = { infoOpen = false },
+        )
     }
 }
 

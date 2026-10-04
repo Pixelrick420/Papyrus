@@ -30,14 +30,12 @@ class DocumentRepository(
     suspend fun getById(id: Long): DocumentEntity? =
         if (id < 0) handedOver[id] else dao.getById(id)
     suspend fun markOpened(id: Long) = dao.touch(id, System.currentTimeMillis())
-    suspend fun updatePageCount(id: Long, count: Int) = dao.updatePageCount(id, count)
     suspend fun updateFormat(id: Long, format: DocumentFormat) = dao.updateFormat(id, format)
 
     suspend fun register(uri: Uri): Long = withContext(Dispatchers.IO) {
         SafStorage.persistPermission(resolver, uri)
-        val id = dao.upsertByUri(buildEntity(uri))
-        dao.touch(id, System.currentTimeMillis())
-        id
+        // buildEntity stamps lastOpenedAt, and upsertByUri carries it onto an existing row too.
+        dao.upsertByUri(buildEntity(uri))
     }
 
     /**
@@ -65,6 +63,14 @@ class DocumentRepository(
     suspend fun probeShare(document: DocumentEntity): SafAccess =
         withContext(Dispatchers.IO) { SafStorage.probeAccess(resolver, document.uri.toUri()) }
 
+    /** The provider's current MIME type, not a stored copy; null when it reports none or the grant is gone. */
+    suspend fun mimeTypeOf(document: DocumentEntity): String? =
+        withContext(Dispatchers.IO) { SafStorage.queryMimeType(resolver, document.uri.toUri()) }
+
+    /** The type the share action declares: the provider's live answer, resolved against the detected format. */
+    suspend fun shareTypeFor(document: DocumentEntity): String =
+        shareMimeType(document.format, mimeTypeOf(document))
+
     /** A SAF grant can only come from the user picking the file again, so the re-pick is matched by display name. */
     suspend fun regrant(expected: DocumentEntity, picked: Uri): Boolean = withContext(Dispatchers.IO) {
         val meta = SafStorage.queryMetadata(context, picked)
@@ -85,7 +91,6 @@ class DocumentRepository(
         return DocumentEntity(
             uri = uri.toString(),
             title = meta.displayName.ifBlank { "untitled" },
-            mimeType = meta.mimeType,
             format = resolveFormat(uri, meta.displayName, meta.mimeType),
             sizeBytes = meta.sizeBytes,
             createdAt = now,

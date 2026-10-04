@@ -33,9 +33,6 @@ interface DocumentDao {
     @Query("UPDATE documents SET uri = :uri WHERE id = :id")
     suspend fun updateUri(id: Long, uri: String)
 
-    @Query("UPDATE documents SET pageCount = :count WHERE id = :id")
-    suspend fun updatePageCount(id: Long, count: Int)
-
     /** Sniffing can only resolve a format once the row exists, so this runs after insert. */
     @Query("UPDATE documents SET format = :format WHERE id = :id")
     suspend fun updateFormat(id: Long, format: DocumentFormat)
@@ -43,15 +40,19 @@ interface DocumentDao {
     @Query("DELETE FROM documents WHERE id = :id")
     suspend fun deleteById(id: Long)
 
+    /**
+     * Registering a document counts as opening it, so the row is stamped here, in the same write,
+     * instead of by a second write that would make the library query run again.
+     */
     @Transaction
     suspend fun upsertByUri(document: DocumentEntity): Long {
         val existing = getByUri(document.uri) ?: return insertIgnore(document)
         update(
             existing.copy(
                 title = document.title,
-                mimeType = document.mimeType,
                 format = document.format,
                 sizeBytes = document.sizeBytes,
+                lastOpenedAt = document.lastOpenedAt,
             ),
         )
         return existing.id

@@ -14,9 +14,9 @@ private val GENERIC_TYPES = setOf("application/octet-stream", "application/binar
  * The provider's own type, unless it is a placeholder or a plain-text mislabel. Falls back to the
  * detected format's type, then to the wildcard, so a document with no usable type can still be shared.
  */
-internal fun shareMimeType(document: DocumentEntity): String {
-    val declared = document.format.mimeTypes.firstOrNull()
-    val reported = document.mimeType?.trim()?.takeIf { it.isNotEmpty() }
+internal fun shareMimeType(format: DocumentFormat, reportedMimeType: String?): String {
+    val declared = format.mimeTypes.firstOrNull()
+    val reported = reportedMimeType?.trim()?.takeIf { it.isNotEmpty() }
     if (reported == null || reported in GENERIC_TYPES) return declared ?: WILDCARD
     // Right for TXT and CODE, a mislabel for every other format.
     if (reported == TEXT_PLAIN && declared != null && declared != TEXT_PLAIN) return declared
