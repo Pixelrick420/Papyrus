@@ -80,6 +80,15 @@ object SafStorage {
         return Metadata(name ?: uri.lastPathSegment ?: "document", size, resolver.getType(uri))
     }
 
+    /** Null when the provider reports no type or refuses the query, as a dropped grant can. */
+    fun queryMimeType(resolver: ContentResolver, uri: Uri): String? = try {
+        resolver.getType(uri)
+    } catch (_: SecurityException) {
+        null
+    } catch (_: IllegalArgumentException) {
+        null
+    }
+
     /**
      * Opens the stream, which is the call the receiving app goes on to make, so Readable means the
      * URI is worth passing on. Closes without reading it: an open, not a copy.
