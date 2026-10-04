@@ -74,10 +74,8 @@ android {
     compileSdk = 36
 
     // Pinned so `stripReleaseDebugSymbols` can find a strip tool. Without it AGP falls back to
-    // its own built-in NDK default (27.0.120779), which is not what is installed here, so the
-    // task logs "Unable to strip ... missing strip tool for ABI" for every prebuilt .so that a
-    // dependency ships -- currently just androidx.graphics.path, pulled in by Compose. The app
-    // compiles no native code of its own; the NDK is here for that strip step alone. Keep this
+    // its own built-in NDK default (27.0.120779), which is not what is installed here.
+    // The NDK is here for that strip step alone. Keep this
     // line and the `ndk;` entry in .github/workflows/build.yml in step.
     ndkVersion = "28.2.13676358"
 
@@ -85,8 +83,8 @@ android {
         applicationId = "com.papyrus.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.2"
+        versionCode = 2
+        versionName = "0.3"
     }
 
     signingConfigs {
