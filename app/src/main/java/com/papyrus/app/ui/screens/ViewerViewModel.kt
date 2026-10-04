@@ -49,7 +49,7 @@ sealed interface ViewerContent {
     data class Pdf(val source: PdfPageSource, val aspectRatios: List<Float>) : ViewerContent
     /**
      * [text] is the parse used for find counting; [source] is kept so the viewer can render a fresh
-     * `Spanned` when a table needs to re-snapshot the TextView's paint (see `MarkdownViewer`).
+     * `Spanned` when a table re-snapshots the TextView's paint (see `MarkdownViewer`).
      */
     data class Markdown(val markwon: Markwon, val source: String, val text: Spanned) : ViewerContent
     data class PlainText(val chunks: List<String>) : ViewerContent
@@ -63,17 +63,17 @@ data class FindState(
     val query: String = "",
     /**
      * One entry per match, in document order, holding the index of the chunk, block or page it is
-     * in. A container with three matches appears three times, so the list is the thing the find
-     * bar steps through and [count] is the true number of matches.
+     * in. A container with three matches appears three times, so the find bar steps through this
+     * list and [count] is the true number of matches.
      */
     val hits: List<Int> = emptyList(),
     val position: Int = -1,
     /** Markdown is one `Spanned`, so matches highlight with no target to step between. */
     val occurrences: Int = 0,
     /**
-     * PDF only: by page index, one list of rectangles per match on that page, in match order.
-     * A match that wraps lines is several rectangles but still one entry. A hit page can lack
-     * an entry past the extractor's budget.
+     * PDF only: by page index, one list of rectangles per match on that page, in match order. A
+     * match wrapping lines is several rectangles but still one entry. A hit page can lack an entry
+     * past the extractor's budget.
      */
     val pageMatches: Map<Int, List<List<NormRect>>> = emptyMap(),
 ) {
@@ -86,9 +86,9 @@ data class FindState(
     val activeIndex: Int? get() = if (position in hits.indices) hits[position] else null
 
     /**
-     * Which match inside [activeIndex]'s container is the current one: 0 for the first, 1 for the
-     * second. Derived from [position] because [hits] is sorted and a container's matches are
-     * contiguous, so it is that container's first entry subtracted from the cursor.
+     * Which match inside [activeIndex]'s container is current: 0 for the first, 1 for the second.
+     * Derived from [position] because [hits] is sorted and a container's matches are contiguous, so
+     * it is that container's first entry subtracted from the cursor.
      */
     val activeOccurrence: Int? get() {
         val container = activeIndex ?: return null
@@ -285,9 +285,9 @@ class ViewerViewModel(
     }
 
     /**
-     * A page is repeated in the hits once per match on it, so the counter and the stepping are per
-     * match. Counting does not need the rectangles, so a page past the extractor's box budget still
-     * counts every match; it just has nothing to draw. Scans have no text layer.
+     * A page is repeated in the hits once per match on it, so counting and stepping are per match.
+     * Counting needs no rectangles, so a page past the extractor's box budget still counts every
+     * match; it just has nothing to draw. Scans have no text layer.
      */
     private suspend fun findPdfPages(query: String): FindResult {
         val pages = pdfPageText ?: extractPageText().also { pdfPageText = it }

@@ -142,9 +142,9 @@ fun MarkdownViewer(
 /**
  * A table row span lays its cells out once per canvas width, copying the TextView's paint (size and
  * colours) at that moment. Zooming or switching theme changes the paint but not the width, so cells
- * kept the size and colour of the first draw: huge after the first draw, and unmoved by zoom. The
- * spans cannot be reset from outside, so a document with tables gets a fresh `Spanned` whenever the
- * paint changes. A document without tables keeps the shared parse and pays nothing.
+ * kept the size and colour of the first draw: huge afterwards, and unmoved by zoom. The spans cannot
+ * be reset from outside, so a document with tables gets a fresh `Spanned` whenever the paint changes;
+ * one without tables keeps the shared parse and pays nothing.
  */
 @Composable
 private fun rememberRenderedMarkdown(

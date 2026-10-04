@@ -11,8 +11,8 @@ import java.util.zip.ZipInputStream
 
 /**
  * A single table cell. A cell *covered* by a rowspan from a row above is absent entirely: the
- * renderer reads the merge off the origin cell, so a repeated blank would shift every later cell
- * in the row and draw a border where the merge should be seamless.
+ * renderer reads the merge off the origin cell, so a repeated blank would shift every later cell in
+ * the row and draw a border where the merge should be seamless.
  */
 data class OfficeCell(
     val text: String,
@@ -26,14 +26,14 @@ data class OfficeCell(
 
 /**
  * One laid-out piece of an Office document. Not pixel-accurate to Word/LibreOffice: headings,
- * paragraphs, tables and inline images in document order is the fidelity this pass targets.
+ * paragraphs, tables and inline images in document order is the fidelity targeted.
  */
 sealed interface OfficeBlock {
     data class Heading(val text: String, val level: Int) : OfficeBlock
     data class Paragraph(val text: String) : OfficeBlock
     /**
      * A table flattened into rows. [OfficeCell.column] is where a cell *starts*, so a cell covered by
-     * a rowspan above is absent from its row rather than repeated as an empty one. Nested tables are
+     * a rowspan above is absent from its row rather than repeated as empty. Nested tables are
      * flattened into the surrounding block list.
      */
     data class Table(val rows: List<List<OfficeCell>>) : OfficeBlock
@@ -43,8 +43,8 @@ sealed interface OfficeBlock {
 
 /**
  * Dependency-free extraction for .docx / .odt, both ZIP + XML, via java.util.zip and the platform
- * XmlPullParser. The archive is walked twice through [openStream] rather than buffered whole, so peak
- * memory stays proportional to the body XML and referenced media is read only once.
+ * XmlPullParser. The archive is walked twice through [openStream] rather than buffered whole, so
+ * peak memory stays proportional to the body XML and media is read once.
  */
 class OfficeTextExtractor(
     private val mediaDir: File?,
@@ -115,8 +115,8 @@ class OfficeTextExtractor(
 
     /**
      * Byte budget so a document full of photographs cannot fill the disk or the heap. Reserve then
-     * consume, because an entry's size is only known before reading when the ZIP had a central
-     * directory: [canReserve] is the cheap pre-check, [consume] the authoritative charge.
+     * consume: an entry's size is known before reading only when the ZIP had a central directory, so
+     * [canReserve] is the cheap pre-check and [consume] the authoritative charge.
      */
     private class MediaBudget {
         private var remaining = MAX_TOTAL_MEDIA_BYTES
@@ -162,10 +162,10 @@ class OfficeTextExtractor(
     }
 
     /**
-     * Streams the wanted entries straight to [sink], charging the budget as each one arrives rather
-     * than buffering them all, which would let 200 images allocate 200 x [MAX_IMAGE_BYTES] first. The
-     * per-entry cap counts bytes instead of trusting `entry.size`: a streamed entry in a ZIP without
-     * a central directory reports -1, and `readBytes()` on it would read without bound.
+     * Streams the wanted entries straight to [sink], charging the budget as each arrives rather than
+     * buffering them all, which would let 200 images allocate 200 x [MAX_IMAGE_BYTES] first. The
+     * per-entry cap counts bytes instead of trusting `entry.size`: a streamed entry in a ZIP without a
+     * central directory reports -1, and `readBytes()` on it would read without bound.
      */
     private fun readMedia(
         openStream: () -> InputStream,
@@ -250,9 +250,9 @@ class OfficeTextExtractor(
     /**
      * A grid being built for the table currently open. Vertical merges are the awkward part: `w:vMerge`
      * continuation lives in a *later* row at the same column, so the origin cell is not reachable from
-     * the row being parsed, and [Slot] is a mutable object that continuation row reaches by column via
+     * the row being parsed; [Slot] is mutable, reached by that continuation row via column through
      * [openCellAt]. A continuation records a non-origin placeholder to hold the grid position, and
-     * [emit] drops it, since emitting it would duplicate the merged text and shift every later cell.
+     * [emit] drops it -- emitting it would duplicate the merged text and shift every later cell.
      */
     private class Grid {
         val rows = mutableListOf<List<Slot>>()
@@ -268,9 +268,9 @@ class OfficeTextExtractor(
 
         /**
          * Closes the current row of the **outermost** table. Only depth-1 rows are committed, so
-         * pathologically nested input cannot multiply the row count; nested cell text survives
-         * because it is routed into the enclosing outer cell's buffer. False once the row cap is
-         * reached, so the caller can drop the whole table rather than emit a truncated one.
+         * pathologically nested input cannot multiply the row count; nested cell text survives,
+         * routed into the enclosing outer cell's buffer. False once the row cap is reached, so the
+         * caller can drop the whole table rather than emit a truncated one.
          */
         fun commitRow(rowLimit: Int): Boolean {
             if (row.isNotEmpty() && rows.size < rowLimit) rows += row.toList()
@@ -370,7 +370,7 @@ class OfficeTextExtractor(
          * Parser text goes to the cell buffer inside a `w:tc` and to the paragraph otherwise, but
          * only from inside a `w:t`: whitespace between structural tags is layout, not content, and
          * pretty-printed producers indent `<w:tc>` away from its first `<w:p>`, which would pad every
-         * cell. [element] marks characters an element contributes (a tab, a break), which are content
+         * cell. [element] marks characters an element contributes (a tab, a break) -- content
          * regardless of the surrounding `w:t` state.
          */
         fun appendText(raw: String, element: Boolean = false) {

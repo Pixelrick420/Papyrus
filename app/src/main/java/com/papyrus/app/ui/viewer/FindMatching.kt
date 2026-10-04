@@ -10,8 +10,8 @@ import com.papyrus.app.viewer.OfficeCell
  */
 
 /**
- * Advances past the whole match, so "aa" in "aaaa" is two hits, not three. That is the editor
- * convention, and the only one where the visible highlights match the count the find bar shows.
+ * Advances past the whole match, so "aa" in "aaaa" is two hits, not three -- the editor convention,
+ * and the only one where the visible highlights match the count the find bar shows.
  */
 fun findMatchRanges(text: String, query: String): List<IntRange> {
     if (query.isEmpty() || text.length < query.length) return emptyList()
@@ -40,9 +40,8 @@ fun countOccurrences(text: String, query: String): Int {
 
 /**
  * One hit per match, not per chunk: a chunk holding three matches contributes its index three
- * times, in document order. The find bar steps through this list, so each match is one step and
- * the counter is the true number of matches. Counting per chunk made matches close together
- * collapse into a single step.
+ * times, in document order. The find bar steps through this list, so each match is one step and the
+ * counter is the true number of matches. Counting per chunk collapsed nearby matches into one step.
  */
 fun findChunkHits(chunks: List<String>, query: String): List<Int> {
     if (query.isBlank()) return emptyList()
