@@ -19,9 +19,9 @@ jobs:
     if: github.ref_type == 'branch'
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-java@v5
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '17'
@@ -43,7 +43,7 @@ jobs:
         run: ./gradlew --no-daemon assembleRelease
 
       - name: Upload APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: papyrus-apk
           path: app/build/outputs/apk/release/*.apk
@@ -61,9 +61,16 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v5
+      # fetch-depth: 0 is load-bearing, not hygiene. The versionCode assert below compares
+      # this build against the previous release tag, and the default shallow fetch hands the
+      # runner neither the other tags nor the file contents of the previous release: `git tag`
+      # comes back empty and there is nothing to compare against. The ci job above needs no
+      # history and deliberately keeps the default shallow fetch.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
-      - uses: actions/setup-java@v5
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '17'
@@ -156,6 +163,47 @@ jobs:
           echo "tag=$tag versionName=$actual"
           if [ "$tag" != "$actual" ]; then
             echo "::error::Tag $GITHUB_REF_NAME does not match versionName $actual in app/build.gradle.kts"
+            exit 1
+          fi
+
+      # The versionName assert above cannot catch a forgotten versionCode bump: a tag bumped
+      # to 0.4 while versionCode stays at 2 passes that check cleanly. versionCode is the only
+      # value the Android package manager uses to order releases, so a repeat is not a
+      # cosmetic slip -- the OS can never distinguish the new build from the one it is
+      # replacing, and Play Store rejects the upload outright. Compared against the previous
+      # release tag rather than a hardcoded number so this never needs editing as we version on.
+      - name: Assert versionCode increased
+        run: |
+          set -euo pipefail
+          current=$(grep -om1 -P 'versionCode\s*=\s*\K\d+' app/build.gradle.kts)
+          # Picked with a read loop rather than `git tag | grep | head -1`: a head-terminated
+          # pipeline can hand its writer a SIGPIPE, which `pipefail` then reports as exit 141.
+          # Measured to need the tag list to outgrow the pipe buffer -- roughly 20k tags, so it
+          # is not reachable here today, and this only keeps a sharp edge out of the step that
+          # decides whether a release ships. A first-ever release has no earlier tag to compare
+          # against, which is a skip rather than a failure.
+          previous_tag=""
+          while read -r candidate; do
+            if [ "$candidate" != "$GITHUB_REF_NAME" ]; then
+              previous_tag="$candidate"
+              break
+            fi
+          done < <(git tag --list 'v*' --sort=-v:refname)
+          if [ -z "$previous_tag" ]; then
+            echo "No earlier v* tag to compare against; skipping the versionCode check."
+            exit 0
+          fi
+          previous=$(git show "$previous_tag:app/build.gradle.kts" \
+            | grep -om1 -P 'versionCode\s*=\s*\K\d+' || true)
+          echo "tag=$GITHUB_REF_NAME versionCode=$current previous=$previous_tag:$previous"
+          if [ -z "$current" ] || [ -z "$previous" ]; then
+            echo "::error::Could not read a versionCode from this build or from $previous_tag."
+            exit 1
+          fi
+          if [ "$current" -le "$previous" ]; then
+            echo "::error::versionCode $current must be greater than $previous (from $previous_tag)."
+            echo "Android orders releases by versionCode alone, so an unchanged value ships an"
+            echo "artifact the OS cannot tell apart from the release it is replacing."
             exit 1
           fi
 
