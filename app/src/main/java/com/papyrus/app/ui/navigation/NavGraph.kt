@@ -1,6 +1,7 @@
 package com.papyrus.app.ui.navigation
 
 import android.net.Uri
+import androidx.activity.compose.LocalActivity
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.CubicBezierEasing
@@ -41,11 +42,28 @@ fun PapyrusNavGraph(
     resolveExternalDocument: suspend (Uri) -> Long? = { null },
     onExternalDocumentHandled: () -> Unit = {},
 ) {
+    // Back out of a document another app handed over finishes Papyrus, returning to the app that
+    // is waiting for its document back. Leaving the viewer as the only entry on the stack is what
+    // makes that happen: NavController stands down once a single destination is left (its own back
+    // callback is enabled only above one), so the system gesture falls through to the OS. The
+    // toolbar arrow calls popBackStack directly and gets no such fallback, hence the finish().
+    val activity = LocalActivity.current
+    val leaveViewer: () -> Unit = { if (!navController.popBackStack()) activity?.finish() }
+
     LaunchedEffect(externalDocument) {
         val uri = externalDocument ?: return@LaunchedEffect
         val id = resolveExternalDocument(uri)
         onExternalDocumentHandled()
-        if (id != null) navController.navigate(Routes.viewer(id)) { launchSingleTop = true }
+        if (id == null) return@LaunchedEffect
+        // A second handover arriving while the first is still open: that viewer was not entered
+        // from Home either, so it goes as well instead of becoming the place back lands.
+        navController.popBackStack(Routes.VIEWER, inclusive = true)
+        navController.navigate(Routes.viewer(id)) {
+            // Home is popped rather than left underneath. The caller opened a document, not
+            // Papyrus, so there is no Home behind this viewer to go back to.
+            popUpTo(Routes.HOME) { inclusive = true }
+            launchSingleTop = true
+        }
     }
 
     // Stacked rather than cross-faded: only the screen on top moves, sliding a short way in while it
@@ -73,7 +91,7 @@ fun PapyrusNavGraph(
             route = Routes.VIEWER,
             arguments = listOf(navArgument(Routes.ARG_DOCUMENT_ID) { type = NavType.LongType }),
         ) {
-            ViewerScreen(onBack = { navController.popBackStack() })
+            ViewerScreen(onBack = leaveViewer)
         }
     }
 }
