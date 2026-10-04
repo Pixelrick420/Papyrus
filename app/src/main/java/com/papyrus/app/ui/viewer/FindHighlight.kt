@@ -17,12 +17,11 @@ internal val MatchTextColor = Color.Black
 
 /**
  * Every occurrence in the text is marked, and exactly one may be the current match, in orange; the
- * rest are yellow. Marking the chunk whole, as this used to, left matched text indistinguishable
- * from its context, and marking every match in the active chunk orange made neighbouring matches
- * read as one.
+ * rest are yellow. Marking the chunk whole, as this used to, left matched text indistinguishable from
+ * its context, and marking every match in the active chunk orange made neighbours read as one.
  *
- * [activeOccurrence] counts matches within this text from 0, and is null when the current match is
- * somewhere else. A match that is not in range simply paints nothing orange.
+ * [activeOccurrence] counts matches within this text from 0, null when the current match is
+ * elsewhere. A match out of range simply paints nothing orange.
  */
 @Immutable
 data class FindHighlight(val query: String, val activeOccurrence: Int?)
@@ -31,9 +30,9 @@ internal fun findHighlightFor(query: String, activeOccurrence: Int?): FindHighli
     if (query.isBlank()) null else FindHighlight(query, activeOccurrence)
 
 /**
- * The same highlight for a text that follows [consumed] matches of the same block, such as the
- * second cell of a table row. A block's current match is numbered across all of its text, so each
- * piece has to subtract what came before it.
+ * The same highlight for a text following [consumed] matches of the same block, such as the second
+ * cell of a table row. A block's current match is numbered across all its text, so each piece
+ * subtracts what came before it.
  */
 internal fun FindHighlight.skipping(consumed: Int): FindHighlight =
     FindHighlight(query, activeOccurrence?.minus(consumed)?.takeIf { it >= 0 })

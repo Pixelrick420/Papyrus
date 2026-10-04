@@ -20,11 +20,10 @@
             android:windowSoftInputMode="adjustNothing"
             android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation|keyboardHidden">
             <!--
-              configChanges: the Activity survives a window resize or rotation, so Compose only
-              recomposes with the new bounds instead of the whole Activity being destroyed and rebuilt.
-              That is what keeps the scroll position, the zoom level and the find query alive during
-              a drag-resize instead of flashing an empty viewer. It is the documented approach for
-              Compose-only apps and matches what Android 17 does by default.
+              configChanges: the Activity survives a resize or rotation, so Compose recomposes with
+              the new bounds instead of the Activity being destroyed and rebuilt, keeping scroll
+              position, zoom level and find query alive during a drag-resize rather than flashing an
+              empty viewer. The documented approach for Compose-only apps, and the Android 17 default.
 
               Deliberately NOT listed: uiMode, locale, layoutDirection and fontScale. Those change
               resources rather than size, and the MarkdownViewer hosts an AndroidView that relies on

@@ -11,9 +11,9 @@ import java.sql.DriverManager
 import java.sql.ResultSet
 
 /**
- * Runs DROP_SCAN_PAGES against a real SQLite v2 database. Two upgrade paths matter: a v2
- * install that has the table, and a v1 install stepping straight to v3, where the v1 -> v2
- * rebuild never created scan_pages and the DROP has to tolerate its absence.
+ * Runs DROP_SCAN_PAGES against a real SQLite v2 database. Two upgrade paths matter: a v2 install
+ * that has the table, and a v1 install stepping straight to v3, where the v1 -> v2 rebuild never
+ * created scan_pages and the DROP must tolerate its absence.
  */
 class Migration2To3Test {
 

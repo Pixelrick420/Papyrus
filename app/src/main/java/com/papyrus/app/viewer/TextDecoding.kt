@@ -1,11 +1,11 @@
 package com.papyrus.app.viewer
 
 /**
- * Decodes a text file's bytes: UTF-8 unless a byte-order mark says otherwise, and never with the BOM
- * left in the string.
+ * Decodes a text file's bytes: UTF-8 unless a byte-order mark says otherwise, never leaving the BOM
+ * in the string.
  *
- * The BOM matters most for Markdown. U+FEFF is not CommonMark whitespace, so `\uFEFF# Title` parses as
- * a paragraph that shows a literal `# Title`. Windows editors save UTF-8 with a BOM by default, and
+ * The BOM matters most for Markdown: U+FEFF is not CommonMark whitespace, so `\uFEFF# Title` parses
+ * as a paragraph showing a literal `# Title`. Windows editors save UTF-8 with a BOM by default, and
  * PowerShell's `>` writes UTF-16LE, which UTF-8 decoding turns into NUL-separated garbage.
  */
 internal fun decodeText(bytes: ByteArray): String = when {

@@ -67,9 +67,9 @@ fun anchoredScroll(scroll: Float, focal: Float, commit: ScaleCommit): Float =
  *
  * [onCommit] runs inside [ZoomState] just before the new scale is published, so the layout on
  * screen is still the one the pinch was previewing and the content under the focal point can be
- * read straight off it. An effect keyed on the commit runs after the frame that already laid
- * out the new scale, and by then the list is at the new size but the old offset: whatever sits
- * under the finger is no longer what the user pinched.
+ * read straight off it. An effect keyed on the commit runs a frame later, when the list is already
+ * at the new size but still at the old offset: whatever sits under the finger is no longer what the
+ * user pinched.
  */
 interface ZoomAnchor {
     fun onCommit(commit: ScaleCommit)
@@ -98,7 +98,7 @@ class ZoomState(private val scope: CoroutineScope) {
     /**
      * True from the first frame of a pinch until every finger is up. Fingers never leave together,
      * so for a few ms after the pinch one is still down, and read as a drag it would scroll the
-     * document out from under the commit. [isPinching] ends with the first finger; this does not.
+     * document out from under the commit. [isPinching] ends with the first finger, this does not.
      */
     var isScrollLocked by mutableStateOf(false)
         private set
@@ -294,16 +294,16 @@ fun Modifier.zoomable(state: ZoomState): Modifier = this
 
 /**
  * `firstVisibleItemScrollOffset` that puts the point [fraction] of the way down an item back under
- * [focal] once the item is [newItemSize] tall. [before] is the list's start content padding: an item
- * at offset 0 sits [before] below the viewport's edge, and each px of scroll offset lifts it by one.
+ * [focal] once the item is [newItemSize] tall. [before] is the list's start content padding: an
+ * item at offset 0 sits [before] below the viewport's edge, and each px of scroll offset lifts it.
  */
 fun lazyAnchorScrollOffset(focal: Float, fraction: Float, newItemSize: Float, before: Int): Int =
     (before - (focal - fraction * newItemSize)).roundToInt()
 
 /**
  * Scroll distance that puts the point [fraction] of the way down an item back under [focal].
- * [itemTop] and [focal] are in the same space. Positive scrolls forward, which moves content up,
- * so an item sitting below where it should be needs a positive delta: current minus wanted.
+ * [itemTop] and [focal] are in the same space. Positive scrolls forward, moving content up, so an
+ * item below where it should be needs a positive delta: current minus wanted.
  */
 fun lazyAnchorDelta(focal: Float, fraction: Float, itemTop: Float, itemSize: Float): Float =
     itemTop - (focal - fraction * itemSize)
@@ -312,10 +312,10 @@ fun lazyAnchorDelta(focal: Float, fraction: Float, itemTop: Float, itemSize: Flo
  * Pins the list item under the focal point.
  *
  * The scroll position is requested inside [onCommit], against the size the item is about to have
- * (the old size times the ratio), so the very first frame at the new scale is already anchored.
- * That also covers an item the new layout would push out of view, which a correction made after
- * the fact cannot find. [settle] then trims the difference between that prediction and what was
- * measured, which is nothing for a page that scales linearly and a few px for re-wrapped text.
+ * (the old size times the ratio), so the very first frame at the new scale is already anchored --
+ * including an item the new layout would push out of view, which a later correction cannot find.
+ * [settle] then trims the difference between that prediction and the measurement: nothing for a page
+ * that scales linearly, a few px for re-wrapped text.
  *
  * [paddingScalesWithZoom] says whether the list's start content padding grows with the scale (the
  * PDF list's does) or stays put (the text lists'); the offset is measured from the new padding.
@@ -373,11 +373,11 @@ class LazyZoomAnchor(
 /**
  * Pins the content under the focal point along one axis of a [ScrollState].
  *
- * A [ScrollState] cannot be moved past the extent it had at the last measure, so it can only reach
- * the anchored position after the new scale has been laid out. [onCommit] therefore records what the
- * position has to be, [settle] scrolls there once there is room, and [pendingShift] is the part of
- * the way still to go. [anchorBridge] paints that part, so the frames before the scroll lands look
- * the same as the ones after it, instead of flashing the old offset at the new size.
+ * A [ScrollState] cannot be moved past the extent it had at the last measure, so it reaches the
+ * anchored position only once the new scale has been laid out. [onCommit] records what the position
+ * has to be, [settle] scrolls there once there is room, and [pendingShift] is the part of the way
+ * still to go. [anchorBridge] paints that part, so frames before the scroll lands look the same as
+ * the ones after it rather than flashing the old offset at the new size.
  *
  * [horizontal] picks the formula: a page grows by exactly the ratio, so its x position is computed
  * once. Text reflows, so its y position is a fraction of the document, re-read from each measure.

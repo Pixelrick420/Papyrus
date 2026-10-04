@@ -24,8 +24,8 @@ import kotlin.math.roundToInt
 class PdfPasswordException : IOException("Password-protected PDF")
 
 /**
- * Thread-safe wrapper over [PdfRenderer], which allows one open page at a time, so access is serialised
- * by a mutex on a single dispatcher and bitmaps live in a heap-sized [LruCache].
+ * Thread-safe wrapper over [PdfRenderer], which allows one open page at a time: access is serialised
+ * by a mutex on a single dispatcher, and bitmaps live in a heap-sized [LruCache].
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class PdfPageSource private constructor(

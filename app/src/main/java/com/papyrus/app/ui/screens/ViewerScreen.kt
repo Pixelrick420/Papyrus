@@ -80,8 +80,8 @@ private val ScreenPadding = 16.dp
  * Find, zoom and overflow state live here so a format switch does not reset them.
  *
  * Laid out like Home: no app-bar surface, just a flat header, then a column. The find bar is a
- * sibling of the document inside that column, never an overlay, so opening it pushes the document
- * down instead of covering its first lines.
+ * sibling of the document in that column, never an overlay, so opening it pushes the document down
+ * instead of covering its first lines.
  */
 @Composable
 fun ViewerScreen(
@@ -249,8 +249,8 @@ fun ViewerScreen(
 private const val FIND_ANIMATION_MS = 200
 
 /**
- * Flat, like Home's title row: no filled app-bar surface, a semibold title, and the same 16dp
- * edge for the first icon. The title is one line because a long file name must not eat the page.
+ * Flat, like Home's title row: no filled app-bar surface, a semibold title, the same 16dp edge for
+ * the first icon. One line, because a long file name must not eat the page.
  */
 @Composable
 private fun ViewerHeader(

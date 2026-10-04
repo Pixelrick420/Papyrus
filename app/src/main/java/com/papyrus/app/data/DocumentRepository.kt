@@ -18,10 +18,9 @@ class DocumentRepository(
      * Documents another app handed over, held in memory only. The repository is an Application
      * singleton, so an entry lives exactly as long as the process.
      *
-     * Ids are negative because Room's are positive and the viewer reads its subject as a plain
-     * Long off the nav arguments. -1 is the view model's "no document" sentinel, so counting
-     * starts at -2. Written only by [openHandedOver], which completes before the viewer that
-     * reads it is created.
+     * Ids are negative: Room's are positive and the viewer reads its subject as a plain Long off the
+     * nav arguments. -1 is the view model's "no document" sentinel, so counting starts at -2. Written
+     * only by [openHandedOver], which completes before the viewer that reads it is created.
      */
     private val handedOver = mutableMapOf<Long, DocumentEntity>()
     private var nextHandedOverId = -2L
@@ -44,11 +43,10 @@ class DocumentRepository(
     /**
      * Opens a document another app passed over, without indexing it.
      *
-     * No row on purpose: such a document belongs to the app that sent it, so a row would either
-     * sit in the library or need deleting again. Nothing is persisted either -- the read grant
-     * that arrived with the intent lasts as long as the task that received it, which is exactly
-     * how long this entry is reachable. Only the newest is kept, since handing over another
-     * document pops the viewer showing the last.
+     * No row on purpose: such a document belongs to the app that sent it, so a row would either sit
+     * in the library or need deleting again. Nothing is persisted -- the read grant that arrived
+     * with the intent lasts as long as the task receiving it, which is exactly how long this entry is
+     * reachable. Only the newest is kept, since handing over another document pops the viewer.
      */
     suspend fun openHandedOver(uri: Uri): Long = withContext(Dispatchers.IO) {
         val id = nextHandedOverId--

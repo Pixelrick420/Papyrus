@@ -35,13 +35,13 @@ import com.papyrus.app.ui.components.SearchPill
 /**
  * Find in file, drawn with the same [SearchPill] as the Home search so the two read as one control.
  *
- * The caller places this in the layout flow, above the document, not over it: the viewer is
- * simply given less height while find is open, so no part of the document is ever covered and a
- * hit scrolled to lands in plain view with no clearance arithmetic.
+ * The caller places this in the layout flow, above the document, not over it: the viewer is simply
+ * given less height while find is open, so no part of the document is covered and a hit scrolled to
+ * lands in plain view with no clearance arithmetic.
  *
  * The caller owns the query and hit list. [canNavigate] is false for a surface that highlights in
  * place, where arrows and an "n of m" position would be meaningless. [modifier] supplies the outer
- * insets; the pill and its three trailing buttons are laid out inside it.
+ * insets; the pill and its three trailing buttons lay out inside it.
  */
 @Composable
 fun FindInFileBar(

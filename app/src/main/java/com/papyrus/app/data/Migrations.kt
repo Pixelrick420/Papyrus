@@ -11,8 +11,8 @@ val MIGRATION_1_2 = object : Migration(1, 2) {
 }
 
 /**
- * Drops the scan_pages table. `IF EXISTS` because the v1 -> v2 rebuild above never created
- * it, so a device that upgrades straight from v1 has no such table to drop.
+ * Drops the scan_pages table. `IF EXISTS` because the v1 -> v2 rebuild above never created it, so a
+ * device upgrading straight from v1 has no such table to drop.
  */
 val MIGRATION_2_3 = object : Migration(2, 3) {
     override fun migrate(db: SupportSQLiteDatabase) {
@@ -71,8 +71,8 @@ internal val DOCUMENTS_TABLE_V1: List<String> = listOf(
 )
 
 /**
- * The scan_pages table as v2 declared it, kept only so Migration2To3Test can build a
- * realistic v2 database to drop it from. Nothing in the app reads or writes it any more.
+ * The scan_pages table as v2 declared it, kept only so Migration2To3Test can build a realistic v2
+ * database to drop it from. Nothing in the app reads or writes it any more.
  */
 internal val SCAN_PAGES_TABLE_V2: List<String> = listOf(
     """

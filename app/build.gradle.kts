@@ -247,8 +247,8 @@ val apksigner = android.sdkDirectory.resolve(
 val debugKeystore = File(System.getProperty("user.home"), ".android/debug.keystore")
 
 /**
- * Runs [command] to completion and returns its trimmed stdout, throwing if it fails.
- * Only ever called from a task action, never at configuration time.
+ * Runs [command] to completion, returning its trimmed stdout and throwing on failure. Called only
+ * from a task action, never at configuration time.
  */
 fun runCommand(command: List<String>): String {
     val process = ProcessBuilder(command).redirectErrorStream(true).start()
@@ -261,10 +261,9 @@ fun runCommand(command: List<String>): String {
 fun runAdb(vararg args: String): String = runCommand(listOf(adb.absolutePath) + args)
 
 /**
- * Resolves the single APK for [variant], trying the signed name before the unsigned one. AGP
- * writes `app-<variant>-unsigned.apk` when the variant has no signing config and
- * `app-<variant>.apk` when it does, so both have to be probed: `release` only gets a signing
- * config when the build was given PAPYRUS_* properties.
+ * Resolves the single APK for [variant], signed name first. AGP writes `app-<variant>.apk` when the
+ * variant has a signing config and `app-<variant>-unsigned.apk` when it does not, so both are probed:
+ * `release` only gets a config when the build was given PAPYRUS_* properties.
  */
 fun pickApk(variant: String): File {
     val out = layout.buildDirectory.dir("outputs/apk/$variant").get().asFile
@@ -302,9 +301,8 @@ fun signForLocalInstall(apk: File): File {
 
 /**
  * Registers a task that builds [variant], signs the result if AGP left it unsigned, and
- * adb-installs it. Whether signing is needed is read off the artifact rather than declared,
- * because `release` is unsigned by default and signed when the build supplied PAPYRUS_*
- * properties.
+ * adb-installs it. Signing is read off the artifact rather than declared, because `release` is
+ * unsigned by default and signed when the build supplied PAPYRUS_* properties.
  */
 fun registerLocalInstall(
     name: String,
