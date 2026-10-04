@@ -8,7 +8,9 @@ import androidx.room.RoomDatabase
 @Database(
     entities = [DocumentEntity::class],
     version = 3,
-    exportSchema = true, // schemas land in app/schemas (committed) so migrations can be tested
+    exportSchema = true, // written to app/schemas on every build and deliberately NOT tracked: the
+    // migration tests execute this file's own SQL against sqlite-jdbc rather than diffing a
+    // committed schema history, so a tracked export would only be a stale-identityHash trap.
 )
 abstract class AppDatabase : RoomDatabase() {
 
