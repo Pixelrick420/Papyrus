@@ -4,7 +4,12 @@
     <string name="action_back">Back</string>
     <string name="cd_add_files">Add files</string>
     <string name="home_added_files">Added %d files</string>
-    <string name="cd_remove_from_list">Remove from list</string>
+    <string name="home_menu">More options</string>
+    <string name="action_share">Share</string>
+    <string name="action_remove">Remove</string>
+    <string name="home_share_failed">Couldn\'t share that file</string>
+    <string name="home_share_no_access">Access to that file was lost. Open it to restore sharing.</string>
+    <string name="home_share_missing">That file has been moved or deleted.</string>
     <string name="cd_pdf_page">Page %1$d</string>
 
     <string name="home_empty_title">No documents yet</string>

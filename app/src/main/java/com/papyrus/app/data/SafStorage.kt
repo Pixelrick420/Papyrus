@@ -6,6 +6,18 @@ import android.content.Intent
 import android.net.Uri
 import android.provider.OpenableColumns
 import androidx.activity.result.contract.ActivityResultContracts
+import java.io.FileNotFoundException
+import java.io.IOException
+
+/** Outcome of a readability check: a lost grant and a missing file need different messages. */
+enum class SafAccess {
+    Readable,
+    /** Revoked, expired at reboot, or dropped by the provider. */
+    NoAccess,
+    /** Grant intact, document gone. */
+    Missing,
+    Unreadable,
+}
 
 /** Open-document picker that requests a persistable read grant. */
 class OpenPersistableDocument : ActivityResultContracts.OpenDocument() {
@@ -66,5 +78,20 @@ object SafStorage {
                 }
             }
         return Metadata(name ?: uri.lastPathSegment ?: "document", size, resolver.getType(uri))
+    }
+
+    /**
+     * Opens the stream, which is the call the receiving app goes on to make, so Readable means the
+     * URI is worth passing on. Closes without reading it: an open, not a copy.
+     */
+    fun probeAccess(resolver: ContentResolver, uri: Uri): SafAccess = try {
+        resolver.openInputStream(uri)?.use { SafAccess.Readable } ?: SafAccess.Missing
+    } catch (_: SecurityException) {
+        SafAccess.NoAccess
+    } catch (_: FileNotFoundException) {
+        // Before IOException, which it extends.
+        SafAccess.Missing
+    } catch (_: IOException) {
+        SafAccess.Unreadable
     }
 }
