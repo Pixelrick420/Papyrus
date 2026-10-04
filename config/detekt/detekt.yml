@@ -1,0 +1,112 @@
+# detekt configuration for Papyrus.
+#
+# `buildUponDefaultConfig = false` in app/build.gradle.kts, so every rule set is
+# named explicitly below: a rule that is not listed does not run. That makes the
+# gate's scope readable in one file instead of being the union of a default config
+# and a pile of overrides.
+#
+# Scope is dead code and correctness. Documentation-volume and formatting rules
+# are off on purpose -- see the "Deliberately off" section at the bottom.
+#
+# No `detekt-formatting` dependency: the one rule wanted from it, UnusedImports,
+# also ships in detekt core under `style`. Enabling the formatting ruleset would
+# have pulled in ~200 ktlint-backed rules that have nothing to do with this.
+
+config:
+  validation: true
+  warningsAsErrors: false
+
+# --- Dead code ---------------------------------------------------------------
+style:
+  # Unused private declarations. This is the rule that catches a dead
+  # `data class Access` + its accessor function, the shape SafStorage had.
+  # detekt skips `override` members, so framework callbacks (onCleared,
+  # createIntent, writeString) and @Composable entry points are not flagged.
+  UnusedPrivateMember:
+    active: true
+    allowedNames: '_|ignored|expected|serialVersionUID'
+  UnusedPrivateProperty:
+    active: true
+    allowedNames: '_|ignored|expected|serialVersionUID'
+  UnusedPrivateClass:
+    active: true
+  # Unused imports. detekt core carries this; kotlinc does not warn on unused
+  # imports at all, which is how an unused `imePadding` import survived.
+  UnusedImports:
+    active: true
+  # An unused function parameter. `by remember { }` state and Compose lambdas pass
+  # parameters that are only consumed by the compiler plugin, so @Composable is
+  # ignored; everything else is held to the default.
+  UnusedParameter:
+    active: true
+    allowedNames: 'ignored|expected|_'
+
+# --- Correctness -------------------------------------------------------------
+potential-bugs:
+  active: true
+  UnsafeCallOnNullableType:
+    active: true
+  CastToNullableType:
+    active: true
+  UnreachableCode:
+    active: true
+
+exceptions:
+  active: true
+  # The two rules below are baselined (see baseline.xml) rather than switched off,
+  # so the findings stay visible in the report instead of disappearing. All 23 are
+  # deliberate or false positives, e.g.:
+  #   * PdfPageSource.kt:117,121 -- `catch (e: Exception) { cleanup(); throw e }`
+  #     is a cleanup-and-rethrow, which SwallowedException misreads as a swallow.
+  #   * ViewerViewModel.kt -- a specific catch per known failure mode, then a
+  #     generic catch that maps anything left over to viewer_error_generic.
+  #   * ThumbnailLoader.kt:65 -- commented in place as broad on purpose; a
+  #     thumbnail is decoration and must not crash the app.
+  # Baseline consequence to be aware of: these two rules will not fail the build
+  # for NEW occurrences either. Delete baseline.xml if you would rather they did.
+  TooGenericExceptionCaught:
+    active: true
+    allowedExceptionNameRegex: '_|(ignore|expected).*'
+  SwallowedException:
+    active: true
+    ignoredExceptionTypes:
+      - 'InterruptedException'
+      - 'MalformedURLException'
+      - 'NumberFormatException'
+      - 'ParseException'
+
+# --- Deliberately off -------------------------------------------------------
+
+complexity:
+  active: false
+  # OfficeTextExtractor.kt is ~730 lines by design: a streaming XmlPullParser walk
+  # keeps its state in local classes (Slot, TableGrid) that only make sense
+  # attached to the walk they belong to. LargeClass / LongMethod / TooManyFunctions
+  # all fire on that shape and would be noise rather than signal.
+
+coroutines:
+  active: false
+
+naming:
+  active: false
+
+performance:
+  active: false
+
+empty-blocks:
+  active: false
+
+comments:
+  active: false
+  # These ask for MORE documentation. This codebase documents *why* something
+  # works and stays quiet on the obvious; UndocumentedPublic* would push it
+  # toward the opposite of that. OutdatedDocumentation is off with them rather
+  # than separately -- it only matters if KDoc is being enforced, which it is not.
+  UndocumentedPublicClass:
+    active: false
+  UndocumentedPublicFunction:
+    active: false
+  UndocumentedPublicProperty:
+    active: false
+  OutdatedDocumentation:
+    active: false
