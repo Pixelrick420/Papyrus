@@ -1,5 +1,6 @@
 package com.papyrus.app.ui.screens
 
+import android.content.Intent
 import android.net.Uri
 import android.text.format.DateUtils
 import android.text.format.Formatter
@@ -33,11 +34,14 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.path
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -69,6 +73,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.core.net.toUri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
@@ -78,7 +83,10 @@ import com.papyrus.app.data.DocumentEntity
 import com.papyrus.app.data.DocumentFormat
 import com.papyrus.app.data.DocumentRepository
 import com.papyrus.app.data.OpenPersistableDocuments
+import com.papyrus.app.data.SafAccess
 import com.papyrus.app.data.ThumbnailLoader
+import com.papyrus.app.data.shareIntent
+import com.papyrus.app.data.shareMimeType
 import com.papyrus.app.ui.AppViewModelProvider
 import com.papyrus.app.ui.UiText
 import com.papyrus.app.ui.asString
@@ -187,6 +195,19 @@ class HomeViewModel(
             _messages.send(UiText(R.string.home_removed))
         }
     }
+
+    /** Probed first: a chooser opened over a dead grant works, then fails inside the chosen app. */
+    fun share(document: DocumentEntity, onShare: (Intent) -> Unit) {
+        viewModelScope.launch {
+            when (repository.probeShare(document)) {
+                SafAccess.Readable ->
+                    onShare(shareIntent(document.uri.toUri(), shareMimeType(document)))
+                SafAccess.NoAccess -> _messages.send(UiText(R.string.home_share_no_access))
+                SafAccess.Missing -> _messages.send(UiText(R.string.home_share_missing))
+                SafAccess.Unreadable -> _messages.send(UiText(R.string.home_share_failed))
+            }
+        }
+    }
 }
 
 /** A plus drawn as two strokes on a 24dp grid; tinted by [Icon]. */
@@ -229,6 +250,9 @@ fun HomeScreen(
     // Seeded from the ViewModel, so coming back from the viewer finds the same search.
     var text by remember { mutableStateOf(viewModel.query.value) }
 
+    // Which row has its menu open, not a bare flag: one flag would open every row's menu at once.
+    var menuFor by remember { mutableStateOf<Long?>(null) }
+
     val dismissKeyboard: () -> Unit = {
         keyboard?.hide()
         focusManager.clearFocus()
@@ -244,6 +268,13 @@ fun HomeScreen(
 
     // Per-document read grant is enough: the app never writes to a document it opened.
     val context = LocalContext.current
+
+    // Built here because both startActivity and the chooser title need the Activity.
+    val chooserTitle = stringResource(R.string.action_share)
+    val shareDocument: (DocumentEntity) -> Unit = { doc ->
+        dismissKeyboard()
+        viewModel.share(doc) { send -> context.startActivity(Intent.createChooser(send, chooserTitle)) }
+    }
 
     LaunchedEffect(viewModel) {
         viewModel.messages.collect { snackbar.showSnackbar(it.asString(context)) }
@@ -345,6 +376,8 @@ fun HomeScreen(
                         DocumentRow(
                             doc = doc,
                             loader = viewModel.thumbnailLoader,
+                            menuOpen = menuFor == doc.id,
+                            onMenuOpenChange = { open -> menuFor = if (open) doc.id else null },
                             onClick = {
                                 dismissKeyboard()
                                 onOpenDocument(doc.id)
@@ -353,6 +386,7 @@ fun HomeScreen(
                                 dismissKeyboard()
                                 viewModel.remove(doc)
                             },
+                            onShare = { shareDocument(doc) },
                             // Filtering, removing and re-sorting glide instead of snapping.
                             modifier = Modifier.animateItem(),
                         )
@@ -473,8 +507,11 @@ private fun EmptyState(
 private fun DocumentRow(
     doc: DocumentEntity,
     loader: ThumbnailLoader,
+    menuOpen: Boolean,
+    onMenuOpenChange: (Boolean) -> Unit,
     onClick: () -> Unit,
     onRemove: () -> Unit,
+    onShare: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -514,13 +551,26 @@ private fun DocumentRow(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            IconButton(onClick = onRemove) {
-                Icon(
-                    Icons.Default.Close,
-                    contentDescription = stringResource(R.string.cd_remove_from_list),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(20.dp),
-                )
+            Box {
+                IconButton(onClick = { onMenuOpenChange(true) }) {
+                    Icon(
+                        Icons.Default.MoreVert,
+                        contentDescription = stringResource(R.string.home_menu),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
+                DropdownMenu(expanded = menuOpen, onDismissRequest = { onMenuOpenChange(false) }) {
+                    // Destructive last, so it cannot be reached by reflex from the icon.
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.action_share)) },
+                        onClick = { onMenuOpenChange(false); onShare() },
+                    )
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.action_remove)) },
+                        onClick = { onMenuOpenChange(false); onRemove() },
+                    )
+                }
             }
         }
     }

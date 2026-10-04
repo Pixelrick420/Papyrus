@@ -61,6 +61,10 @@ class DocumentRepository(
         dao.deleteById(document.id)
     }
 
+    /** Readability of a stored document, for the share action's pre-flight check. */
+    suspend fun probeShare(document: DocumentEntity): SafAccess =
+        withContext(Dispatchers.IO) { SafStorage.probeAccess(resolver, document.uri.toUri()) }
+
     /** A SAF grant can only come from the user picking the file again, so the re-pick is matched by display name. */
     suspend fun regrant(expected: DocumentEntity, picked: Uri): Boolean = withContext(Dispatchers.IO) {
         val meta = SafStorage.queryMetadata(context, picked)
