@@ -28,7 +28,7 @@ class PdfPageText(
 
     /**
      * Number of matches on the page, whether or not their boxes were kept. Non-overlapping, like the
-     * highlights, so it is also the length of [matchGroups] when nothing is cut off by the limit.
+     * highlights, so it is also [matchGroups]'s length when the limit cuts nothing off.
      */
     fun countMatches(query: String): Int {
         val needle = normalizeQuery(query)
@@ -37,11 +37,11 @@ class PdfPageText(
     }
 
     /**
-     * One entry per match, in order, each holding that match's rectangles: one per line it covers,
-     * so a match that wraps is two or more rectangles but still one match. A match with no drawable
-     * glyph keeps an empty entry rather than being skipped, so entry `i` is always the `i`-th match.
-     * Stops once [limit] rectangles are collected; empty when there are no boxes or no match, so
-     * [contains] tells the two apart.
+     * One entry per match, in order, each holding that match's rectangles: one per line it covers, so
+     * a wrapping match is two or more rectangles but still one match. A match with no drawable glyph
+     * keeps an empty entry rather than being skipped, so entry `i` is always the `i`-th match.
+     * Stops once [limit] rectangles are collected; empty when there are no boxes or no match, which
+     * [contains] tells apart.
      */
     fun matchGroups(query: String, limit: Int = MAX_RECTS_PER_PAGE): List<List<NormRect>> {
         val needle = normalizeQuery(query)

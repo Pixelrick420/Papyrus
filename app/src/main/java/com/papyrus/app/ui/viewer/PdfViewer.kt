@@ -183,8 +183,8 @@ fun PdfViewer(
 private const val DEFAULT_ASPECT = 1.414f
 
 /**
- * [matches] holds one list of rectangles per match on the page, in order; [activeMatch] is the index
- * of the current one, or null on a page that does not hold it.
+ * [matches] holds one list of rectangles per match on the page, in order; [activeMatch] is the
+ * current one's index, or null on a page that does not hold it.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable

@@ -10,8 +10,8 @@ import kotlin.math.abs
 import kotlin.coroutines.cancellation.CancellationException
 
 /**
- * Extracts each page's text and the box of every character, so find-in-file can highlight matches
- * on the rasterised page. Text is rebuilt from glyphs, not taken from [PDFTextStripper.getText],
+ * Extracts each page's text and the box of every character, so find-in-file can highlight matches on
+ * the rasterised page. Text is rebuilt from glyphs rather than taken from [PDFTextStripper.getText],
  * because the stripper normalises (a ligature becomes two letters) and positions stop lining up.
  */
 object PdfTextExtractor {
@@ -176,8 +176,8 @@ object PdfTextExtractor {
 
         /**
          * [current]'s bounding box as page-relative (left, top, right, bottom) in the displayed page.
-         * Built from the text matrix, not `xDirAdj`/`yDirAdj`: those follow the text's own direction,
-         * not the page's `/Rotate`, so on a rotated page they place every box wrongly.
+         * Built from the text matrix, not `xDirAdj`/`yDirAdj`: those follow the text's own direction
+         * rather than the page's `/Rotate`, so on a rotated page they place every box wrongly.
          */
         private fun boxOfCurrent(): FloatArray {
             val size = current.size

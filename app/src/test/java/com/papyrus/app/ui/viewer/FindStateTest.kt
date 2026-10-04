@@ -9,8 +9,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Find-in-file state transitions: query echo, stale-result rejection and hit highlighting.
- * Split out of ZoomAnchoringTest, which covers zoom anchoring and gesture arbitration.
+ * Find-in-file state transitions: query echo, stale-result rejection, hit highlighting. Split out of
+ * ZoomAnchoringTest, which covers zoom anchoring and gesture arbitration.
  */
 class FindStateTest {
 

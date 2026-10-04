@@ -45,21 +45,21 @@ import com.papyrus.app.R
 val ControlHeight = 48.dp
 
 /**
- * Tone 80 of the brand blue (#326AE3), used for the focused pill's border and glyph in dark mode
- * only. Both search fields in the app are this one composable, so Home and find-in-file follow.
+ * Tone 80 of the brand blue (#326AE3): the focused pill's border and glyph, dark mode only. Both
+ * search fields in the app are this one composable, so Home and find-in-file follow.
  */
 private val FocusBlueDark = Color(0xFFA9C3FF)
 
 private const val FOCUS_ANIMATION_MS = 180
 
 /**
- * The single search field for the app: Home's file filter and the viewer's find bar both draw it,
- * so they cannot drift apart. Drawn from the same defaults as the Open file button (shape, border,
- * transparent interior). Deliberately not Material's `SearchBar`: that fixes its own colors,
- * elevation and width rules, adds its own status-bar padding, and takes over the screen when expanded.
+ * The single search field for the app: Home's file filter and the viewer's find bar both draw it, so
+ * they cannot drift apart. Drawn from the same defaults as the Open file button (shape, border,
+ * transparent interior). Deliberately not Material's `SearchBar`, which fixes its own colors, elevation
+ * and width rules, adds status-bar padding, and takes over the screen when expanded.
  *
- * [trailing] fills the end of the pill (a clear button, a match counter). It owns its own end
- * inset, so the caller decides how far the last element sits from the rounded edge.
+ * [trailing] fills the end of the pill (a clear button, a match counter) and owns its own end inset,
+ * so the caller decides how far the last element sits from the rounded edge.
  */
 @Composable
 fun SearchPill(
