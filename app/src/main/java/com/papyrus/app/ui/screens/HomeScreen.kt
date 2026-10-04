@@ -86,7 +86,6 @@ import com.papyrus.app.data.OpenPersistableDocuments
 import com.papyrus.app.data.SafAccess
 import com.papyrus.app.data.ThumbnailLoader
 import com.papyrus.app.data.shareIntent
-import com.papyrus.app.data.shareMimeType
 import com.papyrus.app.ui.AppViewModelProvider
 import com.papyrus.app.ui.UiText
 import com.papyrus.app.ui.asString
@@ -201,7 +200,7 @@ class HomeViewModel(
         viewModelScope.launch {
             when (repository.probeShare(document)) {
                 SafAccess.Readable ->
-                    onShare(shareIntent(document.uri.toUri(), shareMimeType(document)))
+                    onShare(shareIntent(document.uri.toUri(), repository.shareTypeFor(document)))
                 SafAccess.NoAccess -> _messages.send(UiText(R.string.home_share_no_access))
                 SafAccess.Missing -> _messages.send(UiText(R.string.home_share_missing))
                 SafAccess.Unreadable -> _messages.send(UiText(R.string.home_share_failed))
