@@ -29,7 +29,7 @@ class MainActivity : ComponentActivity() {
                     externalDocument = externalDocument,
                     resolveExternalDocument = { uri ->
                         try {
-                            repository.register(uri)
+                            repository.openHandedOver(uri)
                         } catch (e: CancellationException) {
                             throw e
                         } catch (e: Exception) {
