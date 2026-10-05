@@ -39,6 +39,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
@@ -145,7 +146,10 @@ internal fun PdfViewer(
             ),
         )
 
-        Box(Modifier.fillMaxSize()) {
+        // Clipped here, outside the zoomable list: the pinch preview scales the list with a
+        // graphicsLayer, which does not clip itself, and the list's own scroll clip scales with it
+        // (and is padded past the edge for shadows), so the page would grow over the header.
+        Box(Modifier.fillMaxSize().clipToBounds()) {
             LazyColumn(
                 state = listState,
                 // Both axes off from the first pinch until every finger is up, so the finger that lingers cannot scroll.

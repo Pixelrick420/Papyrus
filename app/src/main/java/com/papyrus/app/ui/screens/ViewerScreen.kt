@@ -45,6 +45,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isCtrlPressed
@@ -208,7 +209,8 @@ fun ViewerScreen(
                 )
             }
 
-            Box(Modifier.weight(1f).fillMaxWidth()) {
+            // Clipped so a zoom preview can never paint over the header or the find bar above.
+            Box(Modifier.weight(1f).fillMaxWidth().clipToBounds()) {
                 when (val content = state.content) {
                     ViewerContent.Loading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
                     is ViewerContent.Pdf -> PdfViewer(
