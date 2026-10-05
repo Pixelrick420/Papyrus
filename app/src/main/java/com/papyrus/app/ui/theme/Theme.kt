@@ -9,8 +9,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
 /**
- * The app's blue, read off the launcher icon background
- * (`res/values/ic_launcher_background.xml`) so icon and UI are one colour. It is `primary` in
+ * The app's blue. It used to be read off the launcher icon background so icon and UI were one
+ * colour; the icon is now a white page with grey lines, so this stands alone. It is `primary` in
  * *both* schemes -- not a tint in one and the tone-80 step in the other -- so the same blue shows
  * in light and dark.
  */
