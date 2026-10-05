@@ -17,6 +17,7 @@ import com.papyrus.app.viewer.NormRect
 import com.papyrus.app.viewer.OfficeTextExtractor
 import com.papyrus.app.viewer.PdfPageSource
 import com.papyrus.app.viewer.PdfPageText
+import com.papyrus.app.viewer.PdfPageTextSource
 import com.papyrus.app.viewer.PdfPasswordException
 import com.papyrus.app.viewer.PdfTextExtractor
 import com.papyrus.app.viewer.TextSniffer
@@ -157,6 +158,14 @@ class ViewerViewModel(
 
     /** Cancelled per query; racing searches would let the older overwrite the newer. */
     private var findJob: Job? = null
+
+    /**
+     * Page text for selecting, read a page at a time. Find's pass above reads the whole document, which
+     * a long-press cannot wait on. Keyed by the URI it was opened for, so a re-grant onto a new URI
+     * does not keep reading the dead one.
+     */
+    private var pageTextSource: PdfPageTextSource? = null
+    private var pageTextSourceUri: String? = null
 
     /** Per document: a shared directory would let a viewer delete another's images. */
     private val mediaDir: File by lazy { File(app.cacheDir, "office-media/$documentId") }
@@ -321,6 +330,24 @@ class ViewerViewModel(
         }
     }
 
+    /**
+     * One page's text and glyph boxes, for selecting and copying; null if the document cannot be read.
+     * A search that has already read the page is reused, unless it was past the box budget: that page
+     * is searchable but has nothing to point at, so it is read again here with boxes.
+     */
+    suspend fun pageText(index: Int): PdfPageText? {
+        pdfPageText?.getOrNull(index)?.takeIf { it.hasBoxes || it.text.isBlank() }?.let { return it }
+        val uri = documentUri
+        if (uri.isEmpty()) return null
+        val source = pageTextSource?.takeIf { pageTextSourceUri == uri }
+            ?: PdfPageTextSource(app, uri.toUri()).also {
+                pageTextSource?.close()
+                pageTextSource = it
+                pageTextSourceUri = uri
+            }
+        return source.page(index)
+    }
+
     /** [picked] is checked against the title, so a wrong pick cannot re-point the row. */
     fun regrant(picked: Uri) {
         val doc = _state.value.document ?: return
@@ -374,6 +401,7 @@ class ViewerViewModel(
 
     override fun onCleared() {
         (_state.value.content as? ViewerContent.Pdf)?.source?.close()
+        pageTextSource?.close()
         // Unconditional: own dir per document, and any format may have written images.
         mediaDir.deleteRecursively()
     }
