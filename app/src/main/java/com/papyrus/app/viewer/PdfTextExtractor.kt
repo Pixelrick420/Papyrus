@@ -34,17 +34,32 @@ object PdfTextExtractor {
         val collector = PageCollector()
         var boxedChars = 0
         return List(document.numberOfPages) { page ->
-            collector.reset(trackBoxes = boxedChars < MAX_BOXED_CHARS)
-            collector.startPage = page + 1
-            collector.endPage = page + 1
-            try {
-                collector.getText(document)
-                collector.toPage().also { boxedChars += if (collector.trackingBoxes) it.text.length else 0 }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                PdfPageText("", FloatArray(0))
+            collect(collector, document, page, trackBoxes = boxedChars < MAX_BOXED_CHARS).also {
+                boxedChars += if (collector.trackingBoxes) it.text.length else 0
             }
+        }
+    }
+
+    /**
+     * Just page [pageIndex] (from 0), for a reader pointing at one page of a document nobody has
+     * searched. Boxes are always kept: the budget in [extract] is for a whole document read at once,
+     * and this is called once per page the reader touches.
+     */
+    fun extractPage(document: PDDocument, pageIndex: Int): PdfPageText =
+        collect(PageCollector(), document, pageIndex, trackBoxes = true)
+
+    /** Reads one page into [collector]; a page that fails to parse is empty, not an error. */
+    private fun collect(collector: PageCollector, document: PDDocument, page: Int, trackBoxes: Boolean): PdfPageText {
+        collector.reset(trackBoxes)
+        collector.startPage = page + 1
+        collector.endPage = page + 1
+        return try {
+            collector.getText(document)
+            collector.toPage()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            PdfPageText("", FloatArray(0))
         }
     }
 
