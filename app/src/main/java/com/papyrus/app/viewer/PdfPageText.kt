@@ -1,12 +1,17 @@
 package com.papyrus.app.viewer
 
+import java.text.BreakIterator
 import java.text.Normalizer
 import java.util.BitSet
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.sqrt
 
 /** A rectangle in page-relative units: 0..1 across and down, origin at the page's top-left. */
 data class NormRect(val left: Float, val top: Float, val right: Float, val bottom: Float)
+
+/** The character nearest a point, and how far away it is, in page heights. */
+data class CharHit(val index: Int, val distance: Float)
 
 /** Page text plus 4 page-relative floats per character, NaN where a character has no glyph. */
 class PdfPageText(
@@ -62,6 +67,93 @@ class PdfPageText(
     fun matchRects(query: String, limit: Int = MAX_RECTS_PER_PAGE): List<NormRect> =
         matchGroups(query, limit).flatten()
 
+    /** True when glyph boxes were kept. A page past the extractor's budget holds text without them. */
+    val hasBoxes: Boolean get() = boxes.isNotEmpty()
+
+    /** Whether there is anything to point at: a scan has no text, and a page without boxes has nowhere for a finger to land. */
+    val isSelectable: Boolean get() = boxes.isNotEmpty() && text.any { !it.isWhitespace() }
+
+    /**
+     * The character whose box is nearest ([x], [y]), in the units of the boxes, or null when no
+     * character has one. A point inside a box is at distance 0, and the first of two overlapping
+     * boxes wins.
+     *
+     * [CharHit.distance] is in page heights: [aspect] (page height over width) shrinks the sideways
+     * axis to match, so a step across and a step down that are the same length on screen count the
+     * same, whatever the page's shape. Without it a wide step would look a fraction of a tall one.
+     */
+    fun nearestChar(x: Float, y: Float, aspect: Float = 1f): CharHit? {
+        if (boxes.isEmpty()) return null
+        val sideways = if (aspect > 0f) 1f / aspect else 1f
+        var best = -1
+        var bestSquared = Float.MAX_VALUE
+        for (i in text.indices) {
+            val o = i * 4
+            val left = boxes[o]
+            if (left.isNaN()) continue
+            val dx = distanceToSpan(x, left, boxes[o + 2]) * sideways
+            val dy = distanceToSpan(y, boxes[o + 1], boxes[o + 3])
+            val squared = dx * dx + dy * dy
+            if (squared < bestSquared) {
+                best = i
+                bestSquared = squared
+            }
+        }
+        return if (best < 0) null else CharHit(best, sqrt(bestSquared))
+    }
+
+    /**
+     * The caret position nearest ([x], [y]), from 0 to the page's character count: before or after
+     * the closest character, by which half of its box the point is in. Null when no character has a box.
+     */
+    fun caretAt(x: Float, y: Float, aspect: Float = 1f): Int? {
+        val hit = nearestChar(x, y, aspect) ?: return null
+        val o = hit.index * 4
+        return if (x < (boxes[o] + boxes[o + 2]) / 2f) hit.index else hit.index + 1
+    }
+
+    /**
+     * The word holding the character at [index], as a range of character indices, or null if that
+     * is not a word (whitespace, or an index off the page). Broken by the platform's own word
+     * rules, so a Chinese run is split where a reader would, not only at spaces.
+     */
+    fun wordAround(index: Int): IntRange? {
+        if (index !in text.indices) return null
+        val words = BreakIterator.getWordInstance()
+        words.setText(text)
+        val end = words.following(index)
+        if (end == BreakIterator.DONE) return null
+        val start = words.preceding(end)
+        if (start == BreakIterator.DONE || text.substring(start, end).isBlank()) return null
+        return start until end
+    }
+
+    /**
+     * One rectangle per line for characters [start] up to, not including, [end]; a selection that
+     * wraps is several. Both ends are clamped to the page, so `Int.MAX_VALUE` means "to the end".
+     * Empty when the page has no boxes.
+     */
+    fun selectionRects(start: Int, end: Int, limit: Int = MAX_RECTS_PER_PAGE): List<NormRect> {
+        if (boxes.isEmpty()) return emptyList()
+        val from = start.coerceIn(0, text.length)
+        val to = end.coerceIn(from, text.length)
+        if (from == to) return emptyList()
+        return ArrayList<NormRect>().also { appendLineRects(from, to, it, limit) }
+    }
+
+    /**
+     * The text of characters [start] up to, not including, [end], clamped to the page. A wrap point
+     * becomes a newline, so what is copied breaks where the page does; every other separator is
+     * the space the extractor already holds.
+     */
+    fun textBetween(start: Int, end: Int): String {
+        val from = start.coerceIn(0, text.length)
+        val to = end.coerceIn(from, text.length)
+        val out = StringBuilder(to - from)
+        for (i in from until to) out.append(if (lineBreaks[i]) '\n' else text[i])
+        return out.toString()
+    }
+
     /** Start of each non-overlapping match: the next search resumes after the whole match. */
     private fun matchStarts(needle: String): Sequence<Int> = sequence {
         var from = 0
@@ -110,6 +202,10 @@ class PdfPageText(
         }
         if (open && out.size < limit) out += NormRect(left, top, right, bottom)
     }
+
+    /** How far [v] is outside [low]..[high]: 0 inside. */
+    private fun distanceToSpan(v: Float, low: Float, high: Float): Float =
+        if (v < low) low - v else if (v > high) v - high else 0f
 
     companion object {
         const val MAX_RECTS_PER_PAGE = 2000

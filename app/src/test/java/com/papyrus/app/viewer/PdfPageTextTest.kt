@@ -2,11 +2,12 @@ package com.papyrus.app.viewer
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.util.BitSet
 
-/** Match-to-rectangle mapping: which characters a match covers and where it splits. */
+/** Match-to-rectangle mapping (which characters a match covers and where it splits) and selection (where a point lands, and what it picks up). */
 class PdfPageTextTest {
 
     /** One line of characters charWidth apart; spaces get no box, as the extractor emits. */
@@ -230,6 +231,208 @@ class PdfPageTextTest {
 
         assertEquals(10, groups.size)
         assertEquals(50, page(text, line(text)).countMatches("a"))
+    }
+
+    // Selecting: pointing at a page, finding the word under the finger, and getting its text back.
+
+    /** Two lines, the second wrapped from the first at [wrapAt] (a space flagged as a break). */
+    private fun wrapped(text: String, wrapAt: Int): PdfPageText {
+        val boxes = text.mapIndexed { i, ch ->
+            val second = i > wrapAt
+            val top = if (second) 0.30f else 0.10f
+            val left = (if (second) i - wrapAt - 1 else i) * 0.01f
+            if (ch == ' ') floatArrayOf(Float.NaN, Float.NaN, Float.NaN, Float.NaN)
+            else floatArrayOf(left, top, left + 0.01f, top + 0.02f)
+        }
+        return page(text, boxes, setOf(wrapAt))
+    }
+
+    @Test
+    fun `the nearest character is the one under the point`() {
+        val text = "hello world"
+        val hit = requireNotNull(page(text, line(text)).nearestChar(0.065f, 0.11f))
+
+        assertEquals(6, hit.index) // the "w"
+        assertEquals(0f, hit.distance, 0.0001f)
+    }
+
+    @Test
+    fun `a point off the text picks the nearest character and says how far`() {
+        val text = "hello world"
+        val page = page(text, line(text))
+
+        // Straight below the "w": the gap is the vertical distance and nothing else.
+        val below = requireNotNull(page.nearestChar(0.065f, 0.16f))
+        assertEquals(6, below.index)
+        assertEquals(0.04f, below.distance, 0.0001f)
+
+        // Past the end of the line, level with it: the last letter, by the sideways gap.
+        val right = requireNotNull(page.nearestChar(0.50f, 0.11f))
+        assertEquals(10, right.index)
+        assertEquals(0.39f, right.distance, 0.0001f)
+    }
+
+    @Test
+    fun `a gap between words never answers with the space`() {
+        val text = "ab cd"
+        val page = page(text, line(text))
+
+        // Over the space at index 2, nearer the "b" than the "c".
+        assertEquals(1, page.nearestChar(0.0235f, 0.11f)?.index)
+        assertEquals(3, page.nearestChar(0.0305f, 0.11f)?.index)
+    }
+
+    @Test
+    fun `the nearer of two lines wins`() {
+        val text = "two lines of a long paragraph"
+        val page = wrapped(text, wrapAt = text.indexOf("a long") + 1)
+
+        // First line at 0.10..0.12, second at 0.30..0.32.
+        assertTrue(requireNotNull(page.nearestChar(0.005f, 0.14f)).index <= text.indexOf("a long"))
+        assertTrue(requireNotNull(page.nearestChar(0.005f, 0.27f)).index > text.indexOf("a long"))
+    }
+
+    @Test
+    fun `distance is in page heights whatever the page's shape`() {
+        val text = "hello"
+        val page = page(text, line(text))
+
+        // 0.04 past the last box across a page twice as tall as wide: 0.02 of its height.
+        assertEquals(0.02f, requireNotNull(page.nearestChar(0.09f, 0.11f, aspect = 2f)).distance, 0.0001f)
+        // On a page wider than tall the same step is a larger share of the height.
+        assertEquals(0.08f, requireNotNull(page.nearestChar(0.09f, 0.11f, aspect = 0.5f)).distance, 0.0001f)
+    }
+
+    @Test
+    fun `a page without boxes has nothing to point at`() {
+        val page = PdfPageText("find the needle", FloatArray(0))
+
+        assertNull(page.nearestChar(0.5f, 0.5f))
+        assertNull(page.caretAt(0.5f, 0.5f))
+        assertFalse(page.hasBoxes)
+        assertFalse(page.isSelectable)
+        assertTrue(page.selectionRects(0, 4).isEmpty())
+    }
+
+    @Test
+    fun `a blank page is not selectable even with boxes`() {
+        val text = "   "
+        val page = page(text, line(text))
+
+        assertTrue(page.hasBoxes)
+        assertFalse(page.isSelectable)
+        assertTrue(page("hello", line("hello")).isSelectable)
+    }
+
+    @Test
+    fun `the caret goes before or after a character by which half was touched`() {
+        val text = "hello"
+        val page = page(text, line(text))
+
+        assertEquals(2, page.caretAt(0.022f, 0.11f)) // left half of the "l" at 0.02..0.03
+        assertEquals(3, page.caretAt(0.028f, 0.11f)) // right half
+    }
+
+    @Test
+    fun `a caret off either end of a line stays on the line`() {
+        val text = "hello"
+        val page = page(text, line(text))
+
+        assertEquals(0, page.caretAt(-0.30f, 0.11f))
+        assertEquals(5, page.caretAt(0.90f, 0.11f))
+    }
+
+    @Test
+    fun `a word is the run of letters under the finger`() {
+        val text = "hello world"
+        val page = page(text, line(text))
+
+        assertEquals(0..4, page.wordAround(1))
+        assertEquals(0..4, page.wordAround(0))
+        assertEquals(0..4, page.wordAround(4))
+        assertEquals(6..10, page.wordAround(10))
+    }
+
+    @Test
+    fun `punctuation stays out of the word but an apostrophe stays in`() {
+        val text = "don't stop."
+        val page = page(text, line(text))
+
+        assertEquals(0..4, page.wordAround(2)) // don't
+        assertEquals(6..9, page.wordAround(7)) // stop, without its full stop
+    }
+
+    @Test
+    fun `a space or an index off the page is no word`() {
+        val text = "ab cd"
+        val page = page(text, line(text))
+
+        assertNull(page.wordAround(2))
+        assertNull(page.wordAround(-1))
+        assertNull(page.wordAround(5))
+    }
+
+    @Test
+    fun `a selection is one rectangle across the gap between its words`() {
+        val text = "hello world"
+        val rects = page(text, line(text)).selectionRects(0, 11)
+
+        assertEquals(1, rects.size)
+        assertEquals(0.00f, rects[0].left, 0.0001f)
+        assertEquals(0.11f, rects[0].right, 0.0001f)
+    }
+
+    @Test
+    fun `a selection covers only the characters asked for`() {
+        val text = "hello world"
+        val rects = page(text, line(text)).selectionRects(6, 9) // "wor"
+
+        assertEquals(1, rects.size)
+        assertEquals(0.06f, rects[0].left, 0.0001f)
+        assertEquals(0.09f, rects[0].right, 0.0001f)
+    }
+
+    @Test
+    fun `a selection that wraps is a rectangle per line`() {
+        val text = "two lines of a long paragraph"
+        val wrapAt = text.indexOf("a long") + 1
+        val rects = wrapped(text, wrapAt).selectionRects(text.indexOf("of"), text.length)
+
+        assertEquals(2, rects.size)
+        assertEquals(0.10f, rects[0].top, 0.0001f)
+        assertEquals(0.30f, rects[1].top, 0.0001f)
+    }
+
+    @Test
+    fun `an end past the page means to the end and an empty range draws nothing`() {
+        val text = "hello world"
+        val page = page(text, line(text))
+
+        assertEquals(0.11f, page.selectionRects(6, Int.MAX_VALUE)[0].right, 0.0001f)
+        assertEquals(0.00f, page.selectionRects(-5, 3)[0].left, 0.0001f)
+        assertTrue(page.selectionRects(4, 4).isEmpty())
+        assertTrue(page.selectionRects(9, 2).isEmpty())
+        assertTrue(page.selectionRects(40, 50).isEmpty())
+    }
+
+    @Test
+    fun `selected text is the characters between the carets`() {
+        val text = "hello world"
+        val page = page(text, line(text))
+
+        assertEquals("llo wo", page.textBetween(2, 8))
+        assertEquals("hello world", page.textBetween(0, Int.MAX_VALUE))
+        assertEquals("", page.textBetween(5, 5))
+        assertEquals("", page.textBetween(8, 3))
+    }
+
+    @Test
+    fun `a wrap point is copied as a newline`() {
+        val text = "two lines of a long paragraph"
+        val wrapAt = text.indexOf("a long") + 1
+        val copied = wrapped(text, wrapAt).textBetween(text.indexOf("of"), text.length)
+
+        assertEquals("of a\nlong paragraph", copied)
     }
 
     @Test

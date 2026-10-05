@@ -1,5 +1,6 @@
 package com.papyrus.app.ui.screens
 
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.animation.AnimatedVisibility
@@ -19,6 +20,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -39,6 +41,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -50,6 +53,7 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
@@ -69,10 +73,13 @@ import com.papyrus.app.ui.viewer.FileInfoSheet
 import com.papyrus.app.ui.viewer.FindInFileBar
 import com.papyrus.app.ui.viewer.MarkdownViewer
 import com.papyrus.app.ui.viewer.OfficeViewer
+import com.papyrus.app.ui.viewer.PdfSelectionState
 import com.papyrus.app.ui.viewer.PdfViewer
 import com.papyrus.app.ui.viewer.PlainTextViewer
 import com.papyrus.app.ui.viewer.ZoomState
+import com.papyrus.app.ui.viewer.copyToClipboard
 import com.papyrus.app.ui.viewer.rememberZoomState
+import kotlinx.coroutines.launch
 
 /** Same inset as Home, so the find pill lines up with the Home search pill. */
 private val ScreenPadding = 16.dp
@@ -95,9 +102,25 @@ fun ViewerScreen(
     val focusManager = LocalFocusManager.current
     val zoom = rememberZoomState()
     val snackbar = remember { SnackbarHostState() }
+    val selectionScope = rememberCoroutineScope()
 
     var menuOpen by remember { mutableStateOf(false) }
     var infoOpen by remember { mutableStateOf(false) }
+
+    // What a long-press in a PDF selects. Held here rather than in [PdfViewer], because the header is
+    // where Copy and dismiss live. Re-created per document, so a selection never outlives its pages.
+    val selectionState = remember((state.content as? ViewerContent.Pdf)?.source) {
+        PdfSelectionState(
+            scope = selectionScope,
+            loadText = viewModel::pageText,
+            onNoText = { Toast.makeText(context, R.string.viewer_pdf_no_text, Toast.LENGTH_SHORT).show() },
+        )
+    }
+    // The selection takes over the header's overflow slot, so a menu left open would pop back up on
+    // the other side of the selection.
+    LaunchedEffect(selectionState.hasSelection) {
+        if (selectionState.hasSelection) menuOpen = false
+    }
 
     val find = state.find
     // Only surfaces with searchable content; a failed load has neither.
@@ -148,10 +171,18 @@ fun ViewerScreen(
                 title = state.document?.title.orEmpty(),
                 findAvailable = findAvailable,
                 menuOpen = menuOpen,
+                selectionActive = selectionState.hasSelection,
                 onMenuOpenChange = { menuOpen = it },
                 onBack = onBack,
                 onFind = viewModel::openFind,
                 onInfo = { infoOpen = true },
+                onCopySelection = {
+                    selectionScope.launch {
+                        selectionState.selectedText()?.let { copyToClipboard(context, it) }
+                        selectionState.clear()
+                    }
+                },
+                onClearSelection = selectionState::clear,
             )
 
             // In the flow, so the document below simply gets less height while this is shown.
@@ -184,6 +215,7 @@ fun ViewerScreen(
                         source = content.source,
                         aspectRatios = content.aspectRatios,
                         zoom = zoom,
+                        selectionState = selectionState,
                         pageHits = find.hits,
                         pageMatches = find.pageMatches,
                         activePage = find.activeIndex,
@@ -261,17 +293,21 @@ private const val FIND_ANIMATION_MS = 200
 
 /**
  * Flat, like Home's title row: no filled app-bar surface, a semibold title, the same 16dp edge for
- * the first icon. One line, because a long file name must not eat the page.
+ * the first icon. One line, because a long file name must not eat the page. With a text selection
+ * in a PDF the overflow menu gives way to Copy and dismiss.
  */
 @Composable
 private fun ViewerHeader(
     title: String,
     findAvailable: Boolean,
     menuOpen: Boolean,
+    selectionActive: Boolean,
     onMenuOpenChange: (Boolean) -> Unit,
     onBack: () -> Unit,
     onFind: () -> Unit,
     onInfo: () -> Unit,
+    onCopySelection: () -> Unit,
+    onClearSelection: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Row(
@@ -296,24 +332,43 @@ private fun ViewerHeader(
                 .semantics { heading() },
         )
 
-        Box {
-            IconButton(onClick = { onMenuOpenChange(true) }) {
+        // A selection borrows the overflow slot: dismiss takes the three dots' place, Copy its left,
+        // so clearing it puts the bar back exactly as it was.
+        if (selectionActive) {
+            IconButton(onClick = onCopySelection) {
                 Icon(
-                    Icons.Default.MoreVert,
-                    contentDescription = stringResource(R.string.viewer_menu),
+                    painter = painterResource(R.drawable.ic_copy),
+                    contentDescription = stringResource(R.string.viewer_copy),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            DropdownMenu(expanded = menuOpen, onDismissRequest = { onMenuOpenChange(false) }) {
-                DropdownMenuItem(
-                    text = { Text(stringResource(R.string.viewer_find_title)) },
-                    enabled = findAvailable,
-                    onClick = { onMenuOpenChange(false); onFind() },
+            IconButton(onClick = onClearSelection) {
+                Icon(
+                    Icons.Default.Close,
+                    contentDescription = stringResource(R.string.viewer_selection_clear),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                DropdownMenuItem(
-                    text = { Text(stringResource(R.string.viewer_info_title)) },
-                    onClick = { onMenuOpenChange(false); onInfo() },
-                )
+            }
+        } else {
+            Box {
+                IconButton(onClick = { onMenuOpenChange(true) }) {
+                    Icon(
+                        Icons.Default.MoreVert,
+                        contentDescription = stringResource(R.string.viewer_menu),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                DropdownMenu(expanded = menuOpen, onDismissRequest = { onMenuOpenChange(false) }) {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.viewer_find_title)) },
+                        enabled = findAvailable,
+                        onClick = { onMenuOpenChange(false); onFind() },
+                    )
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.viewer_info_title)) },
+                        onClick = { onMenuOpenChange(false); onInfo() },
+                    )
+                }
             }
         }
     }
