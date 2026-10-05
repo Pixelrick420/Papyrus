@@ -96,6 +96,7 @@ fun MarkdownViewer(
     val textPx = baseTextPx * zoom.committedScale
     val rendered = rememberRenderedMarkdown(markwon, source, text, textPx, textColor, linkColor)
     val highlighted = rememberHighlightedText(rendered, findQuery)
+    val textState = remember { MarkdownTextState() }
 
     // A commit re-wraps the text, so the paragraph under the finger has to be pinned across it. The
     // anchor reads that paragraph at the commit, before the re-wrap; the text only reaches its new
@@ -122,6 +123,9 @@ fun MarkdownViewer(
                             TextView(context).apply {
                                 setTextSize(TypedValue.COMPLEX_UNIT_PX, textPx)
                                 setLineSpacing(0f, LINE_SPACING_MULTIPLIER)
+                                // The setter, not `isTextSelectable = true`: that resolves to the read-only
+                                // val and does not compile.
+                                setTextIsSelectable(true)
                             }
                         },
                         update = { view ->
@@ -130,13 +134,30 @@ fun MarkdownViewer(
                             // Committed scale, not live: the preview layer paints the in-flight gesture,
                             // gesture, and resizing per frame relaid out the whole document.
                             view.setTextSize(TypedValue.COMPLEX_UNIT_PX, textPx)
-                            markwon.setParsedMarkdown(view, highlighted)
+                            // Only on a change: setting text collapses the selection and dismisses the
+                            // copy toolbar, so a find query or a zoom commit would kill a copy in progress.
+                            // The view is compared too, because `ScaledTypography` composes differently at
+                            // 1x, so crossing 1x hands over a new TextView.
+                            if (textState.view !== view || textState.text !== highlighted) {
+                                textState.view = view
+                                textState.text = highlighted
+                                markwon.setParsedMarkdown(view, highlighted)
+                            }
                         },
                     )
                 }
             }
         }
     }
+}
+
+/**
+ * Plain fields, not Compose state: `AndroidView`'s update block runs during layout, and an observable
+ * one would recompose on every text set.
+ */
+private class MarkdownTextState {
+    var view: TextView? = null
+    var text: Spanned? = null
 }
 
 /**
