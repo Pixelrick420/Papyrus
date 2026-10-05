@@ -31,6 +31,11 @@ access</string>
     <string name="viewer_error_unsupported">This file type isn\'t supported.</string>
     <string name="viewer_error_empty">No readable text found in this document.</string>
     <string name="viewer_error_generic">Couldn\'t open the document: %1$s</string>
+    <string name="viewer_copy">Copy</string>
+    <string name="viewer_copied">Copied</string>
+    <string name="viewer_copy_failed">That\'s too much text to copy.</string>
+    <string name="viewer_pdf_no_text">This page has no selectable text.</string>
+    <string name="viewer_selection_clear">Clear selection</string>
     <string name="viewer_truncated">… (file truncated for display)</string>
     <string name="viewer_page_indicator">%1$d / %2$d</string>
     <string name="viewer_office_image_loading">Loading image…</string>

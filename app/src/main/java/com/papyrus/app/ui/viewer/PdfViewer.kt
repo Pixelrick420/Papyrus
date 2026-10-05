@@ -1,6 +1,7 @@
 package com.papyrus.app.ui.viewer
 
 import android.graphics.Bitmap
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -27,11 +28,13 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -45,11 +48,13 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import com.papyrus.app.R
 import com.papyrus.app.viewer.NormRect
+import com.papyrus.app.viewer.PdfPageGeometry
 import com.papyrus.app.viewer.PdfPageSource
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
@@ -64,12 +69,17 @@ private val PAGE_GAP = 8.dp
 /** A drag emits a size change per frame, and each queues a rasterisation behind the source's mutex. */
 private const val RESIZE_SETTLE_MILLIS = 150L
 
-/** Zoom feeds the render width, which [PdfPageSource] caches by, so wider re-renders crisply. */
+/**
+ * Zoom feeds the render width, which [PdfPageSource] caches by, so wider re-renders crisply.
+ * [selectionState] is owned by the screen, not here, so the header can offer Copy and dismiss;
+ * back still dismisses from here, where the pages are.
+ */
 @Composable
-fun PdfViewer(
+internal fun PdfViewer(
     source: PdfPageSource,
     aspectRatios: List<Float>,
     zoom: ZoomState,
+    selectionState: PdfSelectionState,
     modifier: Modifier = Modifier,
     pageHits: List<Int> = emptyList(),
     pageMatches: Map<Int, List<List<NormRect>>> = emptyMap(),
@@ -85,6 +95,8 @@ fun PdfViewer(
 
     // Hits repeat a page once per match; the page only needs to be known once.
     val hitPages = remember(pageHits) { pageHits.toSet() }
+
+    BackHandler(enabled = selectionState.hasSelection) { selectionState.clear() }
 
     // A page can be taller than the screen, so a step to another match on it has to scroll to that
     // match. This brings the page in; the page then scrolls to its own current match, once per step.
@@ -123,6 +135,15 @@ fun PdfViewer(
         // Scaled with the pages. Fixed gaps would put the layout at the new scale off the preview by
         // (ratio - 1) of a gap per page, which adds up across the pages that are in view.
         val pageGap = PAGE_GAP * scale
+        // Lets a drag that leaves its page say which page it is over, from sizes alone.
+        val pageGeometry = rememberUpdatedState(
+            PdfPageGeometry(
+                pageCount = source.pageCount,
+                widthPx = renderWidthPx.toFloat(),
+                gapPx = with(LocalDensity.current) { pageGap.toPx() },
+                aspectOf = { aspectRatios.getOrElse(it) { DEFAULT_ASPECT } },
+            ),
+        )
 
         Box(Modifier.fillMaxSize()) {
             LazyColumn(
@@ -150,6 +171,8 @@ fun PdfViewer(
                             activeMatch = activeOccurrence.takeIf { index == activePage },
                             matches = pageMatches[index].orEmpty(),
                             reveal = reveal.takeIf { index == activePage },
+                            selectionState = selectionState,
+                            pageGeometry = pageGeometry,
                         )
                     }
                 }
@@ -198,6 +221,8 @@ private fun PdfPage(
     activeMatch: Int?,
     matches: List<List<NormRect>>,
     reveal: RevealTicket?,
+    selectionState: PdfSelectionState,
+    pageGeometry: State<PdfPageGeometry>,
 ) {
     // Keyed on page identity only; keying on widthPx blanked the page on every quantisation step.
     var bitmap by remember(source, index) { mutableStateOf<Bitmap?>(source.cached(index, widthPx)) }
@@ -241,6 +266,25 @@ private fun PdfPage(
         )
     }
 
+    // This page's share of the selection. A page inside a selection that spans it reads its own text
+    // as it scrolls in, so a long selection costs only the pages that are shown.
+    val current = selectionState.selection
+    val span = current?.spanOn(index)
+    val pageText = selectionState.textOf(index)
+    LaunchedEffect(selectionState, index, span != null) {
+        if (span != null) selectionState.ensureText(index)
+    }
+    val selectionRects = remember(span, pageText) {
+        if (span != null && pageText != null) pageText.selectionRects(span.from, span.to) else emptyList()
+    }
+    val handleRadius = with(LocalDensity.current) { HandleRadius.toPx() }
+    val handles = rememberUpdatedState(
+        remember(current, selectionRects, pageSize, handleRadius) {
+            pageHandles(current, index, selectionRects, pageSize, handleRadius)
+        },
+    )
+    val density = LocalDensity.current
+
     Box(
         Modifier
             // The exact render width, not a fraction of the slot, which would clamp if they differ.
@@ -248,7 +292,16 @@ private fun PdfPage(
             .aspectRatio(1f / aspect)
             .background(Color.White)
             .onSizeChanged { pageSize = it }
-            .bringIntoViewRequester(requester),
+            .bringIntoViewRequester(requester)
+            .pdfSelectionGestures(
+                state = selectionState,
+                page = index,
+                geometry = pageGeometry,
+                handles = handles,
+                haptics = LocalHapticFeedback.current,
+                reachPx = with(density) { SelectionReach.toPx() },
+                grabRadiusPx = with(density) { HandleGrabRadius.toPx() },
+            ),
     ) {
         bitmap?.let { bmp ->
             Image(
@@ -277,6 +330,12 @@ private fun PdfPage(
                 matches.forEachIndexed { i, rects -> if (i != activeMatch) drawMatch(rects, otherColor) }
                 // Last, so the current match sits on top of any neighbour it touches.
                 activeMatch?.let { matches.getOrNull(it) }?.let { drawMatch(it, activeColor) }
+            }
+        }
+        if (selectionRects.isNotEmpty()) {
+            val selectionColor = MaterialTheme.colorScheme.primary
+            Canvas(Modifier.fillMaxSize()) {
+                drawSelection(selectionRects, handles.value, selectionColor, handleRadius)
             }
         }
         // No rectangles to show (past the extractor's budget), so a border is the only signal. That
