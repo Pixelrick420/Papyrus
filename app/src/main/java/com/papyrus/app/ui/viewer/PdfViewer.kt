@@ -72,8 +72,7 @@ private const val RESIZE_SETTLE_MILLIS = 150L
 
 /**
  * Zoom feeds the render width, which [PdfPageSource] caches by, so wider re-renders crisply.
- * [selectionState] is owned by the screen, not here, so the header can offer Copy and dismiss;
- * back still dismisses from here, where the pages are.
+ * [selectionState] is owned by the screen (its header needs Copy and dismiss); back is handled here.
  */
 @Composable
 internal fun PdfViewer(
@@ -146,9 +145,8 @@ internal fun PdfViewer(
             ),
         )
 
-        // Clipped here, outside the zoomable list: the pinch preview scales the list with a
-        // graphicsLayer, which does not clip itself, and the list's own scroll clip scales with it
-        // (and is padded past the edge for shadows), so the page would grow over the header.
+        // A graphicsLayer scale does not clip itself, and the list's scroll clip scales with it (padded
+        // past the edge for shadows), so this unscaled parent must clip or the page grows over the header.
         Box(Modifier.fillMaxSize().clipToBounds()) {
             LazyColumn(
                 state = listState,
@@ -270,8 +268,7 @@ private fun PdfPage(
         )
     }
 
-    // This page's share of the selection. A page inside a selection that spans it reads its own text
-    // as it scrolls in, so a long selection costs only the pages that are shown.
+    // A page a selection spans reads its own text as it scrolls in: only shown pages cost.
     val current = selectionState.selection
     val span = current?.spanOn(index)
     val pageText = selectionState.textOf(index)
@@ -281,18 +278,18 @@ private fun PdfPage(
     val selectionRects = remember(span, pageText) {
         if (span != null && pageText != null) pageText.selectionRects(span.from, span.to) else emptyList()
     }
-    val handleRadius = with(LocalDensity.current) { HandleRadius.toPx() }
+    val density = LocalDensity.current
+    val handleRadius = with(density) { HandleRadius.toPx() }
     val handles = rememberUpdatedState(
         remember(current, selectionRects, pageSize, handleRadius) {
             pageHandles(current, index, selectionRects, pageSize, handleRadius)
         },
     )
-    val density = LocalDensity.current
 
     Box(
         Modifier
             // The exact render width, not a fraction of the slot, which would clamp if they differ.
-            .width(with(LocalDensity.current) { widthPx.toDp() })
+            .width(with(density) { widthPx.toDp() })
             .aspectRatio(1f / aspect)
             .background(Color.White)
             .onSizeChanged { pageSize = it }
