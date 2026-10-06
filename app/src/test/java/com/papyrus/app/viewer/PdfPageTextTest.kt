@@ -27,7 +27,7 @@ class PdfPageTextTest {
     @Test
     fun `a match is one rectangle spanning its characters`() {
         val text = "find the needle here"
-        val rects = page(text, line(text)).matchRects("needle")
+        val rects = page(text, line(text)).matchGroups("needle").flatten()
 
         assertEquals(1, rects.size)
         assertEquals(0.09f, rects[0].left, 0.0001f)
@@ -39,14 +39,14 @@ class PdfPageTextTest {
     @Test
     fun `every occurrence gets its own rectangle`() {
         val text = "needle and needle and needle"
-        assertEquals(3, page(text, line(text)).matchRects("needle").size)
+        assertEquals(3, page(text, line(text)).matchGroups("needle").flatten().size)
     }
 
     @Test
     fun `a phrase spanning words is one rectangle across the gap`() {
         // The space between the words has no box; the rectangle must still run across it.
         val text = "a quick brown fox"
-        val rects = page(text, line(text)).matchRects("quick brown")
+        val rects = page(text, line(text)).matchGroups("quick brown").flatten()
 
         assertEquals(1, rects.size)
         assertEquals(0.02f, rects[0].left, 0.0001f)
@@ -65,7 +65,7 @@ class PdfPageTextTest {
             if (ch == ' ') floatArrayOf(Float.NaN, Float.NaN, Float.NaN, Float.NaN)
             else floatArrayOf(left, top, left + 0.01f, top + 0.02f)
         }
-        val rects = page(text, boxes, setOf(wrapAt)).matchRects("lines of a long paragraph")
+        val rects = page(text, boxes, setOf(wrapAt)).matchGroups("lines of a long paragraph").flatten()
 
         assertEquals(2, rects.size)
         assertEquals(0.10f, rects[0].top, 0.0001f)
@@ -83,7 +83,7 @@ class PdfPageTextTest {
             floatArrayOf(0.20f, 0.10f, 0.22f, 0.11f),
             floatArrayOf(0.20f, 0.11f, 0.22f, 0.12f),
         )
-        val rects = page(text, boxes, setOf(2)).matchRects("ab cd")
+        val rects = page(text, boxes, setOf(2)).matchGroups("ab cd").flatten()
 
         assertEquals(2, rects.size)
         assertEquals(0.12f, rects[0].right, 0.0001f)
@@ -93,16 +93,16 @@ class PdfPageTextTest {
     @Test
     fun `matching is case-insensitive`() {
         val text = "Needle NEEDLE"
-        assertEquals(2, page(text, line(text)).matchRects("needle").size)
+        assertEquals(2, page(text, line(text)).matchGroups("needle").flatten().size)
     }
 
     @Test
     fun `a page with no boxes is still found but has nothing to draw`() {
-        // Over the memory budget: searchable, not highlightable, so contains and matchRects differ.
+        // Over the memory budget: searchable, not highlightable, so contains and matchGroups differ.
         val page = PdfPageText("find the needle", FloatArray(0))
 
         assertTrue(page.contains("needle"))
-        assertTrue(page.matchRects("needle").isEmpty())
+        assertTrue(page.matchGroups("needle").flatten().isEmpty())
     }
 
     @Test
@@ -111,15 +111,15 @@ class PdfPageTextTest {
         val page = page(text, line(text))
 
         assertFalse(page.contains("gamma"))
-        assertTrue(page.matchRects("gamma").isEmpty())
+        assertTrue(page.matchGroups("gamma").flatten().isEmpty())
         assertFalse(page.contains(""))
-        assertTrue(page.matchRects("").isEmpty())
+        assertTrue(page.matchGroups("").flatten().isEmpty())
     }
 
     @Test
     fun `the rectangle count is capped`() {
         val text = "a ".repeat(50)
-        assertEquals(10, page(text, line(text)).matchRects("a", limit = 10).size)
+        assertEquals(10, page(text, line(text)).matchGroups("a", limit = 10).flatten().size)
     }
 
     @Test
