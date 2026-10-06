@@ -9,6 +9,7 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -51,6 +52,7 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isCtrlPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
@@ -72,6 +74,7 @@ import com.papyrus.app.ui.asString
 import com.papyrus.app.ui.components.ControlHeight
 import com.papyrus.app.ui.viewer.FileInfoSheet
 import com.papyrus.app.ui.viewer.FindInFileBar
+import com.papyrus.app.ui.viewer.IDLE_ALPHA
 import com.papyrus.app.ui.viewer.MarkdownViewer
 import com.papyrus.app.ui.viewer.OfficeViewer
 import com.papyrus.app.ui.viewer.PdfSelectionState
@@ -403,15 +406,17 @@ private fun RegrantBanner(modifier: Modifier = Modifier, onRegrant: () -> Unit) 
 @Composable
 private fun ZoomBadge(zoom: ZoomState, modifier: Modifier = Modifier) {
     if (!zoom.isZoomed) return
+    // Matches the scroll knob, alpha included.
     Surface(
         modifier = modifier,
         shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.inverseSurface.copy(alpha = 0.8f),
+        color = Color.Black.copy(alpha = IDLE_ALPHA),
+        contentColor = Color.White.copy(alpha = IDLE_ALPHA),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = IDLE_ALPHA)),
     ) {
         Text(
             zoom.percentLabel(),
             style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.inverseOnSurface,
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
         )
     }
