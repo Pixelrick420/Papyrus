@@ -40,7 +40,6 @@ const val MIN_SCALE = 0.5f
 
 const val MAX_SCALE = 5f
 
-private const val STEP_FACTOR = 1.25f
 private const val DOUBLE_TAP_SCALE = 2.5f
 private const val EPSILON = 0.001f
 
@@ -211,10 +210,6 @@ class ZoomState(private val scope: CoroutineScope) {
     fun removeAnchor(anchor: ZoomAnchor) {
         anchors -= anchor
     }
-
-    fun stepUp() = set(committedScale * STEP_FACTOR)
-
-    fun stepDown() = set(committedScale / STEP_FACTOR)
 
     fun reset() = set(REST_SCALE)
 
