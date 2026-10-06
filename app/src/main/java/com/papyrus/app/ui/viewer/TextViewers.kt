@@ -61,7 +61,7 @@ private fun ZoomableScrollArea(
                 .align(Alignment.CenterEnd)
                 .width(ScrollbarTouchTarget)
                 .fillMaxSize()
-                .autoHideScrollbar(geometry, onScrollBy),
+                .autoHideScrollbar(geometry, topClearance = ZoomBadgeTopClearance, zoom = zoom, onScrollBy = onScrollBy),
         )
     }
 }

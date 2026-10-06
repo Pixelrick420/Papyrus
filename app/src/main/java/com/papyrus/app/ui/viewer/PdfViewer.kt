@@ -185,18 +185,26 @@ internal fun PdfViewer(
                     .align(Alignment.CenterEnd)
                     .width(ScrollbarTouchTarget)
                     .fillMaxSize()
-                    // Named, not a trailing lambda: `fadeAfterMillis` is last, so a lambda binds there.
-                    .autoHideScrollbar(geometry, onScrollBy = { delta -> listState.scrollBy(delta) }),
+                    // Named: the trailing lambda would bind to the last parameter, not onScrollBy.
+                    .autoHideScrollbar(
+                        geometry,
+                        topClearance = ZoomBadgeTopClearance,
+                        bottomClearance = PAGE_INDICATOR_CLEARANCE,
+                        zoom = zoom,
+                        onScrollBy = { delta -> listState.scrollBy(delta) },
+                    ),
             )
 
+            // Matches the scroll knob, alpha included.
             Surface(
                 Modifier.align(Alignment.BottomEnd).padding(16.dp),
                 shape = RoundedCornerShape(16.dp),
-                color = MaterialTheme.colorScheme.inverseSurface.copy(alpha = 0.85f),
+                color = Color.Black.copy(alpha = IDLE_ALPHA),
+                contentColor = Color.White.copy(alpha = IDLE_ALPHA),
+                border = BorderStroke(1.dp, Color.White.copy(alpha = IDLE_ALPHA)),
             ) {
                 Text(
                     stringResource(R.string.viewer_page_indicator, firstVisible + 1, source.pageCount),
-                    color = MaterialTheme.colorScheme.inverseOnSurface,
                     style = MaterialTheme.typography.labelMedium,
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
                 )
@@ -206,6 +214,9 @@ internal fun PdfViewer(
 }
 
 private const val DEFAULT_ASPECT = 1.414f
+
+/** The knob's bottom stop: the page indicator (16dp pad + ~29dp label) plus font-scale headroom. */
+private val PAGE_INDICATOR_CLEARANCE = 56.dp
 
 /**
  * [matches] holds one list of rectangles per match on the page, in order; [activeMatch] is the
