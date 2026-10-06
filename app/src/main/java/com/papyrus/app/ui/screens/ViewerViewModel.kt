@@ -159,11 +159,7 @@ class ViewerViewModel(
     /** Cancelled per query; racing searches would let the older overwrite the newer. */
     private var findJob: Job? = null
 
-    /**
-     * Page text for selecting, read a page at a time. Find's pass above reads the whole document, which
-     * a long-press cannot wait on. Keyed by the URI it was opened for, so a re-grant onto a new URI
-     * does not keep reading the dead one.
-     */
+    /** Page text for selecting, one page at a time. Keyed by URI, so a re-grant does not read the dead one. */
     private var pageTextSource: PdfPageTextSource? = null
     private var pageTextSourceUri: String? = null
 
@@ -331,9 +327,8 @@ class ViewerViewModel(
     }
 
     /**
-     * One page's text and glyph boxes, for selecting and copying; null if the document cannot be read.
-     * A search that has already read the page is reused, unless it was past the box budget: that page
-     * is searchable but has nothing to point at, so it is read again here with boxes.
+     * One page's text and boxes for selecting and copying; null if it cannot be read. A search that
+     * already read the page is reused, unless it was past the box budget, so it is read again here.
      */
     suspend fun pageText(index: Int): PdfPageText? {
         pdfPageText?.getOrNull(index)?.takeIf { it.hasBoxes || it.text.isBlank() }?.let { return it }

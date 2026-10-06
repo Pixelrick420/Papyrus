@@ -41,9 +41,8 @@ object PdfTextExtractor {
     }
 
     /**
-     * Just page [pageIndex] (from 0), for a reader pointing at one page of a document nobody has
-     * searched. Boxes are always kept: the budget in [extract] is for a whole document read at once,
-     * and this is called once per page the reader touches.
+     * Just page [pageIndex] (from 0), for a reader pointing at one page of an unsearched document.
+     * Boxes are always kept: the budget in [extract] is for a whole document read at once.
      */
     fun extractPage(document: PDDocument, pageIndex: Int): PdfPageText =
         collect(PageCollector(), document, pageIndex, trackBoxes = true)

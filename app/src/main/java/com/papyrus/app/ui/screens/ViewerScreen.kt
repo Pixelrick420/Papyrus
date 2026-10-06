@@ -108,8 +108,8 @@ fun ViewerScreen(
     var menuOpen by remember { mutableStateOf(false) }
     var infoOpen by remember { mutableStateOf(false) }
 
-    // What a long-press in a PDF selects. Held here rather than in [PdfViewer], because the header is
-    // where Copy and dismiss live. Re-created per document, so a selection never outlives its pages.
+    // Held here, not in [PdfViewer], because the header is where Copy and dismiss live. Keyed on the
+    // source, so a selection never outlives its pages.
     val selectionState = remember((state.content as? ViewerContent.Pdf)?.source) {
         PdfSelectionState(
             scope = selectionScope,
@@ -117,8 +117,7 @@ fun ViewerScreen(
             onNoText = { Toast.makeText(context, R.string.viewer_pdf_no_text, Toast.LENGTH_SHORT).show() },
         )
     }
-    // The selection takes over the header's overflow slot, so a menu left open would pop back up on
-    // the other side of the selection.
+    // The selection takes over the header's overflow slot, so an open menu would pop up behind it.
     LaunchedEffect(selectionState.hasSelection) {
         if (selectionState.hasSelection) menuOpen = false
     }
@@ -295,8 +294,8 @@ private const val FIND_ANIMATION_MS = 200
 
 /**
  * Flat, like Home's title row: no filled app-bar surface, a semibold title, the same 16dp edge for
- * the first icon. One line, because a long file name must not eat the page. With a text selection
- * in a PDF the overflow menu gives way to Copy and dismiss.
+ * the first icon. One line, because a long file name must not eat the page. With a PDF selection the
+ * overflow menu gives way to Copy and dismiss.
  */
 @Composable
 private fun ViewerHeader(
@@ -334,8 +333,8 @@ private fun ViewerHeader(
                 .semantics { heading() },
         )
 
-        // A selection borrows the overflow slot: dismiss takes the three dots' place, Copy its left,
-        // so clearing it puts the bar back exactly as it was.
+        // A selection borrows the overflow slot: dismiss takes the three dots' place, Copy its left, so
+        // clearing it restores the bar exactly.
         if (selectionActive) {
             IconButton(onClick = onCopySelection) {
                 Icon(
