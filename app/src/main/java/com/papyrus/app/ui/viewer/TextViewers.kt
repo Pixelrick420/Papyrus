@@ -51,8 +51,8 @@ private fun ZoomableScrollArea(
     modifier: Modifier = Modifier,
     content: @Composable (Modifier) -> Unit,
 ) {
-    // clipToBounds on this unscaled parent: the pinch preview is a graphicsLayer scale on the child,
-    // and a layer does not clip itself, so without this the page grows over the header above.
+    // The preview is a graphicsLayer scale on the child, and a layer does not clip itself, so this
+    // unscaled parent must clip or the page grows over the header above.
     Box(modifier.fillMaxSize().clipToBounds()) {
         // Zoom goes on the scrollable: on a wrapper, modifier order decides who wins the drag.
         content(Modifier.fillMaxSize().zoomable(zoom))
@@ -126,8 +126,7 @@ fun MarkdownViewer(
                             TextView(context).apply {
                                 setTextSize(TypedValue.COMPLEX_UNIT_PX, textPx)
                                 setLineSpacing(0f, LINE_SPACING_MULTIPLIER)
-                                // The setter, not `isTextSelectable = true`: that resolves to the read-only
-                                // val and does not compile.
+                                // The setter, not `isTextSelectable = true`: that resolves to the read-only val.
                                 setTextIsSelectable(true)
                             }
                         },
@@ -138,9 +137,8 @@ fun MarkdownViewer(
                             // gesture, and resizing per frame relaid out the whole document.
                             view.setTextSize(TypedValue.COMPLEX_UNIT_PX, textPx)
                             // Only on a change: setting text collapses the selection and dismisses the
-                            // copy toolbar, so a find query or a zoom commit would kill a copy in progress.
-                            // The view is compared too, because `ScaledTypography` composes differently at
-                            // 1x, so crossing 1x hands over a new TextView.
+                            // copy toolbar, killing a copy in progress. The view is compared too,
+                            // since `ScaledTypography` composes differently at 1x.
                             if (textState.view !== view || textState.text !== highlighted) {
                                 textState.view = view
                                 textState.text = highlighted
@@ -154,10 +152,7 @@ fun MarkdownViewer(
     }
 }
 
-/**
- * Plain fields, not Compose state: `AndroidView`'s update block runs during layout, and an observable
- * one would recompose on every text set.
- */
+/** Plain fields, not Compose state: the update block runs during layout, and state would recompose per set. */
 private class MarkdownTextState {
     var view: TextView? = null
     var text: Spanned? = null
