@@ -13,14 +13,12 @@ import kotlinx.coroutines.withContext
 import java.io.Closeable
 
 /**
- * The text of a PDF's pages one at a time, as a reader touches them.
+ * A PDF's page text, read one page at a time as a reader touches them.
  *
- * Find reads every page up front, which is right for a search and far too slow to wait on when a
- * finger has just gone down on page 212. This keeps one [PDDocument] open and reads only the page
- * asked for, then remembers it. The document stays open until [close] because loading one is a
- * parse of the whole file, and the next page a drag runs onto should not pay that again.
- *
- * [PDDocument] is not thread-safe, so every read goes through one lock.
+ * Find reads every page up front, which is right for a search and far too slow for a finger that has
+ * just gone down on page 212. One [PDDocument] stays open until [close], because loading one parses
+ * the whole file and the next page a drag runs onto should not pay that again. It is not thread-safe,
+ * so every read goes through one lock.
  */
 class PdfPageTextSource(
     private val context: Context,

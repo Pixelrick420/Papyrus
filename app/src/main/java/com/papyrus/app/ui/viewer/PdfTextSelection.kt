@@ -40,32 +40,28 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 
 /*
- * A PDF page is a bitmap, so there is no text on screen for the platform's selection to work on.
- * Instead the page's extracted text and per-character boxes (the same ones find highlights with) are
- * hit-tested by hand: a long-press picks the word under the finger, dragging extends it, the two
- * handles move either end, and Copy puts the text on the clipboard.
- *
- * Everything is kept in page-relative units, so a selection survives zooming, and it can run across
- * pages: its ends are carets, each on a page, and a page in between is selected whole.
+ * A PDF page is a bitmap, so there is no text for the platform's selection to work on. The page's
+ * extracted text and per-character boxes (the same ones find highlights use) are hit-tested by hand
+ * instead. Everything is in page-relative units, so a selection survives zooming and can run across
+ * pages.
  */
 
-/** A long-press this close to a character, in dp, picks that character's word; further off is empty space. */
+/** How near a long-press must land to a character to pick its word. */
 internal val SelectionReach = 24.dp
 
-/** The knob under a selection end. */
 internal val HandleRadius = 8.dp
 
-/** How near a touch must land to a knob to take hold of it. Far bigger than the knob: it is a fingertip. */
+/** Grab radius is far bigger than the knob: it stands for a fingertip. */
 internal val HandleGrabRadius = 28.dp
 
 private val HandleStem = 2.dp
 
 /**
- * What is selected in one PDF, and the work of making and changing it. A page's text is read only
- * when the reader first points at it, or when a page is scrolled into a selection that spans it.
+ * What is selected in one PDF. A page's text is read only when the reader first points at it, or when
+ * a page is scrolled into a selection spanning it.
  *
- * Gestures report where the finger is; each report restarts the work, because the text for a page a
- * drag has just reached may still be loading and only the newest position matters.
+ * Each gesture report restarts the work: the text for a page a drag has just reached may still be
+ * loading, and only the newest position matters.
  */
 @Stable
 internal class PdfSelectionState(
@@ -78,7 +74,7 @@ internal class PdfSelectionState(
 
     val hasSelection: Boolean get() = selection != null
 
-    /** Read pages. A state map, so a page drawing the selection redraws when its text arrives. */
+    /** A state map, so a page drawing the selection redraws when its text arrives. */
     private val texts = mutableStateMapOf<Int, PdfPageText>()
 
     private var startJob: Job? = null
@@ -87,10 +83,8 @@ internal class PdfSelectionState(
     /** The word the long-press landed on: what a drag extends from, in either direction. */
     private var anchorWord: Pair<PdfTextPos, PdfTextPos>? = null
 
-    /** The end that stays where it is while the other is dragged by its handle. */
+    /** The end that stays put while the other is dragged by its handle. */
     private var fixedEnd: PdfTextPos? = null
-
-    private var warned = false
 
     fun textOf(page: Int): PdfPageText? = texts[page]
 
@@ -106,13 +100,11 @@ internal class PdfSelectionState(
         cancelWork()
         anchorWord = null
         fixedEnd = null
-        warned = false
         startJob = scope.launch(start = CoroutineStart.UNDISPATCHED) {
             val text = ensureText(point.page)
             if (text == null || !text.isSelectable) {
-                // Said once per press: a scan has no text at all, which is worth telling the reader.
-                if (!warned) onNoText()
-                warned = true
+                // A scan has no text at all, which is worth telling the reader.
+                onNoText()
                 return@launch
             }
             val hit = text.nearestChar(point.x, point.y, point.aspect)
@@ -192,16 +184,16 @@ internal class PdfSelectionState(
     }
 }
 
-/** Where a selection end's knob is on a page, in that page's pixels. */
+/** A selection end's knob position on a page, in that page's pixels. */
 internal class HandleSpot(val x: Float, val top: Float, val bottom: Float, private val radius: Float) {
     /** Below the line, so the finger holding it does not cover the text. */
     val knob: Offset get() = Offset(x, bottom + radius)
 
-    /** The middle of the line it belongs to: what a caret is worked out from while it is dragged. */
+    /** The line's middle: what a caret is worked out from while it is dragged. */
     val line: Offset get() = Offset(x, (top + bottom) / 2f)
 }
 
-/** The knob taken, and where the line sits relative to the finger, to keep while it is dragged. */
+/** The knob taken, and the line's offset from the finger, to keep while it is dragged. */
 internal class HandleGrab(val isStart: Boolean, val toLine: Offset)
 
 /** The knobs a page draws: the start one if the selection begins on it, the end one if it ends on it. */
@@ -241,7 +233,6 @@ internal fun pageHandles(
     )
 }
 
-/** Fill and knobs for one page's share of a selection, in the page's own pixels. */
 internal fun DrawScope.drawSelection(rects: List<NormRect>, handles: PageHandles, color: Color, radius: Float) {
     for (rect in rects) {
         drawRect(
@@ -261,14 +252,11 @@ private const val SELECTION_ALPHA = 0.3f
 private enum class Press { LONG, TAP, OTHER }
 
 /**
- * Long-press to select, drag to extend, tap to dismiss, and drag a knob to move an end. Goes on one
- * page; [geometry] says where a finger is once it leaves that page, and [handles] where this page's
- * knobs are.
- *
- * It claims nothing until it knows what the touch is. A press that moves, or a second finger, is
- * left alone, so scrolling and pinch-zoom work as before, and a tap is only watched, not consumed,
- * so double-tap zoom still works. Only after a long-press, or on a knob, does it consume the touch,
- * and being the innermost handler it does so before the list's scroll sees the drag.
+ * Long-press selects, drag extends, tap dismisses, a knob moves an end. [geometry] places a finger
+ * that has left the page, [handles] holds this page's knobs. Nothing is claimed until the touch is
+ * known: a moving press or a second finger is ignored, so scroll and pinch-zoom are unaffected, and a
+ * tap is watched but not consumed, so double-tap zoom still works. Only a long-press or a knob
+ * consumes, and being innermost it does so before the list's scroll sees the drag.
  */
 internal fun Modifier.pdfSelectionGestures(
     state: PdfSelectionState,
@@ -328,10 +316,7 @@ private suspend fun AwaitPointerEventScope.classifyPress(down: PointerInputChang
     return verdict ?: Press.LONG
 }
 
-/**
- * Follows the pointer [id] until it lifts, consuming every move so the list does not scroll under a
- * drag. Stops, leaving the rest alone, if something above takes the touch, as a pinch does.
- */
+/** Follows [id] until it lifts, consuming moves so the list cannot scroll under a drag. */
 private suspend fun AwaitPointerEventScope.trackDrag(id: PointerId, onMove: (Offset) -> Unit) {
     var tracking = true
     while (tracking) {
@@ -346,10 +331,7 @@ private suspend fun AwaitPointerEventScope.trackDrag(id: PointerId, onMove: (Off
     }
 }
 
-/**
- * Puts [text] on the clipboard and says so. From Android 13 the system shows its own confirmation,
- * and a second one would stack on it.
- */
+/** Android 13+ shows its own copy confirmation, so a second toast would stack on it. */
 internal fun copyToClipboard(context: Context, text: String) {
     val clipboard = context.getSystemService(ClipboardManager::class.java) ?: return
     val copied = try {

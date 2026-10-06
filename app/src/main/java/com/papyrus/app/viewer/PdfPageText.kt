@@ -70,17 +70,15 @@ class PdfPageText(
     /** True when glyph boxes were kept. A page past the extractor's budget holds text without them. */
     val hasBoxes: Boolean get() = boxes.isNotEmpty()
 
-    /** Whether there is anything to point at: a scan has no text, and a page without boxes has nowhere for a finger to land. */
+    /** A scan has no text, and a page without boxes has nowhere for a finger to land. */
     val isSelectable: Boolean get() = boxes.isNotEmpty() && text.any { !it.isWhitespace() }
 
     /**
      * The character whose box is nearest ([x], [y]), in the units of the boxes, or null when no
-     * character has one. A point inside a box is at distance 0, and the first of two overlapping
-     * boxes wins.
+     * character has one. Inside a box is distance 0; the first of two overlapping boxes wins.
      *
-     * [CharHit.distance] is in page heights: [aspect] (page height over width) shrinks the sideways
-     * axis to match, so a step across and a step down that are the same length on screen count the
-     * same, whatever the page's shape. Without it a wide step would look a fraction of a tall one.
+     * [CharHit.distance] is in page heights. [aspect] (height over width) shrinks the sideways axis to
+     * match, so an equal step across and down counts the same whatever the page's shape.
      */
     fun nearestChar(x: Float, y: Float, aspect: Float = 1f): CharHit? {
         if (boxes.isEmpty()) return null
@@ -103,8 +101,8 @@ class PdfPageText(
     }
 
     /**
-     * The caret position nearest ([x], [y]), from 0 to the page's character count: before or after
-     * the closest character, by which half of its box the point is in. Null when no character has a box.
+     * The caret nearest ([x], [y]), 0 to the page's character count: before or after the closest
+     * character, by which half of its box the point is in. Null when no character has a box.
      */
     fun caretAt(x: Float, y: Float, aspect: Float = 1f): Int? {
         val hit = nearestChar(x, y, aspect) ?: return null
@@ -113,9 +111,9 @@ class PdfPageText(
     }
 
     /**
-     * The word holding the character at [index], as a range of character indices, or null if that
-     * is not a word (whitespace, or an index off the page). Broken by the platform's own word
-     * rules, so a Chinese run is split where a reader would, not only at spaces.
+     * The word holding [index], as a range of character indices, or null if that is not a word
+     * (whitespace, or off the page). The platform's own word rules break it, so a Chinese run splits
+     * where a reader would, not only at spaces.
      */
     fun wordAround(index: Int): IntRange? {
         if (index !in text.indices) return null
@@ -129,9 +127,8 @@ class PdfPageText(
     }
 
     /**
-     * One rectangle per line for characters [start] up to, not including, [end]; a selection that
-     * wraps is several. Both ends are clamped to the page, so `Int.MAX_VALUE` means "to the end".
-     * Empty when the page has no boxes.
+     * One rectangle per line for [start] up to but not including [end]; a wrapping selection is
+     * several. Both ends clamp to the page, so `Int.MAX_VALUE` means "to the end". Empty without boxes.
      */
     fun selectionRects(start: Int, end: Int, limit: Int = MAX_RECTS_PER_PAGE): List<NormRect> {
         if (boxes.isEmpty()) return emptyList()
@@ -142,9 +139,8 @@ class PdfPageText(
     }
 
     /**
-     * The text of characters [start] up to, not including, [end], clamped to the page. A wrap point
-     * becomes a newline, so what is copied breaks where the page does; every other separator is
-     * the space the extractor already holds.
+     * The text of [start] up to but not including [end], clamped to the page. A wrap becomes a
+     * newline, so a copy breaks where the page does; every other separator is already in the text.
      */
     fun textBetween(start: Int, end: Int): String {
         val from = start.coerceIn(0, text.length)
