@@ -63,10 +63,6 @@ class PdfPageText(
         return groups
     }
 
-    /** Every rectangle of every match, flattened; see [matchGroups] for which match each belongs to. */
-    fun matchRects(query: String, limit: Int = MAX_RECTS_PER_PAGE): List<NormRect> =
-        matchGroups(query, limit).flatten()
-
     /** True when glyph boxes were kept. A page past the extractor's budget holds text without them. */
     val hasBoxes: Boolean get() = boxes.isNotEmpty()
 

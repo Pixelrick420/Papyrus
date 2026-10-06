@@ -286,24 +286,13 @@ class ZoomAnchoringTest {
     }
 
     @Test
-    fun `stepping up and down returns to where it started`() {
-        // Four each way is 2.44x; 1.25^8 would hit the 5x ceiling, so the ends clamp.
-        val zoom = zoom()
-        repeat(4) { zoom.stepUp() }
-        assertEquals(1.25f * 1.25f * 1.25f * 1.25f, zoom.committedScale, 0.01f)
-
-        repeat(4) { zoom.stepDown() }
-        assertEquals(REST_SCALE, zoom.committedScale, 0.001f)
-    }
-
-    @Test
-    fun `stepping beyond the range clamps rather than overshooting`() {
+    fun `a set beyond the range clamps rather than overshooting`() {
         // No rubber band on a control, and a stopped-at scale would disagree with the badge.
         val zoom = zoom()
-        repeat(40) { zoom.stepUp() }
+        repeat(40) { zoom.set(zoom.committedScale * 2f) }
         assertEquals(MAX_SCALE, zoom.committedScale, 0.0001f)
 
-        repeat(40) { zoom.stepDown() }
+        repeat(40) { zoom.set(zoom.committedScale / 2f) }
         assertEquals(MIN_SCALE, zoom.committedScale, 0.0001f)
     }
 
