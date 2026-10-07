@@ -22,10 +22,8 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
@@ -45,6 +43,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
@@ -90,6 +89,7 @@ internal fun PdfViewer(
     val geometry = rememberLazyScrollGeometry(listState)
     val scrolling by remember { derivedStateOf { listState.isScrollInProgress } }
     val firstVisible by remember { derivedStateOf { listState.firstVisibleItemIndex } }
+    val pageIndicatorVisible by rememberLingerVisible { firstVisible }
     // One state for the whole document; per-page state would reset the offset on every page change.
     val hScroll = rememberScrollState()
 
@@ -195,20 +195,15 @@ internal fun PdfViewer(
                     ),
             )
 
-            // Matches the scroll knob, alpha included.
-            Surface(
-                Modifier.align(Alignment.BottomEnd).padding(16.dp),
-                shape = RoundedCornerShape(16.dp),
-                color = Color.Black.copy(alpha = IDLE_ALPHA),
-                contentColor = Color.White.copy(alpha = IDLE_ALPHA),
-                border = BorderStroke(1.dp, Color.White.copy(alpha = IDLE_ALPHA)),
-            ) {
-                Text(
-                    stringResource(R.string.viewer_page_indicator, firstVisible + 1, source.pageCount),
-                    style = MaterialTheme.typography.labelMedium,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                )
-            }
+            // Matches the scroll knob, alpha included. Shown on a page change, gone a beat after.
+            ReadoutBadge(
+                text = stringResource(R.string.viewer_page_indicator, firstVisible + 1, source.pageCount),
+                visible = pageIndicatorVisible,
+                transformOrigin = TransformOrigin(1f, 1f),
+                textStyle = MaterialTheme.typography.labelMedium,
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
+            )
         }
     }
 }
