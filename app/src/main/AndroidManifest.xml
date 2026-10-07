@@ -20,21 +20,9 @@
             android:windowSoftInputMode="adjustNothing"
             android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation|keyboardHidden">
             <!--
-              configChanges: the Activity survives a resize or rotation, so Compose recomposes with
-              the new bounds instead of the Activity being destroyed and rebuilt, keeping scroll
-              position, zoom level and find query alive during a drag-resize rather than flashing an
-              empty viewer. The documented approach for Compose-only apps, and the Android 17 default.
-
-              Deliberately NOT listed: uiMode, locale, layoutDirection and fontScale. Those change
-              resources rather than size, and the MarkdownViewer hosts an AndroidView that relies on
-              Activity recreation to re-resolve them, so handling them here would leave dark mode and
-              font scaling stale in that one surface.
-
-              windowSoftInputMode: adjustNothing, not the default adjustResize. Resizing on the IME
-              re-measures the viewer, which at 90% zoom is what made the page jump to the top when the
-              find field was focused; the find bar is the only thing that needs to move, and it does
-              that itself with imePadding. The viewer's own bounds are stable either way because the
-              keyboard only ever covers the bottom of the screen.
+              configChanges keeps scroll/zoom/find alive across a resize (the Compose-only default);
+              uiMode/locale/layoutDirection/fontScale are left out so MarkdownViewer's AndroidView
+              recreates, and adjustNothing stops the IME re-measuring the viewer.
             -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -53,5 +41,16 @@
                 <data android:mimeType="application/vnd.oasis.opendocument.text" />
             </intent-filter>
         </activity>
+
+        <!-- Lets a local copy under filesDir/imports leave as a content:// URI when shared. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
     </application>
 </manifest>

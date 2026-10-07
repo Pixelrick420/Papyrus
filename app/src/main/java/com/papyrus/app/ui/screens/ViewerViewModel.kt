@@ -124,6 +124,10 @@ data class ViewerUiState(
     val find: FindState = FindState(),
     /** Raised instead of an error, so the content on screen survives the lost grant. */
     val needsRegrant: Boolean = false,
+    /** True only for a handed-over document: library rows are already saved. */
+    val canSaveToLibrary: Boolean = false,
+    val savingToLibrary: Boolean = false,
+    val savedToLibrary: Boolean = false,
 )
 
 class ViewerViewModel(
@@ -163,7 +167,7 @@ class ViewerViewModel(
             _state.value = ViewerUiState(content = ViewerContent.Failed(UiText(R.string.viewer_error_not_found)))
             return
         }
-        _state.value = ViewerUiState(document = doc)
+        _state.value = ViewerUiState(document = doc, canSaveToLibrary = doc.id < 0)
         repository.markOpened(doc.id)
         val content = try {
             withContext(Dispatchers.IO) { loadContent(doc) }
@@ -231,11 +235,33 @@ class ViewerViewModel(
         viewModelScope.launch {
             when (repository.probeShare(doc)) {
                 SafAccess.Readable ->
-                    onShare(shareIntent(doc.uri.toUri(), repository.shareTypeFor(doc)))
+                    onShare(shareIntent(repository.resolveShareUri(doc.uri.toUri()), repository.shareTypeFor(doc)))
                 SafAccess.NoAccess -> _messages.value = UiText(R.string.home_share_no_access)
                 SafAccess.Missing -> _messages.value = UiText(R.string.home_share_missing)
                 SafAccess.Unreadable -> _messages.value = UiText(R.string.home_share_failed)
             }
+        }
+    }
+
+    /**
+     * Copies a handed-over document into the library. The viewer stays on the in-memory entry so
+     * the intent keeps finishing normally while the new row surfaces on Home.
+     */
+    fun saveToLibrary() {
+        val doc = _state.value.document ?: return
+        if (_state.value.savingToLibrary || _state.value.savedToLibrary) return
+        _state.update { it.copy(savingToLibrary = true) }
+        viewModelScope.launch {
+            val saved = try {
+                repository.saveToLibrary(doc)
+                true
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                false
+            }
+            _state.update { it.copy(savingToLibrary = false, savedToLibrary = saved) }
+            _messages.value = UiText(if (saved) R.string.viewer_save_done else R.string.viewer_save_failed)
         }
     }
 
