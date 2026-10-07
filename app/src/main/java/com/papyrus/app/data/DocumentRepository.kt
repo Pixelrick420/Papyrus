@@ -2,11 +2,13 @@ package com.papyrus.app.data
 
 import android.content.Context
 import android.net.Uri
+import androidx.core.content.FileProvider
 import androidx.core.net.toUri
 import com.papyrus.app.viewer.TextSniffer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
+import java.io.File
 
 class DocumentRepository(
     private val context: Context,
@@ -15,12 +17,8 @@ class DocumentRepository(
     private val resolver get() = context.contentResolver
 
     /**
-     * Documents another app handed over, held in memory only. The repository is an Application
-     * singleton, so an entry lives exactly as long as the process.
-     *
-     * Ids are negative: Room's are positive and the viewer reads its subject as a plain Long off the
-     * nav arguments. -1 is the view model's "no document" sentinel, so counting starts at -2. Written
-     * only by [openHandedOver], which completes before the viewer that reads it is created.
+     * In-memory only; lives as long as the process. Ids are negative (Room's are positive), -1 is the
+     * viewer's "no document" sentinel, so counting starts at -2; written only by [openHandedOver].
      */
     private val handedOver = mutableMapOf<Long, DocumentEntity>()
     private var nextHandedOverId = -2L
@@ -39,12 +37,8 @@ class DocumentRepository(
     }
 
     /**
-     * Opens a document another app passed over, without indexing it.
-     *
-     * No row on purpose: such a document belongs to the app that sent it, so a row would either sit
-     * in the library or need deleting again. Nothing is persisted -- the read grant that arrived
-     * with the intent lasts as long as the task receiving it, which is exactly how long this entry is
-     * reachable. Only the newest is kept, since handing over another document pops the viewer.
+     * Opens a document another app passed over, without indexing it: a row would either sit in the
+     * library or need deleting again, and the intent's read grant lasts exactly as long as this entry.
      */
     suspend fun openHandedOver(uri: Uri): Long = withContext(Dispatchers.IO) {
         val id = nextHandedOverId--
@@ -53,10 +47,42 @@ class DocumentRepository(
         id
     }
 
-    /** Removes the index entry only; the user's file is never deleted. */
+    /** Copies into filesDir/imports, then indexes the copy — the row comes last, and a failed insert deletes the copy again. */
+    suspend fun saveToLibrary(source: DocumentEntity): Long = withContext(Dispatchers.IO) {
+        val file = LibraryImport.copyToImports(context, source.uri.toUri())
+        val now = System.currentTimeMillis()
+        val row = source.copy(
+            id = 0,
+            uri = file.toUri().toString(),
+            sizeBytes = file.length(),
+            createdAt = now,
+            lastOpenedAt = now,
+        )
+        var indexed = false
+        try {
+            dao.upsertByUri(row).also { indexed = true }
+        } finally {
+            if (!indexed) file.delete()
+        }
+    }
+
+    /** Removes only the index entry — never the user's own file; an app-owned copy goes with its row. */
     suspend fun remove(document: DocumentEntity) = withContext(Dispatchers.IO) {
         SafStorage.releasePermission(resolver, document.uri.toUri())
         dao.deleteById(document.id)
+        LibraryImport.deleteOwnedCopy(context, document.uri.toUri())
+    }
+
+    /**
+     * SAF URIs share as-is (the row's persisted grant sub-grants); a local copy rides on no grant and
+     * cannot leave as a bare file:// URI, so it goes through the FileProvider.
+     */
+    suspend fun resolveShareUri(uri: Uri): Uri = withContext(Dispatchers.IO) {
+        if (uri.scheme != "file") return@withContext uri
+        val path = uri.path ?: return@withContext uri
+        val file = File(path)
+        if (!LibraryImport.isInside(LibraryImport.importsDir(context), file)) return@withContext uri
+        FileProvider.getUriForFile(context, "${context.packageName}$FILE_PROVIDER_SUFFIX", file)
     }
 
     /** Readability of a stored document, for the share action's pre-flight check. */
@@ -106,5 +132,9 @@ class DocumentRepository(
             resolver.openInputStream(uri)?.use(TextSniffer::looksLikeText) ?: false
         }.getOrDefault(false)
         return if (sniffed) DocumentFormat.CODE else DocumentFormat.UNKNOWN
+    }
+
+    private companion object {
+        const val FILE_PROVIDER_SUFFIX = ".fileprovider"
     }
 }
