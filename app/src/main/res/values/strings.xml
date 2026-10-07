@@ -44,6 +44,9 @@ access</string>
     <string name="viewer_menu">More options</string>
     <string name="viewer_find_title">Find in file</string>
     <string name="viewer_info_title">File info</string>
+    <string name="viewer_save_library">Save to library</string>
+    <string name="viewer_save_done">Saved to your library</string>
+    <string name="viewer_save_failed">Couldn\'t save this document.</string>
 
     <string name="viewer_find_hint">Find</string>
     <string name="viewer_find_close">Close find</string>
@@ -62,7 +65,7 @@ access</string>
     <string name="viewer_info_format">%1$s (%2$s)</string>
     <string name="viewer_info_pages">Pages</string>
     <string name="viewer_info_pages_value">%1$d</string>
-    <string name="viewer_info_uri">Content URI</string>
+    <string name="viewer_info_uri">URI</string>
     <string name="viewer_info_size">Size</string>
     <string name="viewer_info_opened">Last opened</string>
     <string name="viewer_info_added">Added</string>

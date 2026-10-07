@@ -104,10 +104,7 @@ import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
-/**
- * Everything the list needs in one value, so "still loading", "library is empty" and "nothing
- * matches" are decided together and never disagree for a frame.
- */
+/** Everything the list needs in one value, so the loading, empty and no-match states never disagree for a frame. */
 data class HomeUiState(
     val loaded: Boolean = false,
     val libraryEmpty: Boolean = false,
@@ -125,9 +122,8 @@ class HomeViewModel(
     val query: StateFlow<String> = _query.asStateFlow()
 
     /**
-     * Filtered in memory: the whole list is already held, so a query would only add a second source.
-     * Starts as "not loaded" rather than empty, or a library with documents flashes the empty state
-     * for the frames before the first database emission.
+     * Filtered in memory — the whole list is already held. Starts "not loaded" rather than empty, or
+     * a library with documents flashes its empty state before the first database emission.
      */
     val uiState: StateFlow<HomeUiState> = combine(repository.documents, _query) { docs, q ->
         val needle = q.trim()
@@ -152,10 +148,7 @@ class HomeViewModel(
     private val _messages = Channel<UiText>(Channel.BUFFERED)
     val messages = _messages.receiveAsFlow()
 
-    /**
-     * One file opens straight away; several are only added to the library, leaving the person on the
-     * home screen where the new rows appear.
-     */
+    /** One file opens straight away; several are only added, leaving the person on Home where the new rows appear. */
     fun onDocumentsPicked(uris: List<Uri>, open: (Long) -> Unit, onAdded: () -> Unit) {
         if (uris.isEmpty()) return
         viewModelScope.launch {
@@ -201,7 +194,7 @@ class HomeViewModel(
         viewModelScope.launch {
             when (repository.probeShare(document)) {
                 SafAccess.Readable ->
-                    onShare(shareIntent(document.uri.toUri(), repository.shareTypeFor(document)))
+                    onShare(shareIntent(repository.resolveShareUri(document.uri.toUri()), repository.shareTypeFor(document)))
                 SafAccess.NoAccess -> _messages.send(UiText(R.string.home_share_no_access))
                 SafAccess.Missing -> _messages.send(UiText(R.string.home_share_missing))
                 SafAccess.Unreadable -> _messages.send(UiText(R.string.home_share_failed))
@@ -245,9 +238,8 @@ fun HomeScreen(
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
 
-    // The ViewModel owns the query; the field keeps a synchronous copy so typing never waits on a
-    // flow round trip (that is what makes a text field drop characters or jump its cursor).
-    // Seeded from the ViewModel, so coming back from the viewer finds the same search.
+    // Sync copy of the query so typing never waits on a flow round trip; seeded so returning from
+    // the viewer finds the same search.
     var text by remember { mutableStateOf(viewModel.query.value) }
 
     // Which row has its menu open, not a bare flag: one flag would open every row's menu at once.
@@ -393,9 +385,8 @@ fun HomeScreen(
                     }
                 }
 
-                // Overlaid rather than swapped with the list, so the last row can fade out inside the
-                // list while this fades in. No exit animation: when a match appears the message goes
-                // at once and the rows fade in, which reads cleaner than two things cross-fading.
+                // Overlaid, not swapped with the list, so the last row can fade out inside it; no exit animation —
+                // the message goes at once and the rows fade in, which reads cleaner than a cross-fade.
                 EmptyStateOverlay(
                     visible = state.loaded && state.results.isEmpty(),
                     libraryEmpty = state.libraryEmpty && state.query.isEmpty(),
@@ -407,9 +398,8 @@ fun HomeScreen(
 }
 
 /**
- * Empty state drawn over the list. Its own composable rather than inline in the `Box` above: the
- * scope-aware `AnimatedVisibility` overloads need a `Column`/`Row` receiver and this is a child of a
- * `Box`, so only the plain overload applies.
+ * Empty state drawn over the list, not inline in the `Box` above: the scope-aware `AnimatedVisibility`
+ * overloads need a `Column`/`Row` receiver and this is a child of a `Box`.
  */
 @Composable
 private fun EmptyStateOverlay(
@@ -436,10 +426,7 @@ private fun EmptyStateOverlay(
     }
 }
 
-/**
- * Clear button fading in and out inside a slot that never changes size. Extracted for the same
- * reason as [EmptyStateOverlay]: a child of a `Box`, not of the `Row` around it.
- */
+/** Clear button fading in and out inside a slot of constant size; extracted for the same receiver reason as [EmptyStateOverlay]. */
 @Composable
 private fun ClearSearchButton(
     visible: Boolean,
@@ -465,9 +452,8 @@ private fun ClearSearchButton(
 }
 
 /**
- * One layout for both "nothing here" states. A first-run library is centred with its illustration; a
- * failed search sits near the top, because the keyboard is up and a centred message would land
- * behind it on a short screen.
+ * One layout for both "nothing here" states: a first-run library is centred; a failed search sits
+ * near the top, since the keyboard would put a centred message behind it on a short screen.
  */
 @Composable
 private fun EmptyState(
