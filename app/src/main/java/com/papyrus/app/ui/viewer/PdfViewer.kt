@@ -88,8 +88,17 @@ internal fun PdfViewer(
     val listState = rememberLazyListState()
     val geometry = rememberLazyScrollGeometry(listState)
     val scrolling by remember { derivedStateOf { listState.isScrollInProgress } }
-    val firstVisible by remember { derivedStateOf { listState.firstVisibleItemIndex } }
-    val pageIndicatorVisible by rememberLingerVisible { firstVisible }
+    // The page whose top edge has crossed the middle of the screen, not the one clipping the top.
+    val centeredPage by remember {
+        derivedStateOf {
+            val info = listState.layoutInfo
+            val center = info.viewportSize.height / 2
+            info.visibleItemsInfo.lastOrNull { it.offset <= center }?.index
+                ?: info.visibleItemsInfo.firstOrNull()?.index
+                ?: listState.firstVisibleItemIndex
+        }
+    }
+    val pageIndicatorVisible by rememberLingerVisible { centeredPage }
     // One state for the whole document; per-page state would reset the offset on every page change.
     val hScroll = rememberScrollState()
 
@@ -197,7 +206,7 @@ internal fun PdfViewer(
 
             // Matches the scroll knob, alpha included. Shown on a page change, gone a beat after.
             ReadoutBadge(
-                text = stringResource(R.string.viewer_page_indicator, firstVisible + 1, source.pageCount),
+                text = stringResource(R.string.viewer_page_indicator, centeredPage + 1, source.pageCount),
                 visible = pageIndicatorVisible,
                 transformOrigin = TransformOrigin(1f, 1f),
                 textStyle = MaterialTheme.typography.labelMedium,
