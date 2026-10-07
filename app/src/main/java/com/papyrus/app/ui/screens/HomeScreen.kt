@@ -90,6 +90,7 @@ import com.papyrus.app.data.shareIntent
 import com.papyrus.app.ui.AppViewModelProvider
 import com.papyrus.app.ui.UiText
 import com.papyrus.app.ui.asString
+import com.papyrus.app.ui.components.ControlCorner
 import com.papyrus.app.ui.components.ControlHeight
 import com.papyrus.app.ui.components.DocumentThumbnail
 import com.papyrus.app.ui.components.SearchPill
@@ -223,8 +224,11 @@ private val PlusIcon: ImageVector = ImageVector.Builder(
     }
 }.build()
 
-/** Same inset for title, controls and list, so everything hangs off one left edge. */
+/** List inset; title and search pill use [TitleInset]. */
 private val ScreenPadding = 16.dp
+
+/** Title and search pill left edge alignment. */
+private val TitleInset = 24.dp
 
 @Composable
 fun HomeScreen(
@@ -288,10 +292,9 @@ fun HomeScreen(
                     dismissKeyboard()
                     openFiles.launch(DocumentFormat.pickerMimeTypes)
                 },
-                // Solid `primary`, not Material 3's default `primaryContainer`: the pale tint read
-                // as a washed-out blob rather than as the app's blue.
                 containerColor = MaterialTheme.colorScheme.primary,
                 contentColor = MaterialTheme.colorScheme.onPrimary,
+                shape = RoundedCornerShape(ControlCorner),
             ) {
                 Icon(
                     imageVector = PlusIcon,
@@ -315,7 +318,7 @@ fun HomeScreen(
                 style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier
-                    .padding(start = 24.dp, end = 24.dp, top = 12.dp, bottom = 10.dp)
+                    .padding(start = TitleInset, end = TitleInset, top = 12.dp, bottom = 10.dp)
                     .semantics { heading() },
             )
 
@@ -333,7 +336,7 @@ fun HomeScreen(
                 onSearch = dismissKeyboard,
                 iconContentDescription = stringResource(R.string.cd_search),
                 // Padding first, then fill: the pill gets exactly the button's width.
-                modifier = Modifier.padding(horizontal = ScreenPadding),
+                modifier = Modifier.padding(start = TitleInset, end = ScreenPadding),
                 trailing = {
                     // The slot is always reserved: only the icon fades, so the text never shifts sideways
                     // when the first character is typed.

@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -41,22 +42,20 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.papyrus.app.R
 
-/** Search pill, Open file button and find bar share this, so every control is the same height. */
+/** Search pill shared by Home filter and find-in-file bar (same height). */
 val ControlHeight = 48.dp
 
-/**
- * Tone 80 of the brand blue (#326AE3): the focused pill's border and glyph, dark mode only. Both
- * search fields in the app are this one composable, so Home and find-in-file follow.
- */
+/** Corner radius shared by search pill and FAB. */
+val ControlCorner = 16.dp
+
+/** Dark-mode focus accent (tone 80 of #326AE3) for 10.6:1 contrast. */
 private val FocusBlueDark = Color(0xFFA9C3FF)
 
 private const val FOCUS_ANIMATION_MS = 180
 
 /**
- * The single search field for the app: Home's file filter and the viewer's find bar both draw it, so
- * they cannot drift apart. Drawn from the same defaults as the Open file button (shape, border,
- * transparent interior). Deliberately not Material's `SearchBar`, which fixes its own colors, elevation
- * and width rules, adds status-bar padding, and takes over the screen when expanded.
+ * Shared search pill for Home and find-in-file; uses the Open file button's defaults (border,
+ * transparent interior) with a custom corner and focus accent. Not Material `SearchBar`.
  *
  * [trailing] fills the end of the pill (a clear button, a match counter) and owns its own end inset,
  * so the caller decides how far the last element sits from the rounded edge.
@@ -76,13 +75,9 @@ fun SearchPill(
     val interactionSource = remember { MutableInteractionSource() }
     val focused by interactionSource.collectIsFocusedAsState()
 
-    // At rest the border is whatever the button's is, read from the same place.
     val restingBorder = ButtonDefaults.outlinedButtonBorder(enabled = true)
     val restingColor = (restingBorder.brush as? SolidColor)?.value ?: MaterialTheme.colorScheme.outline
-    // The brand blue is #326AE3 in both schemes, but on the dark surface it is only 3.9:1 -- too dim
-    // for a 1dp border and a 24dp glyph. Dark mode therefore steps the same hue up to tone 80
-    // (#A9C3FF, 10.6:1 on #121212); light mode reads `primary` unchanged, where #326AE3 clears 4.5:1
-    // on #FBFBFB. Same hue either way, so the control stays the app's blue.
+    // Brand blue (#326AE3): light = primary; dark = FocusBlueDark (10.6:1) for 1dp border/glyph.
     val focusAccent = if (isSystemInDarkTheme()) FocusBlueDark else MaterialTheme.colorScheme.primary
     val borderColor by animateColorAsState(
         targetValue = if (focused) focusAccent else restingColor,
@@ -104,15 +99,13 @@ fun SearchPill(
         modifier = modifier
             .fillMaxWidth()
             .heightIn(min = ControlHeight),
-        shape = ButtonDefaults.outlinedShape,
+        shape = RoundedCornerShape(ControlCorner),
         color = Color.Transparent,
         border = BorderStroke(borderWidth, borderColor),
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                // The whole pill focuses the field, not just its one line of text. A raw tap detector
-                // rather than `clickable`, which would merge the text field into one semantics node.
                 .pointerInput(Unit) {
                     detectTapGestures(onTap = {
                         focusRequester.requestFocus()
