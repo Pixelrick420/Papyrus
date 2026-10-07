@@ -1,5 +1,6 @@
 package com.papyrus.app.ui.screens
 
+import android.content.Intent
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -89,13 +90,7 @@ import kotlinx.coroutines.launch
 /** Same inset as Home, so the find pill lines up with the Home search pill. */
 private val ScreenPadding = 16.dp
 
-/**
- * Find, zoom and overflow state live here so a format switch does not reset them.
- *
- * Laid out like Home: no app-bar surface, just a flat header, then a column. The find bar is a
- * sibling of the document in that column, never an overlay, so opening it pushes the document down
- * instead of covering its first lines.
- */
+/** Find, zoom and overflow state live here, so a format switch does not reset them. */
 @Composable
 fun ViewerScreen(
     onBack: () -> Unit,
@@ -108,12 +103,15 @@ fun ViewerScreen(
     val zoom = rememberZoomState()
     val snackbar = remember { SnackbarHostState() }
     val selectionScope = rememberCoroutineScope()
+    val chooserTitle = stringResource(R.string.action_share)
+    val shareDocument: () -> Unit = {
+        viewModel.share { send -> context.startActivity(Intent.createChooser(send, chooserTitle)) }
+    }
 
     var menuOpen by remember { mutableStateOf(false) }
     var infoOpen by remember { mutableStateOf(false) }
 
-    // Held here, not in [PdfViewer], because the header is where Copy and dismiss live. Keyed on the
-    // source, so a selection never outlives its pages.
+    // Held here (not in [PdfViewer]) so the header's Copy can reach it; keyed on the source.
     val selectionState = remember((state.content as? ViewerContent.Pdf)?.source) {
         PdfSelectionState(
             scope = selectionScope,
@@ -158,8 +156,7 @@ fun ViewerScreen(
             Modifier
                 .fillMaxSize()
                 .padding(padding)
-                // Preview key handling so Ctrl+F wins over a focused text field. On the column, not
-                // the document, so it also covers the find field itself.
+                // Ctrl+F wins over a focused field; on the column so it also covers the find field.
                 .onPreviewKeyEvent { event ->
                     if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                     // Ctrl only: no connected Android keyboard emits Meta, so it is untestable.
@@ -176,10 +173,12 @@ fun ViewerScreen(
                 findAvailable = findAvailable,
                 menuOpen = menuOpen,
                 selectionActive = selectionState.hasSelection,
+                showShare = state.document != null,
                 onMenuOpenChange = { menuOpen = it },
                 onBack = onBack,
                 onFind = viewModel::openFind,
                 onInfo = { infoOpen = true },
+                onShare = shareDocument,
                 onCopySelection = {
                     selectionScope.launch {
                         selectionState.selectedText()?.let { copyToClipboard(context, it) }
@@ -189,8 +188,7 @@ fun ViewerScreen(
                 onClearSelection = selectionState::clear,
             )
 
-            // In the flow, so the document below simply gets less height while this is shown.
-            // The activity uses adjustNothing, so the keyboard never resizes the document too.
+            // Not an overlay: in the flow, so opening find pushes the document down.
             AnimatedVisibility(
                 visible = find.open,
                 enter = expandVertically(tween(FIND_ANIMATION_MS)) + fadeIn(tween(FIND_ANIMATION_MS)),
@@ -206,8 +204,7 @@ fun ViewerScreen(
                     onNext = viewModel::nextMatch,
                     onPrevious = viewModel::previousMatch,
                     onClose = closeFind,
-                    // End inset is smaller than the start: the close button carries its own 12dp
-                    // of padding, which brings its glyph to the same 16dp edge as the pill.
+                    // End inset smaller: the close button's own padding brings its glyph to 16dp.
                     modifier = Modifier.padding(start = ScreenPadding, end = 4.dp, bottom = 8.dp),
                 )
             }
@@ -296,21 +293,19 @@ fun ViewerScreen(
 
 private const val FIND_ANIMATION_MS = 200
 
-/**
- * Flat, like Home's title row: no filled app-bar surface, a semibold title, the same 16dp edge for
- * the first icon. One line, because a long file name must not eat the page. With a PDF selection the
- * overflow menu gives way to Copy and dismiss.
- */
+/** Flat title row like Home's; a selection swaps the overflow menu for Copy and dismiss. */
 @Composable
 private fun ViewerHeader(
     title: String,
     findAvailable: Boolean,
     menuOpen: Boolean,
     selectionActive: Boolean,
+    showShare: Boolean,
     onMenuOpenChange: (Boolean) -> Unit,
     onBack: () -> Unit,
     onFind: () -> Unit,
     onInfo: () -> Unit,
+    onShare: () -> Unit,
     onCopySelection: () -> Unit,
     onClearSelection: () -> Unit,
     modifier: Modifier = Modifier,
@@ -337,8 +332,7 @@ private fun ViewerHeader(
                 .semantics { heading() },
         )
 
-        // A selection borrows the overflow slot: dismiss takes the three dots' place, Copy its left, so
-        // clearing it restores the bar exactly.
+        // A selection borrows the overflow slot; clearing it restores the bar exactly.
         if (selectionActive) {
             IconButton(onClick = onCopySelection) {
                 Icon(
@@ -355,6 +349,15 @@ private fun ViewerHeader(
                 )
             }
         } else {
+            if (showShare) {
+                IconButton(onClick = onShare) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_share),
+                        contentDescription = stringResource(R.string.action_share),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
             Box {
                 IconButton(onClick = { onMenuOpenChange(true) }) {
                     Icon(
@@ -403,10 +406,7 @@ private fun RegrantBanner(modifier: Modifier = Modifier, onRegrant: () -> Unit) 
     }
 }
 
-/**
- * Readout only: pinch and double-tap are the interaction; the scale has no step size. Shown while
- * the scale changes, and for a beat after it stops.
- */
+/** Readout only: shown while the scale changes, and for a beat after it stops. */
 @Composable
 private fun ZoomBadge(zoom: ZoomState, modifier: Modifier = Modifier) {
     // Held while the fingers are down, so a pinch that pauses keeps its readout.

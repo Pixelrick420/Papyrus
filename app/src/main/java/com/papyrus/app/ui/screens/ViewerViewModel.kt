@@ -1,5 +1,6 @@
 package com.papyrus.app.ui.screens
 
+import android.content.Intent
 import android.net.Uri
 import android.text.Spanned
 import androidx.lifecycle.SavedStateHandle
@@ -10,6 +11,8 @@ import com.papyrus.app.MainApplication
 import com.papyrus.app.R
 import com.papyrus.app.data.DocumentEntity
 import com.papyrus.app.data.DocumentFormat
+import com.papyrus.app.data.SafAccess
+import com.papyrus.app.data.shareIntent
 import com.papyrus.app.ui.UiText
 import com.papyrus.app.ui.navigation.Routes
 import com.papyrus.app.viewer.OfficeBlock
@@ -48,10 +51,7 @@ import kotlin.coroutines.cancellation.CancellationException
 sealed interface ViewerContent {
     data object Loading : ViewerContent
     data class Pdf(val source: PdfPageSource, val aspectRatios: List<Float>) : ViewerContent
-    /**
-     * [text] is the parse used for find counting; [source] is kept so the viewer can render a fresh
-     * `Spanned` when a table re-snapshots the TextView's paint (see `MarkdownViewer`).
-     */
+    /** [text] for find and render; [source] lets a table re-snapshot force a fresh render. */
     data class Markdown(val markwon: Markwon, val source: String, val text: Spanned) : ViewerContent
     data class PlainText(val chunks: List<String>) : ViewerContent
     data class Office(val blocks: List<OfficeBlock>) : ViewerContent
@@ -62,23 +62,14 @@ sealed interface ViewerContent {
 data class FindState(
     val open: Boolean = false,
     val query: String = "",
-    /**
-     * One entry per match, in document order, holding the index of the chunk, block or page it is
-     * in. A container with three matches appears three times, so the find bar steps through this
-     * list and [count] is the true number of matches.
-     */
+    /** One entry per match in document order; a page with three matches appears three times. */
     val hits: List<Int> = emptyList(),
     val position: Int = -1,
     /** Markdown is one `Spanned`, so matches highlight with no target to step between. */
     val occurrences: Int = 0,
-    /**
-     * PDF only: by page index, one list of rectangles per match on that page, in match order. A
-     * match wrapping lines is several rectangles but still one entry. A hit page can lack an entry
-     * past the extractor's budget.
-     */
+    /** PDF only, by page index; a wrapping match is several rectangles but one entry, unless past the box budget. */
     val pageMatches: Map<Int, List<List<NormRect>>> = emptyMap(),
 ) {
-    /** What the counter shows: navigable targets if there are any, otherwise raw occurrences. */
     val count: Int get() = if (hits.isNotEmpty()) hits.size else occurrences
 
     val navigable: Boolean get() = hits.isNotEmpty()
@@ -86,11 +77,7 @@ data class FindState(
     /** Derived, so the hit list and the highlight position cannot disagree. */
     val activeIndex: Int? get() = if (position in hits.indices) hits[position] else null
 
-    /**
-     * Which match inside [activeIndex]'s container is current: 0 for the first, 1 for the second.
-     * Derived from [position] because [hits] is sorted and a container's matches are contiguous, so
-     * it is that container's first entry subtracted from the cursor.
-     */
+    /** The match inside the current container: the cursor minus the container's first entry. */
     val activeOccurrence: Int? get() {
         val container = activeIndex ?: return null
         return position - hits.firstIndexOf(container)
@@ -159,7 +146,7 @@ class ViewerViewModel(
     /** Cancelled per query; racing searches would let the older overwrite the newer. */
     private var findJob: Job? = null
 
-    /** Page text for selecting, one page at a time. Keyed by URI, so a re-grant does not read the dead one. */
+    /** One page at a time; keyed by URI so a re-grant never reads the dead one. */
     private var pageTextSource: PdfPageTextSource? = null
     private var pageTextSourceUri: String? = null
 
@@ -238,6 +225,20 @@ class ViewerViewModel(
     /** Asked for by the info sheet when it opens, so a document nobody inspects never pays the provider call. */
     suspend fun mimeType(document: DocumentEntity): String? = repository.mimeTypeOf(document)
 
+    /** Probed first: a chooser opened over a dead grant works, then fails inside the chosen app. */
+    fun share(onShare: (Intent) -> Unit) {
+        val doc = _state.value.document ?: return
+        viewModelScope.launch {
+            when (repository.probeShare(doc)) {
+                SafAccess.Readable ->
+                    onShare(shareIntent(doc.uri.toUri(), repository.shareTypeFor(doc)))
+                SafAccess.NoAccess -> _messages.value = UiText(R.string.home_share_no_access)
+                SafAccess.Missing -> _messages.value = UiText(R.string.home_share_missing)
+                SafAccess.Unreadable -> _messages.value = UiText(R.string.home_share_failed)
+            }
+        }
+    }
+
     fun openFind() {
         _state.update { it.copy(find = it.find.copy(open = true)) }
     }
@@ -291,11 +292,7 @@ class ViewerViewModel(
         }
     }
 
-    /**
-     * A page is repeated in the hits once per match on it, so counting and stepping are per match.
-     * Counting needs no rectangles, so a page past the extractor's box budget still counts every
-     * match; it just has nothing to draw. Scans have no text layer.
-     */
+    /** A page repeats in hits per match; budget-exceeding pages still count, scans have no text. */
     private suspend fun findPdfPages(query: String): FindResult {
         val pages = pdfPageText ?: extractPageText().also { pdfPageText = it }
         val hits = ArrayList<Int>()
@@ -326,10 +323,7 @@ class ViewerViewModel(
         }
     }
 
-    /**
-     * One page's text and boxes for selecting and copying; null if it cannot be read. A search that
-     * already read the page is reused, unless it was past the box budget, so it is read again here.
-     */
+    /** One page of text plus boxes; a search read is reused unless it was past the box budget. */
     suspend fun pageText(index: Int): PdfPageText? {
         pdfPageText?.getOrNull(index)?.takeIf { it.hasBoxes || it.text.isBlank() }?.let { return it }
         val uri = documentUri
