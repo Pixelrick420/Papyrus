@@ -27,6 +27,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.util.lerp
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
@@ -121,12 +122,15 @@ fun Modifier.autoHideScrollbar(
     var trackHeightPx by remember { mutableFloatStateOf(0f) }
     // Shared by the fade loop and the drag handler.
     var lastFastNs by remember { mutableLongStateOf(0L) }
+    val alphaTarget = when {
+        dragging -> DRAG_ALPHA
+        visible -> IDLE_ALPHA
+        else -> 0f
+    }
+    // The badges' timing: quick in, slow out.
     val alpha by animateFloatAsState(
-        when {
-            dragging -> DRAG_ALPHA
-            visible -> IDLE_ALPHA
-            else -> 0f
-        },
+        targetValue = alphaTarget,
+        animationSpec = if (alphaTarget == 0f) ReadoutFadeOut else ReadoutFadeIn,
         label = "scrollbarAlpha",
     )
 
@@ -192,13 +196,21 @@ fun Modifier.autoHideScrollbar(
             val arrowScale = knobPx / SVG_VIEWBOX
             onDrawBehind {
                 if (alpha >= 0.01f) {
-                    drawCircle(color = Color.White.copy(alpha = alpha), radius = radius, center = center)
-                    drawCircle(color = Color.Black.copy(alpha = alpha), radius = radius - border, center = center)
-                    withTransform({
-                        translate(center.x - SVG_VIEWBOX / 2f * arrowScale, center.y - SVG_VIEWBOX / 2f * arrowScale)
-                        scale(arrowScale, arrowScale, pivot = Offset.Zero)
-                    }) {
-                        drawPath(KnobArrows, Color.White.copy(alpha = alpha))
+                    // Grows out of its own centre as it fades in, like the badges. Dragging only
+                    // raises alpha past IDLE_ALPHA, which the coerce keeps from enlarging it.
+                    val pop = lerp(READOUT_POP_SCALE, 1f, (alpha / IDLE_ALPHA).coerceIn(0f, 1f))
+                    withTransform({ scale(pop, pop, pivot = center) }) {
+                        drawCircle(color = Color.White.copy(alpha = alpha), radius = radius, center = center)
+                        drawCircle(color = Color.Black.copy(alpha = alpha), radius = radius - border, center = center)
+                        withTransform({
+                            translate(
+                                center.x - SVG_VIEWBOX / 2f * arrowScale,
+                                center.y - SVG_VIEWBOX / 2f * arrowScale,
+                            )
+                            scale(arrowScale, arrowScale, pivot = Offset.Zero)
+                        }) {
+                            drawPath(KnobArrows, Color.White.copy(alpha = alpha))
+                        }
                     }
                 }
             }

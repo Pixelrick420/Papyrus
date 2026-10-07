@@ -9,10 +9,10 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -47,12 +47,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isCtrlPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
@@ -74,14 +74,15 @@ import com.papyrus.app.ui.asString
 import com.papyrus.app.ui.components.ControlHeight
 import com.papyrus.app.ui.viewer.FileInfoSheet
 import com.papyrus.app.ui.viewer.FindInFileBar
-import com.papyrus.app.ui.viewer.IDLE_ALPHA
 import com.papyrus.app.ui.viewer.MarkdownViewer
 import com.papyrus.app.ui.viewer.OfficeViewer
 import com.papyrus.app.ui.viewer.PdfSelectionState
 import com.papyrus.app.ui.viewer.PdfViewer
 import com.papyrus.app.ui.viewer.PlainTextViewer
+import com.papyrus.app.ui.viewer.ReadoutBadge
 import com.papyrus.app.ui.viewer.ZoomState
 import com.papyrus.app.ui.viewer.copyToClipboard
+import com.papyrus.app.ui.viewer.rememberLingerVisible
 import com.papyrus.app.ui.viewer.rememberZoomState
 import kotlinx.coroutines.launch
 
@@ -402,22 +403,21 @@ private fun RegrantBanner(modifier: Modifier = Modifier, onRegrant: () -> Unit) 
     }
 }
 
-/** Readout only: pinch and double-tap are the interaction; the scale has no step size. */
+/**
+ * Readout only: pinch and double-tap are the interaction; the scale has no step size. Shown while
+ * the scale changes, and for a beat after it stops.
+ */
 @Composable
 private fun ZoomBadge(zoom: ZoomState, modifier: Modifier = Modifier) {
-    if (!zoom.isZoomed) return
+    // Held while the fingers are down, so a pinch that pauses keeps its readout.
+    val visible by rememberLingerVisible(hold = { zoom.isZooming }) { zoom.effectiveScale }
     // Matches the scroll knob, alpha included.
-    Surface(
+    ReadoutBadge(
+        text = zoom.percentLabel(),
+        visible = visible,
+        transformOrigin = TransformOrigin(1f, 0f),
+        textStyle = MaterialTheme.typography.labelSmall,
+        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
         modifier = modifier,
-        shape = RoundedCornerShape(16.dp),
-        color = Color.Black.copy(alpha = IDLE_ALPHA),
-        contentColor = Color.White.copy(alpha = IDLE_ALPHA),
-        border = BorderStroke(1.dp, Color.White.copy(alpha = IDLE_ALPHA)),
-    ) {
-        Text(
-            zoom.percentLabel(),
-            style = MaterialTheme.typography.labelSmall,
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-        )
-    }
+    )
 }
