@@ -62,7 +62,7 @@ access</string>
 
     <string name="viewer_info_name">Name</string>
     <string name="viewer_info_type">Type</string>
-    <string name="viewer_info_format">%1$s (%2$s)</string>
+    <string name="viewer_info_format">Format</string>
     <string name="viewer_info_pages">Pages</string>
     <string name="viewer_info_pages_value">%1$d</string>
     <string name="viewer_info_uri">URI</string>
