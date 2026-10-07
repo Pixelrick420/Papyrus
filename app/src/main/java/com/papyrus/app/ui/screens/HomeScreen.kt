@@ -36,6 +36,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -481,9 +482,10 @@ private fun EmptyState(
     ) {
         if (libraryEmpty) {
             Image(
-                painter = painterResource(R.drawable.open_box),
+                painter = painterResource(R.drawable.ic_empty_box),
                 contentDescription = null,
                 modifier = Modifier.size(160.dp),
+                colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onSurfaceVariant),
             )
             Spacer(Modifier.height(16.dp))
         } else {
