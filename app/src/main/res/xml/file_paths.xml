@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The FileProvider's only path; keep in sync with LibraryImport.importsDir. -->
+<paths>
+    <files-path
+        name="imports"
+        path="imports/" />
+</paths>

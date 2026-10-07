@@ -174,11 +174,15 @@ fun ViewerScreen(
                 menuOpen = menuOpen,
                 selectionActive = selectionState.hasSelection,
                 showShare = state.document != null,
+                showSaveToLibrary = state.canSaveToLibrary,
+                savingToLibrary = state.savingToLibrary,
+                savedToLibrary = state.savedToLibrary,
                 onMenuOpenChange = { menuOpen = it },
                 onBack = onBack,
                 onFind = viewModel::openFind,
                 onInfo = { infoOpen = true },
                 onShare = shareDocument,
+                onSaveToLibrary = viewModel::saveToLibrary,
                 onCopySelection = {
                     selectionScope.launch {
                         selectionState.selectedText()?.let { copyToClipboard(context, it) }
@@ -301,11 +305,15 @@ private fun ViewerHeader(
     menuOpen: Boolean,
     selectionActive: Boolean,
     showShare: Boolean,
+    showSaveToLibrary: Boolean,
+    savingToLibrary: Boolean,
+    savedToLibrary: Boolean,
     onMenuOpenChange: (Boolean) -> Unit,
     onBack: () -> Unit,
     onFind: () -> Unit,
     onInfo: () -> Unit,
     onShare: () -> Unit,
+    onSaveToLibrary: () -> Unit,
     onCopySelection: () -> Unit,
     onClearSelection: () -> Unit,
     modifier: Modifier = Modifier,
@@ -376,6 +384,14 @@ private fun ViewerHeader(
                         text = { Text(stringResource(R.string.viewer_info_title)) },
                         onClick = { onMenuOpenChange(false); onInfo() },
                     )
+                    // Only for a handed-over document: library rows are already saved.
+                    if (showSaveToLibrary) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.viewer_save_library)) },
+                            enabled = !savingToLibrary && !savedToLibrary,
+                            onClick = { onMenuOpenChange(false); onSaveToLibrary() },
+                        )
+                    }
                 }
             }
         }
