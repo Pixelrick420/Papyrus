@@ -14,6 +14,7 @@ class DocumentFormatTest {
         assertEquals(DocumentFormat.MARKDOWN, DocumentFormat.detect("notes.md", "application/octet-stream"))
         assertEquals(DocumentFormat.PDF, DocumentFormat.detect("report.pdf", "text/plain"))
         assertEquals(DocumentFormat.DOCX, DocumentFormat.detect("cv.docx", "application/octet-stream"))
+        assertEquals(DocumentFormat.DOC, DocumentFormat.detect("letter.doc", "application/octet-stream"))
     }
 
     @Test
@@ -46,6 +47,7 @@ class DocumentFormatTest {
     fun `mime type decides when the name says nothing`() {
         assertEquals(DocumentFormat.PDF, DocumentFormat.detect("blob", "application/pdf"))
         assertEquals(DocumentFormat.ODT, DocumentFormat.detect("blob", "application/vnd.oasis.opendocument.text"))
+        assertEquals(DocumentFormat.DOC, DocumentFormat.detect("blob", "application/msword"))
         assertEquals(DocumentFormat.TEXT, DocumentFormat.detect("notes", "text/plain"))
     }
 
@@ -96,6 +98,7 @@ class DocumentFormatTest {
         assertTrue("octet-stream missing", types.contains("application/octet-stream"))
         assertTrue("pdf missing", types.contains("application/pdf"))
         assertTrue("docx missing", types.contains(DocumentFormat.DOCX.mimeTypes.first()))
+        assertTrue("doc missing", types.contains(DocumentFormat.DOC.mimeTypes.first()))
         // UNKNOWN contributes no mime types, so an entry for it would be a filter no provider has.
         assertFalse(types.contains("application/x-unknown"))
     }
