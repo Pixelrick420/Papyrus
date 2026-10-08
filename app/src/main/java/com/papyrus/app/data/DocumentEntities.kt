@@ -12,6 +12,7 @@ enum class DocumentFormat(
     PDF("PDF", setOf("pdf"), setOf("application/pdf")),
     MARKDOWN("MD", setOf("md", "markdown", "mdown"), setOf("text/markdown", "text/x-markdown")),
     TEXT("TXT", setOf("txt", "text", "log"), setOf("text/plain")),
+    DOC("DOC", setOf("doc"), setOf("application/msword")),
     DOCX(
         "DOCX", setOf("docx"),
         setOf("application/vnd.openxmlformats-officedocument.wordprocessingml.document"),

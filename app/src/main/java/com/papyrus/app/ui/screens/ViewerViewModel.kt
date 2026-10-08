@@ -15,6 +15,7 @@ import com.papyrus.app.data.SafAccess
 import com.papyrus.app.data.shareIntent
 import com.papyrus.app.ui.UiText
 import com.papyrus.app.ui.navigation.Routes
+import com.papyrus.app.viewer.DocTextExtractor
 import com.papyrus.app.viewer.OfficeBlock
 import com.papyrus.app.viewer.NormRect
 import com.papyrus.app.viewer.OfficeTextExtractor
@@ -216,6 +217,10 @@ class ViewerViewModel(
             DocumentFormat.DOCX, DocumentFormat.ODT -> {
                 val extractor = OfficeTextExtractor(mediaDir = mediaDir)
                 val blocks = extractor.extract({ openStream(uri) }, format)
+                if (blocks.isEmpty()) ViewerContent.Failed(UiText(R.string.viewer_error_empty)) else ViewerContent.Office(blocks)
+            }
+            DocumentFormat.DOC -> {
+                val blocks = DocTextExtractor.extract { openStream(uri) }
                 if (blocks.isEmpty()) ViewerContent.Failed(UiText(R.string.viewer_error_empty)) else ViewerContent.Office(blocks)
             }
             DocumentFormat.UNKNOWN -> ViewerContent.Failed(UiText(R.string.viewer_error_unsupported))

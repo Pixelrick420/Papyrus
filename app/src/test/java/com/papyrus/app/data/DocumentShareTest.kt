@@ -25,6 +25,7 @@ class DocumentShareTest {
         assertEquals(docx, shareMimeType(DocumentFormat.DOCX, "application/octet-stream"))
         assertEquals(docx, shareMimeType(DocumentFormat.DOCX, "application/binary"))
         assertEquals(docx, shareMimeType(DocumentFormat.DOCX, "*/*"))
+        assertEquals("application/msword", shareMimeType(DocumentFormat.DOC, "application/octet-stream"))
     }
 
     @Test

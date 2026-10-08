@@ -14,6 +14,7 @@ on-device. The manifest declares no permissions: no network access, no storage p
 | Plain text (`.txt`, `.log`, ...) | chunked 40 lines at a time, selectable monospace Compose `Text`. Read up to 4 MB |
 | Source and config (`.kt`, `.py`, `.json`, ...) | as plain text, labelled `CODE` in the list |
 | DOCX / ODT | headings, paragraphs, tables and images, read straight from the archive |
+| DOC (Word 97-2003) | paragraphs and tables, read from the OLE2 piece table. No images; headings come out as plain paragraphs. Encrypted and Word 6/95 files are rejected |
 
 Format resolves from the file extension first and the MIME type second, because SAF providers routinely report a `.md`
 as `application/octet-stream` and a `.pdf` as `text/plain`. Extension-less names (`Makefile`, `Dockerfile`,
@@ -70,8 +71,9 @@ compliance is enforced rather than documented.
 | `./gradlew check` | unit tests, lint and detekt |
 | `./gradlew testDebugUnitTest` | unit tests alone |
 
-The DOCX/ODT extractor runs against archives the tests build in memory (kxml2 stands in for the platform's
-`XmlPullParser`), and every Room migration runs its own real statements against SQLite via JDBC. detekt is scoped to
+The DOCX/ODT and DOC extractors run against archives the tests build in memory (kxml2 stands in for the platform's
+`XmlPullParser`, and the `.doc` fixtures assemble the OLE2 container and piece table from scratch), and every Room
+migration runs its own real statements against SQLite via JDBC. detekt is scoped to
 dead code and correctness, with the deliberate broad catches baselined so they stay visible. CI runs only the tests and
 `assembleRelease`, so lint and detekt are local gates.
 
