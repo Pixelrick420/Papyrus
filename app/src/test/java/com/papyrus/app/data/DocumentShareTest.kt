@@ -55,4 +55,24 @@ class DocumentShareTest {
     fun `an unknown provider type is kept rather than replaced`() {
         assertEquals("application/x-custom", shareMimeType(DocumentFormat.PDF, "application/x-custom"))
     }
+
+    @Test
+    fun `a multi-share of one type declares that type`() {
+        assertEquals("application/pdf", sharedMimeType(listOf("application/pdf", "application/pdf")))
+    }
+
+    @Test
+    fun `a multi-share of a single file declares its type`() {
+        assertEquals("text/plain", sharedMimeType(listOf("text/plain")))
+    }
+
+    @Test
+    fun `a multi-share of mixed types falls back to the wildcard`() {
+        assertEquals("*/*", sharedMimeType(listOf("application/pdf", "application/msword")))
+    }
+
+    @Test
+    fun `an empty multi-share declares the wildcard`() {
+        assertEquals("*/*", sharedMimeType(emptyList()))
+    }
 }
