@@ -11,6 +11,7 @@ import android.util.LruCache
 import androidx.core.graphics.createBitmap
 import androidx.core.graphics.scale
 import androidx.core.net.toUri
+import com.papyrus.app.viewer.DocTextExtractor
 import com.papyrus.app.viewer.OfficeBlock
 import com.papyrus.app.viewer.OfficeTextExtractor
 import com.papyrus.app.viewer.PdfPageSource
@@ -81,7 +82,7 @@ class ThumbnailLoader(private val context: Context) {
     private suspend fun render(document: DocumentEntity): Bitmap? = when (document.format) {
         DocumentFormat.PDF -> renderPdf(document.uri.toUri())
         DocumentFormat.MARKDOWN, DocumentFormat.TEXT, DocumentFormat.CODE -> renderText(document.uri.toUri())
-        DocumentFormat.DOCX, DocumentFormat.ODT -> renderOffice(document)
+        DocumentFormat.DOCX, DocumentFormat.ODT, DocumentFormat.DOC -> renderOffice(document)
         DocumentFormat.UNKNOWN -> null
     }
 
@@ -104,8 +105,12 @@ class ThumbnailLoader(private val context: Context) {
 
     private fun renderOffice(document: DocumentEntity): Bitmap? {
         // mediaDir = null: thumbnails are text only, and writing document media would double the cacheDir cost of opening.
-        val extractor = OfficeTextExtractor(mediaDir = null)
-        val blocks = extractor.extract({ openStream(document.uri.toUri())!! }, document.format)
+        val uri = document.uri.toUri()
+        val blocks = if (document.format == DocumentFormat.DOC) {
+            DocTextExtractor.extract { openStream(uri) ?: throw FileNotFoundException(uri.toString()) }
+        } else {
+            OfficeTextExtractor(mediaDir = null).extract({ openStream(uri)!! }, document.format)
+        }
         val lines = blocks.asSequence()
             .mapNotNull { block ->
                 when (block) {
