@@ -83,8 +83,8 @@ android {
         applicationId = "com.papyrus.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 6
-        versionName = "0.7"
+        versionCode = 7
+        versionName = "0.8"
     }
 
     signingConfigs {
