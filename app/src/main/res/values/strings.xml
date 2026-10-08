@@ -15,6 +15,7 @@
     <string name="home_empty_title">No documents yet</string>
     <string name="home_empty_hint">Files you open will appear here.</string>
     <string name="home_removed">Removed from the list</string>
+    <string name="home_just_now">Just now</string>
     <string name="home_no_access">No
 access</string>
     <string name="home_open_failed">Couldn\'t open that file</string>
