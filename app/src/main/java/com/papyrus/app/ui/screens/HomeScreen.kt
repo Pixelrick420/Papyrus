@@ -4,6 +4,7 @@ import android.content.Intent
 import android.net.Uri
 import android.text.format.DateUtils
 import android.text.format.Formatter
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.ExitTransition
@@ -14,6 +15,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.foundation.layout.Arrangement
@@ -26,6 +28,7 @@ import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -33,6 +36,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.ui.graphics.Color
@@ -41,6 +45,8 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.path
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -52,6 +58,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -61,12 +68,14 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
@@ -87,6 +96,8 @@ import com.papyrus.app.data.OpenPersistableDocuments
 import com.papyrus.app.data.SafAccess
 import com.papyrus.app.data.ThumbnailLoader
 import com.papyrus.app.data.shareIntent
+import com.papyrus.app.data.shareIntentMultiple
+import com.papyrus.app.data.sharedMimeType
 import com.papyrus.app.ui.AppViewModelProvider
 import com.papyrus.app.ui.UiText
 import com.papyrus.app.ui.asString
@@ -111,7 +122,10 @@ data class HomeUiState(
     val libraryEmpty: Boolean = false,
     /** The trimmed query [results] was filtered with, so the "no matches" text is never ahead of the list. */
     val query: String = "",
+    /** The unfiltered library, so a bulk action resolves ids the current query may be hiding. */
+    val documents: List<DocumentEntity> = emptyList(),
     val results: List<DocumentEntity> = emptyList(),
+    val selection: SelectionState = SelectionState(),
 )
 
 class HomeViewModel(
@@ -122,22 +136,48 @@ class HomeViewModel(
     private val _query = MutableStateFlow("")
     val query: StateFlow<String> = _query.asStateFlow()
 
+    private val _selection = MutableStateFlow(SelectionState())
+
     /**
      * Filtered in memory — the whole list is already held. Starts "not loaded" rather than empty, or
      * a library with documents flashes its empty state before the first database emission.
      */
-    val uiState: StateFlow<HomeUiState> = combine(repository.documents, _query) { docs, q ->
+    val uiState: StateFlow<HomeUiState> = combine(repository.documents, _query, _selection) { docs, q, selection ->
         val needle = q.trim()
         HomeUiState(
             loaded = true,
             libraryEmpty = docs.isEmpty(),
             query = needle,
+            documents = docs,
             results = docs.matches(needle),
+            selection = selection,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeUiState())
 
     fun onQueryChange(value: String) {
         _query.value = value
+    }
+
+    fun startSelection(id: Long) {
+        _selection.value = _selection.value.start(id)
+    }
+
+    fun toggleSelection(id: Long) {
+        _selection.value = _selection.value.toggle(id)
+    }
+
+    fun exitSelection() {
+        _selection.value = _selection.value.clear()
+    }
+
+    /** Applies to what the current filter shows, so "select all" means all visible rows. */
+    fun toggleSelectAll(visible: Set<Long>) {
+        _selection.value = _selection.value.toggleAll(visible)
+    }
+
+    private fun selectedDocuments(): List<DocumentEntity> {
+        val ids = uiState.value.selection.ids
+        return uiState.value.documents.filter { it.id in ids }
     }
 
     private fun List<DocumentEntity>.matches(text: String): List<DocumentEntity> {
@@ -171,7 +211,6 @@ class HomeViewModel(
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
-                    // Skip the unreadable one; the rest are still added.
                 }
             }
             if (added > 0) {
@@ -190,6 +229,27 @@ class HomeViewModel(
         }
     }
 
+    /** Called only from the bulk-remove confirmation; the single-row [remove] stays immediate. */
+    fun removeSelected() {
+        val selected = selectedDocuments()
+        if (selected.isEmpty()) return
+        viewModelScope.launch {
+            var removed = 0
+            for (document in selected) {
+                try {
+                    repository.remove(document)
+                    removed++
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    // Skip the one that failed; the rest still go.
+                }
+            }
+            if (removed > 0) _messages.send(UiText(R.string.home_removed_count, removed))
+            exitSelection()
+        }
+    }
+
     /** Probed first: a chooser opened over a dead grant works, then fails inside the chosen app. */
     fun share(document: DocumentEntity, onShare: (Intent) -> Unit) {
         viewModelScope.launch {
@@ -200,6 +260,25 @@ class HomeViewModel(
                 SafAccess.Missing -> _messages.send(UiText(R.string.home_share_missing))
                 SafAccess.Unreadable -> _messages.send(UiText(R.string.home_share_failed))
             }
+        }
+    }
+
+    /** Probes every selected file; unreadable ones are skipped and reported rather than failing the whole share. */
+    fun shareSelected(onShare: (Intent) -> Unit) {
+        val selected = selectedDocuments()
+        if (selected.isEmpty()) return
+        viewModelScope.launch {
+            val readable = selected.filter { repository.probeShare(it) == SafAccess.Readable }
+            if (readable.isEmpty()) {
+                _messages.send(UiText(R.string.home_share_none))
+                return@launch
+            }
+            val uris = readable.map { repository.resolveShareUri(it.uri.toUri()) }
+            val types = readable.map { repository.shareTypeFor(it) }
+            onShare(shareIntentMultiple(uris, sharedMimeType(types)))
+            val skipped = selected.size - readable.size
+            if (skipped > 0) _messages.send(UiText(R.string.home_share_skipped, readable.size, skipped))
+            exitSelection()
         }
     }
 }
@@ -249,6 +328,9 @@ fun HomeScreen(
     // Which row has its menu open, not a bare flag: one flag would open every row's menu at once.
     var menuFor by remember { mutableStateOf<Long?>(null) }
 
+    // Bulk remove is the only destructive bulk action, so it alone confirms; the ⋮ menu's Remove stays immediate.
+    var confirmRemove by remember { mutableStateOf(false) }
+
     val dismissKeyboard: () -> Unit = {
         keyboard?.hide()
         focusManager.clearFocus()
@@ -271,6 +353,13 @@ fun HomeScreen(
         dismissKeyboard()
         viewModel.share(doc) { send -> context.startActivity(Intent.createChooser(send, chooserTitle)) }
     }
+    val shareSelection: () -> Unit = {
+        dismissKeyboard()
+        viewModel.shareSelected { send -> context.startActivity(Intent.createChooser(send, chooserTitle)) }
+    }
+
+    // Back leaves selection before it leaves Home; only active while selecting.
+    BackHandler(enabled = state.selection.active) { viewModel.exitSelection() }
 
     LaunchedEffect(viewModel) {
         viewModel.messages.collect { snackbar.showSnackbar(it.asString(context)) }
@@ -287,20 +376,22 @@ fun HomeScreen(
     Scaffold(
         snackbarHost = { SnackbarHost(snackbar) },
         floatingActionButton = {
-            FloatingActionButton(
-                onClick = {
-                    dismissKeyboard()
-                    openFiles.launch(DocumentFormat.pickerMimeTypes)
-                },
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
-                shape = RoundedCornerShape(ControlCorner),
-            ) {
-                Icon(
-                    imageVector = PlusIcon,
-                    contentDescription = stringResource(R.string.cd_add_files),
-                    modifier = Modifier.size(24.dp),
-                )
+            if (!state.selection.active) {
+                FloatingActionButton(
+                    onClick = {
+                        dismissKeyboard()
+                        openFiles.launch(DocumentFormat.pickerMimeTypes)
+                    },
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                    shape = RoundedCornerShape(ControlCorner),
+                ) {
+                    Icon(
+                        imageVector = PlusIcon,
+                        contentDescription = stringResource(R.string.cd_add_files),
+                        modifier = Modifier.size(24.dp),
+                    )
+                }
             }
         },
     ) { padding ->
@@ -322,33 +413,45 @@ fun HomeScreen(
                     .semantics { heading() },
             )
 
-            SearchPill(
-                text = text,
-                onTextChange = { value ->
-                    text = value
-                    viewModel.onQueryChange(value)
-                    // A new query starts from the top; otherwise a short result list can open
-                    // part-way down with its first rows out of view.
-                    if (listState.canScrollBackward) scope.launch { listState.scrollToItem(0) }
-                },
-                hint = stringResource(R.string.home_search_hint),
-                // Search keeps the filter and just puts the keyboard away.
-                onSearch = dismissKeyboard,
-                iconContentDescription = stringResource(R.string.cd_search),
-                // Padding first, then fill: the pill gets exactly the button's width.
-                modifier = Modifier.padding(start = TitleInset, end = ScreenPadding),
-                trailing = {
-                    // The slot is always reserved: only the icon fades, so the text never shifts sideways
-                    // when the first character is typed.
-                    ClearSearchButton(
-                        visible = text.isNotEmpty(),
-                        onClear = {
-                            text = ""
-                            viewModel.onQueryChange("")
-                        },
-                    )
-                },
-            )
+            if (state.selection.active) {
+                SelectionHeader(
+                    count = state.selection.ids.size,
+                    allSelected = state.results.isNotEmpty() && state.results.all { it.id in state.selection.ids },
+                    onExit = { viewModel.exitSelection() },
+                    onToggleAll = { viewModel.toggleSelectAll(state.results.mapTo(mutableSetOf()) { it.id }) },
+                    onShare = shareSelection,
+                    onRemove = { confirmRemove = true },
+                    modifier = Modifier.padding(horizontal = ScreenPadding),
+                )
+            } else {
+                SearchPill(
+                    text = text,
+                    onTextChange = { value ->
+                        text = value
+                        viewModel.onQueryChange(value)
+                        // A new query starts from the top; otherwise a short result list can open
+                        // part-way down with its first rows out of view.
+                        if (listState.canScrollBackward) scope.launch { listState.scrollToItem(0) }
+                    },
+                    hint = stringResource(R.string.home_search_hint),
+                    // Search keeps the filter and just puts the keyboard away.
+                    onSearch = dismissKeyboard,
+                    iconContentDescription = stringResource(R.string.cd_search),
+                    // Padding first, then fill: the pill gets exactly the button's width.
+                    modifier = Modifier.padding(start = TitleInset, end = ScreenPadding),
+                    trailing = {
+                        // The slot is always reserved: only the icon fades, so the text never shifts sideways
+                        // when the first character is typed.
+                        ClearSearchButton(
+                            visible = text.isNotEmpty(),
+                            onClear = {
+                                text = ""
+                                viewModel.onQueryChange("")
+                            },
+                        )
+                    },
+                )
+            }
 
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 // Fades in once, on the first load. Already loaded when the screen is re-entered, so
@@ -371,11 +474,22 @@ fun HomeScreen(
                         DocumentRow(
                             doc = doc,
                             loader = viewModel.thumbnailLoader,
+                            selecting = state.selection.active,
+                            selected = doc.id in state.selection.ids,
                             menuOpen = menuFor == doc.id,
                             onMenuOpenChange = { open -> menuFor = if (open) doc.id else null },
                             onClick = {
+                                if (state.selection.active) {
+                                    viewModel.toggleSelection(doc.id)
+                                } else {
+                                    dismissKeyboard()
+                                    onOpenDocument(doc.id)
+                                }
+                            },
+                            onLongPress = {
                                 dismissKeyboard()
-                                onOpenDocument(doc.id)
+                                menuFor = null
+                                viewModel.startSelection(doc.id)
                             },
                             onRemove = {
                                 dismissKeyboard()
@@ -397,6 +511,86 @@ fun HomeScreen(
                 )
             }
         }
+    }
+
+    if (confirmRemove) {
+        AlertDialog(
+            onDismissRequest = { confirmRemove = false },
+            title = { Text(stringResource(R.string.home_remove_confirm_title)) },
+            text = {
+                Text(
+                    pluralStringResource(
+                        R.plurals.home_remove_confirm_body,
+                        state.selection.ids.size,
+                        state.selection.ids.size,
+                    ),
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        confirmRemove = false
+                        viewModel.removeSelected()
+                    },
+                ) { Text(stringResource(R.string.action_remove)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmRemove = false }) {
+                    Text(stringResource(R.string.action_cancel))
+                }
+            },
+        )
+    }
+}
+
+/** Takes the search pill's slot while selecting: back, count, and right-aligned remove/share/select-all. */
+@Composable
+private fun SelectionHeader(
+    count: Int,
+    allSelected: Boolean,
+    onExit: () -> Unit,
+    onToggleAll: () -> Unit,
+    onShare: () -> Unit,
+    onRemove: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val hasSelection = count > 0
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .heightIn(min = ControlHeight)
+            // 4dp inside the screen's 16dp list inset puts the checkbox on the row checkboxes' centre line.
+            .padding(end = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        IconButton(onClick = onExit) {
+            Icon(
+                Icons.AutoMirrored.Filled.ArrowBack,
+                contentDescription = stringResource(R.string.action_back),
+            )
+        }
+        Text(
+            text = stringResource(R.string.home_selected_count, count),
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier
+                .weight(1f)
+                .padding(horizontal = 4.dp),
+        )
+        IconButton(onClick = onRemove, enabled = hasSelection) {
+            Icon(
+                painter = painterResource(R.drawable.ic_remove),
+                contentDescription = stringResource(R.string.action_remove),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        IconButton(onClick = onShare, enabled = hasSelection) {
+            Icon(
+                painter = painterResource(R.drawable.ic_share),
+                contentDescription = stringResource(R.string.action_share),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Checkbox(checked = allSelected, onCheckedChange = { onToggleAll() })
     }
 }
 
@@ -497,9 +691,12 @@ private fun EmptyState(
 private fun DocumentRow(
     doc: DocumentEntity,
     loader: ThumbnailLoader,
+    selecting: Boolean,
+    selected: Boolean,
     menuOpen: Boolean,
     onMenuOpenChange: (Boolean) -> Unit,
     onClick: () -> Unit,
+    onLongPress: () -> Unit,
     onRemove: () -> Unit,
     onShare: () -> Unit,
     modifier: Modifier = Modifier,
@@ -515,11 +712,20 @@ private fun DocumentRow(
             DateUtils.getRelativeTimeSpanString(doc.lastOpenedAt, System.currentTimeMillis(), DateUtils.MINUTE_IN_MILLIS).toString()
         }
     }
+    val shape = RoundedCornerShape(16.dp)
     Surface(
-        onClick = onClick,
-        modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        // combinedClickable rather than Surface(onClick): the long-press that enters selection has no
+        // Surface overload. The clip keeps the ripple inside the rounded corners.
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .combinedClickable(onClick = onClick, onLongClick = onLongPress),
+        shape = shape,
+        color = if (selected) {
+            MaterialTheme.colorScheme.surfaceContainerHighest
+        } else {
+            MaterialTheme.colorScheme.surfaceContainerLow
+        },
     ) {
         Row(
             Modifier.padding(start = 12.dp, top = 10.dp, end = 4.dp, bottom = 10.dp),
@@ -546,25 +752,30 @@ private fun DocumentRow(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            Box {
-                IconButton(onClick = { onMenuOpenChange(true) }) {
-                    Icon(
-                        Icons.Default.MoreVert,
-                        contentDescription = stringResource(R.string.home_menu),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(20.dp),
-                    )
-                }
-                DropdownMenu(expanded = menuOpen, onDismissRequest = { onMenuOpenChange(false) }) {
-                    // Destructive last, so it cannot be reached by reflex from the icon.
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.action_share)) },
-                        onClick = { onMenuOpenChange(false); onShare() },
-                    )
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.action_remove)) },
-                        onClick = { onMenuOpenChange(false); onRemove() },
-                    )
+            // The checkbox takes the ⋮'s exact slot, so the row's contents hold still between modes.
+            if (selecting) {
+                Checkbox(checked = selected, onCheckedChange = { onClick() })
+            } else {
+                Box {
+                    IconButton(onClick = { onMenuOpenChange(true) }) {
+                        Icon(
+                            Icons.Default.MoreVert,
+                            contentDescription = stringResource(R.string.home_menu),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
+                    DropdownMenu(expanded = menuOpen, onDismissRequest = { onMenuOpenChange(false) }) {
+                        // Destructive last, so it cannot be reached by reflex from the icon.
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.action_share)) },
+                            onClick = { onMenuOpenChange(false); onShare() },
+                        )
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.action_remove)) },
+                            onClick = { onMenuOpenChange(false); onRemove() },
+                        )
+                    }
                 }
             }
         }

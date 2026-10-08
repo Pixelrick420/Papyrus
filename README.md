@@ -37,6 +37,9 @@ migration fallback, because the index is the reader's document history.
   that opens and then fails inside someone else's app.
 - **Remove** deletes the row and releases the persisted SAF grant. An app-owned copy goes with its row; your own file
   on disk is untouched.
+- **Bulk select** starts on a long-press. The header shows the picked count and a select-all toggle, and the bottom bar
+  shares the whole selection in one `ACTION_SEND_MULTIPLE` chooser or removes it after a confirmation. A single row's
+  ⋮ Remove still happens straight away.
 - **Find in file**, also on Ctrl+F, works on every format. PDF, text and Office step through matches one at a time:
   the current one is orange and the rest yellow. Markdown is a single `Spanned`, so it lights every match at once and
   its counter shows the total.
