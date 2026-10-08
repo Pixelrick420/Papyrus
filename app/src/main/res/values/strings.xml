@@ -7,6 +7,16 @@
     <string name="home_menu">More options</string>
     <string name="action_share">Share</string>
     <string name="action_remove">Remove</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="home_selected_count">%1$d selected</string>
+    <string name="home_removed_count">Removed %1$d files</string>
+    <string name="home_remove_confirm_title">Remove from list?</string>
+    <plurals name="home_remove_confirm_body">
+        <item quantity="one">This action will remove %1$d item</item>
+        <item quantity="other">This action will remove %1$d items</item>
+    </plurals>
+    <string name="home_share_skipped">Shared %1$d, skipped %2$d</string>
+    <string name="home_share_none">Couldn\'t share those files</string>
     <string name="home_share_failed">Couldn\'t share that file</string>
     <string name="home_share_no_access">Access to that file was lost. Open it to restore sharing.</string>
     <string name="home_share_missing">That file has been moved or deleted.</string>
