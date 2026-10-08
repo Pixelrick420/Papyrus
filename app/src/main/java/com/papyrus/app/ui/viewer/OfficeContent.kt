@@ -8,14 +8,10 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
@@ -30,18 +26,23 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.layout.layoutId
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.papyrus.app.R
 import com.papyrus.app.viewer.OfficeBlock
 import com.papyrus.app.viewer.OfficeCell
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
+import kotlin.math.min
 
 /** EMF and WMF have no Android decoder, so a bad image shows a placeholder, not a dead document. */
 @Composable
@@ -81,7 +82,12 @@ private fun headingStyle(level: Int) = when (level.coerceIn(1, 6)) {
     else -> MaterialTheme.typography.bodyLarge
 }
 
-/** Column is the layout unit: merged cells span several. Rowspan needs [SubcomposeLayout]. */
+/**
+ * Column widths come from the cells' own content ([measureColumns], [fitColumns]) and every cell is
+ * drawn as tall as its row, so a serial-number column stays narrow beside a prose one and a short cell's
+ * border reaches the bottom of its row. A cell that spans rows covers all of them, which needs a layout
+ * that sees every row at once: [TableGrid].
+ */
 @Composable
 private fun OfficeTableView(
     table: OfficeBlock.Table,
@@ -116,30 +122,43 @@ private fun OfficeTableView(
         }
     }
 
-    Column(
-        modifier
-            .fillMaxWidth()
-            .horizontalScroll(hScroll),
-    ) {
-        table.rows.forEachIndexed { rowIndex, row ->
-            Row(Modifier.width(COLUMN_WIDTH * columnCount)) {
-                repeat(columnCount) { column ->
-                    val ownerIndex = row.indexOfFirst { column in it.column..it.lastColumn }
-                    val owner = row.getOrNull(ownerIndex)
-                    when {
-                        owner != null ->
+    val cellStyle = MaterialTheme.typography.bodySmall
+    // Zoom scales fontScale, so measuring in dp *at the current scale* is what makes columns follow it.
+    val emDp = with(LocalDensity.current) { (cellStyle.fontSize.takeIf { it.isSp } ?: 12.sp).toDp().value }
+    val metrics = remember(table, columnCount, emDp) {
+        measureColumns(table.rows, columnCount, emDp, CELL_CHROME.value)
+    }
+
+    // The viewport width is what a table that is too wide has to fit, so it is read here rather than
+    // inside the scroller, which is offered unbounded width.
+    BoxWithConstraints(modifier.fillMaxWidth()) {
+        val columnWidths = remember(metrics, maxWidth) { fitColumns(metrics, maxWidth.value) }
+        Box(Modifier.horizontalScroll(hScroll)) {
+            TableGrid(columnWidthsDp = columnWidths, rowCount = table.rows.size) {
+                table.rows.forEachIndexed { rowIndex, row ->
+                    row.forEachIndexed { cellIndex, cell ->
+                        CellBox(
+                            cell = cell,
+                            style = cellStyle,
+                            modifier = Modifier.gridCell(rowIndex, cell.column, cell.colspan, cell.rowspan),
+                            highlight = highlight?.skipping(matchesBefore[rowIndex][cellIndex]),
+                            reveal = reveal,
+                        )
+                    }
+                    // A column no cell owns and no rowspan covers is a real gap in the source. It still
+                    // gets a box, or a short row would end in blank space instead of an empty cell. A
+                    // covered column gets none, so a merge has no internal border.
+                    repeat(columnCount) { column ->
+                        val owned = row.any { column in it.column..it.lastColumn }
+                        if (!owned && (rowIndex to column) !in covered) {
                             CellBox(
-                                cell = owner,
-                                width = COLUMN_WIDTH * (owner.lastColumn - owner.column + 1),
-                                highlight = highlight?.skipping(matchesBefore[rowIndex][ownerIndex]),
-                                reveal = reveal,
+                                cell = null,
+                                style = cellStyle,
+                                modifier = Modifier.gridCell(rowIndex, column),
+                                highlight = null,
+                                reveal = null,
                             )
-                        // Covered column: no box, so the merge has no internal border. The width is
-                        // reserved, which aligns later cells with the rows above.
-                        (rowIndex to column) in covered -> Spacer(Modifier.width(COLUMN_WIDTH))
-                        // An uncovered column is a real gap in the source, so it still needs a box
-                        // or the cells after it reflow leftward and misalign.
-                        else -> CellBox(cell = null, width = COLUMN_WIDTH, highlight = null, reveal = null)
+                        }
                     }
                 }
             }
@@ -147,45 +166,97 @@ private fun OfficeTableView(
     }
 }
 
-private val COLUMN_WIDTH = 150.dp
 private val CELL_PADDING = 8.dp
 private val CELL_GAP = 1.dp
 private val MIN_CELL_HEIGHT = 40.dp
 
-/** Gaps and borders are per-box, so a merged cell shows no internal border. */
+/** Width a cell spends outside its text: gap and padding, both sides. */
+private val CELL_CHROME = (CELL_GAP + CELL_PADDING) * 2
+
+/** `Constraints` cannot represent a height past this; a cell taller than it is cut short rather than crashing. */
+private const val MAX_CELL_PX = 250_000
+
+/** Marks which cells of the [TableGrid] a child occupies; [TableGrid] reads it back off the child. */
+private fun Modifier.gridCell(row: Int, column: Int, colspan: Int = 1, rowspan: Int = 1): Modifier =
+    layoutId(GridCell(row, column, colspan.coerceAtLeast(1), rowspan.coerceAtLeast(1)))
+
+/**
+ * Lays its children out on a grid of [columnWidthsDp]; each child says which cells it occupies with
+ * [gridCell]. A row is as tall as the tallest cell sitting in that row alone, and never under
+ * [MIN_CELL_HEIGHT]. A cell spanning rows takes the height of all of them, and grows the last if it is
+ * taller than they are together.
+ *
+ * Heights come from intrinsics, then each child is measured once at exactly the size it will be drawn:
+ * that is what makes a short cell's box fill its row. (A `fillMaxHeight` on a child inside a `Row`
+ * cannot, because the row's own height is unbounded here.)
+ */
 @Composable
-private fun CellBox(cell: OfficeCell?, width: Dp, highlight: FindHighlight?, reveal: RevealTicket?) {
-    Column(
-        Modifier
-            .width(width)
-            // A rowspan origin takes the plain minimum: it cannot measure the rows it covers, so a
-            // taller box would push them down instead of overlapping them.
-            .heightIn(min = MIN_CELL_HEIGHT)
-            .padding(CELL_GAP),
+private fun TableGrid(
+    columnWidthsDp: FloatArray,
+    rowCount: Int,
+    content: @Composable () -> Unit,
+) {
+    Layout(content = content) { measurables, _ ->
+        val columns = columnWidthsDp.size
+        val columnX = IntArray(columns + 1)
+        columnWidthsDp.forEachIndexed { i, width -> columnX[i + 1] = columnX[i] + width.dp.roundToPx() }
+
+        val cells = measurables.map { it.layoutId as GridCell }
+        val widths = IntArray(cells.size)
+        val natural = IntArray(cells.size)
+        cells.forEachIndexed { i, cell ->
+            widths[i] = columnX[min(cell.column + cell.colspan, columns)] - columnX[cell.column]
+            natural[i] = measurables[i].minIntrinsicHeight(widths[i])
+        }
+        val heights = rowHeights(cells, natural, rowCount, minRow = MIN_CELL_HEIGHT.roundToPx())
+        val rowY = IntArray(rowCount + 1)
+        for (row in 0 until rowCount) rowY[row + 1] = rowY[row] + heights[row]
+
+        val placeables = measurables.mapIndexed { i, measurable ->
+            val cell = cells[i]
+            val height = (rowY[min(cell.row + cell.rowspan, rowCount)] - rowY[cell.row]).coerceAtMost(MAX_CELL_PX)
+            measurable.measure(Constraints.fixed(widths[i], height))
+        }
+        layout(columnX[columns], rowY[rowCount]) {
+            placeables.forEachIndexed { i, placeable -> placeable.place(columnX[cells[i].column], rowY[cells[i].row]) }
+        }
+    }
+}
+
+/**
+ * Takes whatever size [TableGrid] hands it, so the border and fill cover the whole cell, merged or not.
+ * Gaps are per cell, so a merged cell shows no internal border.
+ */
+@Composable
+private fun CellBox(
+    cell: OfficeCell?,
+    style: TextStyle,
+    modifier: Modifier,
+    highlight: FindHighlight?,
+    reveal: RevealTicket?,
+) {
+    Box(
+        modifier
+            .padding(CELL_GAP)
+            .background(MaterialTheme.colorScheme.surface)
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(2.dp))
+            .padding(CELL_PADDING),
     ) {
-        Box(
-            Modifier
-                .fillMaxSize()
-                .background(MaterialTheme.colorScheme.surface)
-                .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(2.dp))
-                .padding(CELL_PADDING),
-        ) {
-            if (cell == null) return@Box
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                // The extractor joins a cell's paragraphs with newlines; re-splitting here makes
-                // intra-cell spacing independent of the cell's font size. Each line is its own text,
-                // so the cell's current match is numbered across them the same way the table's is
-                // across its cells.
-                var before = 0
-                officeCellLines(cell).forEach { line ->
-                    FindText(
-                        text = line,
-                        highlight = highlight?.skipping(before),
-                        style = MaterialTheme.typography.bodySmall,
-                        reveal = reveal,
-                    )
-                    if (highlight != null) before += countOccurrences(line, highlight.query)
-                }
+        if (cell == null) return@Box
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            // The extractor joins a cell's paragraphs with newlines; re-splitting here makes
+            // intra-cell spacing independent of the cell's font size. Each line is its own text,
+            // so the cell's current match is numbered across them the same way the table's is
+            // across its cells.
+            var before = 0
+            officeCellLines(cell).forEach { line ->
+                FindText(
+                    text = line,
+                    highlight = highlight?.skipping(before),
+                    style = style,
+                    reveal = reveal,
+                )
+                if (highlight != null) before += countOccurrences(line, highlight.query)
             }
         }
     }
