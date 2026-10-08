@@ -507,8 +507,13 @@ private fun DocumentRow(
     val context = LocalContext.current
     // Remembered so a row that is merely re-placed by the list animation does not re-format its text.
     val sizeLabel = remember(doc.sizeBytes) { Formatter.formatShortFileSize(context, doc.sizeBytes) }
+    val justNow = stringResource(R.string.home_just_now)
     val openedLabel = remember(doc.lastOpenedAt) {
-        DateUtils.getRelativeTimeSpanString(doc.lastOpenedAt, System.currentTimeMillis(), DateUtils.MINUTE_IN_MILLIS).toString()
+        if (System.currentTimeMillis() - doc.lastOpenedAt < DateUtils.MINUTE_IN_MILLIS * 3) {
+            justNow
+        } else {
+            DateUtils.getRelativeTimeSpanString(doc.lastOpenedAt, System.currentTimeMillis(), DateUtils.MINUTE_IN_MILLIS).toString()
+        }
     }
     Surface(
         onClick = onClick,
