@@ -9,8 +9,8 @@ import androidx.room.RoomDatabase
     entities = [DocumentEntity::class],
     version = 4,
     exportSchema = true, // written to app/schemas on every build and deliberately NOT tracked: the
-    // migration tests execute this file's own SQL against sqlite-jdbc rather than diffing a
-    // committed schema history, so a tracked export would only be a stale-identityHash trap.
+    // export is a build artifact, not a schema history, so committing it would only be a
+    // stale-identityHash trap.
 )
 abstract class AppDatabase : RoomDatabase() {
 
@@ -25,8 +25,7 @@ abstract class AppDatabase : RoomDatabase() {
         fun getInstance(context: Context): AppDatabase =
             instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, DB_NAME)
-                    // No destructive fallback: the index is the user's document history. Add a Migration when bumping version.
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                    // Only the current schema is supported, so a database on any other version fails to open.
                     .build()
                     .also { instance = it }
             }
