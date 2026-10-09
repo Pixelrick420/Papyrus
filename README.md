@@ -24,8 +24,8 @@ strict UTF-8 and overwhelmingly printable means text.
 ## Features
 
 The index is one Room row per document: URI, title, format, size, and the added and last-opened timestamps. Page count
-and MIME type are read live from the provider and the open PDF instead of being stored. There is no destructive
-migration fallback, because the index is the reader's document history.
+and MIME type are read live from the provider and the open PDF instead of being stored. Only the current schema is
+supported: there is no migration path from older versions, and a database written by one will not open.
 
 - **Open with** takes an `ACTION_VIEW` content URI from another app and shows it without indexing it. That document
   lives in memory for the life of the process, since the read grant that arrived with the intent does.
@@ -75,8 +75,7 @@ compliance is enforced rather than documented.
 | `./gradlew testDebugUnitTest` | unit tests alone |
 
 The DOCX/ODT and DOC extractors run against archives the tests build in memory (kxml2 stands in for the platform's
-`XmlPullParser`, and the `.doc` fixtures assemble the OLE2 container and piece table from scratch), and every Room
-migration runs its own real statements against SQLite via JDBC. detekt is scoped to
+`XmlPullParser`, and the `.doc` fixtures assemble the OLE2 container and piece table from scratch). detekt is scoped to
 dead code and correctness, with the deliberate broad catches baselined so they stay visible. CI runs only the tests and
 `assembleRelease`, so lint and detekt are local gates.
 
