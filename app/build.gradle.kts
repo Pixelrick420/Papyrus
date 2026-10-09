@@ -206,11 +206,6 @@ dependencies {
     // injected factory precisely so these tests can substitute this one: android.util.Xml is a
     // platform stub under plain JUnit, and Robolectric would be a heavy way to get a working parser.
     testImplementation("net.sf.kxml:kxml2:2.3.0")
-    // A real SQLite engine so the migration test executes the app's own SQL rather than asserting
-    // against a hand-written copy of it. This is what `room-testing` would do through
-    // MigrationTestHelper, but that artifact pulls in Robolectric and an instrumentation runner; the
-    // raw driver covers the same ground for a migration that is plain SQL.
-    testImplementation("org.xerial:sqlite-jdbc:3.41.2.2")
 }
 
 // Static analysis, scoped to dead code and correctness. The rule selection and the
