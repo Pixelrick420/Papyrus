@@ -124,6 +124,17 @@ class PdfPageSource private constructor(
             }
         }
 
+        /** Opens an already-decrypted local copy; the caller owns and deletes [file]. */
+        suspend fun openFile(file: File): PdfPageSource = withContext(Dispatchers.IO) {
+            val pfd = ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
+            try {
+                PdfPageSource(pfd, create(pfd), null)
+            } catch (e: Exception) {
+                pfd.close()
+                throw e
+            }
+        }
+
         private fun create(pfd: ParcelFileDescriptor): PdfRenderer =
             try {
                 PdfRenderer(pfd)

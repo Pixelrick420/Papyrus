@@ -4,6 +4,7 @@
     <string name="action_back">Back</string>
     <string name="cd_add_files">Add files</string>
     <string name="home_added_files">Added %d files</string>
+    <string name="home_skipped_encrypted">Skipped %1$d password-protected file(s)</string>
     <string name="home_menu">More options</string>
     <string name="action_share">Share</string>
     <string name="action_remove">Remove</string>
@@ -38,7 +39,13 @@ access</string>
     <string name="viewer_error_not_found">This document is no longer in your list.</string>
     <string name="viewer_error_access">Access to this file was lost. Open it again from Home.</string>
     <string name="viewer_error_missing">The file was moved or deleted.</string>
-    <string name="viewer_error_password">Password-protected PDFs are not supported yet.</string>
+    <string name="viewer_error_password">This PDF is protected and couldn\'t be opened.</string>
+    <string name="viewer_password_title">Password required</string>
+    <string name="viewer_password_message">This PDF is password-protected. Enter its password to open it.</string>
+    <string name="viewer_password_hint">Password</string>
+    <string name="viewer_password_unlock">Unlock</string>
+    <string name="viewer_password_incorrect">Incorrect password. Try again.</string>
+    <string name="viewer_password_cancelled">Password-protected PDF not opened.</string>
     <string name="viewer_error_unsupported">This file type isn\'t supported.</string>
     <string name="viewer_error_empty">No readable text found in this document.</string>
     <string name="viewer_error_generic">Couldn\'t open the document: %1$s</string>
