@@ -64,7 +64,7 @@ import kotlin.math.roundToInt
 private const val LOW_RES_DIVISOR = 4
 private val PAGE_HIT_BORDER = 3.dp
 
-/** Gap between pages, and the margin above and beside the first one, at 100%. */
+/** Gap between pages, and the margin above the first one, at 100%. */
 private val PAGE_GAP = 8.dp
 
 /** A drag emits a size change per frame, and each queues a rasterisation behind the source's mutex. */
@@ -183,7 +183,7 @@ internal fun PdfViewer(
                     .anchorBridge(hAnchor),
                 userScrollEnabled = !zoom.isScrollLocked,
                 // Trailing padding clears the scrollbar; the bottom clears the page indicator.
-                contentPadding = PaddingValues(start = pageGap, top = pageGap, end = 20.dp, bottom = 8.dp),
+                contentPadding = PaddingValues(start = 0.dp, top = pageGap, end = 20.dp, bottom = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(pageGap),
             ) {
                 items(source.pageCount, key = { it }) { index ->
@@ -292,9 +292,9 @@ private fun PdfPage(
         reveal.consumed = true
         requester.bringIntoView(
             Rect(
-                left = activeRect.left * size.width,
+                left = activeRect.left * size.width - margin,
                 top = activeRect.top * size.height - margin,
-                right = activeRect.right * size.width,
+                right = activeRect.right * size.width + margin,
                 bottom = activeRect.bottom * size.height + margin,
             ),
         )

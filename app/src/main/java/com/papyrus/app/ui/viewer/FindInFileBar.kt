@@ -54,6 +54,9 @@ fun FindInFileBar(
     onPrevious: () -> Unit,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
+    // Landscape only, from the caller: hide a docked keyboard when a step moves the view, so the
+    // whole page shows. A floating keyboard is left alone.
+    dismissKeyboardOnStep: Boolean = false,
     focusRequester: FocusRequester? = null,
 ) {
     val keyboard = LocalSoftwareKeyboardController.current
@@ -78,7 +81,10 @@ fun FindInFileBar(
             onTextChange = onQueryChange,
             hint = stringResource(R.string.viewer_find_hint),
             // Enter steps to the next match. Where there is no step target it does nothing.
-            onSearch = { if (canNavigate) onNext() },
+            onSearch = {
+                if (dismissKeyboardOnStep) keyboard?.hide()
+                if (canNavigate) onNext()
+            },
             modifier = Modifier.weight(1f),
             focusRequester = requester,
             trailing = {
@@ -112,13 +118,19 @@ fun FindInFileBar(
         FindIconButton(
             icon = Icons.Default.KeyboardArrowUp,
             contentDescription = stringResource(R.string.viewer_find_previous),
-            onClick = onPrevious,
+            onClick = {
+                if (dismissKeyboardOnStep) keyboard?.hide()
+                onPrevious()
+            },
             enabled = stepEnabled,
         )
         FindIconButton(
             icon = Icons.Default.KeyboardArrowDown,
             contentDescription = stringResource(R.string.viewer_find_next),
-            onClick = onNext,
+            onClick = {
+                if (dismissKeyboardOnStep) keyboard?.hide()
+                onNext()
+            },
             enabled = stepEnabled,
         )
         FindIconButton(
