@@ -61,7 +61,15 @@ private fun ZoomableScrollArea(
                 .align(Alignment.CenterEnd)
                 .width(ScrollbarTouchTarget)
                 .fillMaxSize()
-                .autoHideScrollbar(geometry, topClearance = ZoomBadgeTopClearance, zoom = zoom, onScrollBy = onScrollBy),
+                .autoHideScrollbar(
+                    geometry,
+                    // Higher than the default: lines are short, so the same flick covers more of the
+                    // document and the estimated offset is noisier, and the knob showed too eagerly.
+                    showVelocity = TEXT_SHOW_VELOCITY,
+                    topClearance = ZoomBadgeTopClearance,
+                    zoom = zoom,
+                    onScrollBy = onScrollBy,
+                ),
         )
     }
 }
@@ -250,6 +258,9 @@ fun PlainTextViewer(
             SelectionContainer {
                 LazyColumn(
                     scrollModifier,
+                    // The state the scrollbar, zoom anchor and find all read; without it the list
+                    // scrolls its own private state and they see an empty one.
+                    state = listState,
                     userScrollEnabled = !zoom.isScrollLocked,
                     // Trailing pad clears the scrollbar overlay.
                     contentPadding = PaddingValues(start = 16.dp, end = 20.dp, top = 16.dp, bottom = 16.dp),
@@ -305,6 +316,9 @@ fun OfficeViewer(
             SelectionContainer {
                 LazyColumn(
                     scrollModifier,
+                    // The state the scrollbar, zoom anchor and find all read; without it the list
+                    // scrolls its own private state and they see an empty one.
+                    state = listState,
                     userScrollEnabled = !zoom.isScrollLocked,
                     contentPadding = PaddingValues(start = 16.dp, end = 20.dp, top = 16.dp, bottom = 16.dp),
                 ) {
@@ -323,6 +337,8 @@ fun OfficeViewer(
     }
 }
 
+/** Scroll speed (dp/s) that reveals the knob on text surfaces; the PDF viewer keeps the 880 default. */
+private val TEXT_SHOW_VELOCITY = 1600.dp
 private const val HIGHLIGHT_DEBOUNCE_MS = 150L
 private val MARKDOWN_BASE_SP = 16.sp
 private const val LINE_SPACING_MULTIPLIER = 1.25f
