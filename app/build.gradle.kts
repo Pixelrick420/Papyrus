@@ -4,7 +4,6 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     id("com.android.application")
-    id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
     id("com.google.devtools.ksp")
     id("io.gitlab.arturbosch.detekt")
@@ -70,7 +69,7 @@ val hasReleaseSigning = releaseSigning.values.all { it != null }
 
 android {
     namespace = "com.papyrus.app"
-    compileSdk = 36
+    compileSdk = 37
 
     // Pinned so `stripReleaseDebugSymbols` finds a strip tool; without it AGP falls back to
     // its own NDK default (27.0.120779), which isn't installed here.
@@ -152,7 +151,7 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.9.0")
 
     // Jetpack Compose
-    implementation(platform("androidx.compose:compose-bom:2025.05.01"))
+    implementation(platform("androidx.compose:compose-bom:2026.09.00"))
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-graphics")
     implementation("androidx.compose.material3:material3")
@@ -160,9 +159,9 @@ dependencies {
     implementation("androidx.navigation:navigation-compose:2.9.0")
 
     // Room (SQLite index of documents / page order)
-    implementation("androidx.room:room-runtime:2.7.1")
-    implementation("androidx.room:room-ktx:2.7.1")
-    ksp("androidx.room:room-compiler:2.7.1")
+    implementation("androidx.room:room-runtime:2.8.5")
+    implementation("androidx.room:room-ktx:2.8.5")
+    ksp("androidx.room:room-compiler:2.8.5")
 
     // PDF text extraction (find-in-file) and page geometry. PdfBox-Android is the Apache-2.0
     // AAR port; the platform's PdfRenderer draws the pages.
@@ -222,8 +221,9 @@ detekt {
 // Play.
 // ---------------------------------------------------------------------------
 
-val adb = android.sdkDirectory.resolve("platform-tools/adb")
-val apksigner = android.sdkDirectory.resolve(
+val sdkDirectory = androidComponents.sdkComponents.sdkDirectory.get().asFile
+val adb = sdkDirectory.resolve("platform-tools/adb")
+val apksigner = sdkDirectory.resolve(
     "build-tools/${android.buildToolsVersion}/apksigner",
 )
 val debugKeystore = File(System.getProperty("user.home"), ".android/debug.keystore")
