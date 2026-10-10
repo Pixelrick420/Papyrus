@@ -77,6 +77,7 @@ import com.papyrus.app.ui.viewer.FileInfoSheet
 import com.papyrus.app.ui.viewer.FindInFileBar
 import com.papyrus.app.ui.viewer.MarkdownViewer
 import com.papyrus.app.ui.viewer.OfficeViewer
+import com.papyrus.app.ui.viewer.PdfPasswordDialog
 import com.papyrus.app.ui.viewer.PdfSelectionState
 import com.papyrus.app.ui.viewer.PdfViewer
 import com.papyrus.app.ui.viewer.PlainTextViewer
@@ -248,6 +249,9 @@ fun ViewerScreen(
                         activeOccurrence = find.activeOccurrence,
                         zoom = zoom,
                     )
+                    // The dialog covers the page; only an in-flight retry is worth showing behind it.
+                    is ViewerContent.NeedsPassword ->
+                        if (content.checking) CircularProgressIndicator(Modifier.align(Alignment.Center))
                     is ViewerContent.Failed -> Column(
                         Modifier.fillMaxSize().padding(32.dp),
                         verticalArrangement = Arrangement.Center,
@@ -278,6 +282,15 @@ fun ViewerScreen(
                 ZoomBadge(zoom, Modifier.align(Alignment.TopEnd).padding(12.dp))
             }
         }
+    }
+
+    (state.content as? ViewerContent.NeedsPassword)?.let { prompt ->
+        PdfPasswordDialog(
+            incorrect = prompt.incorrect,
+            checking = prompt.checking,
+            onUnlock = viewModel::submitPassword,
+            onCancel = viewModel::cancelPassword,
+        )
     }
 
     val infoDocument = state.document

@@ -4,6 +4,9 @@
   <CurrentIssues>
     <ID>SwallowedException:HomeScreen.kt$HomeViewModel$e: Exception</ID>
     <ID>SwallowedException:MainActivity.kt$MainActivity$e: Exception</ID>
+    <ID>SwallowedException:PdfEncryption.kt$PdfEncryption.Companion$e: Exception</ID>
+    <ID>SwallowedException:PdfEncryption.kt$PdfEncryption.Companion$e: InvalidPasswordException</ID>
+    <ID>SwallowedException:PdfEncryptionTest.kt$PdfEncryptionTest$e: InvalidPasswordException</ID>
     <ID>SwallowedException:PdfPageSource.kt$PdfPageSource.Companion$e: IOException</ID>
     <ID>SwallowedException:PdfPageSource.kt$PdfPageSource.Companion$e: SecurityException</ID>
     <ID>SwallowedException:PdfPageTextTest.kt$PdfPageTextTest$e: IllegalArgumentException</ID>
@@ -11,10 +14,12 @@
     <ID>SwallowedException:ThumbnailLoader.kt$ThumbnailLoader$e: SecurityException</ID>
     <ID>SwallowedException:ViewerViewModel.kt$ViewerViewModel$e: Exception</ID>
     <ID>SwallowedException:ViewerViewModel.kt$ViewerViewModel$e: FileNotFoundException</ID>
+    <ID>SwallowedException:ViewerViewModel.kt$ViewerViewModel$e: InvalidPasswordException</ID>
     <ID>SwallowedException:ViewerViewModel.kt$ViewerViewModel$e: PdfPasswordException</ID>
     <ID>SwallowedException:ViewerViewModel.kt$ViewerViewModel$e: SecurityException</ID>
     <ID>TooGenericExceptionCaught:HomeScreen.kt$HomeViewModel$e: Exception</ID>
     <ID>TooGenericExceptionCaught:MainActivity.kt$MainActivity$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:PdfEncryption.kt$PdfEncryption.Companion$e: Exception</ID>
     <ID>TooGenericExceptionCaught:PdfPageSource.kt$PdfPageSource.Companion$e: Exception</ID>
     <ID>TooGenericExceptionCaught:PdfTextExtractor.kt$PdfTextExtractor$e: Exception</ID>
     <ID>TooGenericExceptionCaught:ThumbnailLoader.kt$ThumbnailLoader$e: Exception</ID>

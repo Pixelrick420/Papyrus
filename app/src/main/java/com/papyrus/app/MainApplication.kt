@@ -5,10 +5,12 @@ import android.content.Context
 import com.papyrus.app.data.AppDatabase
 import com.papyrus.app.data.DocumentRepository
 import com.papyrus.app.data.ThumbnailLoader
+import com.papyrus.app.viewer.PDF_UNLOCK_DIR
 import org.acra.ACRA
 import org.acra.ReportField
 import org.acra.data.StringFormat
 import org.acra.ktx.initAcra
+import java.io.File
 
 class MainApplication : Application() {
 
@@ -45,5 +47,11 @@ class MainApplication : Application() {
         super.onCreate()
         // ACRA runs its report pipeline in a separate ":acra" process; skip app setup there.
         if (ACRA.isACRASenderServiceProcess()) return
+        sweepUnlockedPdfs()
+    }
+
+    /** A kill mid-view leaves a decrypted copy behind, so clear the whole directory on the next start. */
+    private fun sweepUnlockedPdfs() {
+        runCatching { File(cacheDir, PDF_UNLOCK_DIR).deleteRecursively() }
     }
 }
