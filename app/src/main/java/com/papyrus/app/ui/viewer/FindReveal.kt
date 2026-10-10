@@ -4,6 +4,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -14,10 +15,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
+import com.papyrus.app.viewer.TextSpan
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 
@@ -27,9 +30,8 @@ import kotlinx.coroutines.flow.first
  */
 
 /**
- * One navigation to a match. Whoever draws that match scrolls to it once and marks this consumed.
- * Owned above the lazy list, where it outlives its items: an effect left in an item would rerun when
- * the item is recomposed after the reader scrolled away, and pull the view back.
+ * One navigation to a match; whoever draws it scrolls once and marks this consumed. Owned above the
+ * lazy list so recomposing an item cannot pull the view back.
  */
 internal class RevealTicket {
     var consumed = false
@@ -39,8 +41,8 @@ internal class RevealTicket {
 internal val RevealMargin = 48.dp
 
 /**
- * Text with find highlights, which brings the current match into view when [reveal] is for this
- * text. Pass [reveal] only to the container that holds the current match; the rest pass null.
+ * Text with find highlights; [reveal] is passed only to the container holding the current match.
+ * [spans] is the document's formatting drawn under the highlights, [background] the fill they sit on.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -50,8 +52,15 @@ internal fun FindText(
     style: TextStyle,
     modifier: Modifier = Modifier,
     reveal: RevealTicket? = null,
+    spans: List<TextSpan> = emptyList(),
+    background: Color? = null,
 ) {
-    val annotated = remember(text, highlight) { highlightedText(text, highlight) }
+    val scheme = MaterialTheme.colorScheme
+    val surface = background ?: scheme.surface
+    val palette = remember(surface, scheme.primary) { FormatPalette(surface, scheme.primary) }
+    val annotated = remember(text, spans, highlight, palette) {
+        if (spans.isEmpty()) highlightedText(text, highlight) else formattedText(text, spans, highlight, palette)
+    }
     val activeRange = remember(text, highlight) { highlight?.activeRange(text) }
     // Reset with the text: a layout of other text can be shorter than an offset into this one.
     var layout by remember(text) { mutableStateOf<TextLayoutResult?>(null) }

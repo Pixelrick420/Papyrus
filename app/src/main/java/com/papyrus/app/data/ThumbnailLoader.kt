@@ -90,9 +90,8 @@ class ThumbnailLoader(private val context: Context) {
     private suspend fun renderPdf(uri: Uri): Bitmap? =
         PdfPageSource.open(context, uri).use { source ->
             val page = source.render(0, THUMBNAIL_PDF_WIDTH_PX) ?: return@use null
-            // scale, not Bitmap.copy: copy changes only config and mutability, never size.
-            // Never recycle `page`: the source's LruCache still owns it, and a recycled bitmap
-            // reports byteCount == 0, so close() throws "sizeOf() is reporting inconsistent results".
+            // scale, not Bitmap.copy: copy never changes size. Never recycle `page` -- its LruCache
+            // still owns it, and a recycled bitmap reports byteCount == 0, so close() throws.
             page.scale(THUMBNAIL_WIDTH_PX, THUMBNAIL_HEIGHT_PX, true)
         }
 
@@ -116,7 +115,8 @@ class ThumbnailLoader(private val context: Context) {
                 when (block) {
                     is OfficeBlock.Heading -> block.text
                     is OfficeBlock.Paragraph -> block.text
-                    is OfficeBlock.Table, is OfficeBlock.Image -> null
+                    is OfficeBlock.ListItem -> block.text
+                    is OfficeBlock.Table, is OfficeBlock.Image, is OfficeBlock.Note, is OfficeBlock.Divider -> null
                 }
             }
             .take(4)
