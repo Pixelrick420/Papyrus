@@ -19,6 +19,8 @@ import com.papyrus.app.viewer.DocTextExtractor
 import com.papyrus.app.viewer.OfficeBlock
 import com.papyrus.app.viewer.NormRect
 import com.papyrus.app.viewer.OfficeTextExtractor
+import com.papyrus.app.viewer.PDF_UNLOCK_DIR
+import com.papyrus.app.viewer.PdfEncryption
 import com.papyrus.app.viewer.PdfPageSource
 import com.papyrus.app.viewer.PdfPageText
 import com.papyrus.app.viewer.PdfPageTextSource
@@ -31,6 +33,7 @@ import com.papyrus.app.ui.viewer.findBlockHits
 import com.papyrus.app.ui.viewer.findChunkHits
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import com.tom_roush.pdfbox.pdmodel.PDDocument
+import com.tom_roush.pdfbox.pdmodel.encryption.InvalidPasswordException
 import io.noties.markwon.Markwon
 import io.noties.markwon.ext.strikethrough.StrikethroughPlugin
 import io.noties.markwon.ext.tables.TablePlugin
@@ -56,6 +59,8 @@ sealed interface ViewerContent {
     data class Markdown(val markwon: Markwon, val source: String, val text: Spanned) : ViewerContent
     data class PlainText(val chunks: List<String>) : ViewerContent
     data class Office(val blocks: List<OfficeBlock>) : ViewerContent
+    /** A PDF waiting on its password; [incorrect] flags a rejected attempt, [checking] an in-flight one. */
+    data class NeedsPassword(val incorrect: Boolean = false, val checking: Boolean = false) : ViewerContent
     data class Failed(val message: UiText) : ViewerContent
 }
 
@@ -155,6 +160,10 @@ class ViewerViewModel(
     private var pageTextSource: PdfPageTextSource? = null
     private var pageTextSourceUri: String? = null
 
+    /** The decrypted copy of a password-protected PDF; owned here so close deletes the plaintext. */
+    private var unlockedFile: File? = null
+    private var unlockedUri: String? = null
+
     /** Per document: a shared directory would let a viewer delete another's images. */
     private val mediaDir: File by lazy { File(app.cacheDir, "office-media/$documentId") }
 
@@ -185,7 +194,8 @@ class ViewerViewModel(
         } catch (e: Exception) {
             ViewerContent.Failed(UiText(R.string.viewer_error_generic, e.localizedMessage ?: e.javaClass.simpleName))
         }
-        _state.update { it.copy(content = content) }
+        val encrypted = content is ViewerContent.NeedsPassword || unlockedUri != null
+        _state.update { it.copy(content = content, canSaveToLibrary = it.canSaveToLibrary && !encrypted) }
     }
 
     private suspend fun loadContent(doc: DocumentEntity): ViewerContent {
@@ -199,9 +209,14 @@ class ViewerViewModel(
         }
 
         return when (format) {
-            DocumentFormat.PDF -> {
-                val source = PdfPageSource.open(app, uri)
-                ViewerContent.Pdf(source, source.loadAspectRatios())
+            DocumentFormat.PDF -> when (PdfEncryption.status { openStream(uri) }) {
+                PdfEncryption.NOT_ENCRYPTED -> {
+                    val source = PdfPageSource.open(app, uri)
+                    ViewerContent.Pdf(source, source.loadAspectRatios())
+                }
+                // Owner-only (permissions) encryption opens on the empty user password, no prompt.
+                PdfEncryption.OWNER_ONLY -> unlock(uri, "")
+                PdfEncryption.USER_PASSWORD -> ViewerContent.NeedsPassword()
             }
             DocumentFormat.MARKDOWN -> {
                 val markwon = Markwon.builder(app)
@@ -224,6 +239,25 @@ class ViewerViewModel(
                 if (blocks.isEmpty()) ViewerContent.Failed(UiText(R.string.viewer_error_empty)) else ViewerContent.Office(blocks)
             }
             DocumentFormat.UNKNOWN -> ViewerContent.Failed(UiText(R.string.viewer_error_unsupported))
+        }
+    }
+
+    /** A wrong [password] returns [ViewerContent.NeedsPassword] for an in-place retry rather than throwing. */
+    private suspend fun unlock(uri: Uri, password: String): ViewerContent {
+        val dir = File(app.cacheDir, PDF_UNLOCK_DIR).apply { mkdirs() }
+        val target = File.createTempFile("unlock-", ".pdf", dir)
+        try {
+            PdfEncryption.decrypt({ openStream(uri) }, password, target)
+            val source = PdfPageSource.openFile(target)
+            unlockedFile = target
+            unlockedUri = target.toUri().toString()
+            return ViewerContent.Pdf(source, source.loadAspectRatios())
+        } catch (e: InvalidPasswordException) {
+            target.delete()
+            return ViewerContent.NeedsPassword(incorrect = true)
+        } catch (e: Exception) {
+            target.delete()
+            throw e
         }
     }
 
@@ -268,6 +302,28 @@ class ViewerViewModel(
             _state.update { it.copy(savingToLibrary = false, savedToLibrary = saved) }
             _messages.value = UiText(if (saved) R.string.viewer_save_done else R.string.viewer_save_failed)
         }
+    }
+
+    /** The password stays a local: never state, the saved-state handle, or a log, and dropped when the attempt ends. */
+    fun submitPassword(password: String) {
+        val doc = _state.value.document ?: return
+        val current = _state.value.content
+        if (current !is ViewerContent.NeedsPassword || current.checking) return
+        _state.update { it.copy(content = ViewerContent.NeedsPassword(checking = true)) }
+        viewModelScope.launch {
+            val content = try {
+                withContext(Dispatchers.IO) { unlock(doc.uri.toUri(), password) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                ViewerContent.Failed(UiText(R.string.viewer_error_generic, e.localizedMessage ?: e.javaClass.simpleName))
+            }
+            _state.update { it.copy(content = content, canSaveToLibrary = false) }
+        }
+    }
+
+    fun cancelPassword() {
+        _state.update { it.copy(content = ViewerContent.Failed(UiText(R.string.viewer_password_cancelled))) }
     }
 
     fun openFind() {
@@ -341,7 +397,7 @@ class ViewerViewModel(
     /** Rethrows CancellationException; catching it caches empty text and breaks find. */
     private fun extractPageText(): List<PdfPageText> {
         PDFBoxResourceLoader.init(app)
-        val input = app.contentResolver.openInputStream(documentUri.toUri())
+        val input = app.contentResolver.openInputStream(contentUri.toUri())
             ?: return emptyList()
         return try {
             input.use { stream ->
@@ -357,7 +413,7 @@ class ViewerViewModel(
     /** One page of text plus boxes; a search read is reused unless it was past the box budget. */
     suspend fun pageText(index: Int): PdfPageText? {
         pdfPageText?.getOrNull(index)?.takeIf { it.hasBoxes || it.text.isBlank() }?.let { return it }
-        val uri = documentUri
+        val uri = contentUri
         if (uri.isEmpty()) return null
         val source = pageTextSource?.takeIf { pageTextSourceUri == uri }
             ?: PdfPageTextSource(app, uri.toUri()).also {
@@ -401,6 +457,10 @@ class ViewerViewModel(
     private val documentUri: String
         get() = _state.value.document?.uri.orEmpty()
 
+    /** The decrypted copy when one is open, so find and selection read the bytes actually on screen. */
+    private val contentUri: String
+        get() = unlockedUri ?: documentUri
+
     private fun openStream(uri: Uri): InputStream =
         app.contentResolver.openInputStream(uri) ?: throw FileNotFoundException(uri.toString())
 
@@ -422,6 +482,7 @@ class ViewerViewModel(
     override fun onCleared() {
         (_state.value.content as? ViewerContent.Pdf)?.source?.close()
         pageTextSource?.close()
+        unlockedFile?.delete()
         // Unconditional: own dir per document, and any format may have written images.
         mediaDir.deleteRecursively()
     }

@@ -4,11 +4,15 @@ import android.content.Context
 import android.net.Uri
 import androidx.core.content.FileProvider
 import androidx.core.net.toUri
+import com.papyrus.app.viewer.PdfEncryption
 import com.papyrus.app.viewer.TextSniffer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.io.FileNotFoundException
+import java.io.IOException
+import java.io.InputStream
 
 class DocumentRepository(
     private val context: Context,
@@ -25,15 +29,28 @@ class DocumentRepository(
 
     val documents: Flow<List<DocumentEntity>> = dao.observeAll()
 
+    /** Stores [entity] transiently under a fresh negative id; the caller opens the returned id. */
+    private fun handOver(entity: DocumentEntity): Long {
+        val id = nextHandedOverId--
+        handedOver.clear()
+        handedOver[id] = entity.copy(id = id)
+        return id
+    }
+
     suspend fun getById(id: Long): DocumentEntity? =
         if (id < 0) handedOver[id] else dao.getById(id)
     suspend fun markOpened(id: Long) = dao.touch(id, System.currentTimeMillis())
     suspend fun updateFormat(id: Long, format: DocumentFormat) = dao.updateFormat(id, format)
 
     suspend fun register(uri: Uri): Long = withContext(Dispatchers.IO) {
+        val entity = buildEntity(uri)
+        // Never indexed: a row would put it in the library and persist a grant past the open.
+        if (entity.format == DocumentFormat.PDF && isEncrypted(uri)) {
+            return@withContext handOver(entity)
+        }
         SafStorage.persistPermission(resolver, uri)
         // buildEntity stamps lastOpenedAt, and upsertByUri carries it onto an existing row too.
-        dao.upsertByUri(buildEntity(uri))
+        dao.upsertByUri(entity)
     }
 
     /**
@@ -41,14 +58,15 @@ class DocumentRepository(
      * library or need deleting again, and the intent's read grant lasts exactly as long as this entry.
      */
     suspend fun openHandedOver(uri: Uri): Long = withContext(Dispatchers.IO) {
-        val id = nextHandedOverId--
-        handedOver.clear()
-        handedOver[id] = buildEntity(uri).copy(id = id)
-        id
+        handOver(buildEntity(uri))
     }
 
     /** Copies into filesDir/imports, then indexes the copy — the row comes last, and a failed insert deletes the copy again. */
     suspend fun saveToLibrary(source: DocumentEntity): Long = withContext(Dispatchers.IO) {
+        // Defensive: no encrypted PDF should have a row, but never copy one into the library.
+        if (source.format == DocumentFormat.PDF && isEncrypted(source.uri.toUri())) {
+            throw IOException("password-protected PDF")
+        }
         val file = LibraryImport.copyToImports(context, source.uri.toUri())
         val now = System.currentTimeMillis()
         val row = source.copy(
@@ -110,6 +128,13 @@ class DocumentRepository(
         dao.updateUri(expected.id, picked.toString())
         true
     }
+
+    /** An unreadable file reads as not encrypted, so it fails in the renderer rather than prompting. */
+    private fun isEncrypted(uri: Uri): Boolean =
+        PdfEncryption.status { openStream(uri) } != PdfEncryption.NOT_ENCRYPTED
+
+    private fun openStream(uri: Uri): InputStream =
+        resolver.openInputStream(uri) ?: throw FileNotFoundException(uri.toString())
 
     private suspend fun buildEntity(uri: Uri): DocumentEntity {
         val meta = SafStorage.queryMetadata(context, uri)

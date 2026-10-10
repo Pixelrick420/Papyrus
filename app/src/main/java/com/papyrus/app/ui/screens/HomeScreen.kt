@@ -204,10 +204,11 @@ class HomeViewModel(
                 return@launch
             }
             var added = 0
+            var skipped = 0
             for (uri in uris) {
                 try {
-                    repository.register(uri)
-                    added++
+                    // register returns a negative id for a transient (password-protected) PDF: opened, not added.
+                    if (repository.register(uri) > 0) added++ else skipped++
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
@@ -216,9 +217,9 @@ class HomeViewModel(
             if (added > 0) {
                 onAdded()
                 _messages.send(UiText(R.string.home_added_files, added))
-            } else {
-                _messages.send(UiText(R.string.home_open_failed))
             }
+            if (skipped > 0) _messages.send(UiText(R.string.home_skipped_encrypted, skipped))
+            if (added == 0 && skipped == 0) _messages.send(UiText(R.string.home_open_failed))
         }
     }
 
