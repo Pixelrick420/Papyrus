@@ -40,12 +40,9 @@ class OpenPersistableDocuments : ActivityResultContracts.OpenMultipleDocuments()
 object SafStorage {
     data class Metadata(val displayName: String, val sizeBytes: Long, val mimeType: String?)
 
-    /** Call right after the pick or the OS drops the grant on reboot. Read only by default: some providers refuse a write request outright. */
-    fun persistPermission(resolver: ContentResolver, uri: Uri, write: Boolean = false): Boolean {
-        val read = Intent.FLAG_GRANT_READ_URI_PERMISSION
-        if (write && take(resolver, uri, read or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)) return true
-        return take(resolver, uri, read)
-    }
+    /** Call right after the pick or the OS drops the grant on reboot. Read-only: some providers refuse a write request outright. */
+    fun persistPermission(resolver: ContentResolver, uri: Uri): Boolean =
+        take(resolver, uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
 
     private fun take(resolver: ContentResolver, uri: Uri, flags: Int): Boolean = try {
         resolver.takePersistableUriPermission(uri, flags)

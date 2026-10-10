@@ -172,6 +172,15 @@ class ViewerViewModel(
     }
 
     private suspend fun load() {
+        // A re-load (after a re-grant) points at a new URI, so every URI-keyed cache from the
+        // previous load is stale: drop the extracted find text and the decrypted copy.
+        pdfPageText = null
+        pageTextSource?.close()
+        pageTextSource = null
+        pageTextSourceUri = null
+        unlockedFile?.delete()
+        unlockedFile = null
+        unlockedUri = null
         val doc = repository.getById(documentId)
         if (doc == null) {
             _state.value = ViewerUiState(content = ViewerContent.Failed(UiText(R.string.viewer_error_not_found)))
