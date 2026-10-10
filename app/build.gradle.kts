@@ -72,10 +72,8 @@ android {
     namespace = "com.papyrus.app"
     compileSdk = 36
 
-    // Pinned so `stripReleaseDebugSymbols` can find a strip tool. Without it AGP falls back to
-    // its own built-in NDK default (27.0.120779), which is not what is installed here.
-    // The NDK is here for that strip step alone. Keep this
-    // line and the `ndk;` entry in .github/workflows/build.yml in step.
+    // Pinned so `stripReleaseDebugSymbols` finds a strip tool; without it AGP falls back to
+    // its own NDK default (27.0.120779), which isn't installed here.
     ndkVersion = "28.2.13676358"
 
     defaultConfig {

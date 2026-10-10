@@ -30,11 +30,24 @@ jobs:
 
       - name: Set up the Android SDK
         uses: android-actions/setup-android@v4
+        with:
+          accept-android-sdk-licenses: false
+          packages: ''
+
+      - name: Resolve pinned NDK version
+        id: ndk
+        run: echo "version=$(grep -oP 'ndkVersion\s*=\s*"\K[^"]+' app/build.gradle.kts | head -1)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache NDK
+        uses: actions/cache@v6
+        with:
+          path: ${{ env.ANDROID_SDK_ROOT }}/ndk/${{ steps.ndk.outputs.version }}
+          key: ndk-${{ runner.os }}-${{ steps.ndk.outputs.version }}
 
       - name: Install SDK packages
         run: |
-          sdkmanager --install 'platform-tools' 'platforms;android-36' 'build-tools;36.0.0' 'ndk;28.2.13676358'
-          yes | sdkmanager --licenses > /dev/null || true
+          android sdk install platform-tools platforms/android-36 build-tools/36.0.0
+          android sdk install "ndk/${{ steps.ndk.outputs.version }}"
 
       - name: Unit tests
         run: ./gradlew --no-daemon testDebugUnitTest
@@ -79,11 +92,24 @@ jobs:
 
       - name: Set up the Android SDK
         uses: android-actions/setup-android@v4
+        with:
+          accept-android-sdk-licenses: false
+          packages: ''
+
+      - name: Resolve pinned NDK version
+        id: ndk
+        run: echo "version=$(grep -oP 'ndkVersion\s*=\s*"\K[^"]+' app/build.gradle.kts | head -1)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache NDK
+        uses: actions/cache@v6
+        with:
+          path: ${{ env.ANDROID_SDK_ROOT }}/ndk/${{ steps.ndk.outputs.version }}
+          key: ndk-${{ runner.os }}-${{ steps.ndk.outputs.version }}
 
       - name: Install SDK packages
         run: |
-          sdkmanager --install 'platform-tools' 'platforms;android-36' 'build-tools;36.0.0' 'ndk;28.2.13676358'
-          yes | sdkmanager --licenses > /dev/null || true
+          android sdk install platform-tools platforms/android-36 build-tools/36.0.0
+          android sdk install "ndk/${{ steps.ndk.outputs.version }}"
 
       - name: Unit tests
         run: ./gradlew --no-daemon testDebugUnitTest
@@ -208,7 +234,7 @@ jobs:
           fi
 
       - name: Publish to GitHub Releases
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           name: Papyrus ${{ github.ref_name }}
           prerelease: false
