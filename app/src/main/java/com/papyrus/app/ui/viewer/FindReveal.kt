@@ -37,7 +37,7 @@ internal class RevealTicket {
     var consumed = false
 }
 
-/** Vertical room kept around the current match when it is scrolled into view, so it is not flush with an edge. */
+/** Room kept around the current match when it is scrolled into view, so it is not flush with an edge. */
 internal val RevealMargin = 48.dp
 
 /**
@@ -73,7 +73,7 @@ internal fun FindText(
         val measured = snapshotFlow { layout }.filterNotNull().first()
         reveal.consumed = true
         val box = measured.getBoundingBox(activeRange.first)
-        requester.bringIntoView(Rect(box.left, box.top - margin, box.right, box.bottom + margin))
+        requester.bringIntoView(Rect(box.left - margin, box.top - margin, box.right + margin, box.bottom + margin))
     }
 
     Text(

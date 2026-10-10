@@ -1,6 +1,7 @@
 package com.papyrus.app.ui.screens
 
 import android.content.Intent
+import android.content.res.Configuration
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -15,10 +16,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -57,7 +60,9 @@ import androidx.compose.ui.input.key.isCtrlPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -92,6 +97,9 @@ import kotlinx.coroutines.launch
 
 /** Same inset as Home, so the find pill lines up with the Home search pill. */
 private val ScreenPadding = 16.dp
+
+/** Inset from the left, top and right edges so a highlighted match never sits flush against them. */
+private val ViewerContentMargin = 12.dp
 
 /** Find, zoom and overflow state live here, so a format switch does not reset them. */
 @Composable
@@ -155,6 +163,11 @@ fun ViewerScreen(
     }
 
     Scaffold(snackbarHost = { SnackbarHost(snackbar) }) { padding ->
+        // In landscape, stepping through matches hides a docked keyboard so the whole page shows.
+        // A floating keyboard reports no inset, so this stays false and it is left open.
+        val dismissKeyboardOnStep = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE &&
+            WindowInsets.ime.getBottom(LocalDensity.current) > 0
+
         Column(
             Modifier
                 .fillMaxSize()
@@ -217,13 +230,21 @@ fun ViewerScreen(
                     onNext = viewModel::nextMatch,
                     onPrevious = viewModel::previousMatch,
                     onClose = closeFind,
+                    dismissKeyboardOnStep = dismissKeyboardOnStep,
                     // End inset smaller: the close button's own padding brings its glyph to 16dp.
                     modifier = Modifier.padding(start = ScreenPadding, end = 4.dp, bottom = 8.dp),
                 )
             }
 
-            // Clipped so a zoom preview can never paint over the header or the find bar above.
-            Box(Modifier.weight(1f).fillMaxWidth().clipToBounds()) {
+            // Inset from the left, top and right; the bottom is the keyboard inset above. Clipped so a
+            // zoom preview can never paint over the header or the find bar.
+            Box(
+                Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .padding(start = ViewerContentMargin, top = ViewerContentMargin, end = ViewerContentMargin)
+                    .clipToBounds(),
+            ) {
                 when (val content = state.content) {
                     ViewerContent.Loading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
                     is ViewerContent.Pdf -> PdfViewer(
