@@ -9,7 +9,7 @@ on-device. The manifest declares no permissions: no network access, no storage p
 
 | Format | Rendered as |
 | --- | --- |
-| PDF | `PdfRenderer` pages; zoom re-rasterises at the target resolution. Password-protected files are rejected |
+| PDF | `PdfRenderer` pages; zoom re-rasterises at the target resolution. Password-protected files prompt for the password |
 | Markdown | Markwon to `Spanned` in a native `TextView`, with strikethrough and tables |
 | Plain text (`.txt`, `.log`, ...) | chunked 40 lines at a time, selectable monospace Compose `Text`. Read up to 4 MB |
 | Source and config (`.kt`, `.py`, `.json`, ...) | as plain text, labelled `CODE` in the list |
@@ -32,7 +32,10 @@ supported: there is no migration path from older versions, and a database writte
   document from Recents. The document lives in memory for the life of the process, since the read grant that arrived
   with the intent does.
 - **Save to library** copies such a document into app-private storage and indexes the copy, so it outlives the grant.
-  Owned copies share out through a FileProvider instead of a bare `file://` URI.
+  Owned copies share out through a FileProvider instead of a bare `file://` URI. Password-protected PDFs are excluded.
+- **Password-protected PDFs** prompt for the password, then decrypt a copy into the cache and render that. A wrong
+  password retries in place; the decrypted copy is deleted when the viewer closes and swept on the next start. The file
+  is never indexed, saved to the library, or listed on Home, and the password is never stored or logged.
 - **Search** filters the library by title, in memory, over the list the screen already holds.
 - **Share** sends the document's own SAF URI through `ACTION_SEND` with `FLAG_GRANT_READ_URI_PERMISSION`, so no target
   can write, rename or delete the file. The grant is probed first: a dead one raises a message instead of a chooser
