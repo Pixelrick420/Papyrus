@@ -582,7 +582,7 @@ class OfficeTextExtractorTest {
     }
 
     @Test
-    fun `odt text after a footnote survives and the footnote is not merged into the body`() {
+    fun `odt text after a footnote survives and the footnote is gathered after the body`() {
         val bytes = OfficeFixtures.odt(
             OfficeFixtures.odtContent(
                 """
@@ -592,7 +592,15 @@ class OfficeTextExtractorTest {
             ),
         )
 
-        assertEquals(listOf<OfficeBlock>(OfficeBlock.Paragraph("Revenue grew by ten percent.")), extractOdt(bytes))
+        val blocks = extractOdt(bytes)
+
+        // The marker is part of the line, raised; the note's own text is not, and follows the body.
+        assertEquals(3, blocks.size)
+        val paragraph = blocks[0] as OfficeBlock.Paragraph
+        assertEquals("Revenue grew1 by ten percent.", paragraph.text)
+        assertEquals(listOf(TextSpan(12, 13, CharFormat(script = ScriptShift.SUPER))), paragraph.spans)
+        assertEquals(OfficeBlock.Divider, blocks[1])
+        assertEquals(OfficeBlock.Note("1", "Unaudited figure."), blocks[2])
     }
 
     @Test

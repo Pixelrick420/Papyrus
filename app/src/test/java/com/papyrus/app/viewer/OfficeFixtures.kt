@@ -40,11 +40,17 @@ internal object OfficeFixtures {
     /** A bare archive with no body part, for the "not a valid document" path. */
     fun zipOf(entries: Map<String, ByteArray>): ByteArray = zip(entries)
 
-    fun odt(contentXml: String, media: Map<String, ByteArray> = emptyMap()): ByteArray {
+    /** [extra] adds whole archive entries by path, such as a `styles.xml`. */
+    fun odt(
+        contentXml: String,
+        media: Map<String, ByteArray> = emptyMap(),
+        extra: Map<String, ByteArray> = emptyMap(),
+    ): ByteArray {
         val entries = buildMap {
             put("mimetype", "application/vnd.oasis.opendocument.text".toByteArray())
             put("content.xml", contentXml.toByteArray())
             media.forEach { (name, bytes) -> put("Pictures/$name", bytes) }
+            putAll(extra)
         }
         return zip(entries)
     }
@@ -55,6 +61,7 @@ internal object OfficeFixtures {
            <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
                        xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"
                        xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
+                       xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"
                        xmlns:v="urn:schemas-microsoft-com:vml">
              <w:body>$body</w:body>
            </w:document>""".trimIndent()
@@ -67,16 +74,30 @@ internal object OfficeFixtures {
             }
            }</Relationships>""".trimIndent()
 
-    fun odtContent(body: String) =
+    /** [styles] goes inside `office:automatic-styles`, ahead of the body, where producers put it. */
+    fun odtContent(body: String, styles: String = "") =
         """<?xml version="1.0" encoding="UTF-8"?>
            <office:document-content
                xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
                xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0"
                xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0"
                xmlns:draw="urn:oasis:names:tc:opendocument:xmlns:drawing:1.0"
+               xmlns:style="urn:oasis:names:tc:opendocument:xmlns:style:1.0"
+               xmlns:fo="urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0"
+               xmlns:svg="urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0"
                xmlns:xlink="http://www.w3.org/1999/xlink">
+             <office:automatic-styles>$styles</office:automatic-styles>
              <office:body><office:text>$body</office:text></office:body>
            </office:document-content>""".trimIndent()
+
+    /** Relationships for hyperlinks: external targets, which are URLs rather than archive entries. */
+    fun docxLinkRels(vararg entries: Pair<String, String>) =
+        """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+           <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${
+            entries.joinToString("") { (id, target) ->
+                """<Relationship Id="$id" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="$target" TargetMode="External"/>"""
+            }
+           }</Relationships>""".trimIndent()
 
     private fun zip(entries: Map<String, ByteArray>): ByteArray {
         val out = ByteArrayOutputStream()
