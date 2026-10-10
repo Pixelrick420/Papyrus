@@ -23,10 +23,7 @@ import kotlin.math.roundToInt
 
 class PdfPasswordException : IOException("Password-protected PDF")
 
-/**
- * Thread-safe wrapper over [PdfRenderer], which allows one open page at a time: access is serialised
- * by a mutex on a single dispatcher, and bitmaps live in a heap-sized [LruCache].
- */
+/** Thread-safe wrapper over [PdfRenderer], which allows one open page at a time; renders serialise and cache. */
 @OptIn(ExperimentalCoroutinesApi::class)
 class PdfPageSource private constructor(
     private val descriptor: ParcelFileDescriptor,
@@ -41,8 +38,7 @@ class PdfPageSource private constructor(
     private var closed = false
 
     private val cache = object : LruCache<String, Bitmap>(cacheBytes()) {
-        // coerceAtLeast(1) is an invariant, not noise: a recycled bitmap reports byteCount == 0, and
-        // LruCache requires a stable sizeOf, so trimToSize would throw "sizeOf() is reporting inconsistent results".
+        // Must stay >= 1: a recycled bitmap reports byteCount 0, and LruCache's sizeOf must be stable.
         override fun sizeOf(key: String, value: Bitmap): Int = value.byteCount.coerceAtLeast(1)
     }
 
@@ -55,26 +51,30 @@ class PdfPageSource private constructor(
 
     fun cached(index: Int, widthPx: Int): Bitmap? = cache.get(key(index, widthPx))
 
-    /** Returns null if the source was closed meanwhile. */
+    /** Returns null if the source was closed meanwhile, or if the page is too large to render. */
     suspend fun render(index: Int, widthPx: Int): Bitmap? {
         cache.get(key(index, widthPx))?.let { return it }
         return withContext(dispatcher) {
             lock.withLock {
                 if (closed) return@withLock null
                 cache.get(key(index, widthPx))?.let { return@withLock it }
-                renderer.openPage(index).use { page ->
-                    val height = (widthPx.toFloat() * page.height / page.width).roundToInt().coerceAtLeast(1)
-                    val bitmap = createBitmap(widthPx, height)
-                    bitmap.eraseColor(Color.WHITE)
-                    page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-                    cache.put(key(index, widthPx), bitmap)
-                    bitmap
+                try {
+                    renderer.openPage(index).use { page ->
+                        val height = (widthPx.toFloat() * page.height / page.width).roundToInt().coerceAtLeast(1)
+                        val bitmap = createBitmap(widthPx, height)
+                        bitmap.eraseColor(Color.WHITE)
+                        page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                        cache.put(key(index, widthPx), bitmap)
+                        bitmap
+                    }
+                } catch (_: OutOfMemoryError) {
+                    null
                 }
             }
         }
     }
 
-    /** Closes after any in-flight render finishes. The body is guarded because it runs detached, where an escaping exception reaches the uncaught handler and ends the process. */
+    /** Closes after any in-flight render; the detached body is guarded so an escaping exception can't kill the process. */
     override fun close() {
         CoroutineScope(dispatcher).launch {
             runCatching {
