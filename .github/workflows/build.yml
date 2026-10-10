@@ -46,6 +46,8 @@ jobs:
 
       - name: Install SDK packages
         run: |
+          # android-37 lives in Google's newer repo index, which `android sdk install`
+          # can't read; the runner image already ships it, so "not found" here is harmless.
           android sdk install platform-tools platforms/android-37 build-tools/36.0.0
           android sdk install "ndk/${{ steps.ndk.outputs.version }}"
 
@@ -108,6 +110,8 @@ jobs:
 
       - name: Install SDK packages
         run: |
+          # android-37 lives in Google's newer repo index, which `android sdk install`
+          # can't read; the runner image already ships it, so "not found" here is harmless.
           android sdk install platform-tools platforms/android-37 build-tools/36.0.0
           android sdk install "ndk/${{ steps.ndk.outputs.version }}"
 

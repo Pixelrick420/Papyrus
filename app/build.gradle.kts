@@ -1,3 +1,4 @@
+import dev.detekt.gradle.extensions.FailOnSeverity
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
@@ -6,7 +7,7 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.plugin.compose")
     id("com.google.devtools.ksp")
-    id("io.gitlab.arturbosch.detekt")
+    id("dev.detekt")
 }
 
 // ---------------------------------------------------------------------------
@@ -202,7 +203,11 @@ detekt {
     buildUponDefaultConfig = false
     allRules = false
     config.setFrom(rootProject.file("config/detekt/detekt.yml"))
-    baseline = file("$rootDir/config/detekt/baseline.xml")
+    baseline.set(file("$rootDir/config/detekt/baseline.xml"))
+    // detekt 2.x replaced 1.x's weight-based maxIssues with failOnSeverity. The old
+    // config used the maxIssues=0 default (any finding fails), so Info -- the lowest
+    // severity -- preserves that strictness.
+    failOnSeverity = FailOnSeverity.Info
     // Type resolution is left off: it would require detekt to run against the
     // compiled classpath (and therefore after every Kotlin compile). Every rule
     // enabled in the config works on the AST alone.

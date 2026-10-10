@@ -2,5 +2,5 @@ plugins {
     id("com.android.application") version "9.4.1" apply false
     id("org.jetbrains.kotlin.plugin.compose") version "2.2.10" apply false
     id("com.google.devtools.ksp") version "2.3.12" apply false
-    id("io.gitlab.arturbosch.detekt") version "1.23.8"
+    id("dev.detekt") version "2.0.0-alpha.6"
 }
