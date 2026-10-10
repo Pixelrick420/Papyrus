@@ -10,10 +10,13 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -37,6 +40,7 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.papyrus.app.R
+import com.papyrus.app.viewer.BlockAlign
 import com.papyrus.app.viewer.OfficeBlock
 import com.papyrus.app.viewer.OfficeCell
 import kotlinx.coroutines.Dispatchers
@@ -56,19 +60,84 @@ internal fun OfficeBlockView(
         is OfficeBlock.Heading -> FindText(
             text = block.text,
             highlight = highlight,
-            style = headingStyle(block.level),
+            style = headingStyle(block.level).withAlign(block.align),
             modifier = modifier.padding(top = 16.dp, bottom = 4.dp),
             reveal = reveal,
+            spans = block.spans,
         )
         is OfficeBlock.Paragraph -> FindText(
             text = block.text,
             highlight = highlight,
-            style = MaterialTheme.typography.bodyLarge,
-            modifier = modifier.padding(vertical = 4.dp),
+            style = MaterialTheme.typography.bodyLarge.withAlign(block.align),
+            modifier = modifier.padding(start = INDENT_STEP * block.indent, top = 4.dp, bottom = 4.dp),
             reveal = reveal,
+            spans = block.spans,
         )
+        is OfficeBlock.ListItem -> OfficeListItemView(block, modifier, highlight, reveal)
+        is OfficeBlock.Note -> OfficeNoteView(block, modifier, highlight, reveal)
+        is OfficeBlock.Divider -> HorizontalDivider(modifier.padding(vertical = 12.dp))
         is OfficeBlock.Table -> OfficeTableView(block, modifier.padding(vertical = 8.dp), highlight, reveal)
         is OfficeBlock.Image -> OfficeImageView(block, modifier.padding(vertical = 8.dp))
+    }
+}
+
+/** One step of paragraph indentation, as extracted: a quarter inch of the page. */
+private val INDENT_STEP = 16.dp
+
+/** One level of list nesting, and the room a marker has before the text starts. */
+private val LIST_INDENT = 20.dp
+private val MARKER_WIDTH = 20.dp
+
+private fun TextStyle.withAlign(align: BlockAlign): TextStyle =
+    if (align == BlockAlign.START) this else copy(textAlign = align.toTextAlign())
+
+/** The marker is beside the text rather than in it, so it is neither searchable nor shifted by the find offsets. */
+@Composable
+private fun OfficeListItemView(
+    block: OfficeBlock.ListItem,
+    modifier: Modifier,
+    highlight: FindHighlight?,
+    reveal: RevealTicket?,
+) {
+    Row(modifier.padding(start = LIST_INDENT * block.level, top = 2.dp, bottom = 2.dp)) {
+        Text(
+            block.marker,
+            style = MaterialTheme.typography.bodyLarge,
+            modifier = Modifier.widthIn(min = MARKER_WIDTH).padding(end = 8.dp),
+        )
+        FindText(
+            text = block.text,
+            highlight = highlight,
+            style = MaterialTheme.typography.bodyLarge.withAlign(block.align),
+            modifier = Modifier.weight(1f),
+            reveal = reveal,
+            spans = block.spans,
+        )
+    }
+}
+
+@Composable
+private fun OfficeNoteView(
+    note: OfficeBlock.Note,
+    modifier: Modifier,
+    highlight: FindHighlight?,
+    reveal: RevealTicket?,
+) {
+    Row(modifier.padding(vertical = 2.dp)) {
+        Text(
+            note.label,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.widthIn(min = MARKER_WIDTH).padding(end = 6.dp),
+        )
+        FindText(
+            text = note.text,
+            highlight = highlight,
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.weight(1f),
+            reveal = reveal,
+            spans = note.spans,
+        )
     }
 }
 
@@ -83,10 +152,8 @@ private fun headingStyle(level: Int) = when (level.coerceIn(1, 6)) {
 }
 
 /**
- * Column widths come from the cells' own content ([measureColumns], [fitColumns]) and every cell is
- * drawn as tall as its row, so a serial-number column stays narrow beside a prose one and a short cell's
- * border reaches the bottom of its row. A cell that spans rows covers all of them, which needs a layout
- * that sees every row at once: [TableGrid].
+ * Column widths come from the cells' own content and every cell is drawn as tall as its row, so a
+ * short cell's border reaches the bottom. Row spans need a layout that sees every row: [TableGrid].
  */
 @Composable
 private fun OfficeTableView(
@@ -145,9 +212,8 @@ private fun OfficeTableView(
                             reveal = reveal,
                         )
                     }
-                    // A column no cell owns and no rowspan covers is a real gap in the source. It still
-                    // gets a box, or a short row would end in blank space instead of an empty cell. A
-                    // covered column gets none, so a merge has no internal border.
+                    // A column no cell owns and no rowspan covers still gets a box, so a short row does
+                    // not end in blank space; a covered column gets none, so a merge has no inner border.
                     repeat(columnCount) { column ->
                         val owned = row.any { column in it.column..it.lastColumn }
                         if (!owned && (rowIndex to column) !in covered) {
@@ -181,14 +247,8 @@ private fun Modifier.gridCell(row: Int, column: Int, colspan: Int = 1, rowspan: 
     layoutId(GridCell(row, column, colspan.coerceAtLeast(1), rowspan.coerceAtLeast(1)))
 
 /**
- * Lays its children out on a grid of [columnWidthsDp]; each child says which cells it occupies with
- * [gridCell]. A row is as tall as the tallest cell sitting in that row alone, and never under
- * [MIN_CELL_HEIGHT]. A cell spanning rows takes the height of all of them, and grows the last if it is
- * taller than they are together.
- *
- * Heights come from intrinsics, then each child is measured once at exactly the size it will be drawn:
- * that is what makes a short cell's box fill its row. (A `fillMaxHeight` on a child inside a `Row`
- * cannot, because the row's own height is unbounded here.)
+ * Lays children on a grid of [columnWidthsDp]; each child names its cells with [gridCell]. Rows
+ * sized by intrinsics (a span grows its last row), then each child measured once at its drawn size.
  */
 @Composable
 private fun TableGrid(
@@ -235,28 +295,35 @@ private fun CellBox(
     highlight: FindHighlight?,
     reveal: RevealTicket?,
 ) {
+    // A shaded cell keeps its fill with readable text; a white-paper fill is dropped for the surface.
+    val fill = cell?.background?.takeIf { !isPaperWhite(it) }?.let(::rgbColor)
     Box(
         modifier
             .padding(CELL_GAP)
-            .background(MaterialTheme.colorScheme.surface)
+            .background(fill ?: MaterialTheme.colorScheme.surface)
             .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(2.dp))
             .padding(CELL_PADDING),
     ) {
         if (cell == null) return@Box
-        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            // The extractor joins a cell's paragraphs with newlines; re-splitting here makes
-            // intra-cell spacing independent of the cell's font size. Each line is its own text,
-            // so the cell's current match is numbered across them the same way the table's is
-            // across its cells.
+        val shaded = if (fill != null) style.copy(color = readableOn(fill)) else style
+        val lineStyle = if (cell.align == BlockAlign.START) shaded else shaded.copy(textAlign = cell.align.toTextAlign())
+        // Alignment only means something once the text has the cell's width to align within.
+        val fullWidth = if (cell.align == BlockAlign.START) Modifier else Modifier.fillMaxWidth()
+        Column(fullWidth, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            // The extractor joins a cell's paragraphs with newlines; re-splitting here makes spacing
+            // independent of font size, each line its own text for match numbering.
             var before = 0
-            officeCellLines(cell).forEach { line ->
+            officeCellRichLines(cell).forEach { line ->
                 FindText(
-                    text = line,
+                    text = line.text,
                     highlight = highlight?.skipping(before),
-                    style = style,
+                    style = lineStyle,
+                    modifier = fullWidth,
                     reveal = reveal,
+                    spans = line.spans,
+                    background = fill,
                 )
-                if (highlight != null) before += countOccurrences(line, highlight.query)
+                if (highlight != null) before += countOccurrences(line.text, highlight.query)
             }
         }
     }
@@ -277,13 +344,18 @@ private fun OfficeImageView(block: OfficeBlock.Image, modifier: Modifier = Modif
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            is ImageState.Loaded -> Image(
-                // No recycle: Compose may still be drawing this bitmap when the composition leaves.
-                bitmap = remember(current.bitmap) { current.bitmap.asImageBitmap() },
-                contentDescription = null,
-                contentScale = ContentScale.FillWidth,
-                modifier = Modifier.fillMaxWidth(),
-            )
+            is ImageState.Loaded -> {
+                // Drawn at the size the document gave it, never wider than the screen: a logo stays a
+                // logo instead of being stretched to fill the page.
+                val declared = block.widthDp
+                Image(
+                    // No recycle: Compose may still be drawing this bitmap when the composition leaves.
+                    bitmap = remember(current.bitmap) { current.bitmap.asImageBitmap() },
+                    contentDescription = block.altText,
+                    contentScale = ContentScale.FillWidth,
+                    modifier = if (declared != null) Modifier.widthIn(max = declared.dp).fillMaxWidth() else Modifier.fillMaxWidth(),
+                )
+            }
             ImageState.Failed -> Surface(
                 shape = RoundedCornerShape(8.dp),
                 color = MaterialTheme.colorScheme.surfaceVariant,

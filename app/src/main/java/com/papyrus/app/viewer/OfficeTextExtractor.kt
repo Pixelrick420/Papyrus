@@ -3,6 +3,7 @@ package com.papyrus.app.viewer
 import android.util.Xml
 import com.papyrus.app.data.DocumentFormat
 import org.xmlpull.v1.XmlPullParser
+import org.xmlpull.v1.XmlPullParserException
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.IOException
@@ -10,41 +11,8 @@ import java.io.InputStream
 import java.util.zip.ZipInputStream
 
 /**
- * A single table cell. A cell *covered* by a rowspan from a row above is absent entirely: the
- * renderer reads the merge off the origin cell, so a repeated blank would shift every later cell in
- * the row and draw a border where the merge should be seamless.
- */
-data class OfficeCell(
-    val text: String,
-    val column: Int = 0,
-    val colspan: Int = 1,
-    val rowspan: Int = 1,
-) {
-    /** Index of the last column this cell occupies; inclusive. */
-    val lastColumn: Int get() = column + colspan - 1
-}
-
-/**
- * One laid-out piece of an Office document. Not pixel-accurate to Word/LibreOffice: headings,
- * paragraphs, tables and inline images in document order is the fidelity targeted.
- */
-sealed interface OfficeBlock {
-    data class Heading(val text: String, val level: Int) : OfficeBlock
-    data class Paragraph(val text: String) : OfficeBlock
-    /**
-     * A table flattened into rows. [OfficeCell.column] is where a cell *starts*, so a cell covered by
-     * a rowspan above is absent from its row rather than repeated as empty. Nested tables are
-     * flattened into the surrounding block list.
-     */
-    data class Table(val rows: List<List<OfficeCell>>) : OfficeBlock
-    /** Media written to [file]; the viewer downsamples on decode, so the bytes are not held resident. */
-    data class Image(val file: File, val mimeType: String) : OfficeBlock
-}
-
-/**
- * Dependency-free extraction for .docx / .odt, both ZIP + XML, via java.util.zip and the platform
- * XmlPullParser. The archive is walked twice through [openStream] rather than buffered whole, so
- * peak memory stays proportional to the body XML and media is read once.
+ * Dependency-free extraction for .docx / .odt (ZIP + XML) via java.util.zip and the platform
+ * XmlPullParser; the archive is walked twice so peak memory stays proportional to the body XML.
  */
 class OfficeTextExtractor(
     private val mediaDir: File?,
@@ -60,47 +28,45 @@ class OfficeTextExtractor(
             DocumentFormat.ODT -> ODT_BODY
             else -> throw IOException("Unsupported office format: $format")
         }
-        val relsEntry = if (format == DocumentFormat.DOCX) DOCX_RELS else null
+        val partNames = if (format == DocumentFormat.DOCX) DOCX_PARTS else ODT_PARTS
 
-        val body: ByteArray
-        val rels: Map<String, String>
+        val found = HashMap<String, ByteArray>()
         openStream().use { input ->
-            val found = HashMap<String, ByteArray>()
             ZipInputStream(input).use { zip ->
                 while (true) {
                     val entry = zip.nextEntry ?: break
-                    if (entry.isDirectory) continue
-                    if (entry.name == bodyEntry || entry.name == relsEntry) {
-                        found[entry.name] = readEntry(zip)
-                    }
+                    if (entry.isDirectory || entry.name !in partNames) continue
+                    // The body is trusted to fit in memory, as it always was; the parts that only add
+                    // formatting are bounded, and simply ignored if one is absurdly large.
+                    val bytes = if (entry.name == bodyEntry) readEntry(zip) else readPart(zip)
+                    if (bytes != null) found[entry.name] = bytes
                 }
             }
-            body = found[bodyEntry] ?: throw IOException("$bodyEntry not found: not a valid document")
-            rels = relsEntry?.let { parseRels(found[it]) } ?: emptyMap()
         }
+        val body = found[bodyEntry] ?: throw IOException("$bodyEntry not found: not a valid document")
 
         val pending = mutableListOf<PendingImage>()
-        val blocks = parseBody(body, format, rels, pending)
+        val blocks = if (format == DocumentFormat.DOCX) parseDocx(body, found, pending) else parseOdt(body, found, pending)
 
         if (pending.isNotEmpty() && mediaDir != null) {
             val wanted = pending.mapTo(HashSet()) { it.zipName }
             val budget = MediaBudget()
-            // zipName -> the image block it produced, so one entry referenced from several places inserts one
+            // zipName -> the file it was written to, so one entry referenced from several places inserts one
             // block per *reference* while its bytes are read and written once.
-            val written = HashMap<String, OfficeBlock.Image>()
+            val written = HashMap<String, File>()
             readMedia(openStream, wanted, budget) { zipName, bytes ->
                 val file = writeMedia(zipName, bytes) ?: return@readMedia
-                written[zipName] = OfficeBlock.Image(file, mimeByName(zipName))
+                written[zipName] = file
             }
             // Insert at the recorded position so images land where they appeared rather than being appended.
             var inserted = 0
             pending.forEach { image ->
                 // A dangling relationship or a budget rejection lands here as null; the text still renders.
-                val block = written[image.zipName] ?: return@forEach
+                val file = written[image.zipName] ?: return@forEach
                 if (blocks.size >= MAX_BLOCKS) return@forEach
-                // `index` was recorded against the list before any image went in, so every image already
-                // inserted has pushed this position down by one. Without the offset, images drifted upward
-                // and ended up clustered together near the first one.
+                // `index` was recorded before any image went in, so each image already inserted pushed
+                // it down by one; without the offset, images drifted up and clustered near the first.
+                val block = OfficeBlock.Image(file, mimeByName(image.zipName), image.widthDp, image.altText)
                 blocks.add((image.index + inserted).coerceIn(0, blocks.size), block)
                 inserted++
             }
@@ -108,15 +74,21 @@ class OfficeTextExtractor(
         return blocks
     }
 
-    private class PendingImage(val zipName: String, val index: Int)
-
-    /** The anchoring paragraph's state while a text box's own paragraphs are parsed. */
-    private class SetAsideParagraph(val text: String, val depth: Int, val headingLevel: Int)
+    /** Reads one part, or null once it passes [MAX_PART_BYTES]; the rest of the entry is skipped by the next `nextEntry`. */
+    private fun readPart(zip: ZipInputStream): ByteArray? {
+        val out = ByteArrayOutputStream()
+        val buffer = ByteArray(MEDIA_COPY_BUFFER)
+        while (true) {
+            val n = zip.read(buffer)
+            if (n < 0) return out.toByteArray()
+            if (out.size() + n > MAX_PART_BYTES) return null
+            out.write(buffer, 0, n)
+        }
+    }
 
     /**
-     * Byte budget so a document full of photographs cannot fill the disk or the heap. Reserve then
-     * consume: an entry's size is known before reading only when the ZIP had a central directory, so
-     * [canReserve] is the cheap pre-check and [consume] the authoritative charge.
+     * Byte budget so photographs cannot fill the disk or heap. Reserve then consume: [canReserve] is
+     * the cheap pre-check, [consume] the authoritative charge.
      */
     private class MediaBudget {
         private var remaining = MAX_TOTAL_MEDIA_BYTES
@@ -162,10 +134,8 @@ class OfficeTextExtractor(
     }
 
     /**
-     * Streams the wanted entries straight to [sink], charging the budget as each arrives rather than
-     * buffering them all, which would let 200 images allocate 200 x [MAX_IMAGE_BYTES] first. The
-     * per-entry cap counts bytes instead of trusting `entry.size`: a streamed entry in a ZIP without a
-     * central directory reports -1, and `readBytes()` on it would read without bound.
+     * Streams wanted entries to [sink], charging the budget as each arrives rather than buffering
+     * them all. The per-entry cap counts bytes, not `entry.size`, which can be -1 when streamed.
      */
     private fun readMedia(
         openStream: () -> InputStream,
@@ -191,10 +161,8 @@ class OfficeTextExtractor(
     }
 
     /**
-     * Reads one XML part (the body or the rels), capped at [MAX_BODY_BYTES]. A crafted or oversized
-     * body would otherwise be materialised in full before the block and character budgets apply;
-     * over the cap throws [IOException], surfacing the document as failed rather than parsed from a
-     * truncated body.
+     * Reads the body XML part, capped at [MAX_BODY_BYTES]; over the cap throws [IOException] so the
+     * document fails rather than parses from a truncated body.
      */
     private fun readEntry(zip: ZipInputStream): ByteArray {
         val out = ByteArrayOutputStream()
@@ -233,21 +201,40 @@ class OfficeTextExtractor(
             setInput(stream, null)
         }
 
-    /** `rId7 -> word/media/image3.png` for a DOCX body. Empty map when the rels part is absent. */
-    private fun parseRels(xml: ByteArray?): Map<String, String> {
-        if (xml == null || xml.isEmpty()) return emptyMap()
-        val out = HashMap<String, String>()
+    /** Reads an optional part; a malformed one is ignored rather than losing the whole document. */
+    private fun <T> optionalPart(fallback: T, read: () -> T): T = try {
+        read()
+    } catch (_: XmlPullParserException) {
+        fallback
+    } catch (_: IOException) {
+        fallback
+    }
+
+    /**
+     * `rId7 -> word/media/image3.png` for embedded targets and `rId9 -> https://...` for external ones
+     * (hyperlinks). Both empty when the rels part is absent.
+     */
+    private fun parseRels(xml: ByteArray?): DocxRels {
+        if (xml == null || xml.isEmpty()) return DocxRels.EMPTY
+        val targets = HashMap<String, String>()
+        val links = HashMap<String, String>()
         val p = newParser(xml.inputStream())
         var event = p.eventType
         while (event != XmlPullParser.END_DOCUMENT) {
             if (event == XmlPullParser.START_TAG && p.name == "Relationship") {
                 val id = p.getAttributeValue(null, "Id")
                 val target = p.getAttributeValue(null, "Target")
-                if (id != null && target != null) out[id] = resolveDocxTarget(target)
+                if (id != null && target != null) {
+                    if (p.getAttributeValue(null, "TargetMode") == "External") {
+                        links[id] = target
+                    } else {
+                        targets[id] = resolveDocxTarget(target)
+                    }
+                }
             }
             event = p.next()
         }
-        return out
+        return DocxRels(targets, links)
     }
 
     /** Relationship targets are relative to `word/`, though some producers write an absolute `/word/...`. */
@@ -257,466 +244,75 @@ class OfficeTextExtractor(
         else -> "$DOCX_DIR/$target"
     }
 
-    private fun parseBody(
-        body: ByteArray,
-        format: DocumentFormat,
-        rels: Map<String, String>,
-        pending: MutableList<PendingImage>,
-    ): MutableList<OfficeBlock> =
-        if (format == DocumentFormat.DOCX) parseDocx(body, rels, pending)
-        else parseOdt(body, pending)
-
-    /**
-     * A grid being built for the table currently open. Vertical merges are the awkward part: `w:vMerge`
-     * continuation lives in a *later* row at the same column, so the origin cell is not reachable from
-     * the row being parsed; [Slot] is mutable, reached by that continuation row via column through
-     * [openCellAt]. A continuation records a non-origin placeholder to hold the grid position, and
-     * [emit] drops it -- emitting it would duplicate the merged text and shift every later cell.
-     */
-    private class Grid {
-        val rows = mutableListOf<List<Slot>>()
-        var row = mutableListOf<Slot>()
-        /** grid column -> the Slot that started the vertical merge, for columns merged so far. */
-        private val mergeOrigins = HashMap<Int, Slot>()
-
-        val isEmpty: Boolean get() = row.isEmpty()
-
-        fun startRow() {
-            row = mutableListOf()
-        }
-
-        /**
-         * Closes the current row of the **outermost** table. Only depth-1 rows are committed, so
-         * pathologically nested input cannot multiply the row count; nested cell text survives,
-         * routed into the enclosing outer cell's buffer. False once the row cap is reached, so the
-         * caller can drop the whole table rather than emit a truncated one.
-         */
-        fun commitRow(rowLimit: Int): Boolean {
-            if (row.isNotEmpty() && rows.size < rowLimit) rows += row.toList()
-            // A merge that no longer reaches this row is over; without pruning, a ragged table could
-            // resurrect a stale origin and hand a fresh cell an inflated rowspan.
-            val placed = row.mapTo(HashSet()) { it.column }
-            mergeOrigins.keys.retainAll(placed)
-            row = mutableListOf()
-            return rows.size < rowLimit
-        }
-
-        /** Records the cell ending here; only RESTART may open a new merge origin, anything else ends the merge at this column. */
-        fun openCellAt(column: Int, text: String, colspan: Int, merge: MergeState): Slot {
-            val origin = mergeOrigins[column]
-            if (merge == MergeState.CONTINUE && origin != null) {
-                origin.rowspan++
-                val placeholder = Slot(column = column, colspan = colspan, origin = false)
-                row += placeholder
-                return placeholder
-            }
-            val slot = Slot(text = text, column = column, colspan = colspan)
-            row += slot
-            // A plain cell ends any merge open at this column; a RESTART begins a new one.
-            if (merge == MergeState.RESTART) mergeOrigins[column] = slot else mergeOrigins.remove(column)
-            return slot
-        }
-
-        /** Grows the row's last cell to absorb an ODT `table:covered-table-cell` beside it. */
-        fun widenLastColumn() {
-            val last = row.lastOrNull() ?: return
-            if (!last.origin) return
-            row[row.lastIndex] = last.copy(colspan = (last.colspan + 1).coerceAtMost(MAX_MERGE_SPAN))
-        }
-
-        fun emit(): OfficeBlock.Table =
-            OfficeBlock.Table(rows.map { r -> r.filter { it.origin }.map { it.toCell() } })
-
-        fun reset() {
-            rows.clear()
-            row = mutableListOf()
-            mergeOrigins.clear()
-        }
-    }
-
-    private enum class MergeState { NONE, RESTART, CONTINUE }
-
-    private data class Slot(
-        var text: String = "",
-        val column: Int = 0,
-        var colspan: Int = 1,
-        var rowspan: Int = 1,
-        val origin: Boolean = true,
-    ) {
-        val lastColumn: Int get() = column + colspan - 1
-
-        fun toCell() = OfficeCell(text, column, colspan, rowspan)
-    }
-
     private fun parseDocx(
         body: ByteArray,
-        rels: Map<String, String>,
+        parts: Map<String, ByteArray>,
         pending: MutableList<PendingImage>,
     ): MutableList<OfficeBlock> {
-        val p = newParser(body.inputStream())
-        val blocks = mutableListOf<OfficeBlock>()
-        val paragraph = StringBuilder()
-        var paragraphDepth = 0
-        var headingLevel = 0
-        var inText = false
-        var tableDepth = 0
-        val grid = Grid()
-        var column = 0
-        var inCell = false
-        var cellBuffer = StringBuilder()
-        var cellColspan = 1
-        var cellMerge = MergeState.NONE
-        var tableUsable = true
-        // `w:tab` is also a tab-stop *definition* inside `w:tabs`; only a run's `w:tab` is a character.
-        var inTabStops = false
-        // Inside `mc:Fallback`: the legacy copy of what `mc:Choice` already said.
-        var fallbackDepth = 0
-        // A text box's paragraphs nest inside the paragraph that anchors it; they are set aside so the
-        // box reads as its own paragraphs instead of being glued onto the anchor's text.
-        val textBoxes = ArrayDeque<SetAsideParagraph>()
+        val factory: ParserFactory = { newParser(it) }
+        val rels = parseRels(parts[DOCX_RELS])
+        val styles = optionalPart(DocxStyles.empty()) { readDocxStyles(parts[DOCX_STYLES], factory) }
+        val numbering = optionalPart(DocxNumbering.EMPTY) { readDocxNumbering(parts[DOCX_NUMBERING], factory) }
 
-        fun emitParagraph() {
-            val text = paragraph.toString()
-            if (text.isNotBlank() && blocks.size < MAX_BLOCKS) {
-                blocks += if (headingLevel > 0) OfficeBlock.Heading(text, headingLevel)
-                else OfficeBlock.Paragraph(text)
-            }
-            paragraph.setLength(0)
-            headingLevel = 0
-        }
+        val main = DocxBodyParser(factory, styles, ListCounters(numbering), rels, pending)
+        main.parse(body)
+        val blocks = main.blocks
+        if (main.noteRefs.isEmpty()) return blocks
 
-        /**
-         * Parser text goes to the cell buffer inside a `w:tc` and to the paragraph otherwise, but
-         * only from inside a `w:t`: whitespace between structural tags is layout, not content, and
-         * pretty-printed producers indent `<w:tc>` away from its first `<w:p>`, which would pad every
-         * cell. [element] marks characters an element contributes (a tab, a break) -- content
-         * regardless of the surrounding `w:t` state.
-         */
-        fun appendText(raw: String, element: Boolean = false) {
-            if (inText || element) {
-                if (inCell) cellBuffer.append(raw) else paragraph.append(raw)
+        // Notes live in parts of their own, read with the same machinery as the body and placed after it.
+        fun readNotes(entry: String): Map<String, RichSnapshot> {
+            val bytes = parts[entry] ?: return emptyMap()
+            return optionalPart<Map<String, RichSnapshot>>(emptyMap()) {
+                val reader = DocxBodyParser(factory, styles, ListCounters(numbering), rels, mutableListOf())
+                reader.parse(bytes)
+                reader.notes
             }
         }
-
-        var event = p.eventType
-        while (event != XmlPullParser.END_DOCUMENT && blocks.size < MAX_BLOCKS) {
-            val isFallbackTag = (event == XmlPullParser.START_TAG || event == XmlPullParser.END_TAG) &&
-                p.name == "mc:Fallback"
-            if (isFallbackTag) {
-                if (event == XmlPullParser.START_TAG) fallbackDepth++ else if (fallbackDepth > 0) fallbackDepth--
-            } else if (fallbackDepth == 0) when (event) {
-                XmlPullParser.START_TAG -> when (p.name) {
-                    "w:tbl" -> {
-                        if (tableDepth == 0) {
-                            emitParagraph() // a table interrupts a paragraph, it never nests in one
-                            grid.reset()
-                            tableUsable = true
-                        }
-                        tableDepth++
-                    }
-                    "w:tr" -> if (tableDepth == 1) {
-                        // Depth 1 only: a nested table's startRow() would discard the outer row being assembled.
-                        grid.startRow()
-                        column = 0
-                    }
-                    "w:tc" -> if (tableDepth == 1) {
-                        inCell = true
-                        cellBuffer = StringBuilder()
-                        cellColspan = 1
-                        cellMerge = MergeState.NONE
-                    } else if (tableDepth > 1) {
-                        // A nested cell sits inside an outer cell that is still open, so `inCell` stays true and its
-                        // text lands in the outer cell's buffer. The buffer is not reset: that text
-                        // belongs to the outer cell.
-                    }
-                    "w:gridSpan" -> if (inCell && tableDepth == 1) {
-                        cellColspan = p.getAttributeValue(null, "w:val")?.toIntOrNull()
-                            ?.coerceIn(1, MAX_MERGE_SPAN) ?: 1
-                    }
-                    "w:vMerge" -> if (inCell && tableDepth == 1) {
-                        // val="restart" opens a merge, "continue" extends one, and no val at all means continue.
-                        cellMerge = when (p.getAttributeValue(null, "w:val")) {
-                            "restart" -> MergeState.RESTART
-                            null, "continue" -> MergeState.CONTINUE
-                            else -> MergeState.NONE
-                        }
-                    }
-                    "w:p" -> if (tableDepth == 0 && paragraphDepth++ == 0) {
-                        paragraph.setLength(0)
-                        headingLevel = 0
-                    }
-                    "w:pStyle" -> if (tableDepth == 0) {
-                        headingLevel = p.getAttributeValue(null, "w:val").orEmpty().toHeadingLevel()
-                    }
-                    // a:blip is DrawingML; v:imagedata is the legacy VML fallback Word still emits.
-                    "a:blip", "v:imagedata" -> if (tableDepth == 0) {
-                        val id = p.getAttributeValue(null, "r:embed")
-                            ?: p.getAttributeValue(null, "r:id")
-                        rels[id]?.let { target -> pending += PendingImage(target, blocks.size) }
-                    }
-                    "w:t" -> inText = true
-                    "w:tabs" -> inTabStops = true
-                    "w:tab" -> if (!inTabStops) appendText("\t", element = true)
-                    "w:ptab" -> appendText("\t", element = true)
-                    "w:noBreakHyphen" -> appendText("-", element = true)
-                    "w:br", "w:cr" -> appendText("\n", element = true)
-                    "w:txbxContent" -> if (tableDepth == 0) {
-                        textBoxes.addLast(SetAsideParagraph(paragraph.toString(), paragraphDepth, headingLevel))
-                        paragraph.setLength(0)
-                        paragraphDepth = 0
-                        headingLevel = 0
-                    }
-                }
-
-                XmlPullParser.TEXT -> appendText(p.text)
-
-                XmlPullParser.END_TAG -> when (p.name) {
-                    "w:t" -> inText = false
-                    "w:tabs" -> inTabStops = false
-                    "w:txbxContent" -> if (tableDepth == 0 && textBoxes.isNotEmpty()) {
-                        emitParagraph() // text in the box that no `</w:p>` closed
-                        val host = textBoxes.removeLast()
-                        paragraph.append(host.text)
-                        paragraphDepth = host.depth
-                        headingLevel = host.headingLevel
-                    }
-                    "w:tc" -> if (inCell && tableDepth == 1) {
-                        inCell = false
-                        grid.openCellAt(column, cellBuffer.toString().trim('\n'), cellColspan, cellMerge)
-                        column += cellColspan
-                        cellBuffer = StringBuilder()
-                    }
-                    "w:tr" -> if (tableDepth == 1) {
-                        tableUsable = grid.commitRow(rowLimit = MAX_TABLE_ROWS)
-                    }
-                    "w:tbl" -> {
-                        tableDepth--
-                        if (tableDepth == 0) {
-                            // tableUsable folds in the row cap: past it rows stop being collected, so the table is
-                            // dropped whole rather than emitted partial.
-                            if (grid.rows.isNotEmpty() && tableUsable) blocks += grid.emit()
-                            grid.reset()
-                        }
-                    }
-                    "w:p" -> when {
-                        tableDepth == 0 -> if (--paragraphDepth == 0) emitParagraph()
-                        inCell -> cellBuffer.append('\n') // one newline between a cell's paragraphs
-                    }
-                }
+        val footnotes = readNotes(DOCX_FOOTNOTES)
+        val endnotes = readNotes(DOCX_ENDNOTES)
+        val items = ArrayList<OfficeBlock>()
+        for (wantEndnotes in listOf(false, true)) {
+            for (ref in main.noteRefs) {
+                if (ref.endnote != wantEndnotes) continue
+                val note = (if (wantEndnotes) endnotes else footnotes)[ref.id] ?: continue
+                items += OfficeBlock.Note(ref.label, note.text, note.spans)
             }
-            event = p.next()
+        }
+        if (items.isNotEmpty() && blocks.size < MAX_BLOCKS) {
+            blocks += OfficeBlock.Divider
+            blocks.addAll(items)
         }
         return blocks
     }
 
-    private fun String.toHeadingLevel(): Int = when {
-        equals("Title", true) -> 1
-        startsWith("Heading", true) -> substringAfter("Heading", "1").toIntOrNull()?.coerceIn(1, 6) ?: 1
-        else -> 0
+    private fun parseOdt(
+        body: ByteArray,
+        parts: Map<String, ByteArray>,
+        pending: MutableList<PendingImage>,
+    ): MutableList<OfficeBlock> {
+        val factory: ParserFactory = { newParser(it) }
+        val sheet = OdfStyles()
+        // Named styles first, so an automatic style in content.xml can override one of the same name.
+        parts[ODT_STYLES]?.let { bytes -> optionalPart(Unit) { readOdfStyles(bytes, sheet, factory) } }
+        optionalPart(Unit) { readOdfStyles(body, sheet, factory) }
+        return OdtBodyParser(factory, sheet, pending).parse(body)
     }
-
-    private fun parseOdt(body: ByteArray, pending: MutableList<PendingImage>): MutableList<OfficeBlock> {
-        val p = newParser(body.inputStream())
-        val blocks = mutableListOf<OfficeBlock>()
-        val paragraph = StringBuilder()
-        var paragraphDepth = 0
-        var headingLevel = 0
-        var tableDepth = 0
-        val grid = Grid()
-        var inCell = false
-        var cellBuffer = StringBuilder()
-        // ODT marks a vertical merge with a sibling `table:covered-table-cell` rather than an
-        // attribute, so there is no merge state to track here, only a column cursor to advance.
-        var column = 0
-        var tableUsable = true
-        // How many <text:p>/<text:h> are open: ODF producers indent their XML just like DOCX ones, so only
-        // text inside a paragraph element is content. A depth, not a flag: a frame or text box nests a
-        // paragraph inside one, and the inner end tag must not switch off the outer paragraph's remaining text.
-        var paragraphElementDepth = 0
-        // Footnote bodies, comments and deleted text sit *inside* the paragraph they annotate. Their
-        // text is not part of it, and (for comments) includes the author and timestamp.
-        var skipDepth = 0
-        val textBoxes = ArrayDeque<SetAsideOdtParagraph>()
-        // Merge geometry. Real files declare spans as attributes, then add covered cells as placeholders.
-        var cellColspan = 1
-        var cellRowspan = 1
-        var cellRepeat = 1
-        var rowIndex = -1
-        var tableColumns = 0
-        var horizontalCoversLeft = 0
-        // column -> last row index that a rowspan from above still covers
-        val verticalCoveredUntil = HashMap<Int, Int>()
-
-        fun emitParagraph() {
-            val text = paragraph.toString()
-            if (text.isNotBlank() && blocks.size < MAX_BLOCKS) {
-                blocks += if (headingLevel > 0) OfficeBlock.Heading(text, headingLevel)
-                else OfficeBlock.Paragraph(text)
-            }
-            paragraph.setLength(0)
-            headingLevel = 0
-        }
-
-        fun appendText(text: String) {
-            if (paragraphElementDepth == 0) return
-            if (inCell) cellBuffer.append(text) else paragraph.append(text)
-        }
-
-        var event = p.eventType
-        while (event != XmlPullParser.END_DOCUMENT && blocks.size < MAX_BLOCKS) {
-            val skippedTag = (event == XmlPullParser.START_TAG || event == XmlPullParser.END_TAG) &&
-                p.name in ODT_SKIPPED
-            if (skippedTag) {
-                if (event == XmlPullParser.START_TAG) skipDepth++ else if (skipDepth > 0) skipDepth--
-            } else if (skipDepth == 0) when (event) {
-                XmlPullParser.START_TAG -> when (p.name) {
-                    "table:table" -> {
-                        if (tableDepth == 0) {
-                            emitParagraph()
-                            grid.reset()
-                            tableUsable = true
-                            rowIndex = -1
-                            tableColumns = 0
-                            verticalCoveredUntil.clear()
-                        }
-                        tableDepth++
-                    }
-                    "table:table-column" -> if (tableDepth == 1) {
-                        tableColumns += p.intAttr("table:number-columns-repeated")
-                    }
-                    "table:table-row" -> if (tableDepth == 1) {
-                        // Depth 1 only, as in DOCX: a nested row must not reset the outer grid's in-progress row.
-                        grid.startRow()
-                        column = 0
-                        rowIndex++
-                        horizontalCoversLeft = 0
-                    }
-                    "table:table-cell" -> if (tableDepth == 1) {
-                        inCell = true
-                        cellBuffer = StringBuilder()
-                        cellColspan = p.intAttr("table:number-columns-spanned")
-                        cellRowspan = p.intAttr("table:number-rows-spanned")
-                        cellRepeat = p.intAttr("table:number-columns-repeated")
-                    }
-                    "table:covered-table-cell" -> if (tableDepth == 1) {
-                        repeat(p.intAttr("table:number-columns-repeated")) {
-                            when {
-                                // Right of a cell that declared `number-columns-spanned`: the cell already carries
-                                // the span and moved the column cursor past it, so there is nothing left to do.
-                                horizontalCoversLeft > 0 -> horizontalCoversLeft--
-                                // Under a rowspan from above: absent, as in DOCX, but it does occupy its column.
-                                // Widening the left neighbour here used to make a vertical merge in a middle
-                                // column stretch the cell beside it.
-                                (verticalCoveredUntil[column] ?: -1) >= rowIndex -> column++
-                                // A producer that omits the spanned attribute: a covered cell extends its left neighbour.
-                                else -> {
-                                    grid.widenLastColumn()
-                                    column++
-                                }
-                            }
-                        }
-                    }
-                    "draw:text-box" -> if (tableDepth == 0) {
-                        textBoxes.addLast(
-                            SetAsideOdtParagraph(paragraph.toString(), paragraphDepth, headingLevel, paragraphElementDepth),
-                        )
-                        paragraph.setLength(0)
-                        paragraphDepth = 0
-                        headingLevel = 0
-                        paragraphElementDepth = 0
-                    }
-                    "text:p", "text:h" -> {
-                        paragraphElementDepth++
-                        if (tableDepth == 0 && paragraphDepth++ == 0) {
-                            paragraph.setLength(0)
-                            headingLevel = if (p.name == "text:h") p.outlineLevel() else 0
-                        }
-                    }
-                    "draw:image" -> if (tableDepth == 0) {
-                        p.getAttributeValue(null, "xlink:href")
-                            ?.let { href -> pending += PendingImage(href, blocks.size) }
-                    }
-                    "text:tab" -> appendText("\t")
-                    "text:line-break" -> appendText("\n")
-                    "text:s" -> repeat(p.getAttributeValue(null, "text:c")?.toIntOrNull() ?: 1) {
-                        appendText(" ")
-                    }
-                }
-
-                XmlPullParser.TEXT -> appendText(p.text)
-
-                XmlPullParser.END_TAG -> when (p.name) {
-                    "table:table-row" -> if (tableDepth == 1) {
-                        tableUsable = grid.commitRow(rowLimit = MAX_TABLE_ROWS)
-                    }
-                    "table:table-cell" -> if (inCell && tableDepth == 1) {
-                        inCell = false
-                        val text = cellBuffer.toString().trim('\n')
-                        // A repeat cannot run past the declared columns, or a spreadsheet-style
-                        // "repeat 1000 empty cells" would add a thousand columns.
-                        val room = if (tableColumns > 0) (tableColumns - column).coerceAtLeast(1) else cellRepeat
-                        repeat(minOf(cellRepeat, room)) {
-                            grid.openCellAt(column, text, cellColspan, MergeState.NONE).rowspan = cellRowspan
-                            if (cellRowspan > 1) {
-                                for (c in column until column + cellColspan) {
-                                    verticalCoveredUntil[c] = rowIndex + cellRowspan - 1
-                                }
-                            }
-                            column += cellColspan
-                        }
-                        horizontalCoversLeft = cellColspan - 1
-                        cellBuffer = StringBuilder()
-                    }
-                    "draw:text-box" -> if (tableDepth == 0 && textBoxes.isNotEmpty()) {
-                        emitParagraph() // text in the box that no `</text:p>` closed
-                        val host = textBoxes.removeLast()
-                        paragraph.append(host.text)
-                        paragraphDepth = host.depth
-                        headingLevel = host.headingLevel
-                        paragraphElementDepth = host.elementDepth
-                    }
-                    "table:table" -> {
-                        tableDepth--
-                        if (tableDepth == 0) {
-                            if (grid.rows.isNotEmpty() && tableUsable) blocks += grid.emit()
-                            grid.reset()
-                        }
-                    }
-                    "text:p", "text:h" -> {
-                        if (paragraphElementDepth > 0) paragraphElementDepth--
-                        when {
-                            // One newline between a cell's paragraphs, as in DOCX: without it a cell holding two
-                            // paragraphs, or an outer cell holding a nested table's cell, reads as one run-on line.
-                            tableDepth == 0 -> if (--paragraphDepth == 0) emitParagraph()
-                            inCell -> cellBuffer.append('\n')
-                        }
-                    }
-                }
-            }
-            event = p.next()
-        }
-        return blocks
-    }
-
-    /** A positive count attribute, 1 when absent or unusable, capped so a bad file cannot ask for thousands. */
-    private fun XmlPullParser.intAttr(name: String): Int =
-        getAttributeValue(null, name)?.toIntOrNull()?.coerceIn(1, MAX_MERGE_SPAN) ?: 1
-
-    /** The anchoring paragraph's state while a text box's own paragraphs are parsed. */
-    private class SetAsideOdtParagraph(val text: String, val depth: Int, val headingLevel: Int, val elementDepth: Int)
-
-    /** ODT heading depth comes from an automatic style, so the attribute sits on the element here. */
-    private fun XmlPullParser.outlineLevel(): Int =
-        getAttributeValue(null, "text:outline-level")?.toIntOrNull()?.coerceIn(1, 6) ?: 1
 
     companion object {
         private const val DOCX_DIR = "word"
         private const val DOCX_BODY = "word/document.xml"
         private const val DOCX_RELS = "word/_rels/document.xml.rels"
+        private const val DOCX_STYLES = "word/styles.xml"
+        private const val DOCX_NUMBERING = "word/numbering.xml"
+        private const val DOCX_FOOTNOTES = "word/footnotes.xml"
+        private const val DOCX_ENDNOTES = "word/endnotes.xml"
         private const val ODT_BODY = "content.xml"
+        private const val ODT_STYLES = "styles.xml"
 
-        /** Subtrees whose text is annotation rather than body: footnotes and endnotes, comments, deleted text. */
-        private val ODT_SKIPPED = setOf("text:note", "office:annotation", "text:tracked-changes")
+        private val DOCX_PARTS = setOf(
+            DOCX_BODY, DOCX_RELS, DOCX_STYLES, DOCX_NUMBERING, DOCX_FOOTNOTES, DOCX_ENDNOTES,
+        )
+        private val ODT_PARTS = setOf(ODT_BODY, ODT_STYLES)
 
         const val MAX_BLOCKS = 20_000
         const val MAX_TABLE_ROWS = 2_000
@@ -724,12 +320,12 @@ class OfficeTextExtractor(
         const val MAX_IMAGE_BYTES = 8 * 1024 * 1024
         const val MAX_TOTAL_MEDIA_BYTES = 24 * 1024 * 1024
 
-        /** Cap on a single XML part (body or rels) read into memory before parsing. */
+        /** Cap on the body XML part read into memory before parsing. */
         private const val MAX_BODY_BYTES = 32 * 1024 * 1024
         private const val MEDIA_COPY_BUFFER = 64 * 1024
 
-        /** A single cell cannot usefully span more columns than this; a bigger value is a bad file. */
-        private const val MAX_MERGE_SPAN = 64
+        /** Parts that only add formatting (styles, numbering, notes): bigger than this and they are ignored. */
+        private const val MAX_PART_BYTES = 16 * 1024 * 1024
 
         /** Zip-slip guard: media names come from the document, so never trust their path shape. */
         fun sanitiseName(zipName: String): String =
