@@ -8,9 +8,9 @@ import androidx.room.RoomDatabase
 @Database(
     entities = [DocumentEntity::class],
     version = 4,
-    exportSchema = true, // written to app/schemas on every build and deliberately NOT tracked: the
-    // export is a build artifact, not a schema history, so committing it would only be a
-    // stale-identityHash trap.
+    // No schema is exported: only the current version is supported, so there is no
+    // migration path and no schema history worth keeping.
+    exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
 
