@@ -8,7 +8,7 @@
 # Scope is dead code and correctness. Documentation-volume and formatting rules
 # are off on purpose -- see the "Deliberately off" section at the bottom.
 #
-# No `detekt-formatting` dependency: the one rule wanted from it, UnusedImports,
+# No `detekt-formatting` dependency: the one rule wanted from it, UnusedImport,
 # also ships in detekt core under `style`. Enabling the formatting ruleset would
 # have pulled in ~200 ktlint-backed rules that have nothing to do with this.
 
@@ -22,7 +22,12 @@ style:
   # `data class Access` + its accessor function, the shape SafStorage had.
   # detekt skips `override` members, so framework callbacks (onCleared,
   # createIntent, writeString) and @Composable entry points are not flagged.
-  UnusedPrivateMember:
+  # detekt 2.x split `UnusedPrivateMember` into these two rules; both are
+  # listed to keep the same coverage the single 1.x rule provided.
+  UnusedPrivateFunction:
+    active: true
+    allowedNames: '_|ignored|expected|serialVersionUID'
+  UnusedVariable:
     active: true
     allowedNames: '_|ignored|expected|serialVersionUID'
   UnusedPrivateProperty:
@@ -32,7 +37,7 @@ style:
     active: true
   # Unused imports. detekt core carries this; kotlinc does not warn on unused
   # imports at all, which is how an unused `imePadding` import survived.
-  UnusedImports:
+  UnusedImport:
     active: true
   # An unused function parameter. `by remember { }` state and Compose lambdas pass
   # parameters that are only consumed by the compiler plugin, so @Composable is
