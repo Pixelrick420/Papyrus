@@ -48,7 +48,7 @@ supported: there is no migration path from older versions, and a database writte
 - **Find in file**, also on Ctrl+F, works on every format. PDF, text and Office step through matches one at a time:
   the current one is orange and the rest yellow. Markdown is a single `Spanned`, so it lights every match at once and
   its counter shows the total.
-- **Zoom** is a pinch or a double-tap, 0.5x to 5x, the double-tap toggling between 1x and 2.5x. Text surfaces scale the
+- **Zoom** is a pinch or a double-tap, 0.5x to 3x, the double-tap toggling between 1x and 2.5x. Text surfaces scale the
   type size, so content re-wraps and the scroll bounds stay correct.
 - **Lost access** keeps what is on screen and offers a re-pick, matched against the title so the wrong file cannot be
   accepted.

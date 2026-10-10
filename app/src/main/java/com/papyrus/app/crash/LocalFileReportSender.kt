@@ -38,7 +38,5 @@ object CrashReportStore {
     fun list(context: Context): List<File> =
         directory(context).listFiles { f -> f.extension == "json" }?.sortedByDescending { it.name }.orEmpty()
 
-    fun clear(context: Context) = list(context).forEach { it.delete() }
-
     fun prune(context: Context) = list(context).drop(MAX_REPORTS).forEach { it.delete() }
 }
