@@ -87,7 +87,7 @@ android {
     signingConfigs {
         if (hasReleaseSigning) {
             create("release") {
-                storeFile = file(releaseSigning.getValue("PAPYRUS_STORE_FILE"))
+                storeFile = file(requireNotNull(releaseSigning.getValue("PAPYRUS_STORE_FILE")))
                 storePassword = releaseSigning.getValue("PAPYRUS_STORE_PASSWORD")
                 keyAlias = releaseSigning.getValue("PAPYRUS_KEY_ALIAS")
                 keyPassword = releaseSigning.getValue("PAPYRUS_KEY_PASSWORD")
