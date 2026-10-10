@@ -27,8 +27,10 @@ The index is one Room row per document: URI, title, format, size, and the added 
 and MIME type are read live from the provider and the open PDF instead of being stored. Only the current schema is
 supported: there is no migration path from older versions, and a database written by one will not open.
 
-- **Open with** takes an `ACTION_VIEW` content URI from another app and shows it without indexing it. That document
-  lives in memory for the life of the process, since the read grant that arrived with the intent does.
+- **Open with** takes an `ACTION_VIEW` content URI from another app and shows it without indexing it. It opens in its
+  own window rather than the caller's, so the other app stays usable behind it; back returns to that app and drops the
+  document from Recents. The document lives in memory for the life of the process, since the read grant that arrived
+  with the intent does.
 - **Save to library** copies such a document into app-private storage and indexes the copy, so it outlives the grant.
   Owned copies share out through a FileProvider instead of a bare `file://` URI.
 - **Search** filters the library by title, in memory, over the list the screen already holds.
