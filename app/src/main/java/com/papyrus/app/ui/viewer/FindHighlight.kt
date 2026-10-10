@@ -16,12 +16,8 @@ internal val OtherMatchColor = Color(0xFFFFEB3B)
 internal val MatchTextColor = Color.Black
 
 /**
- * Every occurrence in the text is marked, and exactly one may be the current match, in orange; the
- * rest are yellow. Marking the chunk whole, as this used to, left matched text indistinguishable from
- * its context, and marking every match in the active chunk orange made neighbours read as one.
- *
- * [activeOccurrence] counts matches within this text from 0, null when the current match is
- * elsewhere. A match out of range simply paints nothing orange.
+ * Marks every occurrence, the current one ([activeOccurrence], 0-based within this text) in orange
+ * and the rest yellow. A match out of range paints nothing.
  */
 @Immutable
 data class FindHighlight(val query: String, val activeOccurrence: Int?)
@@ -30,9 +26,8 @@ internal fun findHighlightFor(query: String, activeOccurrence: Int?): FindHighli
     if (query.isBlank()) null else FindHighlight(query, activeOccurrence)
 
 /**
- * The same highlight for a text following [consumed] matches of the same block, such as the second
- * cell of a table row. A block's current match is numbered across all its text, so each piece
- * subtracts what came before it.
+ * The same highlight for text following [consumed] matches of the block, such as a table row's
+ * second cell: a match is numbered across the block's whole text.
  */
 internal fun FindHighlight.skipping(consumed: Int): FindHighlight =
     FindHighlight(query, activeOccurrence?.minus(consumed)?.takeIf { it >= 0 })
@@ -41,8 +36,8 @@ internal fun FindHighlight.skipping(consumed: Int): FindHighlight =
 internal fun FindHighlight.activeRange(text: String): IntRange? =
     activeOccurrence?.let { findMatchRanges(text, query).getOrNull(it) }
 
-private val ActiveSpan = SpanStyle(background = ActiveMatchColor, color = MatchTextColor)
-private val OtherSpan = SpanStyle(background = OtherMatchColor, color = MatchTextColor)
+internal val ActiveSpan = SpanStyle(background = ActiveMatchColor, color = MatchTextColor)
+internal val OtherSpan = SpanStyle(background = OtherMatchColor, color = MatchTextColor)
 
 internal fun highlightedText(text: String, highlight: FindHighlight?): AnnotatedString {
     if (highlight == null) return AnnotatedString(text)

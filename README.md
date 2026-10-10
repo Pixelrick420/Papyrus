@@ -13,7 +13,7 @@ on-device. The manifest declares no permissions: no network access, no storage p
 | Markdown | Markwon to `Spanned` in a native `TextView`, with strikethrough and tables |
 | Plain text (`.txt`, `.log`, ...) | chunked 40 lines at a time, selectable monospace Compose `Text`. Read up to 4 MB |
 | Source and config (`.kt`, `.py`, `.json`, ...) | as plain text, labelled `CODE` in the list |
-| DOCX / ODT | headings, paragraphs, tables and images, read straight from the archive |
+| DOCX / ODT | headings, paragraphs, bold / italic / underline / strikethrough / super- and subscript, text and highlight colours, links, bulleted and numbered lists (nested, with Word's and LibreOffice's numbering schemes), alignment, indentation, footnotes and endnotes, tables (with merged cells, shading and cell formatting) and images (at their stated size, with alt text), read straight from the archive |
 | DOC (Word 97-2003) | paragraphs and tables, read from the OLE2 piece table. No images; headings come out as plain paragraphs. Encrypted and Word 6/95 files are rejected |
 
 Format resolves from the file extension first and the MIME type second, because SAF providers routinely report a `.md`
