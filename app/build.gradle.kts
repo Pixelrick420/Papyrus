@@ -131,9 +131,8 @@ android {
 
     packaging {
         resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
-        // pdfbox-android pulls in BouncyCastle for encrypted PDFs, which also ships its
-        // post-quantum crypto parameter files. Papyrus rejects encrypted PDFs and uses
-        // PDFBox only for text extraction, so those ~4 MB of PQC data are dead weight.
+        // pdfbox-android pulls in BouncyCastle, which also ships post-quantum crypto
+        // parameter files Papyrus never uses; those ~4 MB of PQC data are dead weight.
         resources.excludes += "org/bouncycastle/pqc/**"
         jniLibs.useLegacyPackaging = false // keep any .so page-aligned for 16 KB devices
     }
