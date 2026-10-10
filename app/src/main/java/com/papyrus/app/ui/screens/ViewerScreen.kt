@@ -15,9 +15,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -157,6 +159,12 @@ fun ViewerScreen(
             Modifier
                 .fillMaxSize()
                 .padding(padding)
+                // Consuming the Scaffold padding first stops the navigation-bar inset being counted twice.
+                .consumeWindowInsets(padding)
+                // The keyboard takes its height out of the viewer instead of covering the bottom of it,
+                // so a match scrolled into view is above the keyboard, and the last page's bottom edge
+                // can be scrolled up to the keyboard's top.
+                .imePadding()
                 // Ctrl+F wins over a focused field; on the column so it also covers the find field.
                 .onPreviewKeyEvent { event ->
                     if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false

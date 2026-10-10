@@ -57,6 +57,7 @@ import com.papyrus.app.viewer.NormRect
 import com.papyrus.app.viewer.PdfPageGeometry
 import com.papyrus.app.viewer.PdfPageSource
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.first
 import kotlin.math.roundToInt
 
@@ -68,6 +69,9 @@ private val PAGE_GAP = 8.dp
 
 /** A drag emits a size change per frame, and each queues a rasterisation behind the source's mutex. */
 private const val RESIZE_SETTLE_MILLIS = 150L
+
+/** The keyboard slides in over a few hundred ms, resizing the viewport each frame; wait for it to stop. */
+private const val VIEWPORT_SETTLE_MILLIS = 150L
 
 /**
  * Zoom feeds the render width, which [PdfPageSource] caches by, so wider re-renders crisply.
@@ -107,9 +111,22 @@ internal fun PdfViewer(
 
     BackHandler(enabled = selectionState.hasSelection) { selectionState.clear() }
 
+    // A viewport that shrinks (the keyboard coming up) can leave the current match, which was in plain
+    // view, under the keyboard. Once the resize has settled, a shrink starts a new reveal; growing
+    // back needs none, and a match already clear of the edges is left where it is.
+    var viewportShrinks by remember { mutableIntStateOf(0) }
+    LaunchedEffect(listState) {
+        var settledHeight = 0
+        snapshotFlow { listState.layoutInfo.viewportSize.height }.collectLatest { height ->
+            delay(VIEWPORT_SETTLE_MILLIS)
+            if (settledHeight > 0 && height < settledHeight) viewportShrinks++
+            settledHeight = height
+        }
+    }
+
     // A page can be taller than the screen, so a step to another match on it has to scroll to that
     // match. This brings the page in; the page then scrolls to its own current match, once per step.
-    val reveal = remember(activePage, activeOccurrence, pageMatches) { RevealTicket() }
+    val reveal = remember(activePage, activeOccurrence, pageMatches, viewportShrinks) { RevealTicket() }
     LaunchedEffect(reveal) {
         activePage?.takeIf { it >= 0 && it < source.pageCount }
             ?.let { listState.scrollToItemUnlessVisible(it) }
