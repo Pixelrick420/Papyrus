@@ -7,7 +7,6 @@ plugins {
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
     id("com.google.devtools.ksp")
-    id("androidx.room")
     id("io.gitlab.arturbosch.detekt")
 }
 
@@ -83,8 +82,8 @@ android {
         applicationId = "com.papyrus.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 7
-        versionName = "0.8"
+        versionCode = 8
+        versionName = "0.9"
     }
 
     signingConfigs {
@@ -142,17 +141,12 @@ kotlin {
     compilerOptions { jvmTarget.set(JvmTarget.JVM_17) }
 }
 
-room {
-    schemaDirectory("$projectDir/schemas")
-}
-
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
 
     // AndroidX core
     implementation("androidx.core:core-ktx:1.16.0")
     implementation("androidx.activity:activity-compose:1.10.1")
-    implementation("androidx.concurrent:concurrent-futures-ktx:1.2.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
 
     // Lifecycle / ViewModel
@@ -163,10 +157,8 @@ dependencies {
     implementation(platform("androidx.compose:compose-bom:2025.05.01"))
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-graphics")
-    implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-core")
-    debugImplementation("androidx.compose.ui:ui-tooling")
     implementation("androidx.navigation:navigation-compose:2.9.0")
 
     // Room (SQLite index of documents / page order)
@@ -186,14 +178,10 @@ dependencies {
 
     // Local-only crash reporting (replaces Crashlytics)
     //
-    // `auto-service` is excluded on purpose. It reaches us only as a leaked runtime
-    // dependency of acra-core and drags in Guava, whose Gradle module metadata forces
-    // `com.google.guava:listenablefuture` to `strictly 9999.0-empty-...` (an EMPTY
-    // stub). Because AGP enables consistent resolution between the compile and
-    // runtime classpaths, that stub also lands on the compile classpath and hides
-    // `ListenableFuture` from concurrent-futures-ktx, which the SAF and Room helpers await on.
-    // auto-service is only an annotation processor needed to build ACRA itself;
-    // at runtime our sender is wired through the app's own
+    // `auto-service` is excluded on purpose: it reaches us only as a leaked runtime
+    // dependency of acra-core and drags in Guava, which is dead weight. It is an
+    // annotation processor needed only to build ACRA itself; at runtime our sender
+    // is wired through the app's own
     // META-INF/services/org.acra.sender.ReportSenderFactory file.
     implementation("ch.acra:acra-core:5.12.0") {
         exclude(group = "com.google.auto.service", module = "auto-service")

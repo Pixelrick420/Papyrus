@@ -71,7 +71,7 @@ class OfficeTextExtractor(
                     val entry = zip.nextEntry ?: break
                     if (entry.isDirectory) continue
                     if (entry.name == bodyEntry || entry.name == relsEntry) {
-                        found[entry.name] = zip.readBytes()
+                        found[entry.name] = readEntry(zip)
                     }
                 }
             }
@@ -187,6 +187,25 @@ class OfficeTextExtractor(
                     sink(entry.name, bytes)
                 }
             }
+        }
+    }
+
+    /**
+     * Reads one XML part (the body or the rels), capped at [MAX_BODY_BYTES]. A crafted or oversized
+     * body would otherwise be materialised in full before the block and character budgets apply;
+     * over the cap throws [IOException], surfacing the document as failed rather than parsed from a
+     * truncated body.
+     */
+    private fun readEntry(zip: ZipInputStream): ByteArray {
+        val out = ByteArrayOutputStream()
+        val buffer = ByteArray(MEDIA_COPY_BUFFER)
+        var total = 0
+        while (true) {
+            val n = zip.read(buffer)
+            if (n < 0) return out.toByteArray()
+            total += n
+            if (total > MAX_BODY_BYTES) throw IOException("document body is too large")
+            out.write(buffer, 0, n)
         }
     }
 
@@ -704,6 +723,9 @@ class OfficeTextExtractor(
         const val MAX_IMAGES = 200
         const val MAX_IMAGE_BYTES = 8 * 1024 * 1024
         const val MAX_TOTAL_MEDIA_BYTES = 24 * 1024 * 1024
+
+        /** Cap on a single XML part (body or rels) read into memory before parsing. */
+        private const val MAX_BODY_BYTES = 32 * 1024 * 1024
         private const val MEDIA_COPY_BUFFER = 64 * 1024
 
         /** A single cell cannot usefully span more columns than this; a bigger value is a bad file. */
