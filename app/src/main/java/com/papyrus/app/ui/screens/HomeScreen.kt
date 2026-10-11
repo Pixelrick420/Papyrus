@@ -138,10 +138,7 @@ class HomeViewModel(
 
     private val _selection = MutableStateFlow(SelectionState())
 
-    /**
-     * Filtered in memory — the whole list is already held. Starts "not loaded" rather than empty, or
-     * a library with documents flashes its empty state before the first database emission.
-     */
+    /** Filtered in memory; starts "not loaded" so a populated library cannot flash its empty state. */
     val uiState: StateFlow<HomeUiState> = combine(repository.documents, _query, _selection) { docs, q, selection ->
         val needle = q.trim()
         HomeUiState(
@@ -313,6 +310,7 @@ private val TitleInset = 24.dp
 @Composable
 fun HomeScreen(
     onOpenDocument: (Long) -> Unit,
+    onOpenSettings: () -> Unit,
     viewModel: HomeViewModel = viewModel(factory = AppViewModelProvider.Factory),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -405,14 +403,35 @@ fun HomeScreen(
                 // Taps nothing else claimed (gaps, empty space) put the keyboard away.
                 .pointerInput(Unit) { detectTapGestures(onTap = { dismissKeyboard() }) },
         ) {
-            Text(
-                text = stringResource(R.string.app_name),
-                style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.SemiBold,
+            // Row padding keeps the bar as tall as the bare title was, and the icon's end padding
+            // lands its glyph on the search pill's right edge (4dp + the button's 12dp inset = ScreenPadding).
+            Row(
                 modifier = Modifier
-                    .padding(start = TitleInset, end = TitleInset, top = 12.dp, bottom = 10.dp)
-                    .semantics { heading() },
-            )
+                    .fillMaxWidth()
+                    .padding(start = TitleInset, end = 4.dp, top = 6.dp, bottom = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = stringResource(R.string.app_name),
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier
+                        .weight(1f)
+                        .semantics { heading() },
+                )
+                IconButton(
+                    onClick = {
+                        dismissKeyboard()
+                        onOpenSettings()
+                    },
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_settings),
+                        contentDescription = stringResource(R.string.cd_settings),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
 
             if (state.selection.active) {
                 SelectionHeader(
@@ -595,10 +614,7 @@ private fun SelectionHeader(
     }
 }
 
-/**
- * Empty state drawn over the list, not inline in the `Box` above: the scope-aware `AnimatedVisibility`
- * overloads need a `Column`/`Row` receiver and this is a child of a `Box`.
- */
+/** Drawn over the list, not inline in the Box above: AnimatedVisibility needs a Column/Row receiver here. */
 @Composable
 private fun EmptyStateOverlay(
     visible: Boolean,
@@ -649,10 +665,7 @@ private fun ClearSearchButton(
     }
 }
 
-/**
- * One layout for both "nothing here" states: a first-run library is centred; a failed search sits
- * near the top, since the keyboard would put a centred message behind it on a short screen.
- */
+/** One layout for both "nothing here" states: a first-run library is centred, a failed search sits near the top. */
 @Composable
 private fun EmptyState(
     title: String,

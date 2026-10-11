@@ -130,7 +130,7 @@ data class ViewerUiState(
     val find: FindState = FindState(),
     /** Raised instead of an error, so the content on screen survives the lost grant. */
     val needsRegrant: Boolean = false,
-    /** True only for a handed-over document: library rows are already saved. */
+    /** True only for a handed-over document: library rows are already saved; an encrypted PDF copies the encrypted file. */
     val canSaveToLibrary: Boolean = false,
     val savingToLibrary: Boolean = false,
     val savedToLibrary: Boolean = false,
@@ -203,8 +203,24 @@ class ViewerViewModel(
         } catch (e: Exception) {
             ViewerContent.Failed(UiText(R.string.viewer_error_generic, e.localizedMessage ?: e.javaClass.simpleName))
         }
-        val encrypted = content is ViewerContent.NeedsPassword || unlockedUri != null
-        _state.update { it.copy(content = content, canSaveToLibrary = it.canSaveToLibrary && !encrypted) }
+        _state.update { it.copy(content = content) }
+        autosaveIfEnabled()
+    }
+
+    // Saves a handed-over document once it opens, if its setting is on. An encrypted PDF waits
+    // for the unlock, and content that failed to load is never saved.
+    private fun autosaveIfEnabled() {
+        val current = _state.value
+        if (!current.canSaveToLibrary || current.savingToLibrary || current.savedToLibrary) return
+        val opened = when (current.content) {
+            is ViewerContent.Pdf, is ViewerContent.Markdown, is ViewerContent.PlainText, is ViewerContent.Office -> true
+            else -> false
+        }
+        if (!opened) return
+        val settings = app.settings.current
+        // A decrypted copy exists exactly when the PDF was encrypted, with a password or owner-only.
+        val wanted = if (unlockedUri != null) settings.autosaveEncrypted else settings.autosaveExternal
+        if (wanted) saveToLibrary()
     }
 
     private suspend fun loadContent(doc: DocumentEntity): ViewerContent {
@@ -291,10 +307,7 @@ class ViewerViewModel(
         }
     }
 
-    /**
-     * Copies a handed-over document into the library. The viewer stays on the in-memory entry so
-     * the intent keeps finishing normally while the new row surfaces on Home.
-     */
+    /** Copies a handed-over document into the library while the viewer keeps the in-memory entry for the intent. */
     fun saveToLibrary() {
         val doc = _state.value.document ?: return
         if (_state.value.savingToLibrary || _state.value.savedToLibrary) return
@@ -327,7 +340,8 @@ class ViewerViewModel(
             } catch (e: Exception) {
                 ViewerContent.Failed(UiText(R.string.viewer_error_generic, e.localizedMessage ?: e.javaClass.simpleName))
             }
-            _state.update { it.copy(content = content, canSaveToLibrary = false) }
+            _state.update { it.copy(content = content) }
+            autosaveIfEnabled()
         }
     }
 

@@ -174,9 +174,8 @@ fun ViewerScreen(
                 .padding(padding)
                 // Consuming the Scaffold padding first stops the navigation-bar inset being counted twice.
                 .consumeWindowInsets(padding)
-                // The keyboard takes its height out of the viewer instead of covering the bottom of it,
-                // so a match scrolled into view is above the keyboard, and the last page's bottom edge
-                // can be scrolled up to the keyboard's top.
+                // The keyboard takes its height out of the viewer, so a match scrolled into view and
+                // the last page's bottom edge stay above it rather than being covered.
                 .imePadding()
                 // Ctrl+F wins over a focused field; on the column so it also covers the find field.
                 .onPreviewKeyEvent { event ->
