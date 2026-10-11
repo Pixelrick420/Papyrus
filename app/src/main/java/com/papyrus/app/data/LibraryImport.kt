@@ -9,10 +9,7 @@ import java.io.FileNotFoundException
 import java.io.IOException
 import java.io.InputStream
 
-/**
- * Copies a handed-over document into filesDir/imports so it outlives the intent grant that
- * delivered the original and can be indexed like any library file.
- */
+/** Copies a handed-over document into filesDir/imports so it outlives the intent grant that delivered it. */
 object LibraryImport {
 
     /** Where saved copies live; also the only path the FileProvider exposes (see file_paths.xml). */
@@ -44,6 +41,37 @@ object LibraryImport {
         file.canonicalFile.parentFile == dir.canonicalFile
     }.getOrDefault(false)
 
+    /** True when both files hold the same bytes; unequal sizes answer without reading either. */
+    internal fun sameContent(a: File, b: File): Boolean {
+        if (a.length() != b.length()) return false
+        return runCatching {
+            a.inputStream().use { x -> b.inputStream().use { y -> streamsEqual(x, y) } }
+        }.getOrDefault(false)
+    }
+
+    private fun streamsEqual(x: InputStream, y: InputStream): Boolean {
+        val bufferX = ByteArray(COMPARE_BUFFER_SIZE)
+        val bufferY = ByteArray(COMPARE_BUFFER_SIZE)
+        while (true) {
+            val readX = x.readFully(bufferX)
+            val readY = y.readFully(bufferY)
+            if (readX != readY) return false
+            if (readX == 0) return true
+            for (i in 0 until readX) if (bufferX[i] != bufferY[i]) return false
+        }
+    }
+
+    /** Fills [buffer] unless the stream ends first; a single `read` may legitimately return less. */
+    private fun InputStream.readFully(buffer: ByteArray): Int {
+        var total = 0
+        while (total < buffer.size) {
+            val n = read(buffer, total, buffer.size - total)
+            if (n < 0) break
+            total += n
+        }
+        return total
+    }
+
     private fun openSource(context: Context, source: Uri): InputStream =
         context.contentResolver.openInputStream(source) ?: throw FileNotFoundException(source.toString())
 
@@ -61,10 +89,7 @@ object LibraryImport {
         return target
     }
 
-    /**
-     * On-disk name for a copy: the provider's display name, else the URI's last segment, else a
-     * timestamp; sanitised so it cannot escape imports/, and given a MIME extension when missing.
-     */
+    /** On-disk name for a copy: display name, URI segment or timestamp, sanitized and given a MIME extension. */
     internal fun importFileName(
         displayName: String?,
         uriSegment: String?,
@@ -116,4 +141,5 @@ object LibraryImport {
     private const val TEMP_PREFIX = "import-"
     private const val TEMP_SUFFIX = ".tmp"
     private const val MAX_STEM_LENGTH = 120
+    private const val COMPARE_BUFFER_SIZE = 64 * 1024
 }

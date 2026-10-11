@@ -109,9 +109,8 @@ fun MarkdownViewer(
     val highlighted = rememberHighlightedText(rendered, findQuery)
     val textState = remember { MarkdownTextState() }
 
-    // A commit re-wraps the text, so the paragraph under the finger has to be pinned across it. The
-    // anchor reads that paragraph at the commit, before the re-wrap; the text only reaches its new
-    // height a measure later, so the scroll follows, and the bridge paints it until it has.
+    // A commit re-wraps the text, so the anchor pins the paragraph at the commit; the text reaches its
+    // new height a measure later, so the scroll follows and the bridge paints between.
     val anchor = remember(scroll) { ScrollZoomAnchor(scroll, horizontal = false) }
     ZoomAnchorEffect(zoom, anchor)
     LaunchedEffect(zoom.lastCommit) {
@@ -144,9 +143,8 @@ fun MarkdownViewer(
                             // Committed scale, not live: the preview layer paints the in-flight gesture,
                             // gesture, and resizing per frame relaid out the whole document.
                             view.setTextSize(TypedValue.COMPLEX_UNIT_PX, textPx)
-                            // Only on a change: setting text collapses the selection and dismisses the
-                            // copy toolbar, killing a copy in progress. The view is compared too,
-                            // since `ScaledTypography` composes differently at 1x.
+                            // Only on a change: setting text kills a copy in progress; the view too, since
+                            // `ScaledTypography` composes differently at 1x.
                             if (textState.view !== view || textState.text !== highlighted) {
                                 textState.view = view
                                 textState.text = highlighted
@@ -166,13 +164,8 @@ private class MarkdownTextState {
     var text: Spanned? = null
 }
 
-/**
- * A table row span lays its cells out once per canvas width, copying the TextView's paint (size and
- * colours) at that moment. Zooming or switching theme changes the paint but not the width, so cells
- * kept the size and colour of the first draw: huge afterwards, and unmoved by zoom. The spans cannot
- * be reset from outside, so a document with tables gets a fresh `Spanned` whenever the paint changes;
- * one without tables keeps the shared parse and pays nothing.
- */
+// Table row spans freeze the paint at first draw, so a document with tables gets a fresh `Spanned`
+// whenever the paint changes; one without tables keeps the shared parse and pays nothing.
 @Composable
 private fun rememberRenderedMarkdown(
     markwon: Markwon,
@@ -297,9 +290,8 @@ fun OfficeViewer(
     val listState = rememberLazyListState()
     val geometry = rememberLazyScrollGeometry(listState)
 
-    // Block indices equal LazyColumn indices, so a hit scrolls straight to its own item, no offset.
-    // A long paragraph or table can hold several matches, so the block's own text then scrolls to
-    // the current one.
+    // Block indices equal LazyColumn indices, so a hit scrolls to its own item; a long paragraph or
+    // table holds several matches, so the block's text then scrolls to the current one.
     val reveal = remember(activeHit, activeOccurrence, findQuery) { RevealTicket() }
     LaunchedEffect(reveal) {
         activeHit?.let { listState.scrollToItemUnlessVisible(it) }

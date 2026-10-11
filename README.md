@@ -32,10 +32,20 @@ supported: there is no migration path from older versions, and a database writte
   document from Recents. The document lives in memory for the life of the process, since the read grant that arrived
   with the intent does.
 - **Save to library** copies such a document into app-private storage and indexes the copy, so it outlives the grant.
-  Owned copies share out through a FileProvider instead of a bare `file://` URI. Password-protected PDFs are excluded.
+  Owned copies share out through a FileProvider instead of a bare `file://` URI. Saving the same file again reuses the
+  existing copy when the name and bytes match, instead of adding another.
 - **Password-protected PDFs** prompt for the password, then decrypt a copy into the cache and render that. A wrong
-  password retries in place; the decrypted copy is deleted when the viewer closes and swept on the next start. The file
-  is never indexed, saved to the library, or listed on Home, and the password is never stored or logged.
+  password retries in place; the decrypted copy is deleted when the viewer closes and swept on the next start. By
+  default the file is not indexed or listed on Home, and the password is never stored or logged. Save to library in the
+  viewer menu, or the autosave switch below, keeps the still-encrypted file; opening it from Home asks for the password
+  again.
+- **Settings** is the gear on Home's title bar:
+  - *Theme*: system default, light or dark. It applies to the whole app, status and navigation bar icons included.
+  - *Autosave external documents*: a document opened from another app is saved to the library as soon as it has
+    opened. Off by default.
+  - *Autosave encrypted documents*: the same for password-protected PDFs, saved once they unlock, including ones picked
+    from Home. Off by default; while it is off the viewer menu offers Save to library for them instead.
+  - *About*: version, source link and license.
 - **Search** filters the library by title, in memory, over the list the screen already holds.
 - **Share** sends the document's own SAF URI through `ACTION_SEND` with `FLAG_GRANT_READ_URI_PERMISSION`, so no target
   can write, rename or delete the file. The grant is probed first: a dead one raises a message instead of a chooser

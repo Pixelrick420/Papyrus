@@ -11,19 +11,16 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileNotFoundException
-import java.io.IOException
 import java.io.InputStream
 
 class DocumentRepository(
     private val context: Context,
     private val dao: DocumentDao,
+    private val settings: SettingsRepository,
 ) {
     private val resolver get() = context.contentResolver
 
-    /**
-     * In-memory only; lives as long as the process. Ids are negative (Room's are positive), -1 is the
-     * viewer's "no document" sentinel, so counting starts at -2; written only by [openHandedOver].
-     */
+    /** In-memory only; ids are negative (Room's positive), -1 the viewer's sentinel, so counting starts at -2. */
     private val handedOver = mutableMapOf<Long, DocumentEntity>()
     private var nextHandedOverId = -2L
 
@@ -44,8 +41,9 @@ class DocumentRepository(
 
     suspend fun register(uri: Uri): Long = withContext(Dispatchers.IO) {
         val entity = buildEntity(uri)
-        // Never indexed: a row would put it in the library and persist a grant past the open.
-        if (entity.format == DocumentFormat.PDF && isEncrypted(uri)) {
+        // Not indexed by default: a row would put it in the library and persist a grant past the open.
+        // With autosave encrypted on, it is indexed like any file, and the password is asked again on open.
+        if (entity.format == DocumentFormat.PDF && !settings.current.autosaveEncrypted && isEncrypted(uri)) {
             return@withContext handOver(entity)
         }
         SafStorage.persistPermission(resolver, uri)
@@ -53,22 +51,22 @@ class DocumentRepository(
         dao.upsertByUri(entity)
     }
 
-    /**
-     * Opens a document another app passed over, without indexing it: a row would either sit in the
-     * library or need deleting again, and the intent's read grant lasts exactly as long as this entry.
-     */
+    /** Opens a document another app passed over without indexing it; the intent's read grant lasts only for this entry. */
     suspend fun openHandedOver(uri: Uri): Long = withContext(Dispatchers.IO) {
         handOver(buildEntity(uri))
     }
 
-    /** Copies into filesDir/imports, then indexes the copy — the row comes last, and a failed insert deletes the copy again. */
+    // Copies into filesDir/imports then indexes it; a failed insert deletes the copy again.
+    // An encrypted PDF is copied as-is; the password is never read or kept here.
     suspend fun saveToLibrary(source: DocumentEntity): Long = withContext(Dispatchers.IO) {
-        // Defensive: no encrypted PDF should have a row, but never copy one into the library.
-        if (source.format == DocumentFormat.PDF && isEncrypted(source.uri.toUri())) {
-            throw IOException("password-protected PDF")
-        }
         val file = LibraryImport.copyToImports(context, source.uri.toUri())
         val now = System.currentTimeMillis()
+        // Autosave saves the same file every time it is opened, so an identical copy is reused, not added again.
+        findSavedDuplicate(source.title, file)?.let { existing ->
+            file.delete()
+            dao.touch(existing.id, now)
+            return@withContext existing.id
+        }
         val row = source.copy(
             id = 0,
             uri = file.toUri().toString(),
@@ -84,6 +82,17 @@ class DocumentRepository(
         }
     }
 
+    /** A library row whose app-owned copy has [title] and exactly the bytes of [copy], the file just made. */
+    private suspend fun findSavedDuplicate(title: String, copy: File): DocumentEntity? {
+        val candidates = LibraryImport.importsDir(context).listFiles().orEmpty()
+        for (candidate in candidates) {
+            if (candidate == copy || !candidate.isFile || !LibraryImport.sameContent(candidate, copy)) continue
+            val row = dao.getByUri(candidate.toUri().toString()) ?: continue
+            if (row.title == title) return row
+        }
+        return null
+    }
+
     /** Removes only the index entry — never the user's own file; an app-owned copy goes with its row. */
     suspend fun remove(document: DocumentEntity) = withContext(Dispatchers.IO) {
         SafStorage.releasePermission(resolver, document.uri.toUri())
@@ -91,10 +100,7 @@ class DocumentRepository(
         LibraryImport.deleteOwnedCopy(context, document.uri.toUri())
     }
 
-    /**
-     * SAF URIs share as-is (the row's persisted grant sub-grants); a local copy rides on no grant and
-     * cannot leave as a bare file:// URI, so it goes through the FileProvider.
-     */
+    /** SAF URIs share as-is; a local copy has no grant and cannot leave as a bare file:// URI, so it uses a FileProvider. */
     suspend fun resolveShareUri(uri: Uri): Uri = withContext(Dispatchers.IO) {
         if (uri.scheme != "file") return@withContext uri
         val path = uri.path ?: return@withContext uri

@@ -73,10 +73,7 @@ private const val RESIZE_SETTLE_MILLIS = 150L
 /** The keyboard slides in over a few hundred ms, resizing the viewport each frame; wait for it to stop. */
 private const val VIEWPORT_SETTLE_MILLIS = 150L
 
-/**
- * Zoom feeds the render width, which [PdfPageSource] caches by, so wider re-renders crisply.
- * [selectionState] is owned by the screen (its header needs Copy and dismiss); back is handled here.
- */
+/** Zoom feeds the cached render width; [selectionState] is owned by the screen, and back is handled here. */
 @Composable
 internal fun PdfViewer(
     source: PdfPageSource,
@@ -111,9 +108,8 @@ internal fun PdfViewer(
 
     BackHandler(enabled = selectionState.hasSelection) { selectionState.clear() }
 
-    // A viewport that shrinks (the keyboard coming up) can leave the current match, which was in plain
-    // view, under the keyboard. Once the resize has settled, a shrink starts a new reveal; growing
-    // back needs none, and a match already clear of the edges is left where it is.
+    // A shrinking viewport (the keyboard) can leave the current match under it. Once the resize
+    // settles, a shrink starts a new reveal; growing back needs none.
     var viewportShrinks by remember { mutableIntStateOf(0) }
     LaunchedEffect(listState) {
         var settledHeight = 0
@@ -132,9 +128,8 @@ internal fun PdfViewer(
             ?.let { listState.scrollToItemUnlessVisible(it) }
     }
 
-    // Each anchor reads the content under the pinch at the commit itself, while the layout on screen
-    // is still the one the pinch previewed. The list is moved in that same frame; only the trim
-    // for rounding runs afterwards, keyed on the commit so it is one pass per gesture.
+    // Each anchor reads the content under the pinch at the commit, while the layout is still the one
+    // previewed; the list moves in that frame, and the rounding trim runs once per gesture.
     val listAnchor = remember(listState) { LazyZoomAnchor(listState, paddingScalesWithZoom = true) }
     ZoomAnchorEffect(zoom, listAnchor)
     LaunchedEffect(zoom.lastCommit) {
@@ -152,9 +147,8 @@ internal fun PdfViewer(
     BoxWithConstraints(modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant)) {
         val baseWidthPx = with(LocalDensity.current) { maxWidth.roundToPx() }
         val scale = zoom.committedScale
-        // Committed scale only. Distinct widths are distinct cache keys, so a live scale churns.
-        // Exact, not stepped to a grid: a layout at the committed scale has to be the size the pinch
-        // was previewing, or releasing the fingers resizes every page by up to a step.
+        // Committed scale only: widths are cache keys, so a live scale churns; exact, not stepped,
+        // or releasing the fingers resizes every page by up to a step.
         val renderWidthPx = (baseWidthPx * scale).roundToInt().coerceAtLeast(1)
         // A page narrower than the viewport is centred, or zooming out slides the document sideways.
         val pageSlotWidth = with(LocalDensity.current) { maxOf(renderWidthPx, baseWidthPx).toDp() }
@@ -239,10 +233,7 @@ private const val DEFAULT_ASPECT = 1.414f
 /** The knob's bottom stop: the page indicator (16dp pad + ~29dp label) plus font-scale headroom. */
 private val PAGE_INDICATOR_CLEARANCE = 56.dp
 
-/**
- * [matches] holds one list of rectangles per match on the page, in order; [activeMatch] is the
- * current one's index, or null on a page that does not hold it.
- */
+/** [matches] is one rectangle list per match in order; [activeMatch] its index, or null on a page without it. */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun PdfPage(
