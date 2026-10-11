@@ -7,7 +7,6 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
@@ -34,6 +33,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
@@ -53,13 +53,10 @@ private val FocusBlueDark = Color(0xFFA9C3FF)
 
 private const val FOCUS_ANIMATION_MS = 180
 
-/**
- * Shared search pill for Home and find-in-file; uses the Open file button's defaults (border,
- * transparent interior) with a custom corner and focus accent. Not Material `SearchBar`.
- *
- * [trailing] fills the end of the pill (a clear button, a match counter) and owns its own end inset,
- * so the caller decides how far the last element sits from the rounded edge.
- */
+/** Both backgrounds sit far from this: #121212 is about 0.01, #FBFBFB about 0.96. */
+private const val DARK_BACKGROUND_LUMINANCE = 0.5f
+
+/** Shared pill for Home and find-in-file; [trailing] fills the end and owns its own end inset. */
 @Composable
 fun SearchPill(
     text: String,
@@ -78,7 +75,9 @@ fun SearchPill(
     val restingBorder = ButtonDefaults.outlinedButtonBorder(enabled = true)
     val restingColor = (restingBorder.brush as? SolidColor)?.value ?: MaterialTheme.colorScheme.outline
     // Brand blue (#326AE3): light = primary; dark = FocusBlueDark (10.6:1) for 1dp border/glyph.
-    val focusAccent = if (isSystemInDarkTheme()) FocusBlueDark else MaterialTheme.colorScheme.primary
+    // Read off the app's own scheme, not the device setting: the theme can be forced against it.
+    val darkScheme = MaterialTheme.colorScheme.background.luminance() < DARK_BACKGROUND_LUMINANCE
+    val focusAccent = if (darkScheme) FocusBlueDark else MaterialTheme.colorScheme.primary
     val borderColor by animateColorAsState(
         targetValue = if (focused) focusAccent else restingColor,
         animationSpec = tween(FOCUS_ANIMATION_MS),
