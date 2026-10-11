@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import androidx.core.content.FileProvider
 import androidx.core.net.toUri
+import com.papyrus.app.viewer.OfficeEncryption
 import com.papyrus.app.viewer.PdfEncryption
 import com.papyrus.app.viewer.TextSniffer
 import kotlinx.coroutines.Dispatchers
@@ -43,7 +44,7 @@ class DocumentRepository(
         val entity = buildEntity(uri)
         // Not indexed by default: a row would put it in the library and persist a grant past the open.
         // With autosave encrypted on, it is indexed like any file, and the password is asked again on open.
-        if (entity.format == DocumentFormat.PDF && !settings.current.autosaveEncrypted && isEncrypted(uri)) {
+        if (entity.format in ENCRYPTABLE && !settings.current.autosaveEncrypted && isEncrypted(entity.format, uri)) {
             return@withContext handOver(entity)
         }
         SafStorage.persistPermission(resolver, uri)
@@ -136,8 +137,12 @@ class DocumentRepository(
     }
 
     /** An unreadable file reads as not encrypted, so it fails in the renderer rather than prompting. */
-    private fun isEncrypted(uri: Uri): Boolean =
-        PdfEncryption.status { openStream(uri) } != PdfEncryption.NOT_ENCRYPTED
+    private fun isEncrypted(format: DocumentFormat, uri: Uri): Boolean =
+        when (format) {
+            DocumentFormat.PDF -> PdfEncryption.status { openStream(uri) } != PdfEncryption.NOT_ENCRYPTED
+            DocumentFormat.DOCX, DocumentFormat.ODT, DocumentFormat.DOC -> OfficeEncryption.isEncrypted({ openStream(uri) })
+            else -> false
+        }
 
     private fun openStream(uri: Uri): InputStream =
         resolver.openInputStream(uri) ?: throw FileNotFoundException(uri.toString())
@@ -167,5 +172,13 @@ class DocumentRepository(
 
     private companion object {
         const val FILE_PROVIDER_SUFFIX = ".fileprovider"
+
+        /** Formats whose encryption this app can detect; others are indexed and fail on open. */
+        val ENCRYPTABLE = setOf(
+            DocumentFormat.PDF,
+            DocumentFormat.DOCX,
+            DocumentFormat.ODT,
+            DocumentFormat.DOC,
+        )
     }
 }
