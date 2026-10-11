@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.Context
 import com.papyrus.app.data.AppDatabase
 import com.papyrus.app.data.DocumentRepository
+import com.papyrus.app.data.SettingsRepository
 import com.papyrus.app.data.ThumbnailLoader
 import com.papyrus.app.viewer.PDF_UNLOCK_DIR
 import org.acra.ACRA
@@ -16,7 +17,8 @@ class MainApplication : Application() {
 
     /** Manual DI: lazily created so the ACRA sender process never opens the database. */
     val database: AppDatabase by lazy { AppDatabase.getInstance(this) }
-    val repository: DocumentRepository by lazy { DocumentRepository(this, database.documentDao()) }
+    val settings: SettingsRepository by lazy { SettingsRepository(this) }
+    val repository: DocumentRepository by lazy { DocumentRepository(this, database.documentDao(), settings) }
 
     /** Application-scoped so the bitmap cache survives navigation and rotation. */
     val thumbnailLoader: ThumbnailLoader by lazy { ThumbnailLoader(this) }

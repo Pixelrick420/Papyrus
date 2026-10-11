@@ -19,12 +19,14 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.papyrus.app.ui.screens.HomeScreen
+import com.papyrus.app.ui.screens.SettingsScreen
 import com.papyrus.app.ui.screens.ViewerScreen
 
 object Routes {
     const val HOME = "home"
     const val ARG_DOCUMENT_ID = "documentId"
     const val VIEWER = "viewer/{$ARG_DOCUMENT_ID}"
+    const val SETTINGS = "settings"
 
     // Only the Room row id travels through navigation, which avoids URI-encoding pitfalls in route strings.
     fun viewer(documentId: Long) = "viewer/$documentId"
@@ -42,11 +44,8 @@ fun PapyrusNavGraph(
     resolveExternalDocument: suspend (Uri) -> Long? = { null },
     onExternalDocumentHandled: () -> Unit = {},
 ) {
-    // Back out of a document another app handed over finishes Papyrus, returning to the app that
-    // is waiting for its document back. Leaving the viewer as the only entry on the stack is what
-    // makes that happen: NavController stands down once a single destination is left (its own back
-    // callback is enabled only above one), so the system gesture falls through to the OS. The
-    // toolbar arrow calls popBackStack directly and gets no such fallback, hence the finish().
+    // Back out of a handed-over document finishes Papyrus: the viewer as the only entry left lets the
+    // system gesture fall through, while the toolbar arrow pops directly and needs this explicit finish().
     val activity = LocalActivity.current
     val leaveViewer: () -> Unit = { if (!navController.popBackStack()) activity?.finish() }
 
@@ -66,9 +65,8 @@ fun PapyrusNavGraph(
         }
     }
 
-    // Stacked rather than cross-faded: only the screen on top moves, sliding a short way in while it
-    // fades up, and the one underneath stays put and opaque. The default is a 700 ms fade of both,
-    // which is slow to open a file and shows the window background through the middle of it.
+    // Stacked rather than cross-faded: the top screen slides and fades in over a static one. The
+    // default 700 ms fade of both is slow and shows the window background through the middle.
     NavHost(
         navController = navController,
         startDestination = Routes.HOME,
@@ -85,7 +83,14 @@ fun PapyrusNavGraph(
     ) {
         composable(Routes.HOME) {
             // Still registered for share intents and hardware keyboards, though no UI navigates here.
-            HomeScreen(onOpenDocument = { id -> navController.navigate(Routes.viewer(id)) })
+            HomeScreen(
+                onOpenDocument = { id -> navController.navigate(Routes.viewer(id)) },
+                // Single-top so a double tap on the icon cannot stack two Settings screens.
+                onOpenSettings = { navController.navigate(Routes.SETTINGS) { launchSingleTop = true } },
+            )
+        }
+        composable(Routes.SETTINGS) {
+            SettingsScreen(onBack = { navController.popBackStack() })
         }
         composable(
             route = Routes.VIEWER,
