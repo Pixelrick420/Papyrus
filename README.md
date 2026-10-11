@@ -1,9 +1,9 @@
 # Papyrus
 
-Offline document viewer for Android. Kotlin, Jetpack Compose, Room.
+Offline document viewer for Android built with Kotlin, Jetpack Compose and Room.
 
 Documents open through the Storage Access Framework, get indexed in a local Room database, and render entirely
-on-device. The manifest declares no permissions: no network access, no storage permission to ask for.
+on-device. The manifest declares no permissions: no network or storage access
 
 ## Formats
 
