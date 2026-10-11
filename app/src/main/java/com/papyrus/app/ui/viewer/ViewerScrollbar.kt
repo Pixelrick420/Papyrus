@@ -123,7 +123,7 @@ fun Modifier.autoHideScrollbar(
     // Shared by the fade loop and the drag handler.
     var lastFastNs by remember { mutableLongStateOf(0L) }
     val alphaTarget = when {
-        dragging -> DRAG_ALPHA
+        dragging -> KNOB_GRAB_ALPHA
         visible -> IDLE_ALPHA
         else -> 0f
     }
@@ -196,9 +196,9 @@ fun Modifier.autoHideScrollbar(
             val arrowScale = knobPx / SVG_VIEWBOX
             onDrawBehind {
                 if (alpha >= 0.01f) {
-                    // Grows out of its own centre as it fades in, like the badges. Dragging only
-                    // raises alpha past IDLE_ALPHA, which the coerce keeps from enlarging it.
-                    val pop = lerp(READOUT_POP_SCALE, 1f, (alpha / IDLE_ALPHA).coerceIn(0f, 1f))
+                    // Grows out of its own centre as it fades in, like the badges. Both states sit
+                    // at or above the grab alpha, so the coerce pins the scale at full size.
+                    val pop = lerp(READOUT_POP_SCALE, 1f, (alpha / KNOB_GRAB_ALPHA).coerceIn(0f, 1f))
                     withTransform({ scale(pop, pop, pivot = center) }) {
                         drawCircle(color = Color.White.copy(alpha = alpha), radius = radius, center = center)
                         drawCircle(color = Color.Black.copy(alpha = alpha), radius = radius - border, center = center)
@@ -323,10 +323,11 @@ private fun thumbTop(g: ScrollGeometry, trackHeight: Float, thumbHeight: Float, 
 
 private const val VELOCITY_TICK_MILLIS = 50L
 private const val ZOOM_QUIET_NANOS = 250_000_000L
-private const val DRAG_ALPHA = 1f
 
-/** Knob opacity at rest; the badges share it so they read as the same material. */
-const val IDLE_ALPHA = 0.8f
+private const val KNOB_GRAB_ALPHA = 0.8f
+
+/** Readout material opacity: the knob at rest and the badges both draw opaque at it. */
+const val IDLE_ALPHA = 1f
 
 /** Fixed diameter: a scrubber, not a proportional bar. */
 private val KNOB_DIAMETER = 46.dp

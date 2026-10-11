@@ -220,7 +220,7 @@ class ViewerViewModel(
         val settings = app.settings.current
         // A decrypted copy exists exactly when the PDF was encrypted, with a password or owner-only.
         val wanted = if (unlockedUri != null) settings.autosaveEncrypted else settings.autosaveExternal
-        if (wanted) saveToLibrary()
+        if (wanted) saveToLibrary(notify = false)
     }
 
     private suspend fun loadContent(doc: DocumentEntity): ViewerContent {
@@ -307,8 +307,9 @@ class ViewerViewModel(
         }
     }
 
-    /** Copies a handed-over document into the library while the viewer keeps the in-memory entry for the intent. */
-    fun saveToLibrary() {
+    /** Copies a handed-over document into the library while the viewer keeps the in-memory entry for the intent.
+     *  [notify] is false for the autosave path, which saves silently; the manual "save to library" keeps the snackbar. */
+    fun saveToLibrary(notify: Boolean = true) {
         val doc = _state.value.document ?: return
         if (_state.value.savingToLibrary || _state.value.savedToLibrary) return
         _state.update { it.copy(savingToLibrary = true) }
@@ -322,7 +323,7 @@ class ViewerViewModel(
                 false
             }
             _state.update { it.copy(savingToLibrary = false, savedToLibrary = saved) }
-            _messages.value = UiText(if (saved) R.string.viewer_save_done else R.string.viewer_save_failed)
+            if (notify) _messages.value = UiText(if (saved) R.string.viewer_save_done else R.string.viewer_save_failed)
         }
     }
 
