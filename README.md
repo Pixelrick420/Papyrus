@@ -13,7 +13,7 @@ on-device. The manifest declares no permissions: no network or storage access
 | Markdown | Markwon to `Spanned` in a native `TextView`, with strikethrough and tables |
 | Plain text (`.txt`, `.log`, ...) | chunked 40 lines at a time, selectable monospace Compose `Text`. Read up to 4 MB |
 | Source and config (`.kt`, `.py`, `.json`, ...) | as plain text, labelled `CODE` in the list |
-| DOCX / ODT | headings, paragraphs, bold / italic / underline / strikethrough / super- and subscript, text and highlight colours, links, bulleted and numbered lists (nested, with Word's and LibreOffice's numbering schemes), alignment, indentation, footnotes and endnotes, tables (with merged cells, shading and cell formatting) and images (at their stated size, with alt text), read straight from the archive |
+| DOCX / ODT | headings, paragraphs, bold / italic / underline / strikethrough / super- and subscript, text and highlight colours, links, bulleted and numbered lists (nested, with Word's and LibreOffice's numbering schemes), alignment, indentation, footnotes and endnotes, tables (with merged cells, shading and cell formatting) and images (at their stated size, with alt text), read straight from the archive. Password-protected files prompt for the password |
 | DOC (Word 97-2003) | paragraphs and tables, read from the OLE2 piece table. No images; headings come out as plain paragraphs. Encrypted and Word 6/95 files are rejected |
 
 Format resolves from the file extension first and the MIME type second, because SAF providers routinely report a `.md`
@@ -34,7 +34,9 @@ supported: there is no migration path from older versions, and a database writte
 - **Save to library** copies such a document into app-private storage and indexes the copy, so it outlives the grant.
   Owned copies share out through a FileProvider instead of a bare `file://` URI. Saving the same file again reuses the
   existing copy when the name and bytes match, instead of adding another.
-- **Password-protected PDFs** prompt for the password, then decrypt a copy into the cache and render that. A wrong
+- **Password-protected documents** prompt for the password, then decrypt a copy into the cache and render that. Word
+  (`.docx`, ECMA-376 Agile encryption) and OpenDocument (`.odt`, ODF 1.2 AES-256-CBC) files are supported; newer ODF
+  1.3 packages (AES-GCM with Argon2id) and the legacy binary schemes are reported as protected but not opened. A wrong
   password retries in place; the decrypted copy is deleted when the viewer closes and swept on the next start. By
   default the file is not indexed or listed on Home, and the password is never stored or logged. Save to library in the
   viewer menu, or the autosave switch below, keeps the still-encrypted file; opening it from Home asks for the password
@@ -43,8 +45,8 @@ supported: there is no migration path from older versions, and a database writte
   - *Theme*: system default, light or dark. It applies to the whole app, status and navigation bar icons included.
   - *Autosave external documents*: a document opened from another app is saved to the library as soon as it has
     opened. Off by default.
-  - *Autosave encrypted documents*: the same for password-protected PDFs, saved once they unlock, including ones picked
-    from Home. Off by default; while it is off the viewer menu offers Save to library for them instead.
+  - *Autosave encrypted documents*: the same for password-protected documents, saved once they unlock, including ones
+    picked from Home. Off by default; while it is off the viewer menu offers Save to library for them instead.
   - *About*: version, source link and license.
 - **Search** filters the library by title, in memory, over the list the screen already holds.
 - **Share** sends the document's own SAF URI through `ACTION_SEND` with `FLAG_GRANT_READ_URI_PERMISSION`, so no target

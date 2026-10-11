@@ -28,7 +28,7 @@ import com.papyrus.app.R
 
 /** The typed password lives in a plain [remember] — never saved state — so it cannot outlive the dialog. */
 @Composable
-fun PdfPasswordDialog(
+fun PasswordDialog(
     incorrect: Boolean,
     checking: Boolean,
     onUnlock: (String) -> Unit,

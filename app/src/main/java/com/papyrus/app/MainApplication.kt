@@ -6,6 +6,7 @@ import com.papyrus.app.data.AppDatabase
 import com.papyrus.app.data.DocumentRepository
 import com.papyrus.app.data.SettingsRepository
 import com.papyrus.app.data.ThumbnailLoader
+import com.papyrus.app.viewer.OFFICE_UNLOCK_DIR
 import com.papyrus.app.viewer.PDF_UNLOCK_DIR
 import org.acra.ACRA
 import org.acra.ReportField
@@ -49,11 +50,12 @@ class MainApplication : Application() {
         super.onCreate()
         // ACRA runs its report pipeline in a separate ":acra" process; skip app setup there.
         if (ACRA.isACRASenderServiceProcess()) return
-        sweepUnlockedPdfs()
+        sweepUnlocked()
     }
 
     /** A kill mid-view leaves a decrypted copy behind, so clear the whole directory on the next start. */
-    private fun sweepUnlockedPdfs() {
+    private fun sweepUnlocked() {
         runCatching { File(cacheDir, PDF_UNLOCK_DIR).deleteRecursively() }
+        runCatching { File(cacheDir, OFFICE_UNLOCK_DIR).deleteRecursively() }
     }
 }

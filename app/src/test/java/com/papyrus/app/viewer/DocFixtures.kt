@@ -139,7 +139,7 @@ internal object DocFixtures {
         return fib
     }
 
-    private fun compound(streams: Map<String, ByteArray>): ByteArray {
+    fun compound(streams: Map<String, ByteArray>): ByteArray {
         val sectorSize = 512
         val perFat = sectorSize / 4
 
