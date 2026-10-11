@@ -84,7 +84,7 @@ import com.papyrus.app.ui.viewer.FileInfoSheet
 import com.papyrus.app.ui.viewer.FindInFileBar
 import com.papyrus.app.ui.viewer.MarkdownViewer
 import com.papyrus.app.ui.viewer.OfficeViewer
-import com.papyrus.app.ui.viewer.PdfPasswordDialog
+import com.papyrus.app.ui.viewer.PasswordDialog
 import com.papyrus.app.ui.viewer.PdfSelectionState
 import com.papyrus.app.ui.viewer.PdfViewer
 import com.papyrus.app.ui.viewer.PlainTextViewer
@@ -313,7 +313,7 @@ fun ViewerScreen(
     }
 
     (state.content as? ViewerContent.NeedsPassword)?.let { prompt ->
-        PdfPasswordDialog(
+        PasswordDialog(
             incorrect = prompt.incorrect,
             checking = prompt.checking,
             onUnlock = viewModel::submitPassword,

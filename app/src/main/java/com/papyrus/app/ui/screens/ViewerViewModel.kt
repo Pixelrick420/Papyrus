@@ -16,9 +16,12 @@ import com.papyrus.app.data.shareIntent
 import com.papyrus.app.ui.UiText
 import com.papyrus.app.ui.navigation.Routes
 import com.papyrus.app.viewer.DocTextExtractor
+import com.papyrus.app.viewer.DocumentPasswordException
 import com.papyrus.app.viewer.OfficeBlock
 import com.papyrus.app.viewer.NormRect
+import com.papyrus.app.viewer.OfficeEncryption
 import com.papyrus.app.viewer.OfficeTextExtractor
+import com.papyrus.app.viewer.OFFICE_UNLOCK_DIR
 import com.papyrus.app.viewer.PDF_UNLOCK_DIR
 import com.papyrus.app.viewer.PdfEncryption
 import com.papyrus.app.viewer.PdfPageSource
@@ -59,7 +62,7 @@ sealed interface ViewerContent {
     data class Markdown(val markwon: Markwon, val source: String, val text: Spanned) : ViewerContent
     data class PlainText(val chunks: List<String>) : ViewerContent
     data class Office(val blocks: List<OfficeBlock>) : ViewerContent
-    /** A PDF waiting on its password; [incorrect] flags a rejected attempt, [checking] an in-flight one. */
+    /** A document waiting on its password; [incorrect] flags a rejected attempt, [checking] an in-flight one. */
     data class NeedsPassword(val incorrect: Boolean = false, val checking: Boolean = false) : ViewerContent
     data class Failed(val message: UiText) : ViewerContent
 }
@@ -130,7 +133,7 @@ data class ViewerUiState(
     val find: FindState = FindState(),
     /** Raised instead of an error, so the content on screen survives the lost grant. */
     val needsRegrant: Boolean = false,
-    /** True only for a handed-over document: library rows are already saved; an encrypted PDF copies the encrypted file. */
+    /** True only for a handed-over document: library rows are already saved; an encrypted file copies the original. */
     val canSaveToLibrary: Boolean = false,
     val savingToLibrary: Boolean = false,
     val savedToLibrary: Boolean = false,
@@ -160,7 +163,7 @@ class ViewerViewModel(
     private var pageTextSource: PdfPageTextSource? = null
     private var pageTextSourceUri: String? = null
 
-    /** The decrypted copy of a password-protected PDF; owned here so close deletes the plaintext. */
+    /** The decrypted copy of a password-protected document; owned here so close deletes the plaintext. */
     private var unlockedFile: File? = null
     private var unlockedUri: String? = null
 
@@ -207,7 +210,7 @@ class ViewerViewModel(
         autosaveIfEnabled()
     }
 
-    // Saves a handed-over document once it opens, if its setting is on. An encrypted PDF waits
+    // Saves a handed-over document once it opens, if its setting is on. An encrypted document waits
     // for the unlock, and content that failed to load is never saved.
     private fun autosaveIfEnabled() {
         val current = _state.value
@@ -218,7 +221,7 @@ class ViewerViewModel(
         }
         if (!opened) return
         val settings = app.settings.current
-        // A decrypted copy exists exactly when the PDF was encrypted, with a password or owner-only.
+        // A decrypted copy exists exactly when the document was encrypted, with a password or owner-only.
         val wanted = if (unlockedUri != null) settings.autosaveEncrypted else settings.autosaveExternal
         if (wanted) saveToLibrary(notify = false)
     }
@@ -240,7 +243,7 @@ class ViewerViewModel(
                     ViewerContent.Pdf(source, source.loadAspectRatios())
                 }
                 // Owner-only (permissions) encryption opens on the empty user password, no prompt.
-                PdfEncryption.OWNER_ONLY -> unlock(uri, "")
+                PdfEncryption.OWNER_ONLY -> unlockPdf(uri, "")
                 PdfEncryption.USER_PASSWORD -> ViewerContent.NeedsPassword()
             }
             DocumentFormat.MARKDOWN -> {
@@ -254,21 +257,36 @@ class ViewerViewModel(
             // CODE renders through the same surface as TEXT: monospace, chunked, selectable.
             DocumentFormat.TEXT, DocumentFormat.CODE ->
                 ViewerContent.PlainText(readText(uri).lineSequence().chunked(LINES_PER_CHUNK).map { it.joinToString("\n") }.toList())
-            DocumentFormat.DOCX, DocumentFormat.ODT -> {
-                val extractor = OfficeTextExtractor(mediaDir = mediaDir)
-                val blocks = extractor.extract({ openStream(uri) }, format)
-                if (blocks.isEmpty()) ViewerContent.Failed(UiText(R.string.viewer_error_empty)) else ViewerContent.Office(blocks)
+            DocumentFormat.DOCX, DocumentFormat.ODT -> when (OfficeEncryption.status({ openStream(uri) })) {
+                OfficeEncryption.Party.NOT_ENCRYPTED -> {
+                    val blocks = extractOffice(uri, format)
+                    if (blocks.isEmpty()) ViewerContent.Failed(UiText(R.string.viewer_error_empty)) else ViewerContent.Office(blocks)
+                }
+                OfficeEncryption.Party.PASSWORD -> ViewerContent.NeedsPassword()
+                OfficeEncryption.Party.UNSUPPORTED -> ViewerContent.Failed(UiText(R.string.viewer_error_password))
             }
-            DocumentFormat.DOC -> {
-                val blocks = DocTextExtractor.extract { openStream(uri) }
-                if (blocks.isEmpty()) ViewerContent.Failed(UiText(R.string.viewer_error_empty)) else ViewerContent.Office(blocks)
+            DocumentFormat.DOC -> when (OfficeEncryption.status({ openStream(uri) })) {
+                OfficeEncryption.Party.NOT_ENCRYPTED -> {
+                    val blocks = DocTextExtractor.extract { openStream(uri) }
+                    if (blocks.isEmpty()) ViewerContent.Failed(UiText(R.string.viewer_error_empty)) else ViewerContent.Office(blocks)
+                }
+                else -> ViewerContent.Failed(UiText(R.string.viewer_error_password))
             }
             DocumentFormat.UNKNOWN -> ViewerContent.Failed(UiText(R.string.viewer_error_unsupported))
         }
     }
 
+    private fun extractOffice(uri: Uri, format: DocumentFormat): List<OfficeBlock> =
+        OfficeTextExtractor(mediaDir = mediaDir).extract({ openStream(uri) }, format)
+
     /** A wrong [password] returns [ViewerContent.NeedsPassword] for an in-place retry rather than throwing. */
-    private suspend fun unlock(uri: Uri, password: String): ViewerContent {
+    private suspend fun unlock(doc: DocumentEntity, password: String): ViewerContent =
+        when (doc.format) {
+            DocumentFormat.DOCX, DocumentFormat.ODT, DocumentFormat.DOC -> unlockOffice(doc.uri.toUri(), doc.format, password)
+            else -> unlockPdf(doc.uri.toUri(), password)
+        }
+
+    private suspend fun unlockPdf(uri: Uri, password: String): ViewerContent {
         val dir = File(app.cacheDir, PDF_UNLOCK_DIR).apply { mkdirs() }
         val target = File.createTempFile("unlock-", ".pdf", dir)
         try {
@@ -284,6 +302,29 @@ class ViewerViewModel(
             target.delete()
             throw e
         }
+    }
+
+    /** Office decryption writes a plaintext copy, so it is only kept once extraction has succeeded. */
+    private suspend fun unlockOffice(uri: Uri, format: DocumentFormat, password: String): ViewerContent {
+        val dir = File(app.cacheDir, OFFICE_UNLOCK_DIR).apply { mkdirs() }
+        val target = File.createTempFile("unlock-", ".${format.name.lowercase()}", dir)
+        val blocks = try {
+            OfficeEncryption.decrypt({ openStream(uri) }, password, target)
+            extractOffice(target.toUri(), format)
+        } catch (expected: DocumentPasswordException) {
+            target.delete()
+            return ViewerContent.NeedsPassword(incorrect = true)
+        } catch (e: Exception) {
+            target.delete()
+            throw e
+        }
+        if (blocks.isEmpty()) {
+            target.delete()
+            return ViewerContent.Failed(UiText(R.string.viewer_error_empty))
+        }
+        unlockedFile = target
+        unlockedUri = target.toUri().toString()
+        return ViewerContent.Office(blocks)
     }
 
     private fun sniffsAsText(uri: Uri): Boolean = runCatching {
@@ -335,7 +376,7 @@ class ViewerViewModel(
         _state.update { it.copy(content = ViewerContent.NeedsPassword(checking = true)) }
         viewModelScope.launch {
             val content = try {
-                withContext(Dispatchers.IO) { unlock(doc.uri.toUri(), password) }
+                withContext(Dispatchers.IO) { unlock(doc, password) }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
