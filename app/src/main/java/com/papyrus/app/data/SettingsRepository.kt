@@ -32,6 +32,8 @@ data class AppSettings(
     val showLineNumbers: Boolean = false,
     /** Colour for comments, strings and keywords in the source and config files that have a language definition. */
     val syntaxHighlighting: Boolean = true,
+    /** Use colour-blind safe palette. */
+    val colorblindMode: Boolean = false,
 )
 
 /** App preferences in plain SharedPreferences, read synchronously so a forced theme is known before the first frame. */
@@ -75,6 +77,11 @@ class SettingsRepository(context: Context) {
         _settings.update { it.copy(syntaxHighlighting = enabled) }
     }
 
+    fun setColorblindMode(enabled: Boolean) {
+        prefs.edit { putBoolean(KEY_COLORBLIND_MODE, enabled) }
+        _settings.update { it.copy(colorblindMode = enabled) }
+    }
+
     private fun read(): AppSettings {
         val defaults = AppSettings()
         val storedTheme = prefs.getString(KEY_THEME_MODE, null)
@@ -86,6 +93,7 @@ class SettingsRepository(context: Context) {
             wrapLines = prefs.getBoolean(KEY_WRAP_LINES, defaults.wrapLines),
             showLineNumbers = prefs.getBoolean(KEY_LINE_NUMBERS, defaults.showLineNumbers),
             syntaxHighlighting = prefs.getBoolean(KEY_SYNTAX_HIGHLIGHTING, defaults.syntaxHighlighting),
+            colorblindMode = prefs.getBoolean(KEY_COLORBLIND_MODE, defaults.colorblindMode),
         )
     }
 
@@ -97,5 +105,6 @@ class SettingsRepository(context: Context) {
         const val KEY_WRAP_LINES = "wrap_lines"
         const val KEY_LINE_NUMBERS = "line_numbers"
         const val KEY_SYNTAX_HIGHLIGHTING = "syntax_highlighting"
+        const val KEY_COLORBLIND_MODE = "colorblind_mode"
     }
 }
