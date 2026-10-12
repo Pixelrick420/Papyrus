@@ -147,11 +147,6 @@ fun ViewerScreen(
     }
 
     // The charset applies to text that was decoded from bytes: plain text, code and Markdown. PDF and Office files have none.
-    val encoding = when (val content = state.content) {
-        is ViewerContent.PlainText -> content.encoding
-        is ViewerContent.Markdown -> content.encoding
-        else -> null
-    }
     val encodingAvailable = state.content is ViewerContent.PlainText || state.content is ViewerContent.Markdown
 
     val closeFind: () -> Unit = {
@@ -355,7 +350,6 @@ fun ViewerScreen(
 
     if (encodingOpen && encodingAvailable) {
         EncodingDialog(
-            detected = encoding,
             override = state.encodingOverride,
             onSelect = { charsetName ->
                 viewModel.setEncoding(charsetName)
