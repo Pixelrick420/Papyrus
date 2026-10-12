@@ -34,7 +34,11 @@ internal class RevealTicket {
 /** Room kept around the current match when it is scrolled into view, so it is not flush with an edge. */
 internal val RevealMargin = 48.dp
 
-/** Text with find highlights; [reveal] goes only to the container holding the current match. */
+/**
+ * Text with find highlights; [reveal] goes only to the container holding the current match.
+ * [syntax] colours source code under the highlights. [softWrap] off keeps each line on one row, for a
+ * view that scrolls sideways, and [onLayout] hands the laid-out text to a caller that draws beside it.
+ */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun FindText(
@@ -45,12 +49,19 @@ internal fun FindText(
     reveal: RevealTicket? = null,
     spans: List<TextSpan> = emptyList(),
     background: Color? = null,
+    syntax: SyntaxStyling? = null,
+    softWrap: Boolean = true,
+    onLayout: ((TextLayoutResult) -> Unit)? = null,
 ) {
     val scheme = MaterialTheme.colorScheme
     val surface = background ?: scheme.surface
     val palette = remember(surface, scheme.primary) { FormatPalette(surface, scheme.primary) }
-    val annotated = remember(text, spans, highlight, palette) {
-        if (spans.isEmpty()) highlightedText(text, highlight) else formattedText(text, spans, highlight, palette)
+    val annotated = remember(text, spans, highlight, palette, syntax) {
+        when {
+            syntax != null -> syntaxHighlightedText(text, syntax, highlight)
+            spans.isEmpty() -> highlightedText(text, highlight)
+            else -> formattedText(text, spans, highlight, palette)
+        }
     }
     val activeRange = remember(text, highlight) { highlight?.activeRange(text) }
     // Reset with the text: a layout of other text can be shorter than an offset into this one.
@@ -71,7 +82,11 @@ internal fun FindText(
         annotated,
         style = style,
         modifier = modifier.bringIntoViewRequester(requester),
-        onTextLayout = { layout = it },
+        softWrap = softWrap,
+        onTextLayout = {
+            layout = it
+            onLayout?.invoke(it)
+        },
     )
 }
 

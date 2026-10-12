@@ -2,7 +2,14 @@ package com.papyrus.app.viewer
 
 import java.io.InputStream
 
-/** Whether a file [DocumentFormat.detect] left unclassified is still worth showing as text; reads only the head. */
+/**
+ * Whether a file [DocumentFormat.detect] left unclassified is still worth showing as text; reads only the head.
+ *
+ * Text is UTF-8, UTF-16 or UTF-32 behind a byte-order mark, or any run of bytes with no NUL and almost no
+ * control characters: a legacy 8-bit file (Windows-1252, Shift_JIS, KOI8-R) is the same thing to this check,
+ * since the viewer decodes it with a detected or chosen charset. A NUL is what separates it from binary,
+ * which is why UTF-16 is accepted only with its mark.
+ */
 object TextSniffer {
 
     const val MAX_SNIFF_BYTES = 8 * 1024
@@ -48,15 +55,15 @@ object TextSniffer {
         if (length <= 0) return false
         val bytes = if (length == head.size) head else head.copyOf(length)
         if (hasBinaryMagic(bytes)) return false
-        if (bytes.any { it == 0.toByte() }) return false
 
-        val text = try {
-            // REPORT, not REPLACE: a throw on malformed input is the signal we want.
-            Charsets.UTF_8.newDecoder().apply { onMalformedInput(java.nio.charset.CodingErrorAction.REPORT) }
-                .decode(java.nio.ByteBuffer.wrap(bytes))
-                .toString()
-        } catch (_: Exception) {
-            return false
+        val mark = TextEncodings.byteOrderMark(bytes, length)
+        val text = if (mark != null) {
+            String(bytes, mark.bomLength, length - mark.bomLength, mark.charset)
+        } else {
+            if (bytes.any { it == 0.toByte() }) return false
+            // A full window may end inside a character, which is the window's doing and not the file's.
+            val utf8 = TextEncodings.isValidUtf8(bytes, length, truncated = length >= MAX_SNIFF_BYTES)
+            String(bytes, 0, length, if (utf8) Charsets.UTF_8 else TextEncodings.WINDOWS_1252)
         }
 
         if (text.isEmpty()) return false
