@@ -467,6 +467,10 @@ private fun ViewerHeader(
                         enabled = findAvailable,
                         onClick = { onMenuOpenChange(false); onFind() },
                     )
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.viewer_info_title)) },
+                        onClick = { onMenuOpenChange(false); onInfo() },
+                    )
                     // Only for a file that was decoded from bytes, where a wrong guess shows as garbled text.
                     if (encodingAvailable) {
                         DropdownMenuItem(
@@ -474,10 +478,6 @@ private fun ViewerHeader(
                             onClick = { onMenuOpenChange(false); onEncoding() },
                         )
                     }
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.viewer_info_title)) },
-                        onClick = { onMenuOpenChange(false); onInfo() },
-                    )
                     // Only for a handed-over document: library rows are already saved.
                     if (showSaveToLibrary) {
                         DropdownMenuItem(
