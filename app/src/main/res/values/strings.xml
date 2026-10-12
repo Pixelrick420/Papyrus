@@ -56,7 +56,6 @@ access</string>
     <string name="viewer_selection_clear">Clear selection</string>
     <string name="viewer_truncated">… (file truncated for display)</string>
     <string name="viewer_encoding_title">Text encoding</string>
-    <string name="viewer_encoding_auto">Auto-detect (%1$s)</string>
     <string name="viewer_encoding_auto_plain">Auto-detect</string>
     <string name="viewer_page_indicator">%1$d / %2$d</string>
     <string name="viewer_office_image_loading">Loading image…</string>
