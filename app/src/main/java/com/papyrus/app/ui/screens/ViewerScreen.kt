@@ -80,6 +80,7 @@ import com.papyrus.app.data.OpenPersistableDocument
 import com.papyrus.app.ui.AppViewModelProvider
 import com.papyrus.app.ui.asString
 import com.papyrus.app.ui.components.ControlHeight
+import com.papyrus.app.ui.viewer.EncodingDialog
 import com.papyrus.app.ui.viewer.FileInfoSheet
 import com.papyrus.app.ui.viewer.FindInFileBar
 import com.papyrus.app.ui.viewer.MarkdownViewer
@@ -87,6 +88,7 @@ import com.papyrus.app.ui.viewer.OfficeViewer
 import com.papyrus.app.ui.viewer.PasswordDialog
 import com.papyrus.app.ui.viewer.PdfSelectionState
 import com.papyrus.app.ui.viewer.PdfViewer
+import com.papyrus.app.ui.viewer.PlainTextOptions
 import com.papyrus.app.ui.viewer.PlainTextViewer
 import com.papyrus.app.ui.viewer.ReadoutBadge
 import com.papyrus.app.ui.viewer.ZoomState
@@ -108,6 +110,7 @@ fun ViewerScreen(
     viewModel: ViewerViewModel = viewModel(factory = AppViewModelProvider.Factory),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val settings by viewModel.settings.collectAsStateWithLifecycle()
     val message by viewModel.messages.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
@@ -121,6 +124,7 @@ fun ViewerScreen(
 
     var menuOpen by remember { mutableStateOf(false) }
     var infoOpen by remember { mutableStateOf(false) }
+    var encodingOpen by remember { mutableStateOf(false) }
 
     // Held here (not in [PdfViewer]) so the header's Copy can reach it; keyed on the source.
     val selectionState = remember((state.content as? ViewerContent.Pdf)?.source) {
@@ -141,6 +145,14 @@ fun ViewerScreen(
         is ViewerContent.Pdf, is ViewerContent.PlainText, is ViewerContent.Office, is ViewerContent.Markdown -> true
         else -> false
     }
+
+    // The charset applies to text that was decoded from bytes: plain text, code and Markdown. PDF and Office files have none.
+    val encoding = when (val content = state.content) {
+        is ViewerContent.PlainText -> content.encoding
+        is ViewerContent.Markdown -> content.encoding
+        else -> null
+    }
+    val encodingAvailable = state.content is ViewerContent.PlainText || state.content is ViewerContent.Markdown
 
     val closeFind: () -> Unit = {
         focusManager.clearFocus()
@@ -192,6 +204,7 @@ fun ViewerScreen(
             ViewerHeader(
                 title = state.document?.title.orEmpty(),
                 findAvailable = findAvailable,
+                encodingAvailable = encodingAvailable,
                 menuOpen = menuOpen,
                 selectionActive = selectionState.hasSelection,
                 showShare = state.document != null,
@@ -201,6 +214,7 @@ fun ViewerScreen(
                 onMenuOpenChange = { menuOpen = it },
                 onBack = onBack,
                 onFind = viewModel::openFind,
+                onEncoding = { encodingOpen = true },
                 onInfo = { infoOpen = true },
                 onShare = shareDocument,
                 onSaveToLibrary = viewModel::saveToLibrary,
@@ -263,13 +277,31 @@ fun ViewerScreen(
                         findQuery = find.query,
                         zoom = zoom,
                     )
-                    is ViewerContent.PlainText -> PlainTextViewer(
-                        chunks = content.chunks,
-                        findQuery = find.query,
-                        activeHit = find.activeIndex,
-                        activeOccurrence = find.activeOccurrence,
-                        zoom = zoom,
-                    )
+                    is ViewerContent.PlainText -> {
+                        // Keyed on the fields, not the content: comparing two contents would walk every chunk.
+                        val options = remember(
+                            content.language, content.lexStates, content.lineCount, content.maxLineColumns, content.truncated,
+                            settings.wrapLines, settings.showLineNumbers, settings.syntaxHighlighting,
+                        ) {
+                            PlainTextOptions(
+                                wrapLines = settings.wrapLines,
+                                showLineNumbers = settings.showLineNumbers,
+                                language = content.language.takeIf { settings.syntaxHighlighting },
+                                lexStates = content.lexStates,
+                                lineCount = content.lineCount,
+                                maxLineColumns = content.maxLineColumns,
+                                truncated = content.truncated,
+                            )
+                        }
+                        PlainTextViewer(
+                            chunks = content.chunks,
+                            findQuery = find.query,
+                            activeHit = find.activeIndex,
+                            activeOccurrence = find.activeOccurrence,
+                            zoom = zoom,
+                            options = options,
+                        )
+                    }
                     is ViewerContent.Office -> OfficeViewer(
                         blocks = content.blocks,
                         findQuery = find.query,
@@ -321,6 +353,18 @@ fun ViewerScreen(
         )
     }
 
+    if (encodingOpen && encodingAvailable) {
+        EncodingDialog(
+            detected = encoding,
+            override = state.encodingOverride,
+            onSelect = { charsetName ->
+                viewModel.setEncoding(charsetName)
+                encodingOpen = false
+            },
+            onDismiss = { encodingOpen = false },
+        )
+    }
+
     val infoDocument = state.document
     if (infoOpen && infoDocument != null) {
         // Both are read live: the provider's type, and the page count of the PDF already open.
@@ -343,6 +387,7 @@ private const val FIND_ANIMATION_MS = 200
 private fun ViewerHeader(
     title: String,
     findAvailable: Boolean,
+    encodingAvailable: Boolean,
     menuOpen: Boolean,
     selectionActive: Boolean,
     showShare: Boolean,
@@ -352,6 +397,7 @@ private fun ViewerHeader(
     onMenuOpenChange: (Boolean) -> Unit,
     onBack: () -> Unit,
     onFind: () -> Unit,
+    onEncoding: () -> Unit,
     onInfo: () -> Unit,
     onShare: () -> Unit,
     onSaveToLibrary: () -> Unit,
@@ -421,6 +467,13 @@ private fun ViewerHeader(
                         enabled = findAvailable,
                         onClick = { onMenuOpenChange(false); onFind() },
                     )
+                    // Only for a file that was decoded from bytes, where a wrong guess shows as garbled text.
+                    if (encodingAvailable) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.viewer_encoding_title)) },
+                            onClick = { onMenuOpenChange(false); onEncoding() },
+                        )
+                    }
                     DropdownMenuItem(
                         text = { Text(stringResource(R.string.viewer_info_title)) },
                         onClick = { onMenuOpenChange(false); onInfo() },

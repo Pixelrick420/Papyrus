@@ -41,11 +41,23 @@ fun countOccurrences(text: String, query: String): Int {
 
 /**
  * One hit per match, not per chunk, so the find bar steps each match once and the counter is exact.
+ *
+ * [limit] bounds the list, because a short query in a 32 MB file matches millions of times and every hit is
+ * a boxed index; the first [limit] matches in document order are kept. [shouldStop] is polled once per
+ * chunk so a superseded search can give up halfway; what it returns then is not meant to be used.
  */
-fun findChunkHits(chunks: List<String>, query: String): List<Int> {
+fun findChunkHits(
+    chunks: List<String>,
+    query: String,
+    limit: Int = Int.MAX_VALUE,
+    shouldStop: () -> Boolean = { false },
+): List<Int> {
     if (query.isBlank()) return emptyList()
     val hits = ArrayList<Int>()
-    chunks.forEachIndexed { index, chunk -> repeat(countOccurrences(chunk, query)) { hits += index } }
+    for (index in chunks.indices) {
+        if (hits.size >= limit || shouldStop()) break
+        repeat(minOf(countOccurrences(chunks[index], query), limit - hits.size)) { hits += index }
+    }
     return hits
 }
 

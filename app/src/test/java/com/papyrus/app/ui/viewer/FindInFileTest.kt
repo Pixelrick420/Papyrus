@@ -217,6 +217,27 @@ class FindInFileTest {
     }
 
     @Test
+    fun `the hit list is capped at the limit, in document order`() {
+        val chunks = listOf("a a a", "a a", "a")
+
+        assertEquals(listOf(0, 0, 0, 1), findChunkHits(chunks, "a", limit = 4))
+        assertEquals(listOf(0, 0), findChunkHits(chunks, "a", limit = 2))
+        assertEquals(emptyList<Int>(), findChunkHits(chunks, "a", limit = 0))
+        assertEquals(listOf(0, 0, 0, 1, 1, 2), findChunkHits(chunks, "a", limit = 6))
+    }
+
+    @Test
+    fun `a search that is told to stop gives up between chunks`() {
+        var visited = 0
+        val chunks = List(10) { "needle" }
+
+        // Stops after the third chunk has been scanned: the caller has moved on to a newer query.
+        val partial = findChunkHits(chunks, "needle", shouldStop = { visited++ >= 3 })
+
+        assertEquals(listOf(0, 1, 2), partial)
+    }
+
+    @Test
     fun `navigable hits take precedence over a leftover occurrence count`() {
         // A format switch must not leave the old count beside the new hit list.
         val state = FindState(hits = listOf(0, 5), position = 0, occurrences = 99)
