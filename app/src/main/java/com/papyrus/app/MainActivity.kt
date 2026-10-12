@@ -40,7 +40,10 @@ class MainActivity : ComponentActivity() {
                 applySystemBars(darkTheme)
                 onDispose {}
             }
-            PapyrusTheme(darkTheme = darkTheme) {
+            PapyrusTheme(
+                darkTheme = darkTheme,
+                colorblindMode = appSettings.colorblindMode,
+            ) {
                 PapyrusNavGraph(
                     externalDocument = externalDocument,
                     resolveExternalDocument = { uri ->

@@ -53,16 +53,58 @@ private val LightColors: ColorScheme = lightColorScheme(
     surfaceVariant = Color(0xFFEDEDED),
     onSurfaceVariant = Color(0xFF5C5C5C),
     surfaceContainerLowest = Color(0xFFFFFFFF),
-    surfaceContainerLow = Color(0xFFF5F5F5),
-    surfaceContainer = Color(0xFFF1F1F1),
-    surfaceContainerHigh = Color(0xFFEBEBEB),
-    surfaceContainerHighest = Color(0xFFE5E5E5),
-    surfaceDim = Color(0xFFDCDCDC),
+    surfaceContainerLow = Color(0xFFF8F8F8),
+    surfaceContainer = Color(0xFFF5F5F5),
+    surfaceContainerHigh = Color(0xFFF1F1F1),
+    surfaceContainerHighest = Color(0xFFEBEBEB),
+    surfaceDim = Color(0xFFE5E5E5),
     surfaceBright = Color(0xFFFCFCFC),
     inverseSurface = Color(0xFF303030),
     inverseOnSurface = Color(0xFFF2F2F2),
     outline = Color(0xFF767676),
-    outlineVariant = Color(0xFFDCDCDC),
+    outlineVariant = Color(0xFFE5E5E5),
+)
+
+/**
+ * Colour-blind safe scheme. The neutral surfaces are the same as [LightColors] -- the app still
+ * has to read as paper -- but the accents come from the Okabe-Ito palette, the eight-hue set
+ * chosen to stay distinguishable under protanopia, deuteranopia and tritanopia. [primary] is
+ * Okabe-Ito blue, [secondary] is vermillion and [tertiary] is bluish green; unlike the default
+ * scheme, which leans on a single blue and lets stroke thickness carry the active/passive
+ * distinction, these three are separable by hue alone. Vermillion and bluish green are darkened
+ * a step from their Okabe-Ito values so white on-colours clear 4.5:1.
+ */
+private val ColorblindColors: ColorScheme = lightColorScheme(
+    primary = Color(0xFF0072B2),
+    onPrimary = Color(0xFFFFFFFF), // 5.2:1 on #0072B2
+    primaryContainer = Color(0xFFD0E4F7),
+    onPrimaryContainer = Color(0xFF003258),
+    inversePrimary = Color(0xFF0072B2),
+    secondary = Color(0xFFC25300),
+    onSecondary = Color(0xFFFFFFFF), // 4.6:1 on #C25300
+    secondaryContainer = Color(0xFFFBE0CE),
+    onSecondaryContainer = Color(0xFF4D2000),
+    tertiary = Color(0xFF008060),
+    onTertiary = Color(0xFFFFFFFF), // 4.9:1 on #008060
+    tertiaryContainer = Color(0xFFCDEEE2),
+    onTertiaryContainer = Color(0xFF00301F),
+    background = Color(0xFFFBFBFB),
+    onBackground = Color(0xFF1A1A1A),
+    surface = Color(0xFFFCFCFC),
+    onSurface = Color(0xFF1A1A1A),
+    surfaceVariant = Color(0xFFEDEDED),
+    onSurfaceVariant = Color(0xFF5C5C5C),
+    surfaceContainerLowest = Color(0xFFFFFFFF),
+    surfaceContainerLow = Color(0xFFF8F8F8),
+    surfaceContainer = Color(0xFFF5F5F5),
+    surfaceContainerHigh = Color(0xFFF1F1F1),
+    surfaceContainerHighest = Color(0xFFEBEBEB),
+    surfaceDim = Color(0xFFE5E5E5),
+    surfaceBright = Color(0xFFFCFCFC),
+    inverseSurface = Color(0xFF303030),
+    inverseOnSurface = Color(0xFFF2F2F2),
+    outline = Color(0xFF767676),
+    outlineVariant = Color(0xFFE5E5E5),
 )
 
 private val DarkColors: ColorScheme = darkColorScheme(
@@ -98,10 +140,53 @@ private val DarkColors: ColorScheme = darkColorScheme(
     outlineVariant = Color(0xFF3A3A3A),
 )
 
+private val ColorblindDarkColors: ColorScheme = darkColorScheme(
+    primary = Color(0xFF64B6F7),
+    onPrimary = Color(0xFF00385D),
+    primaryContainer = Color(0xFF005D9F),
+    onPrimaryContainer = Color(0xFFCCE5FF),
+    inversePrimary = Color(0xFF0072B2),
+    secondary = Color(0xFFF5A66E),
+    onSecondary = Color(0xFF4D1E00),
+    secondaryContainer = Color(0xFF703300),
+    onSecondaryContainer = Color(0xFFFFDCC3),
+    tertiary = Color(0xFF4DBAA0),
+    onTertiary = Color(0xFF002F26),
+    tertiaryContainer = Color(0xFF005E4A),
+    onTertiaryContainer = Color(0xFFAAE7D9),
+    background = Color(0xFF121212),
+    onBackground = Color(0xFFE6E6E6),
+    surface = Color(0xFF101010),
+    onSurface = Color(0xFFE6E6E6),
+    surfaceVariant = Color(0xFF242424),
+    onSurfaceVariant = Color(0xFFC4C4C4),
+    surfaceContainerLowest = Color(0xFF0A0A0A),
+    surfaceContainerLow = Color(0xFF181818),
+    surfaceContainer = Color(0xFF1C1C1C),
+    surfaceContainerHigh = Color(0xFF262626),
+    surfaceContainerHighest = Color(0xFF313131),
+    surfaceDim = Color(0xFF101010),
+    surfaceBright = Color(0xFF363636),
+    inverseSurface = Color(0xFFE6E6E6),
+    inverseOnSurface = Color(0xFF1A1A1A),
+    outline = Color(0xFF8E8E8E),
+    outlineVariant = Color(0xFF3A3A3A),
+)
+
 @Composable
-fun PapyrusTheme(darkTheme: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) {
+fun PapyrusTheme(
+    darkTheme: Boolean = isSystemInDarkTheme(),
+    colorblindMode: Boolean = false,
+    content: @Composable () -> Unit,
+) {
+    val colorScheme = when {
+        darkTheme && colorblindMode -> ColorblindDarkColors
+        darkTheme -> DarkColors
+        colorblindMode -> ColorblindColors
+        else -> LightColors
+    }
     MaterialTheme(
-        colorScheme = if (darkTheme) DarkColors else LightColors,
+        colorScheme = colorScheme,
         content = content,
     )
 }

@@ -72,6 +72,8 @@ class SettingsViewModel(private val repository: SettingsRepository) : ViewModel(
 
     fun setSyntaxHighlighting(enabled: Boolean) = repository.setSyntaxHighlighting(enabled)
 
+    fun setColorblindMode(enabled: Boolean) = repository.setColorblindMode(enabled)
+
     fun setShowLineNumbers(enabled: Boolean) = repository.setShowLineNumbers(enabled)
 
     fun setWrapLines(enabled: Boolean) = repository.setWrapLines(enabled)
@@ -134,6 +136,13 @@ fun SettingsScreen(
                         title = stringResource(R.string.settings_theme),
                         value = stringResource(settings.themeMode.label()),
                         modifier = Modifier.clickable(role = Role.Button) { themeDialogOpen = true },
+                    )
+                    CardDivider()
+                    SwitchRow(
+                        title = stringResource(R.string.settings_colorblind),
+                        description = stringResource(R.string.settings_colorblind_desc),
+                        checked = settings.colorblindMode,
+                        onCheckedChange = viewModel::setColorblindMode,
                     )
                 }
 
