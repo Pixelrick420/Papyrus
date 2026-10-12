@@ -101,6 +101,8 @@ access</string>
     <string name="settings_section_text">Text and code</string>
     <string name="settings_syntax_highlighting">Syntax highlighting</string>
     <string name="settings_syntax_highlighting_desc">Colour comments, strings, keywords and numbers in source and config files.</string>
+    <string name="settings_colorblind">Colorblind mode</string>
+    <string name="settings_colorblind_desc">Use a colour-blind safe palette for theme colours.</string>
     <string name="settings_line_numbers">Line numbers</string>
     <string name="settings_line_numbers_desc">Show a line-number gutter beside plain text, logs and code.</string>
     <string name="settings_wrap_lines">Wrap long lines</string>
