@@ -11,15 +11,38 @@ on-device. The manifest declares no permissions: no network or storage access
 | --- | --- |
 | PDF | `PdfRenderer` pages; zoom re-rasterises at the target resolution. Password-protected files prompt for the password |
 | Markdown | Markwon to `Spanned` in a native `TextView`, with strikethrough and tables |
-| Plain text (`.txt`, `.log`, ...) | chunked 40 lines at a time, selectable monospace Compose `Text`. Read up to 4 MB |
-| Source and config (`.kt`, `.py`, `.json`, ...) | as plain text, labelled `CODE` in the list |
+| Plain text (`.txt`, `.log`, ...) | chunked 40 lines at a time, selectable monospace Compose `Text`. Decoded straight into the chunks, so a file costs about its own size in memory. Read up to 32 MB (Markdown: 4 MB). Optional line-number gutter and no-wrap mode with sideways scrolling |
+| Source and config (`.kt`, `.py`, `.json`, ...) | as plain text, labelled `CODE` in the list, with syntax colour for the languages the app defines (below) |
 | DOCX / ODT | headings, paragraphs, bold / italic / underline / strikethrough / super- and subscript, text and highlight colours, links, bulleted and numbered lists (nested, with Word's and LibreOffice's numbering schemes), alignment, indentation, footnotes and endnotes, tables (with merged cells, shading and cell formatting) and images (at their stated size, with alt text), read straight from the archive. Password-protected files prompt for the password |
 | DOC (Word 97-2003) | paragraphs and tables, read from the OLE2 piece table. No images; headings come out as plain paragraphs. Encrypted and Word 6/95 files are rejected |
 
 Format resolves from the file extension first and the MIME type second, because SAF providers routinely report a `.md`
 as `application/octet-stream` and a `.pdf` as `text/plain`. Extension-less names (`Makefile`, `Dockerfile`,
-`.gitignore`) resolve too. Anything left over is sniffed from its first 8 KB: no known container magic, no NUL byte,
-strict UTF-8 and overwhelmingly printable means text.
+`.gitignore`) resolve too. Anything left over is sniffed from its first 8 KB: no known container magic, no NUL byte
+(unless a UTF-16 or UTF-32 byte-order mark vouches for it), and overwhelmingly printable means text, in UTF-8 or any
+legacy 8-bit encoding. A Windows-1252 `.csv` from Excel is the case that matters.
+
+### Text encodings
+
+The encoding of a text, code or Markdown file is chosen from a 64 KB sample, in this order: a byte-order mark (UTF-8,
+UTF-16, UTF-32), UTF-16 without one (zero bytes piling up on one side of the byte pairs), strict UTF-8, the app's own
+statistical detector for anything that is not UTF-8 (Shift_JIS, KOI8-R, Windows-1251 and so on; it scores each
+candidate charset by how much its reading looks like prose, and only overrides the default when a non-Latin
+reading clearly wins), and finally Windows-1252, which decodes every byte. A Latin-1 guess becomes Windows-1252, its
+superset. The viewer menu's *Text encoding* re-reads the file with a charset picked by hand, or goes back to
+auto-detect; the pick is kept for the life of the viewer, including across process death, and is not stored with the
+document.
+
+### Syntax highlighting
+
+The tokenizer is the app's own, with no dependency: one scanner driven by per-language data (`CodeLanguages.kt`) for
+Kotlin, Java, C and C++, C#, JavaScript, TypeScript, Python, Ruby, Go, Rust, Swift, Dart, PHP, Lua, Groovy and Gradle,
+Scala, shell, PowerShell, SQL, GraphQL, R, JSON, YAML, TOML, INI and `.properties`, HTML, XML and SVG, CSS, SCSS and
+Less, Dockerfile, make and CMake. The language comes from the file name only. It is a colourer, not a parser: comments,
+strings, numbers, keywords, types, calls, annotations and variables, and no more. Chunks are coloured on demand as they
+scroll into view, and a single pass over the file on load records where each 40-line chunk begins (inside a block
+comment or a triple-quoted string, say), so a construct that crosses a chunk boundary still colours as one. A chunk
+over 20,000 characters is shown plain.
 
 ## Features
 
@@ -43,6 +66,11 @@ supported: there is no migration path from older versions, and a database writte
   again.
 - **Settings** is the gear on Home's title bar:
   - *Theme*: system default, light or dark. It applies to the whole app, status and navigation bar icons included.
+  - *Syntax highlighting*, *Line numbers* and *Wrap long lines*: how plain text, logs and code are shown. Highlighting
+    and wrapping are on by default, line numbers off. With wrapping off each line stays on one row and the whole list
+    scrolls sideways together; its width is the file's widest line, capped at 60,000 px, past which a line is clipped.
+    Line numbers are drawn beside the text from its layout, so a wrapped line still has one number and the numbers are
+    never selected or copied.
   - *Autosave external documents*: a document opened from another app is saved to the library as soon as it has
     opened. Off by default.
   - *Autosave encrypted documents*: the same for password-protected documents, saved once they unlock, including ones

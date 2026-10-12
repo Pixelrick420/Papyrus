@@ -55,6 +55,9 @@ access</string>
     <string name="viewer_pdf_no_text">This page has no selectable text.</string>
     <string name="viewer_selection_clear">Clear selection</string>
     <string name="viewer_truncated">… (file truncated for display)</string>
+    <string name="viewer_encoding_title">Text encoding</string>
+    <string name="viewer_encoding_auto">Auto-detect (%1$s)</string>
+    <string name="viewer_encoding_auto_plain">Auto-detect</string>
     <string name="viewer_page_indicator">%1$d / %2$d</string>
     <string name="viewer_office_image_loading">Loading image…</string>
     <string name="viewer_office_image_failed">This image format can\'t be shown on Android.</string>
@@ -95,6 +98,13 @@ access</string>
     <string name="settings_theme_system">System default</string>
     <string name="settings_theme_light">Light</string>
     <string name="settings_theme_dark">Dark</string>
+    <string name="settings_section_text">Text and code</string>
+    <string name="settings_syntax_highlighting">Syntax highlighting</string>
+    <string name="settings_syntax_highlighting_desc">Colour comments, strings, keywords and numbers in source and config files.</string>
+    <string name="settings_line_numbers">Line numbers</string>
+    <string name="settings_line_numbers_desc">Show a line-number gutter beside plain text, logs and code.</string>
+    <string name="settings_wrap_lines">Wrap long lines</string>
+    <string name="settings_wrap_lines_desc">Turn off to keep each line on one row and scroll sideways. Applies to plain text, logs and code.</string>
     <string name="settings_section_library">Library</string>
     <string name="settings_autosave_external">Autosave external docs</string>
     <string name="settings_autosave_external_desc">Add documents opened from other apps to your library automatically.</string>

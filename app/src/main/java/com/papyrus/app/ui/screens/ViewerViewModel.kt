@@ -9,14 +9,19 @@ import androidx.lifecycle.viewModelScope
 import androidx.core.net.toUri
 import com.papyrus.app.MainApplication
 import com.papyrus.app.R
+import com.papyrus.app.data.AppSettings
 import com.papyrus.app.data.DocumentEntity
 import com.papyrus.app.data.DocumentFormat
 import com.papyrus.app.data.SafAccess
 import com.papyrus.app.data.shareIntent
 import com.papyrus.app.ui.UiText
 import com.papyrus.app.ui.navigation.Routes
+import com.papyrus.app.viewer.CodeLanguage
+import com.papyrus.app.viewer.CodeLanguages
 import com.papyrus.app.viewer.DocTextExtractor
 import com.papyrus.app.viewer.DocumentPasswordException
+import com.papyrus.app.viewer.StatisticalCharsetGuesser
+import com.papyrus.app.viewer.LexStates
 import com.papyrus.app.viewer.OfficeBlock
 import com.papyrus.app.viewer.NormRect
 import com.papyrus.app.viewer.OfficeEncryption
@@ -29,8 +34,12 @@ import com.papyrus.app.viewer.PdfPageText
 import com.papyrus.app.viewer.PdfPageTextSource
 import com.papyrus.app.viewer.PdfPasswordException
 import com.papyrus.app.viewer.PdfTextExtractor
+import com.papyrus.app.viewer.SyntaxHighlighter
+import com.papyrus.app.viewer.TextEncoding
+import com.papyrus.app.viewer.TextEncodings
 import com.papyrus.app.viewer.TextSniffer
-import com.papyrus.app.viewer.decodeText
+import com.papyrus.app.viewer.readTextChunks
+import com.papyrus.app.viewer.readTextString
 import com.papyrus.app.ui.viewer.countOccurrences
 import com.papyrus.app.ui.viewer.findBlockHits
 import com.papyrus.app.ui.viewer.findChunkHits
@@ -47,20 +56,37 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileNotFoundException
 import java.io.InputStream
+import java.nio.charset.Charset
 import kotlin.coroutines.cancellation.CancellationException
 
 sealed interface ViewerContent {
     data object Loading : ViewerContent
     data class Pdf(val source: PdfPageSource, val aspectRatios: List<Float>) : ViewerContent
-    /** [text] for find and render; [source] lets a table re-snapshot force a fresh render. */
-    data class Markdown(val markwon: Markwon, val source: String, val text: Spanned) : ViewerContent
-    data class PlainText(val chunks: List<String>) : ViewerContent
+    /** [text] for find and render; [source] lets a table re-snapshot force a fresh render. [encoding] is what the file was decoded as. */
+    data class Markdown(val markwon: Markwon, val source: String, val text: Spanned, val encoding: TextEncoding? = null) : ViewerContent
+
+    /**
+     * Forty lines to a chunk. [language] and [lexStates] are set only for source files with a language
+     * definition: the states say where each chunk's scan starts, so a block comment crossing a chunk
+     * boundary still colours as one. [lineCount] and [maxLineColumns] size the line-number gutter and the
+     * no-wrap scroll extent; [truncated] means the file was longer than the read limit.
+     */
+    data class PlainText(
+        val chunks: List<String>,
+        val encoding: TextEncoding? = null,
+        val language: CodeLanguage? = null,
+        val lexStates: LexStates? = null,
+        val lineCount: Int = 0,
+        val maxLineColumns: Int = 0,
+        val truncated: Boolean = false,
+    ) : ViewerContent
     data class Office(val blocks: List<OfficeBlock>) : ViewerContent
     /** A document waiting on its password; [incorrect] flags a rejected attempt, [checking] an in-flight one. */
     data class NeedsPassword(val incorrect: Boolean = false, val checking: Boolean = false) : ViewerContent
@@ -137,11 +163,13 @@ data class ViewerUiState(
     val canSaveToLibrary: Boolean = false,
     val savingToLibrary: Boolean = false,
     val savedToLibrary: Boolean = false,
+    /** A charset name picked by hand for a text or Markdown file; null leaves detection in charge. */
+    val encodingOverride: String? = null,
 )
 
 class ViewerViewModel(
     private val app: MainApplication,
-    savedState: SavedStateHandle,
+    private val savedState: SavedStateHandle,
 ) : ViewModel() {
 
     private val repository = app.repository
@@ -149,6 +177,12 @@ class ViewerViewModel(
 
     private val _state = MutableStateFlow(ViewerUiState())
     val state: StateFlow<ViewerUiState> = _state.asStateFlow()
+
+    /** Wrap, line numbers and highlighting are read live, so a toggle needs no reload. */
+    val settings: StateFlow<AppSettings> = app.settings.settings
+
+    /** Kept in the saved-state handle so a hand-picked encoding survives process death along with the document id. */
+    private var encodingName: String? = savedState[KEY_ENCODING]
 
     private val _messages = MutableStateFlow<UiText?>(null)
     val messages: StateFlow<UiText?> = _messages.asStateFlow()
@@ -158,6 +192,9 @@ class ViewerViewModel(
 
     /** Cancelled per query; racing searches would let the older overwrite the newer. */
     private var findJob: Job? = null
+
+    /** Cancelled per pick, so two quick choices in the encoding dialog leave the later one on screen. */
+    private var encodingJob: Job? = null
 
     /** One page at a time; keyed by URI so a re-grant never reads the dead one. */
     private var pageTextSource: PdfPageTextSource? = null
@@ -189,25 +226,28 @@ class ViewerViewModel(
             _state.value = ViewerUiState(content = ViewerContent.Failed(UiText(R.string.viewer_error_not_found)))
             return
         }
-        _state.value = ViewerUiState(document = doc, canSaveToLibrary = doc.id < 0)
+        _state.value = ViewerUiState(document = doc, canSaveToLibrary = doc.id < 0, encodingOverride = encodingName)
         repository.markOpened(doc.id)
-        val content = try {
-            withContext(Dispatchers.IO) { loadContent(doc) }
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: PdfPasswordException) {
-            ViewerContent.Failed(UiText(R.string.viewer_error_password))
-        } catch (e: SecurityException) {
-            // Dropped SAF grant: offer a re-pick rather than only reporting the failure.
-            _state.update { it.copy(needsRegrant = true) }
-            ViewerContent.Failed(UiText(R.string.viewer_error_access))
-        } catch (e: FileNotFoundException) {
-            ViewerContent.Failed(UiText(R.string.viewer_error_missing))
-        } catch (e: Exception) {
-            ViewerContent.Failed(UiText(R.string.viewer_error_generic, e.localizedMessage ?: e.javaClass.simpleName))
-        }
+        val content = loadContentSafely(doc)
         _state.update { it.copy(content = content) }
         autosaveIfEnabled()
+    }
+
+    /** Every failure mode maps to a screen of its own, so the callers only ever see content to show. */
+    private suspend fun loadContentSafely(doc: DocumentEntity): ViewerContent = try {
+        withContext(Dispatchers.IO) { loadContent(doc) }
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: PdfPasswordException) {
+        ViewerContent.Failed(UiText(R.string.viewer_error_password))
+    } catch (e: SecurityException) {
+        // Dropped SAF grant: offer a re-pick rather than only reporting the failure.
+        _state.update { it.copy(needsRegrant = true) }
+        ViewerContent.Failed(UiText(R.string.viewer_error_access))
+    } catch (e: FileNotFoundException) {
+        ViewerContent.Failed(UiText(R.string.viewer_error_missing))
+    } catch (e: Exception) {
+        ViewerContent.Failed(UiText(R.string.viewer_error_generic, e.localizedMessage ?: e.javaClass.simpleName))
     }
 
     // Saves a handed-over document once it opens, if its setting is on. An encrypted document waits
@@ -251,12 +291,26 @@ class ViewerViewModel(
                     .usePlugin(StrikethroughPlugin.create())
                     .usePlugin(TablePlugin.create(app))
                     .build()
-                val source = readText(uri)
-                ViewerContent.Markdown(markwon, source, markwon.toMarkdown(source))
+                // Markwon takes the whole text and builds one Spanned for one TextView, so it keeps the small limit.
+                val decoded = openStream(uri).use { readTextString(it, MAX_MARKDOWN_BYTES, forcedCharset(), StatisticalCharsetGuesser) }
+                val source = if (decoded.truncated) decoded.text + "\n\n" + app.getString(R.string.viewer_truncated) else decoded.text
+                ViewerContent.Markdown(markwon, source, markwon.toMarkdown(source), decoded.encoding)
             }
             // CODE renders through the same surface as TEXT: monospace, chunked, selectable.
-            DocumentFormat.TEXT, DocumentFormat.CODE ->
-                ViewerContent.PlainText(readText(uri).lineSequence().chunked(LINES_PER_CHUNK).map { it.joinToString("\n") }.toList())
+            DocumentFormat.TEXT, DocumentFormat.CODE -> {
+                val read = openStream(uri).use { readTextChunks(it, MAX_TEXT_BYTES, forcedCharset(), StatisticalCharsetGuesser) }
+                // By name, and only for source: a .log or .txt that happens to look like code stays plain.
+                val language = CodeLanguages.forFileName(doc.title).takeIf { format == DocumentFormat.CODE }
+                ViewerContent.PlainText(
+                    chunks = read.chunks,
+                    encoding = read.encoding,
+                    language = language,
+                    lexStates = language?.let { SyntaxHighlighter.chunkStartStates(it, read.chunks) },
+                    lineCount = read.lineCount,
+                    maxLineColumns = read.maxLineColumns,
+                    truncated = read.truncated,
+                )
+            }
             DocumentFormat.DOCX, DocumentFormat.ODT -> when (OfficeEncryption.status({ openStream(uri) })) {
                 OfficeEncryption.Party.NOT_ENCRYPTED -> {
                     val blocks = extractOffice(uri, format)
@@ -391,6 +445,28 @@ class ViewerViewModel(
         _state.update { it.copy(content = ViewerContent.Failed(UiText(R.string.viewer_password_cancelled))) }
     }
 
+    /**
+     * Re-reads a text or Markdown file as [charsetName], or with detection again when it is null. The old
+     * content stays on screen until the new arrives, so the page does not flash and the scroll holds.
+     */
+    fun setEncoding(charsetName: String?) {
+        val doc = _state.value.document ?: return
+        val content = _state.value.content
+        if (content !is ViewerContent.PlainText && content !is ViewerContent.Markdown) return
+        if (charsetName == encodingName) return
+        encodingName = charsetName
+        savedState[KEY_ENCODING] = charsetName
+        _state.update { it.copy(encodingOverride = charsetName) }
+        encodingJob?.cancel()
+        encodingJob = viewModelScope.launch {
+            val reloaded = loadContentSafely(doc)
+            _state.update { it.copy(content = reloaded) }
+            // The text changed under any search in progress, so its hits now point at the wrong characters.
+            val query = _state.value.find.query
+            if (query.isNotBlank()) updateFindQuery(query)
+        }
+    }
+
     fun openFind() {
         _state.update { it.copy(find = it.find.copy(open = true)) }
     }
@@ -434,7 +510,11 @@ class ViewerViewModel(
     private suspend fun computeHits(query: String): FindResult {
         if (query.isBlank()) return FindResult()
         return when (val content = _state.value.content) {
-            is ViewerContent.PlainText -> FindResult(hits = findChunkHits(content.chunks, query))
+            is ViewerContent.PlainText -> {
+                // A newer keystroke cancels this job; the scan notices between chunks instead of finishing a 32 MB file for nothing.
+                val running = currentCoroutineContext()
+                FindResult(hits = findChunkHits(content.chunks, query, MAX_TEXT_FIND_HITS) { !running.isActive })
+            }
             is ViewerContent.Office -> FindResult(hits = findBlockHits(content.blocks, query))
             // One Spanned, every match lit at once: no target to step, count must be right.
             is ViewerContent.Markdown ->
@@ -529,20 +609,8 @@ class ViewerViewModel(
     private fun openStream(uri: Uri): InputStream =
         app.contentResolver.openInputStream(uri) ?: throw FileNotFoundException(uri.toString())
 
-    /** Reads at most [MAX_TEXT_BYTES] so a huge log file can't exhaust the heap. */
-    private fun readText(uri: Uri): String = openStream(uri).use { input ->
-        val out = ByteArrayOutputStream()
-        val buffer = ByteArray(8 * 1024)
-        var total = 0
-        while (total < MAX_TEXT_BYTES) {
-            val n = input.read(buffer, 0, minOf(buffer.size, MAX_TEXT_BYTES - total))
-            if (n < 0) break
-            out.write(buffer, 0, n)
-            total += n
-        }
-        val truncated = total >= MAX_TEXT_BYTES && input.read() != -1
-        decodeText(out.toByteArray()) + if (truncated) "\n\n" + app.getString(R.string.viewer_truncated) else ""
-    }
+    /** The charset picked by hand, or null to detect; a name that is no longer supported falls back to detection. */
+    private fun forcedCharset(): Charset? = encodingName?.let(TextEncodings::charsetOrNull)
 
     override fun onCleared() {
         (_state.value.content as? ViewerContent.Pdf)?.source?.close()
@@ -553,8 +621,15 @@ class ViewerViewModel(
     }
 
     private companion object {
-        const val MAX_TEXT_BYTES = 4 * 1024 * 1024
-        const val LINES_PER_CHUNK = 40
+        // Plain text streams into 40-line chunks, so memory is about the file's size, not several copies of it.
+        const val MAX_TEXT_BYTES = 32 * 1024 * 1024
+
+        // Markdown is one Spanned in one TextView, which is far heavier per byte than a chunk of text.
+        const val MAX_MARKDOWN_BYTES = 4 * 1024 * 1024
+
+        // A hit is a boxed index; past this a counter says nothing more and the list only costs heap.
+        const val MAX_TEXT_FIND_HITS = 100_000
         const val FIND_DEBOUNCE_MILLIS = 200L
+        const val KEY_ENCODING = "encoding"
     }
 }
