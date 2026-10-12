@@ -69,6 +69,12 @@ class SettingsViewModel(private val repository: SettingsRepository) : ViewModel(
     fun setAutosaveExternal(enabled: Boolean) = repository.setAutosaveExternal(enabled)
 
     fun setAutosaveEncrypted(enabled: Boolean) = repository.setAutosaveEncrypted(enabled)
+
+    fun setSyntaxHighlighting(enabled: Boolean) = repository.setSyntaxHighlighting(enabled)
+
+    fun setShowLineNumbers(enabled: Boolean) = repository.setShowLineNumbers(enabled)
+
+    fun setWrapLines(enabled: Boolean) = repository.setWrapLines(enabled)
 }
 
 /** Same inset as Home and the viewer, so cards line up with the Home list. */
@@ -128,6 +134,30 @@ fun SettingsScreen(
                         title = stringResource(R.string.settings_theme),
                         value = stringResource(settings.themeMode.label()),
                         modifier = Modifier.clickable(role = Role.Button) { themeDialogOpen = true },
+                    )
+                }
+
+                SectionLabel(stringResource(R.string.settings_section_text))
+                SettingsCard {
+                    SwitchRow(
+                        title = stringResource(R.string.settings_syntax_highlighting),
+                        description = stringResource(R.string.settings_syntax_highlighting_desc),
+                        checked = settings.syntaxHighlighting,
+                        onCheckedChange = viewModel::setSyntaxHighlighting,
+                    )
+                    CardDivider()
+                    SwitchRow(
+                        title = stringResource(R.string.settings_line_numbers),
+                        description = stringResource(R.string.settings_line_numbers_desc),
+                        checked = settings.showLineNumbers,
+                        onCheckedChange = viewModel::setShowLineNumbers,
+                    )
+                    CardDivider()
+                    SwitchRow(
+                        title = stringResource(R.string.settings_wrap_lines),
+                        description = stringResource(R.string.settings_wrap_lines_desc),
+                        checked = settings.wrapLines,
+                        onCheckedChange = viewModel::setWrapLines,
                     )
                 }
 
