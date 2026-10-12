@@ -88,6 +88,12 @@ private val RowMinHeight = 56.dp
 
 private const val SOURCE_URL = "https://github.com/Pixelrick420/Papyrus"
 
+private const val RELEASES_URL = "$SOURCE_URL/releases"
+
+private const val LICENSE_URL = "$SOURCE_URL/blob/main/LICENSE"
+
+private const val PRIVACY_URL = "$SOURCE_URL/blob/main/PRIVACY_POLICY.md"
+
 @StringRes
 private fun ThemeMode.label(): Int = when (this) {
     ThemeMode.SYSTEM -> R.string.settings_theme_system
@@ -105,9 +111,9 @@ fun SettingsScreen(
     var themeDialogOpen by remember { mutableStateOf(false) }
 
     // Opened in the person's browser; Papyrus itself still never touches the network.
-    val openSource: () -> Unit = {
+    val openUrl: (String) -> Unit = { url ->
         try {
-            context.startActivity(Intent(Intent.ACTION_VIEW, SOURCE_URL.toUri()))
+            context.startActivity(Intent(Intent.ACTION_VIEW, url.toUri()))
         } catch (ignored: ActivityNotFoundException) {
             // No browser installed: nothing to open the link with.
         }
@@ -192,17 +198,25 @@ fun SettingsScreen(
                     SettingsRow(
                         title = stringResource(R.string.app_name),
                         value = stringResource(R.string.settings_about_version, BuildConfig.VERSION_NAME),
+                        modifier = Modifier.clickable(role = Role.Button) { openUrl(RELEASES_URL) },
                     )
                     CardDivider()
                     SettingsRow(
                         title = stringResource(R.string.settings_about_source),
                         value = stringResource(R.string.settings_about_source_value),
-                        modifier = Modifier.clickable(role = Role.Button, onClick = openSource),
+                        modifier = Modifier.clickable(role = Role.Button) { openUrl(SOURCE_URL) },
                     )
                     CardDivider()
                     SettingsRow(
                         title = stringResource(R.string.settings_about_license),
                         value = stringResource(R.string.settings_about_license_value),
+                        modifier = Modifier.clickable(role = Role.Button) { openUrl(LICENSE_URL) },
+                    )
+                    CardDivider()
+                    SettingsRow(
+                        title = stringResource(R.string.settings_about_privacy),
+                        value = stringResource(R.string.settings_about_privacy_value),
+                        modifier = Modifier.clickable(role = Role.Button) { openUrl(PRIVACY_URL) },
                     )
                 }
             }

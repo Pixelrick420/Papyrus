@@ -118,4 +118,6 @@ access</string>
     <string name="settings_about_source_value">github.com/Pixelrick420/Papyrus</string>
     <string name="settings_about_license">License</string>
     <string name="settings_about_license_value">Apache License 2.0</string>
+    <string name="settings_about_privacy">Privacy policy</string>
+    <string name="settings_about_privacy_value">Papyrus does not collect any user data</string>
 </resources>
