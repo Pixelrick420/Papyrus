@@ -13,11 +13,26 @@ enum class DocumentFormat(
     MARKDOWN("MD", setOf("md", "markdown", "mdown"), setOf("text/markdown", "text/x-markdown")),
     TEXT("TXT", setOf("txt", "text", "log"), setOf("text/plain")),
     DOC("DOC", setOf("doc"), setOf("application/msword")),
+    // Macro-enabled files and templates share the .docx package layout (`word/document.xml`); nothing
+    // here runs a macro, it only reads the body. `.dot` is left out on purpose: it is also Graphviz's
+    // extension, and a text file must not be claimed as a Word 97 template.
     DOCX(
-        "DOCX", setOf("docx"),
-        setOf("application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
+        "DOCX", setOf("docx", "docm", "dotx", "dotm"),
+        setOf(
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.template",
+            // Providers disagree on case for these two (IANA writes macroEnabled, MimeTypeMap lowercases
+            // it), and the picker filter compares case-sensitively, so both spellings are offered.
+            "application/vnd.ms-word.document.macroEnabled.12",
+            "application/vnd.ms-word.document.macroenabled.12",
+            "application/vnd.ms-word.template.macroEnabled.12",
+            "application/vnd.ms-word.template.macroenabled.12",
+        ),
     ),
-    ODT("ODT", setOf("odt"), setOf("application/vnd.oasis.opendocument.text")),
+    ODT(
+        "ODT", setOf("odt", "ott"),
+        setOf("application/vnd.oasis.opendocument.text", "application/vnd.oasis.opendocument.text-template"),
+    ),
 
     /** Split from TEXT only so the home list labels a .py file CODE; it renders identically. */
     CODE(
@@ -50,7 +65,7 @@ enum class DocumentFormat(
             val mime = mimeType?.lowercase()
             return entries.firstOrNull { ext.isNotEmpty() && ext in it.extensions }
                 ?: entries.firstOrNull { name.isNotEmpty() && name in it.extensions }
-                ?: entries.firstOrNull { mime != null && mime in it.mimeTypes }
+                ?: entries.firstOrNull { format -> mime != null && format.mimeTypes.any { it.equals(mime, ignoreCase = true) } }
                 ?: UNKNOWN
         }
     }
