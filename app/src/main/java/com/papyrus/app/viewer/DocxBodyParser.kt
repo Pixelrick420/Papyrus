@@ -15,6 +15,9 @@ internal class DocxRels(val targets: Map<String, String>, val links: Map<String,
 /** A footnote or endnote the body pointed at, in reading order; [label] is the marker left in the text. */
 internal class NoteRef(val endnote: Boolean, val id: String, val label: String)
 
+/** A comment the body pointed at, in reading order; [label] ("C1") is the marker left in the text. */
+internal class CommentRef(val id: String, val label: String)
+
 private val HYPERLINK_FIELD = Regex("HYPERLINK\\s+\"([^\"]+)\"", RegexOption.IGNORE_CASE)
 
 /** 914,400 EMU to the inch, 160 dp to the inch. */
@@ -27,7 +30,7 @@ private fun XmlPullParser.attr(name: String): String? = getAttributeValue(null, 
 private fun XmlPullParser.intAttr(name: String): Int? = getAttributeValue(null, name)?.toIntOrNull()
 
 /**
- * Reads one WordprocessingML part (`document.xml`, or `footnotes.xml` / `endnotes.xml`) into
+ * Reads one WordprocessingML part (`document.xml`, or `footnotes.xml` / `endnotes.xml` / `comments.xml`) into
  * [blocks], walking the XML once as a state machine. Not safe to reuse: one instance, one part.
  */
 internal class DocxBodyParser(
@@ -42,8 +45,14 @@ internal class DocxBodyParser(
     /** Footnotes and endnotes the *body* referenced. Empty for a notes part. */
     val noteRefs = mutableListOf<NoteRef>()
 
-    /** For a notes part: id -> the note's text. */
+    /** Comments the *body* referenced. Empty for a notes or comments part. */
+    val commentRefs = mutableListOf<CommentRef>()
+
+    /** For a notes or comments part: id -> the note's text. */
     val notes = HashMap<String, RichSnapshot>()
+
+    /** For a comments part: id -> "author · date". Footnotes have none. */
+    val noteBylines = HashMap<String, String>()
 
     /** What `w:pPr` said about the paragraph being read. */
     private class ParaState {
@@ -105,6 +114,12 @@ internal class DocxBodyParser(
     private var noteId: String? = null
     private var noteIsSeparator = false
     private var noteStart = 0
+    private var noteByline: String? = null
+
+    private var commentCount = 0
+
+    // Ids of the comment ranges open right now: text read while any is open sits under a highlight.
+    private val openComments = HashSet<String>()
 
     private var imageWidthEmu: Long? = null
     private var imageAlt: String? = null
@@ -130,7 +145,13 @@ internal class DocxBodyParser(
     private fun format(): CharFormat {
         runFormat?.let { return it }
         val base = styles.runProps(para.styleId, runStyleId)
-        val raw = runProps.mergedOver(base).toFormat(link)
+        val own = runProps.mergedOver(base).toFormat(link)
+        // A highlight the author chose is kept; the comment's own fill only goes where there is none.
+        val raw = if (openComments.isNotEmpty() && own.background == null) {
+            own.copy(background = COMMENT_RANGE_FILL)
+        } else {
+            own
+        }
         val shared = interned.getOrPut(raw) { raw }
         runFormat = shared
         return shared
@@ -233,12 +254,16 @@ internal class DocxBodyParser(
             }
             "w:instrText" -> inInstrText = true
             "w:footnoteReference", "w:endnoteReference" -> addNoteReference(p, endnote = name == "w:endnoteReference")
-            "w:footnote", "w:endnote" -> {
+            "w:footnote", "w:endnote", "w:comment" -> {
                 noteId = p.attr("w:id")
                 val type = p.attr("w:type")
                 noteIsSeparator = type == "separator" || type == "continuationSeparator" || type == "continuationNotice"
                 noteStart = blocks.size
+                noteByline = if (name == "w:comment") commentByline(p.attr("w:author"), p.attr("w:date")) else null
             }
+            "w:commentRangeStart" -> p.attr("w:id")?.let { openComments += it }
+            "w:commentRangeEnd" -> p.attr("w:id")?.let { openComments -= it }
+            "w:commentReference" -> addCommentReference(p)
             "wp:inline", "wp:anchor" -> {
                 imageWidthEmu = null
                 imageAlt = null
@@ -315,7 +340,7 @@ internal class DocxBodyParser(
                 tableDepth == 0 -> if (--paragraphDepth == 0) emitParagraph()
                 inCell -> endCellParagraph()
             }
-            "w:footnote", "w:endnote" -> endNote()
+            "w:footnote", "w:endnote", "w:comment" -> endNote()
         }
     }
 
@@ -347,8 +372,16 @@ internal class DocxBodyParser(
         appendText(label, element = true, withFormat = format().copy(script = ScriptShift.SUPER))
     }
 
+    /** The marker goes into the text now; the comment is read from `comments.xml` and appended after the body. */
+    private fun addCommentReference(p: XmlPullParser) {
+        val id = p.attr("w:id") ?: return
+        val label = "C${++commentCount}"
+        commentRefs += CommentRef(id, label)
+        appendText(label, element = true, withFormat = COMMENT_MARKER_FORMAT)
+    }
+
     /**
-     * Gathers the paragraphs a `w:footnote` produced into one note, and takes them back out of
+     * Gathers the paragraphs a `w:footnote` (or `w:comment`) produced into one note, and takes them back out of
      * [blocks]: a note belongs after the body, in the order it was referenced, not where its part has it.
      */
     private fun endNote() {
@@ -374,6 +407,7 @@ internal class DocxBodyParser(
             joined.appendRich(part.text, part.spans)
         }
         notes[id] = joined.snapshot { it.isWhitespace() }
+        noteByline?.let { noteBylines[id] = it }
     }
 
     /** The list marker this paragraph earns, or null if it is not in a list. Advances the list. */

@@ -109,11 +109,15 @@ sealed interface OfficeBlock {
     /** A rule: separates the notes from the body. */
     data object Divider : OfficeBlock
 
-    /** A footnote or endnote, gathered after the body. [label] matches the marker left in the text. */
+    /**
+     * A footnote, endnote or comment, gathered after the body. [label] matches the marker left in the
+     * text. [byline] is who wrote a comment and when; footnotes and endnotes have none.
+     */
     data class Note(
         val label: String,
         val text: String,
         val spans: List<TextSpan> = emptyList(),
+        val byline: String? = null,
     ) : OfficeBlock
 }
 
