@@ -257,19 +257,19 @@ class OfficeTextExtractor(
         val main = DocxBodyParser(factory, styles, ListCounters(numbering), rels, pending)
         main.parse(body)
         val blocks = main.blocks
-        if (main.noteRefs.isEmpty()) return blocks
+        if (main.noteRefs.isEmpty() && main.commentRefs.isEmpty()) return blocks
 
-        // Notes live in parts of their own, read with the same machinery as the body and placed after it.
-        fun readNotes(entry: String): Map<String, RichSnapshot> {
-            val bytes = parts[entry] ?: return emptyMap()
-            return optionalPart<Map<String, RichSnapshot>>(emptyMap()) {
-                val reader = DocxBodyParser(factory, styles, ListCounters(numbering), rels, mutableListOf())
-                reader.parse(bytes)
-                reader.notes
+        // Notes and comments live in parts of their own, read with the same machinery as the body and
+        // placed after it.
+        fun readPart(entry: String): DocxBodyParser? {
+            val bytes = parts[entry] ?: return null
+            return optionalPart<DocxBodyParser?>(null) {
+                DocxBodyParser(factory, styles, ListCounters(numbering), rels, mutableListOf()).also { it.parse(bytes) }
             }
         }
-        val footnotes = readNotes(DOCX_FOOTNOTES)
-        val endnotes = readNotes(DOCX_ENDNOTES)
+        val hasNotes = main.noteRefs.isNotEmpty()
+        val footnotes = if (hasNotes) readPart(DOCX_FOOTNOTES)?.notes.orEmpty() else emptyMap()
+        val endnotes = if (hasNotes) readPart(DOCX_ENDNOTES)?.notes.orEmpty() else emptyMap()
         val items = ArrayList<OfficeBlock>()
         for (wantEndnotes in listOf(false, true)) {
             for (ref in main.noteRefs) {
@@ -278,11 +278,23 @@ class OfficeTextExtractor(
                 items += OfficeBlock.Note(ref.label, note.text, note.spans)
             }
         }
-        if (items.isNotEmpty() && blocks.size < MAX_BLOCKS) {
-            blocks += OfficeBlock.Divider
-            blocks.addAll(items)
+        appendSection(blocks, items)
+
+        val commentsPart = if (main.commentRefs.isEmpty()) null else readPart(DOCX_COMMENTS)
+        val comments = ArrayList<OfficeBlock>()
+        for (ref in main.commentRefs) {
+            val comment = commentsPart?.notes?.get(ref.id) ?: continue
+            comments += OfficeBlock.Note(ref.label, comment.text, comment.spans, commentsPart.noteBylines[ref.id])
         }
+        appendSection(blocks, comments)
         return blocks
+    }
+
+    /** A rule, then [items]: notes and comments each sit under their own, after the body. */
+    private fun appendSection(blocks: MutableList<OfficeBlock>, items: List<OfficeBlock>) {
+        if (items.isEmpty() || blocks.size >= MAX_BLOCKS) return
+        blocks += OfficeBlock.Divider
+        blocks.addAll(items)
     }
 
     private fun parseOdt(
@@ -306,11 +318,12 @@ class OfficeTextExtractor(
         private const val DOCX_NUMBERING = "word/numbering.xml"
         private const val DOCX_FOOTNOTES = "word/footnotes.xml"
         private const val DOCX_ENDNOTES = "word/endnotes.xml"
+        private const val DOCX_COMMENTS = "word/comments.xml"
         private const val ODT_BODY = "content.xml"
         private const val ODT_STYLES = "styles.xml"
 
         private val DOCX_PARTS = setOf(
-            DOCX_BODY, DOCX_RELS, DOCX_STYLES, DOCX_NUMBERING, DOCX_FOOTNOTES, DOCX_ENDNOTES,
+            DOCX_BODY, DOCX_RELS, DOCX_STYLES, DOCX_NUMBERING, DOCX_FOOTNOTES, DOCX_ENDNOTES, DOCX_COMMENTS,
         )
         private val ODT_PARTS = setOf(ODT_BODY, ODT_STYLES)
 

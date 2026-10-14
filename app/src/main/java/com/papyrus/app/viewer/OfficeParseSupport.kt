@@ -9,6 +9,33 @@ internal typealias ParserFactory = (InputStream) -> XmlPullParser
 /** A single cell cannot usefully span more columns than this; a bigger value is a bad file. */
 internal const val MAX_MERGE_SPAN = 64
 
+/** Pale gold under the words a comment is about, and a stronger shade behind its numbered marker. */
+internal const val COMMENT_RANGE_FILL = 0xFFF2CC
+internal const val COMMENT_MARKER_FILL = 0xFFD966
+
+/** The raised "C1" left in the text where a comment is anchored; its own format, so it never becomes part of a link. */
+internal val COMMENT_MARKER_FORMAT = CharFormat(
+    bold = true,
+    script = ScriptShift.SUPER,
+    background = COMMENT_MARKER_FILL,
+)
+
+private val ISO_DATE = Regex("""\d{4}-\d{2}-\d{2}.*""")
+
+/**
+ * "Alice · 2024-05-01 10:15" from a comment's author and its ISO-8601 stamp, or null when it names
+ * neither. Minutes are enough, and the stamp's zone is not the reader's to care about, so both are
+ * dropped; a stamp that is not a date at all is ignored rather than shown as noise.
+ */
+internal fun commentByline(author: String?, stamp: String?): String? {
+    val who = author?.trim().orEmpty()
+    val whenText = stamp?.trim()?.takeIf { ISO_DATE.matches(it) }?.take(ISO_MINUTES)?.replace('T', ' ').orEmpty()
+    return listOf(who, whenText).filter { it.isNotEmpty() }.joinToString(" · ").ifEmpty { null }
+}
+
+/** "2024-05-01T10:15" is sixteen characters. */
+private const val ISO_MINUTES = 16
+
 /**
  * An image the body referenced: where it sits, and what the document said about it. [index] is the
  * block position it was seen at, before any image was inserted.
