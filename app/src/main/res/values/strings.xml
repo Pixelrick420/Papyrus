@@ -62,6 +62,7 @@ access</string>
     <string name="viewer_office_image_failed">This image format can\'t be shown on Android.</string>
 
     <string name="viewer_menu">More options</string>
+    <string name="viewer_outline_title">Outline</string>
     <string name="viewer_find_title">Find in file</string>
     <string name="viewer_info_title">File info</string>
     <string name="viewer_save_library">Save to library</string>

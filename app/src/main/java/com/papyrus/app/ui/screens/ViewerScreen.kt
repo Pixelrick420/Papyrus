@@ -84,7 +84,9 @@ import com.papyrus.app.ui.viewer.EncodingDialog
 import com.papyrus.app.ui.viewer.FileInfoSheet
 import com.papyrus.app.ui.viewer.FindInFileBar
 import com.papyrus.app.ui.viewer.MarkdownViewer
+import com.papyrus.app.ui.viewer.OfficeOutlineSheet
 import com.papyrus.app.ui.viewer.OfficeViewer
+import com.papyrus.app.ui.viewer.OutlineJump
 import com.papyrus.app.ui.viewer.PasswordDialog
 import com.papyrus.app.ui.viewer.PdfSelectionState
 import com.papyrus.app.ui.viewer.PdfViewer
@@ -95,6 +97,7 @@ import com.papyrus.app.ui.viewer.ZoomState
 import com.papyrus.app.ui.viewer.copyToClipboard
 import com.papyrus.app.ui.viewer.rememberLingerVisible
 import com.papyrus.app.ui.viewer.rememberZoomState
+import com.papyrus.app.viewer.officeOutline
 import kotlinx.coroutines.launch
 
 /** Same inset as Home, so the find pill lines up with the Home search pill. */
@@ -125,6 +128,13 @@ fun ViewerScreen(
     var menuOpen by remember { mutableStateOf(false) }
     var infoOpen by remember { mutableStateOf(false) }
     var encodingOpen by remember { mutableStateOf(false) }
+    var outlineOpen by remember { mutableStateOf(false) }
+    // The heading the outline last chose; the Office viewer scrolls to it.
+    var outlineJump by remember { mutableStateOf<OutlineJump?>(null) }
+
+    // Only a document that used heading styles has an outline; without one the menu item is not offered.
+    val officeBlocks = (state.content as? ViewerContent.Office)?.blocks
+    val outline = remember(officeBlocks) { officeBlocks?.let { officeOutline(it) }.orEmpty() }
 
     // Held here (not in [PdfViewer]) so the header's Copy can reach it; keyed on the source.
     val selectionState = remember((state.content as? ViewerContent.Pdf)?.source) {
@@ -199,6 +209,7 @@ fun ViewerScreen(
             ViewerHeader(
                 title = state.document?.title.orEmpty(),
                 findAvailable = findAvailable,
+                outlineAvailable = outline.isNotEmpty(),
                 encodingAvailable = encodingAvailable,
                 menuOpen = menuOpen,
                 selectionActive = selectionState.hasSelection,
@@ -209,6 +220,7 @@ fun ViewerScreen(
                 onMenuOpenChange = { menuOpen = it },
                 onBack = onBack,
                 onFind = viewModel::openFind,
+                onOutline = { outlineOpen = true },
                 onEncoding = { encodingOpen = true },
                 onInfo = { infoOpen = true },
                 onShare = shareDocument,
@@ -303,6 +315,7 @@ fun ViewerScreen(
                         activeHit = find.activeIndex,
                         activeOccurrence = find.activeOccurrence,
                         zoom = zoom,
+                        jumpTo = outlineJump,
                     )
                     // The dialog covers the page; only an in-flight retry is worth showing behind it.
                     is ViewerContent.NeedsPassword ->
@@ -372,6 +385,17 @@ fun ViewerScreen(
             onDismiss = { infoOpen = false },
         )
     }
+
+    if (outlineOpen && outline.isNotEmpty()) {
+        OfficeOutlineSheet(
+            entries = outline,
+            onSelect = { entry ->
+                outlineJump = OutlineJump(entry.index)
+                outlineOpen = false
+            },
+            onDismiss = { outlineOpen = false },
+        )
+    }
 }
 
 private const val FIND_ANIMATION_MS = 200
@@ -381,6 +405,7 @@ private const val FIND_ANIMATION_MS = 200
 private fun ViewerHeader(
     title: String,
     findAvailable: Boolean,
+    outlineAvailable: Boolean,
     encodingAvailable: Boolean,
     menuOpen: Boolean,
     selectionActive: Boolean,
@@ -391,6 +416,7 @@ private fun ViewerHeader(
     onMenuOpenChange: (Boolean) -> Unit,
     onBack: () -> Unit,
     onFind: () -> Unit,
+    onOutline: () -> Unit,
     onEncoding: () -> Unit,
     onInfo: () -> Unit,
     onShare: () -> Unit,
@@ -461,6 +487,13 @@ private fun ViewerHeader(
                         enabled = findAvailable,
                         onClick = { onMenuOpenChange(false); onFind() },
                     )
+                    // Only for a document with headings: it lists them to jump between.
+                    if (outlineAvailable) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.viewer_outline_title)) },
+                            onClick = { onMenuOpenChange(false); onOutline() },
+                        )
+                    }
                     DropdownMenuItem(
                         text = { Text(stringResource(R.string.viewer_info_title)) },
                         onClick = { onMenuOpenChange(false); onInfo() },
