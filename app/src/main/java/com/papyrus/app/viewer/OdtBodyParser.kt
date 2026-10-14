@@ -2,8 +2,8 @@ package com.papyrus.app.viewer
 
 import org.xmlpull.v1.XmlPullParser
 
-/** Subtrees whose text is annotation rather than body: comments (author and timestamp included), deleted text. */
-private val ODT_SKIPPED = setOf("office:annotation", "text:tracked-changes")
+/** Subtrees whose text is not body: deleted text. Comments are read, into notes of their own. */
+private val ODT_SKIPPED = setOf("text:tracked-changes")
 
 private const val MAX_LIST_LEVEL = 8
 
@@ -51,9 +51,22 @@ internal class OdtBodyParser(
      * A `text:note` being read. Its body is kept apart from the paragraph it annotates, and the
      * formatting state of that paragraph is put away until the note is closed.
      */
-    private class NoteFrame(val endnote: Boolean, val savedSpans: List<RunProps>, val savedLink: String?) {
+    private class NoteFrame(
+        val endnote: Boolean,
+        val savedSpans: List<RunProps>,
+        val savedLink: String?,
+        /** An `office:annotation` rather than a `text:note`; [outer] is the note it sat inside, if any. */
+        val comment: Boolean = false,
+        val outer: NoteFrame? = null,
+    ) {
         val body = RichTextBuilder()
         val citation = StringBuilder()
+        val author = StringBuilder()
+        val stamp = StringBuilder()
+
+        /** Where `dc:creator` or `dc:date` text goes while one is open. */
+        var field: StringBuilder? = null
+        var rangeName: String? = null
         var inCitation = false
         var paragraphDepth = 0
         var styleName: String? = null
@@ -112,6 +125,13 @@ internal class OdtBodyParser(
     private var footnoteCount = 0
     private var endnoteCount = 0
 
+    // A comment on a range is announced where the range starts and closed where it ends; the marker
+    // belongs at the end, with the words, so its label waits here, and the name keeps the highlight open.
+    private var commentCount = 0
+    private val comments = ArrayList<OfficeBlock.Note>()
+    private val pendingMarkers = HashMap<String, String>()
+    private val openRanges = HashSet<String>()
+
     private var frameWidthDp: Float? = null
     private var lastImage: PendingImage? = null
     private var altText: StringBuilder? = null
@@ -141,7 +161,13 @@ internal class OdtBodyParser(
         val style = if (open != null) open.styleName else info.styleName
         var props = styles.paragraphRun(style)
         for (span in spanStack) props = span.mergedOver(props)
-        val raw = props.toFormat(link)
+        val own = props.toFormat(link)
+        // Words under a comment's range are marked, unless the author already gave them a highlight.
+        val raw = if (open == null && openRanges.isNotEmpty() && own.background == null) {
+            own.copy(background = COMMENT_RANGE_FILL)
+        } else {
+            own
+        }
         format = interned.getOrPut(raw) { raw }
     }
 
@@ -163,6 +189,11 @@ internal class OdtBodyParser(
         val open = note
         if (open != null && open.inCitation) {
             open.citation.append(text)
+            return
+        }
+        val field = open?.field
+        if (field != null) {
+            field.append(text)
             return
         }
         val alt = altText
@@ -247,6 +278,10 @@ internal class OdtBodyParser(
             }
             "text:note" -> startNote(p)
             "text:note-citation" -> note?.inCitation = true
+            "office:annotation" -> startComment(p)
+            "office:annotation-end" -> p.attr("office:name")?.let(::endCommentRange)
+            "dc:creator" -> note?.let { if (it.comment) it.field = it.author }
+            "dc:date" -> note?.let { if (it.comment) it.field = it.stamp }
             "draw:frame" -> frameWidthDp = lengthToTwips(p.attr("svg:width"))?.let { twipsToDp(it) }
             "draw:image" -> if (tableDepth == 0) {
                 p.attr("xlink:href")?.let { href ->
@@ -296,6 +331,8 @@ internal class OdtBodyParser(
             "text:list" -> endList()
             "text:note-citation" -> note?.inCitation = false
             "text:note" -> endNote()
+            "office:annotation" -> endComment()
+            "dc:creator", "dc:date" -> note?.field = null
             "draw:frame" -> {
                 frameWidthDp = null
                 lastImage = null
@@ -498,11 +535,57 @@ internal class OdtBodyParser(
         }
     }
 
+    /**
+     * A comment's body is read like a note's and kept for the end. Its marker goes in at once for a
+     * comment at a point, and at the end of the range for one on a range, where Word puts it too.
+     */
+    private fun startComment(p: XmlPullParser) {
+        note = NoteFrame(false, ArrayList(spanStack), link, comment = true, outer = note).also {
+            it.rangeName = p.attr("office:name")
+        }
+        spanStack.clear()
+        link = null
+    }
+
+    private fun endComment() {
+        val frame = note?.takeIf { it.comment } ?: return
+        note = frame.outer
+        spanStack.clear()
+        spanStack.addAll(frame.savedSpans)
+        link = frame.savedLink
+        recomputeFormat()
+        val snapshot = frame.body.snapshot { it.isWhitespace() }
+        val room = blocks.size + footnotes.size + endnotes.size + comments.size < OfficeTextExtractor.MAX_BLOCKS
+        // A comment with no words has nothing to show, so it leaves no marker pointing at nothing.
+        if (snapshot.text.isBlank() || !room) return
+        val label = "C${++commentCount}"
+        val byline = commentByline(frame.author.toString(), frame.stamp.toString())
+        comments += OfficeBlock.Note(label, snapshot.text, snapshot.spans, byline)
+        val name = frame.rangeName
+        if (name == null) {
+            appendText(label, COMMENT_MARKER_FORMAT)
+        } else {
+            pendingMarkers[name] = label
+            openRanges += name
+            recomputeFormat()
+        }
+    }
+
+    private fun endCommentRange(name: String) {
+        if (!openRanges.remove(name)) return
+        recomputeFormat()
+        pendingMarkers.remove(name)?.let { appendText(it, COMMENT_MARKER_FORMAT) }
+    }
+
     private fun appendNotes() {
-        if (footnotes.isEmpty() && endnotes.isEmpty()) return
-        if (blocks.size >= OfficeTextExtractor.MAX_BLOCKS) return
+        appendSection(footnotes + endnotes)
+        appendSection(comments)
+    }
+
+    /** A rule, then [items]. */
+    private fun appendSection(items: List<OfficeBlock>) {
+        if (items.isEmpty() || blocks.size >= OfficeTextExtractor.MAX_BLOCKS) return
         blocks += OfficeBlock.Divider
-        blocks.addAll(footnotes)
-        blocks.addAll(endnotes)
+        blocks.addAll(items)
     }
 }
