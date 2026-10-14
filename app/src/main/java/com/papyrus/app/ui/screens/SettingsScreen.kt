@@ -1,7 +1,5 @@
 package com.papyrus.app.ui.screens
 
-import android.content.ActivityNotFoundException
-import android.content.Intent
 import androidx.annotation.StringRes
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -48,7 +46,6 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.core.net.toUri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -58,6 +55,7 @@ import com.papyrus.app.data.AppSettings
 import com.papyrus.app.data.SettingsRepository
 import com.papyrus.app.data.ThemeMode
 import com.papyrus.app.ui.AppViewModelProvider
+import com.papyrus.app.ui.viewer.openLink
 import kotlinx.coroutines.flow.StateFlow
 
 class SettingsViewModel(private val repository: SettingsRepository) : ViewModel() {
@@ -110,14 +108,10 @@ fun SettingsScreen(
     val context = LocalContext.current
     var themeDialogOpen by remember { mutableStateOf(false) }
 
-    // Opened in the person's browser; Papyrus itself still never touches the network.
-    val openUrl: (String) -> Unit = { url ->
-        try {
-            context.startActivity(Intent(Intent.ACTION_VIEW, url.toUri()))
-        } catch (ignored: ActivityNotFoundException) {
-            // No browser installed: nothing to open the link with.
-        }
-    }
+    // Opened in the person's browser; Papyrus itself still never touches the network. The viewer's
+    // own opener is reused so every link in the app opens the same way and cannot throw: it refuses
+    // any scheme other than http(s), mailto and tel, and reports nothing openable as `false`.
+    val openUrl: (String) -> Unit = { openLink(context, it) }
 
     Scaffold { padding ->
         Column(

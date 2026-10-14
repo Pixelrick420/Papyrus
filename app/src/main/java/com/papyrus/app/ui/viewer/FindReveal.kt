@@ -56,11 +56,14 @@ internal fun FindText(
     val scheme = MaterialTheme.colorScheme
     val surface = background ?: scheme.surface
     val palette = remember(surface, scheme.primary) { FormatPalette(surface, scheme.primary) }
-    val annotated = remember(text, spans, highlight, palette, syntax) {
+    // A tapped link goes back to the viewer screen, which owns the failure message; the default
+    // opener does nothing, so a surface outside a viewer keeps working.
+    val opener = LocalLinkOpener.current
+    val annotated = remember(text, spans, highlight, palette, syntax, opener) {
         when {
             syntax != null -> syntaxHighlightedText(text, syntax, highlight)
             spans.isEmpty() -> highlightedText(text, highlight)
-            else -> formattedText(text, spans, highlight, palette)
+            else -> formattedText(text, spans, highlight, palette, opener)
         }
     }
     val activeRange = remember(text, highlight) { highlight?.activeRange(text) }

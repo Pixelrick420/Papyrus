@@ -99,12 +99,16 @@ private fun spanStyleFor(format: CharFormat, palette: FormatPalette): SpanStyle 
 /**
  * [text] with the document's [spans] under any find highlights, added last so a match wins over
  * formatting and each match gets exactly one style.
+ *
+ * [onLink] takes a tapped link instead of the text framework's default handler, so a scheme the
+ * document asks for but no app can open is reported instead of throwing.
  */
 internal fun formattedText(
     text: String,
     spans: List<TextSpan>,
     highlight: FindHighlight?,
     palette: FormatPalette,
+    onLink: (String) -> Unit = {},
 ): AnnotatedString {
     val ranges = if (highlight == null) emptyList() else findMatchRanges(text, highlight.query)
     if (spans.isEmpty() && ranges.isEmpty()) return AnnotatedString(text)
@@ -115,8 +119,12 @@ internal fun formattedText(
             val end = span.end.coerceIn(start, text.length)
             if (end == start) continue
             addStyle(spanStyleFor(span.format, palette), start, end)
-            // The look is the span style's; the annotation only makes the range tappable.
-            span.format.link?.let { addLink(LinkAnnotation.Url(it), start, end) }
+            // The look is the span style's; the annotation only makes the range tappable, and the
+            // listener keeps opening it in the app's own hands rather than the framework's.
+            val target = span.format.link
+            if (target != null) {
+                addLink(LinkAnnotation.Url(url = target, linkInteractionListener = { onLink(target) }), start, end)
+            }
         }
         ranges.forEachIndexed { index, range ->
             val style = if (index == highlight?.activeOccurrence) ActiveSpan else OtherSpan
