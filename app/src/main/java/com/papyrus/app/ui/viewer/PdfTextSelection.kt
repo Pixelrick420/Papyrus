@@ -29,7 +29,9 @@ import androidx.compose.ui.unit.dp
 import com.papyrus.app.R
 import com.papyrus.app.viewer.NormRect
 import com.papyrus.app.viewer.PagePoint
+import com.papyrus.app.viewer.PdfLinkTarget
 import com.papyrus.app.viewer.PdfPageGeometry
+import com.papyrus.app.viewer.PdfPageLink
 import com.papyrus.app.viewer.PdfPageText
 import com.papyrus.app.viewer.PdfSelection
 import com.papyrus.app.viewer.PdfTextPos
@@ -233,6 +235,27 @@ internal fun pageHandles(
     )
 }
 
+/** A faint wash plus an underline on each link rectangle, under the find highlights and the selection. */
+internal fun DrawScope.drawLinks(rects: List<NormRect>, color: Color) {
+    for (rect in rects) {
+        val left = rect.left * size.width
+        val top = rect.top * size.height
+        val width = (rect.right - rect.left) * size.width
+        val height = (rect.bottom - rect.top) * size.height
+        drawRect(
+            color = color.copy(alpha = LINK_FILL_ALPHA),
+            topLeft = Offset(left, top),
+            size = Size(width, height),
+        )
+        drawLine(
+            color = color.copy(alpha = LINK_LINE_ALPHA),
+            start = Offset(left, top + height),
+            end = Offset(left + width, top + height),
+            strokeWidth = 1.dp.toPx(),
+        )
+    }
+}
+
 internal fun DrawScope.drawSelection(rects: List<NormRect>, handles: PageHandles, color: Color, radius: Float) {
     for (rect in rects) {
         drawRect(
@@ -249,24 +272,45 @@ internal fun DrawScope.drawSelection(rects: List<NormRect>, handles: PageHandles
 
 private const val SELECTION_ALPHA = 0.3f
 
-private enum class Press { LONG, TAP, OTHER }
+/** A faint wash plus an underline: enough to read as a link, light enough not to hide the page under it. */
+private const val LINK_FILL_ALPHA = 0.12f
+private const val LINK_LINE_ALPHA = 0.6f
+
+/** How near a tap must land to a link rectangle, in page pixels, before it counts as hitting the link. */
+internal val LinkTapSlop = 4.dp
 
 /**
- * Long-press selects, drag extends, tap dismisses, a knob moves an end. [geometry] places a finger
- * that has left the page, [handles] holds this page's knobs. Nothing is claimed until the touch is
- * known: a moving press or a second finger is ignored, so scroll and pinch-zoom are unaffected, and a
- * tap is watched but not consumed, so double-tap zoom still works. Only a long-press or a knob
- * consumes, and being innermost it does so before the list's scroll sees the drag.
+ * What a press turned out to be. A tap carries its release so a link tap can consume it — that is
+ * what keeps the double-tap zoom above from also firing under a tap that opened a link.
+ */
+private sealed interface Press {
+    class Tap(val up: PointerInputChange) : Press
+    data object Long : Press
+    data object Other : Press
+}
+
+/**
+ * Long-press selects, drag extends, tap dismisses or follows a link, a knob moves an end. [geometry]
+ * places a finger that has left the page, [handles] holds this page's knobs, [links] its link
+ * rectangles and [pageSize] the pixels they are drawn at. Nothing is claimed until the touch is
+ * known: a moving press or a second finger is ignored, so scroll and pinch-zoom are unaffected, and
+ * an ordinary tap is watched but not consumed, so double-tap zoom still works. Only a long-press, a
+ * knob or a tap that landed on a link consumes, and being innermost it does so before the list's
+ * scroll sees the drag.
  */
 internal fun Modifier.pdfSelectionGestures(
     state: PdfSelectionState,
     page: Int,
     geometry: State<PdfPageGeometry>,
     handles: State<PageHandles>,
+    links: State<List<PdfPageLink>>,
+    pageSize: State<IntSize>,
+    onLink: (PdfLinkTarget) -> Unit,
     haptics: HapticFeedback,
     reachPx: Float,
     grabRadiusPx: Float,
-): Modifier = pointerInput(state, page, reachPx, grabRadiusPx) {
+    linkSlopPx: Float,
+): Modifier = pointerInput(state, page, reachPx, grabRadiusPx, linkSlopPx) {
     awaitEachGesture {
         val down = awaitFirstDown(requireUnconsumed = false)
         val grabbed = handles.value.grab(down.position, grabRadiusPx)
@@ -280,10 +324,18 @@ internal fun Modifier.pdfSelectionGestures(
             state.finishGesture()
             return@awaitEachGesture
         }
-        when (classifyPress(down)) {
-            Press.TAP -> state.clear()
-            Press.OTHER -> Unit
-            Press.LONG -> {
+        when (val press = classifyPress(down)) {
+            is Press.Tap -> {
+                val target = linkAt(links.value, pageSize.value, down.position, linkSlopPx)
+                if (target != null) {
+                    press.up.consume()
+                    onLink(target)
+                } else {
+                    state.clear()
+                }
+            }
+            Press.Other -> Unit
+            Press.Long -> {
                 haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                 val where = geometry.value
                 val reach = reachPx / where.heightOf(page)
@@ -297,6 +349,22 @@ internal fun Modifier.pdfSelectionGestures(
     }
 }
 
+/** The link whose rectangle holds [point] (page pixels), or null when none does. */
+private fun linkAt(links: List<PdfPageLink>, size: IntSize, point: Offset, slopPx: Float): PdfLinkTarget? {
+    if (links.isEmpty() || size == IntSize.Zero) return null
+    val w = size.width.toFloat()
+    val h = size.height.toFloat()
+    for (link in links) {
+        val rect = link.rect
+        val left = rect.left * w - slopPx
+        val top = rect.top * h - slopPx
+        val right = rect.right * w + slopPx
+        val bottom = rect.bottom * h + slopPx
+        if (point.x in left..right && point.y in top..bottom) return link.target
+    }
+    return null
+}
+
 /** Waits to see what a press is: held still for the long-press time, let go early, or something else. */
 private suspend fun AwaitPointerEventScope.classifyPress(down: PointerInputChange): Press {
     var verdict: Press? = null
@@ -306,14 +374,14 @@ private suspend fun AwaitPointerEventScope.classifyPress(down: PointerInputChang
             val change = event.changes.firstOrNull { it.id == down.id }
             verdict = when {
                 // Consumed means a pinch above has taken it; a second finger is not ours either.
-                change == null || change.isConsumed || event.changes.size > 1 -> Press.OTHER
-                !change.pressed -> Press.TAP
-                (change.position - down.position).getDistance() > viewConfiguration.touchSlop -> Press.OTHER
+                change == null || change.isConsumed || event.changes.size > 1 -> Press.Other
+                !change.pressed -> Press.Tap(change)
+                (change.position - down.position).getDistance() > viewConfiguration.touchSlop -> Press.Other
                 else -> null
             }
         }
     }
-    return verdict ?: Press.LONG
+    return verdict ?: Press.Long
 }
 
 /** Follows [id] until it lifts, consuming moves so the list cannot scroll under a drag. */

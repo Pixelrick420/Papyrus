@@ -31,6 +31,7 @@ import com.papyrus.app.viewer.PDF_UNLOCK_DIR
 import com.papyrus.app.viewer.PdfEncryption
 import com.papyrus.app.viewer.PdfPageSource
 import com.papyrus.app.viewer.PdfPageText
+import com.papyrus.app.viewer.PdfPageLink
 import com.papyrus.app.viewer.PdfPageTextSource
 import com.papyrus.app.viewer.PdfPasswordException
 import com.papyrus.app.viewer.PdfTextExtractor
@@ -558,15 +559,22 @@ class ViewerViewModel(
     /** One page of text plus boxes; a search read is reused unless it was past the box budget. */
     suspend fun pageText(index: Int): PdfPageText? {
         pdfPageText?.getOrNull(index)?.takeIf { it.hasBoxes || it.text.isBlank() }?.let { return it }
+        return pageSource()?.page(index)
+    }
+
+    /** One page's links. Shares [pageTextSource] with [pageText], so the document is opened once. */
+    suspend fun pageLinks(index: Int): List<PdfPageLink>? = pageSource()?.links(index)
+
+    /** The one-page-at-a-time reader for the current bytes, opened once and reused until the file changes. */
+    private fun pageSource(): PdfPageTextSource? {
         val uri = contentUri
         if (uri.isEmpty()) return null
-        val source = pageTextSource?.takeIf { pageTextSourceUri == uri }
+        return pageTextSource?.takeIf { pageTextSourceUri == uri }
             ?: PdfPageTextSource(app, uri.toUri()).also {
                 pageTextSource?.close()
                 pageTextSource = it
                 pageTextSourceUri = uri
             }
-        return source.page(index)
     }
 
     /** [picked] is checked against the title, so a wrong pick cannot re-point the row. */

@@ -43,6 +43,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -83,11 +84,13 @@ import com.papyrus.app.ui.components.ControlHeight
 import com.papyrus.app.ui.viewer.EncodingDialog
 import com.papyrus.app.ui.viewer.FileInfoSheet
 import com.papyrus.app.ui.viewer.FindInFileBar
+import com.papyrus.app.ui.viewer.LocalLinkOpener
 import com.papyrus.app.ui.viewer.MarkdownViewer
 import com.papyrus.app.ui.viewer.OfficeOutlineSheet
 import com.papyrus.app.ui.viewer.OfficeViewer
 import com.papyrus.app.ui.viewer.OutlineJump
 import com.papyrus.app.ui.viewer.PasswordDialog
+import com.papyrus.app.ui.viewer.PdfPageJump
 import com.papyrus.app.ui.viewer.PdfSelectionState
 import com.papyrus.app.ui.viewer.PdfViewer
 import com.papyrus.app.ui.viewer.PlainTextOptions
@@ -95,8 +98,10 @@ import com.papyrus.app.ui.viewer.PlainTextViewer
 import com.papyrus.app.ui.viewer.ReadoutBadge
 import com.papyrus.app.ui.viewer.ZoomState
 import com.papyrus.app.ui.viewer.copyToClipboard
+import com.papyrus.app.ui.viewer.openLink
 import com.papyrus.app.ui.viewer.rememberLingerVisible
 import com.papyrus.app.ui.viewer.rememberZoomState
+import com.papyrus.app.viewer.PdfLinkTarget
 import com.papyrus.app.viewer.officeOutline
 import kotlinx.coroutines.launch
 
@@ -123,6 +128,23 @@ fun ViewerScreen(
     val chooserTitle = stringResource(R.string.action_share)
     val shareDocument: () -> Unit = {
         viewModel.share { send -> context.startActivity(Intent.createChooser(send, chooserTitle)) }
+    }
+
+    // One opening path for every surface in this screen, so an unopenable link reports the same way.
+    val followLink: (String) -> Unit = remember(context) {
+        { url ->
+            if (!openLink(context, url)) Toast.makeText(context, R.string.viewer_link_failed, Toast.LENGTH_SHORT).show()
+        }
+    }
+    // A link to another page of the PDF, by identity: two taps on the same link are two jumps.
+    var pageJump by remember { mutableStateOf<PdfPageJump?>(null) }
+    val followPdfLink: (PdfLinkTarget) -> Unit = remember(context) {
+        { target ->
+            when (target) {
+                is PdfLinkTarget.External -> followLink(target.url)
+                is PdfLinkTarget.Internal -> pageJump = PdfPageJump(target.page)
+            }
+        }
     }
 
     var menuOpen by remember { mutableStateOf(false) }
@@ -265,77 +287,82 @@ fun ViewerScreen(
                     .padding(start = ViewerContentMargin, top = ViewerContentMargin, end = ViewerContentMargin)
                     .clipToBounds(),
             ) {
-                when (val content = state.content) {
-                    ViewerContent.Loading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
-                    is ViewerContent.Pdf -> PdfViewer(
-                        source = content.source,
-                        aspectRatios = content.aspectRatios,
-                        zoom = zoom,
-                        selectionState = selectionState,
-                        pageHits = find.hits,
-                        pageMatches = find.pageMatches,
-                        activePage = find.activeIndex,
-                        activeOccurrence = find.activeOccurrence,
-                    )
-                    is ViewerContent.Markdown -> MarkdownViewer(
-                        markwon = content.markwon,
-                        source = content.source,
-                        text = content.text,
-                        findQuery = find.query,
-                        zoom = zoom,
-                    )
-                    is ViewerContent.PlainText -> {
-                        // Keyed on the fields, not the content: comparing two contents would walk every chunk.
-                        val options = remember(
-                            content.language, content.lexStates, content.lineCount, content.maxLineColumns, content.truncated,
-                            settings.wrapLines, settings.showLineNumbers, settings.syntaxHighlighting,
-                        ) {
-                            PlainTextOptions(
-                                wrapLines = settings.wrapLines,
-                                showLineNumbers = settings.showLineNumbers,
-                                language = content.language.takeIf { settings.syntaxHighlighting },
-                                lexStates = content.lexStates,
-                                lineCount = content.lineCount,
-                                maxLineColumns = content.maxLineColumns,
-                                truncated = content.truncated,
+                CompositionLocalProvider(LocalLinkOpener provides followLink) {
+                    when (val content = state.content) {
+                        ViewerContent.Loading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
+                        is ViewerContent.Pdf -> PdfViewer(
+                            source = content.source,
+                            aspectRatios = content.aspectRatios,
+                            zoom = zoom,
+                            selectionState = selectionState,
+                            pageHits = find.hits,
+                            pageMatches = find.pageMatches,
+                            activePage = find.activeIndex,
+                            activeOccurrence = find.activeOccurrence,
+                            pageJump = pageJump,
+                            loadLinks = viewModel::pageLinks,
+                            onLinkTarget = followPdfLink,
+                        )
+                        is ViewerContent.Markdown -> MarkdownViewer(
+                            markwon = content.markwon,
+                            source = content.source,
+                            text = content.text,
+                            findQuery = find.query,
+                            zoom = zoom,
+                        )
+                        is ViewerContent.PlainText -> {
+                            // Keyed on the fields, not the content: comparing two contents would walk every chunk.
+                            val options = remember(
+                                content.language, content.lexStates, content.lineCount, content.maxLineColumns, content.truncated,
+                                settings.wrapLines, settings.showLineNumbers, settings.syntaxHighlighting,
+                            ) {
+                                PlainTextOptions(
+                                    wrapLines = settings.wrapLines,
+                                    showLineNumbers = settings.showLineNumbers,
+                                    language = content.language.takeIf { settings.syntaxHighlighting },
+                                    lexStates = content.lexStates,
+                                    lineCount = content.lineCount,
+                                    maxLineColumns = content.maxLineColumns,
+                                    truncated = content.truncated,
+                                )
+                            }
+                            PlainTextViewer(
+                                chunks = content.chunks,
+                                findQuery = find.query,
+                                activeHit = find.activeIndex,
+                                activeOccurrence = find.activeOccurrence,
+                                zoom = zoom,
+                                options = options,
                             )
                         }
-                        PlainTextViewer(
-                            chunks = content.chunks,
+                        is ViewerContent.Office -> OfficeViewer(
+                            blocks = content.blocks,
                             findQuery = find.query,
                             activeHit = find.activeIndex,
                             activeOccurrence = find.activeOccurrence,
                             zoom = zoom,
-                            options = options,
+                            jumpTo = outlineJump,
                         )
-                    }
-                    is ViewerContent.Office -> OfficeViewer(
-                        blocks = content.blocks,
-                        findQuery = find.query,
-                        activeHit = find.activeIndex,
-                        activeOccurrence = find.activeOccurrence,
-                        zoom = zoom,
-                        jumpTo = outlineJump,
-                    )
-                    // The dialog covers the page; only an in-flight retry is worth showing behind it.
-                    is ViewerContent.NeedsPassword ->
-                        if (content.checking) CircularProgressIndicator(Modifier.align(Alignment.Center))
-                    is ViewerContent.Failed -> Column(
-                        Modifier.fillMaxSize().padding(32.dp),
-                        verticalArrangement = Arrangement.Center,
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                    ) {
-                        Text(
-                            text = content.message.asString(),
-                            style = MaterialTheme.typography.titleMedium,
-                            textAlign = TextAlign.Center,
-                        )
-                        // The same outlined button as Home's Open file.
-                        OutlinedButton(
-                            onClick = onBack,
-                            modifier = Modifier.padding(top = 16.dp).heightIn(min = ControlHeight),
+                        // The dialog covers the page; only an in-flight retry is worth showing behind it.
+                        is ViewerContent.NeedsPassword ->
+                            if (content.checking) CircularProgressIndicator(Modifier.align(Alignment.Center))
+                        is ViewerContent.Failed -> Column(
+                            Modifier.fillMaxSize().padding(32.dp),
+                            verticalArrangement = Arrangement.Center,
+                            horizontalAlignment = Alignment.CenterHorizontally,
                         ) {
-                            Text(stringResource(R.string.action_back))
+                            Text(
+                                text = content.message.asString(),
+                                style = MaterialTheme.typography.titleMedium,
+                                textAlign = TextAlign.Center,
+                            )
+                            // The same outlined button as Home's Open file.
+                            OutlinedButton(
+                                onClick = onBack,
+                                modifier = Modifier.padding(top = 16.dp).heightIn(min = ControlHeight),
+                            ) {
+                                Text(stringResource(R.string.action_back))
+                            }
                         }
                     }
                 }

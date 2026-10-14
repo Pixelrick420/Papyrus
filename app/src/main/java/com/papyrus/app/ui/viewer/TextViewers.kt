@@ -131,6 +131,11 @@ fun MarkdownViewer(
     val rendered = rememberRenderedMarkdown(markwon, source, text, textPx, textColor, linkColor)
     val highlighted = rememberHighlightedText(rendered, findQuery)
     val textState = remember { MarkdownTextState() }
+    // Markwon leaves the TextView without a movement method, which is why its links do nothing at
+    // all today; this one makes them tappable and routes the tap through the viewer's own opener
+    // instead of the resolver that turns a `file://` link into a crash.
+    val opener = LocalLinkOpener.current
+    val movement = remember(opener) { GuardedLinkMovementMethod(opener) }
 
     // A commit re-wraps the text, so the anchor pins the paragraph at the commit; the text reaches its
     // new height a measure later, so the scroll follows and the bridge paints between.
@@ -163,6 +168,7 @@ fun MarkdownViewer(
                         update = { view ->
                             view.setTextColor(textColor)
                             view.setLinkTextColor(linkColor)
+                            view.movementMethod = movement
                             // Committed scale, not live: the preview layer paints the in-flight gesture,
                             // gesture, and resizing per frame relaid out the whole document.
                             view.setTextSize(TypedValue.COMPLEX_UNIT_PX, textPx)
