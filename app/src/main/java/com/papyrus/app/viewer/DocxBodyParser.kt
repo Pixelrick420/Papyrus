@@ -104,6 +104,9 @@ internal class DocxBodyParser(
     // Inside a `...PrChange`: the *previous* properties of a tracked change, not the current ones.
     private var changeDepth = 0
 
+    // An `m:oMath` equation is read by its own walker and arrives as one line of text.
+    private val math = OmmlLinearizer()
+
     private var link: String? = null
     private var fieldLink: String? = null
     private var inInstrText = false
@@ -168,6 +171,10 @@ internal class DocxBodyParser(
     }
 
     private fun onText(text: String) {
+        if (math.active) {
+            math.text(text)
+            return
+        }
         if (inInstrText) {
             instruction.append(text)
             return
@@ -182,6 +189,11 @@ internal class DocxBodyParser(
             return
         }
         if (changeDepth > 0) return
+        if (math.active || name == "m:oMath") {
+            if (!math.active) startEquation()
+            math.start(name, p.attr("m:val"))
+            return
+        }
         if (inRPr && name != "w:rPr") {
             if (name == "w:rStyle") runStyleId = p.attr("w:val") else runProps.applyDocx(p)
             return
@@ -300,6 +312,10 @@ internal class DocxBodyParser(
             return
         }
         if (changeDepth > 0) return
+        if (math.active) {
+            math.end(name)?.let(::appendEquation)
+            return
+        }
         when (name) {
             "w:t" -> inText = false
             "w:tabs" -> inTabStops = false
@@ -342,6 +358,20 @@ internal class DocxBodyParser(
             }
             "w:footnote", "w:endnote", "w:comment" -> endNote()
         }
+    }
+
+    /**
+     * An equation is not inside a `w:r`, so the run state left by the previous run (its bold, its
+     * colour) would otherwise colour it; it starts from the paragraph's own formatting instead.
+     */
+    private fun startEquation() {
+        runProps = RunProps()
+        runStyleId = null
+        runFormat = null
+    }
+
+    private fun appendEquation(text: String) {
+        if (text.isNotEmpty()) appendText(text, element = true)
     }
 
     /** A field whose instruction says HYPERLINK: its result runs, until the field ends, are the link text. */
