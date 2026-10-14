@@ -604,7 +604,7 @@ class OfficeTextExtractorTest {
     }
 
     @Test
-    fun `odt comment text author and date stay out of the paragraph`() {
+    fun `odt comment text author and date are kept out of the paragraph and listed after the body`() {
         val bytes = OfficeFixtures.odt(
             OfficeFixtures.odtContent(
                 """
@@ -614,7 +614,15 @@ class OfficeTextExtractorTest {
             ),
         )
 
-        assertEquals(listOf<OfficeBlock>(OfficeBlock.Paragraph("Check this number twice.")), extractOdt(bytes))
+        val blocks = extractOdt(bytes)
+
+        // Only the raised marker joins the line; the comment's words, author and date follow the body.
+        val paragraph = blocks[0] as OfficeBlock.Paragraph
+        assertEquals("Check this C1number twice.", paragraph.text)
+        assertEquals(listOf(TextSpan(11, 13, COMMENT_MARKER_FORMAT)), paragraph.spans)
+        assertEquals(OfficeBlock.Divider, blocks[1])
+        assertEquals(OfficeBlock.Note("C1", "Is it right?", byline = "Alice \u00B7 2024-05-01 10:00"), blocks[2])
+        assertEquals(3, blocks.size)
     }
 
     @Test

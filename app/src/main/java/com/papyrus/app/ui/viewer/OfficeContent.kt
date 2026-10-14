@@ -130,14 +130,24 @@ private fun OfficeNoteView(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.widthIn(min = MARKER_WIDTH).padding(end = 6.dp),
         )
-        FindText(
-            text = note.text,
-            highlight = highlight,
-            style = MaterialTheme.typography.bodySmall,
-            modifier = Modifier.weight(1f),
-            reveal = reveal,
-            spans = note.spans,
-        )
+        // A comment says who wrote it and when, above its words; a footnote has no byline.
+        Column(Modifier.weight(1f)) {
+            note.byline?.let { byline ->
+                Text(
+                    byline,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            FindText(
+                text = note.text,
+                highlight = highlight,
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.fillMaxWidth(),
+                reveal = reveal,
+                spans = note.spans,
+            )
+        }
     }
 }
 
