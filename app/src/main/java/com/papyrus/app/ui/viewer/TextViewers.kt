@@ -539,9 +539,16 @@ fun OfficeViewer(
     activeOccurrence: Int?,
     zoom: ZoomState,
     modifier: Modifier = Modifier,
+    jumpTo: OutlineJump? = null,
 ) {
     val listState = rememberLazyListState()
     val geometry = rememberLazyScrollGeometry(listState)
+
+    // The outline names a heading by its block index, which is its row, so a jump is a plain scroll.
+    LaunchedEffect(jumpTo) {
+        val target = jumpTo?.index ?: return@LaunchedEffect
+        if (target in blocks.indices) listState.scrollToItem(target)
+    }
 
     // Block indices equal LazyColumn indices, so a hit scrolls to its own item; a long paragraph or
     // table holds several matches, so the block's text then scrolls to the current one.
