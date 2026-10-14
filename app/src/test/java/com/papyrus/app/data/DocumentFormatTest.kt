@@ -57,6 +57,41 @@ class DocumentFormatTest {
     }
 
     @Test
+    fun `word variants open as docx and odf templates as odt`() {
+        // Same package layout as .docx, so the same extractor reads them.
+        listOf("memo.docm", "letter.dotx", "letter.dotm", "MEMO.DOCM").forEach { name ->
+            assertEquals("expected DOCX for $name", DocumentFormat.DOCX, DocumentFormat.detect(name, null))
+        }
+        assertEquals(DocumentFormat.ODT, DocumentFormat.detect("letter.ott", null))
+    }
+
+    @Test
+    fun `a dot file stays text, because graphviz owns that extension`() {
+        // .dot is also a Word 97 template, but claiming it would stop Graphviz sources opening as text.
+        assertEquals(DocumentFormat.UNKNOWN, DocumentFormat.detect("graph.dot", null))
+    }
+
+    @Test
+    fun `variant mime types resolve whatever case the provider reports`() {
+        assertEquals(DocumentFormat.DOCX, DocumentFormat.detect("blob", "application/vnd.ms-word.document.macroEnabled.12"))
+        assertEquals(DocumentFormat.DOCX, DocumentFormat.detect("blob", "application/vnd.ms-word.document.macroenabled.12"))
+        assertEquals(
+            DocumentFormat.DOCX,
+            DocumentFormat.detect("blob", "application/vnd.openxmlformats-officedocument.wordprocessingml.template"),
+        )
+        assertEquals(DocumentFormat.ODT, DocumentFormat.detect("blob", "application/vnd.oasis.opendocument.text-template"))
+    }
+
+    @Test
+    fun `the picker offers both spellings of the macro enabled types`() {
+        // The platform compares MIME types case-sensitively, so a provider using the other spelling
+        // would otherwise grey the file out.
+        val offered = DocumentFormat.pickerMimeTypes.toSet()
+        assertTrue("application/vnd.ms-word.document.macroEnabled.12" in offered)
+        assertTrue("application/vnd.ms-word.document.macroenabled.12" in offered)
+    }
+
+    @Test
     fun `nothing recognisable is UNKNOWN so the sniffer can decide`() {
         // DocumentRepository sniffs the bytes from UNKNOWN, so CODE here would break a .zip.
         assertEquals(DocumentFormat.UNKNOWN, DocumentFormat.detect("mystery", "application/octet-stream"))
