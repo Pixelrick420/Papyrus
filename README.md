@@ -9,8 +9,8 @@ on-device. The manifest declares no permissions: no network or storage access
 
 | Format | Rendered as |
 | --- | --- |
-| PDF | `PdfRenderer` pages; zoom re-rasterises at the target resolution. Password-protected files prompt for the password |
-| Markdown | Markwon to `Spanned` in a native `TextView`, with strikethrough and tables |
+| PDF | `PdfRenderer` pages; zoom re-rasterises at the target resolution. Tappable links: a web link opens, an in-document jump scrolls to its page. Password-protected files prompt for the password |
+| Markdown | Markwon to `Spanned` in a native `TextView`, with strikethrough and tables, links open on tap |
 | Plain text (`.txt`, `.log`, ...) | chunked 40 lines at a time, selectable monospace Compose `Text`. Decoded straight into the chunks, so a file costs about its own size in memory. Read up to 32 MB (Markdown: 4 MB). Optional line-number gutter and no-wrap mode with sideways scrolling |
 | Source and config (`.kt`, `.py`, `.json`, ...) | as plain text, labelled `CODE` in the list, with syntax colour for the languages the app defines (below) |
 | DOCX / ODT | headings, paragraphs, bold / italic / underline / strikethrough / super- and subscript, text and highlight colours, links, bulleted and numbered lists (nested, with Word's and LibreOffice's numbering schemes), alignment, indentation, footnotes and endnotes, reviewer comments (marked in the text and listed after the body with author and date), equations (DOCX; written out as text such as `(a+b)/c`, `x²`, `√(x+1)`, not typeset), tables (with merged cells, shading and cell formatting) and images (at their stated size, with alt text), read straight from the archive. Macro-enabled files and templates (`.docm`, `.dotx`, `.dotm`, `.ott`) open like their plain counterparts; no macro is ever run. Documents with headings get an **Outline** in the viewer menu that jumps to a heading. Password-protected files prompt for the password |
@@ -90,6 +90,9 @@ supported: there is no migration path from older versions, and a database writte
   its counter shows the total.
 - **Zoom** is a pinch or a double-tap, 0.5x to 3x, the double-tap toggling between 1x and 2.5x. Text surfaces scale the
   type size, so content re-wraps and the scroll bounds stay correct.
+- **Links** open on tap with no confirmation, in PDF and Markdown text and in DOCX / ODT — a PDF's in-document
+  destination scrolls to that page instead of leaving the app. Only `http`, `https`, `mailto` and `tel` are followed;
+  any other scheme is refused, and a link with nothing to open it raises a short toast, leaving the page as it was.
 - **Lost access** keeps what is on screen and offers a re-pick, matched against the title so the wrong file cannot be
   accepted.
 - **File info** is a bottom sheet: name, format, size, the provider's type, page count for PDFs, both timestamps and

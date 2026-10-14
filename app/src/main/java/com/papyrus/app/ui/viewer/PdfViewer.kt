@@ -54,7 +54,9 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import com.papyrus.app.R
 import com.papyrus.app.viewer.NormRect
+import com.papyrus.app.viewer.PdfLinkTarget
 import com.papyrus.app.viewer.PdfPageGeometry
+import com.papyrus.app.viewer.PdfPageLink
 import com.papyrus.app.viewer.PdfPageSource
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
@@ -73,6 +75,10 @@ private const val RESIZE_SETTLE_MILLIS = 150L
 /** The keyboard slides in over a few hundred ms, resizing the viewport each frame; wait for it to stop. */
 private const val VIEWPORT_SETTLE_MILLIS = 150L
 
+/** A jump to a page of the PDF, like [OutlineJump] is for a document's outline. Identity, not
+ *  equality: two jumps to the same page are still two jumps, so each one scrolls. */
+internal class PdfPageJump(val page: Int)
+
 /** Zoom feeds the cached render width; [selectionState] is owned by the screen, and back is handled here. */
 @Composable
 internal fun PdfViewer(
@@ -85,6 +91,9 @@ internal fun PdfViewer(
     pageMatches: Map<Int, List<List<NormRect>>> = emptyMap(),
     activePage: Int? = null,
     activeOccurrence: Int? = null,
+    pageJump: PdfPageJump? = null,
+    loadLinks: suspend (Int) -> List<PdfPageLink>? = { null },
+    onLinkTarget: (PdfLinkTarget) -> Unit = {},
 ) {
     val listState = rememberLazyListState()
     val geometry = rememberLazyScrollGeometry(listState)
@@ -126,6 +135,12 @@ internal fun PdfViewer(
     LaunchedEffect(reveal) {
         activePage?.takeIf { it >= 0 && it < source.pageCount }
             ?.let { listState.scrollToItemUnlessVisible(it) }
+    }
+
+    // A link that points at another page of this document: the same reveal a find step uses.
+    LaunchedEffect(pageJump) {
+        pageJump?.takeIf { it.page in 0 until source.pageCount }
+            ?.let { listState.scrollToItemUnlessVisible(it.page) }
     }
 
     // Each anchor reads the content under the pinch at the commit, while the layout is still the one
@@ -195,6 +210,8 @@ internal fun PdfViewer(
                             reveal = reveal.takeIf { index == activePage },
                             selectionState = selectionState,
                             pageGeometry = pageGeometry,
+                            loadLinks = loadLinks,
+                            onLinkTarget = onLinkTarget,
                         )
                     }
                 }
@@ -248,6 +265,8 @@ private fun PdfPage(
     reveal: RevealTicket?,
     selectionState: PdfSelectionState,
     pageGeometry: State<PdfPageGeometry>,
+    loadLinks: suspend (Int) -> List<PdfPageLink>?,
+    onLinkTarget: (PdfLinkTarget) -> Unit,
 ) {
     // Keyed on page identity only; keying on widthPx blanked the page on every quantisation step.
     var bitmap by remember(source, index) { mutableStateOf<Bitmap?>(source.cached(index, widthPx)) }
@@ -301,6 +320,17 @@ private fun PdfPage(
     val selectionRects = remember(span, pageText) {
         if (span != null && pageText != null) pageText.selectionRects(span.from, span.to) else emptyList()
     }
+
+    // Links are per page and read only once it has settled, so a fling pays for none of them.
+    var links by remember(source, index) { mutableStateOf<List<PdfPageLink>>(emptyList()) }
+    LaunchedEffect(source, index, scrolling) {
+        if (!scrolling) links = loadLinks(index).orEmpty()
+    }
+    val linkRects = remember(links) { links.map { it.rect } }
+    val liveLinks = rememberUpdatedState(links)
+    // Read through a state, so the gesture's long-lived pointer handler never holds a stale callback.
+    val liveOnLink = rememberUpdatedState(onLinkTarget)
+
     val density = LocalDensity.current
     val handleRadius = with(density) { HandleRadius.toPx() }
     val handles = rememberUpdatedState(
@@ -322,9 +352,13 @@ private fun PdfPage(
                 page = index,
                 geometry = pageGeometry,
                 handles = handles,
+                links = liveLinks,
+                pageSize = rememberUpdatedState(pageSize),
+                onLink = { target -> liveOnLink.value(target) },
                 haptics = LocalHapticFeedback.current,
                 reachPx = with(density) { SelectionReach.toPx() },
                 grabRadiusPx = with(density) { HandleGrabRadius.toPx() },
+                linkSlopPx = with(density) { LinkTapSlop.toPx() },
             ),
     ) {
         bitmap?.let { bmp ->
@@ -334,6 +368,11 @@ private fun PdfPage(
                 contentScale = ContentScale.FillBounds,
                 modifier = Modifier.fillMaxSize(),
             )
+        }
+        if (linkRects.isNotEmpty()) {
+            // Under the matches and the selection, so a link never hides a find highlight.
+            val linkColor = MaterialTheme.colorScheme.primary
+            Canvas(Modifier.fillMaxSize()) { drawLinks(linkRects, linkColor) }
         }
         if (matches.isNotEmpty()) {
             // Matched words in page-relative units, so they stay put at any width. Translucent.

@@ -13,12 +13,13 @@ import kotlinx.coroutines.withContext
 import java.io.Closeable
 
 /**
- * A PDF's page text, read one page at a time as a reader touches them.
+ * A PDF's page text and links, read one page at a time as a reader touches them.
  *
  * Find reads every page up front, which is right for a search and far too slow for a finger that has
  * just gone down on page 212. One [PDDocument] stays open until [close], because loading one parses
- * the whole file and the next page a drag runs onto should not pay that again. It is not thread-safe,
- * so every read goes through one lock.
+ * the whole file and the next page a drag runs onto should not pay that again — the same open
+ * document is what reads a page's text and its links, so neither is read twice. It is not
+ * thread-safe, so every read goes through one lock.
  */
 class PdfPageTextSource(
     private val context: Context,
@@ -27,6 +28,7 @@ class PdfPageTextSource(
 
     private val lock = Mutex()
     private val pages = HashMap<Int, PdfPageText>()
+    private val linkPages = HashMap<Int, List<PdfPageLink>>()
     private var document: PDDocument? = null
     private var unreadable = false
     private var closed = false
@@ -43,6 +45,20 @@ class PdfPageTextSource(
         val open = document ?: open() ?: return null
         if (index !in 0 until open.numberOfPages) return null
         return PdfTextExtractor.extractPage(open, index)
+    }
+
+    /** The page's links, or null if the document cannot be read or has no such page. Read once per page. */
+    suspend fun links(index: Int): List<PdfPageLink>? = lock.withLock {
+        if (closed) return@withLock null
+        linkPages[index]?.let { return@withLock it }
+        withContext(Dispatchers.IO) { readLinks(index) }?.also { linkPages[index] = it }
+    }
+
+    /** Runs on the IO dispatcher, under [lock]. */
+    private fun readLinks(index: Int): List<PdfPageLink>? {
+        val open = document ?: open() ?: return null
+        if (index !in 0 until open.numberOfPages) return null
+        return PdfLinkExtractor.extract(open, index)
     }
 
     /** A document that failed to load is not retried: loading is the expensive part, and it would fail the same way. */
@@ -67,6 +83,7 @@ class PdfPageTextSource(
                 lock.withLock {
                     closed = true
                     pages.clear()
+                    linkPages.clear()
                     runCatching { document?.close() }
                     document = null
                 }
