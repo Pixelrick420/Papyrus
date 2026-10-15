@@ -5,12 +5,25 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 
+/**
+ * The one Room database: a single `documents` table (see [DocumentEntity]).
+ *
+ * **Schema versions.** Version 4 is the oldest schema that is supported: earlier ones were test-only
+ * and have no migration path. The number was deliberately not reset to 1, because devices already
+ * hold a version-4 database and Room throws on a downgrade. Every later schema change therefore adds
+ * a `Migration` for it to [Migrations.ALL], starting with 4 -> 5, and bumps [Migrations.CURRENT_VERSION].
+ * The schema of each released version is exported to `app/schemas/` and committed, so a migration can
+ * be written and tested against the exact JSON the shipped database was built from.
+ *
+ * There is intentionally no `fallbackToDestructiveMigration`, in any build type: a row points at an
+ * app-owned copy under `filesDir/imports`, so wiping rows on a version mismatch would orphan those
+ * files for good. A missing migration is a crash on launch in development, which is the right place
+ * to find out.
+ */
 @Database(
     entities = [DocumentEntity::class],
-    version = 4,
-    // No schema is exported: only the current version is supported, so there is no
-    // migration path and no schema history worth keeping.
-    exportSchema = false,
+    version = Migrations.CURRENT_VERSION,
+    exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
 
@@ -25,7 +38,7 @@ abstract class AppDatabase : RoomDatabase() {
         fun getInstance(context: Context): AppDatabase =
             instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, DB_NAME)
-                    // Only the current schema is supported, so a database on any other version fails to open.
+                    .addMigrations(*Migrations.ALL)
                     .build()
                     .also { instance = it }
             }

@@ -11,6 +11,8 @@
 .kotlin/
 /notes.txt
 *.json
+# Room's exported schemas are source: migrations are written and tested against them.
+!app/schemas/**/*.json
 *.jks
 *.keystore
 key/
