@@ -122,10 +122,11 @@ class DocumentRepository(
     suspend fun shareTypeFor(document: DocumentEntity): String =
         shareMimeType(document.format, mimeTypeOf(document))
 
-    /** A SAF grant can only come from the user picking the file again, so the re-pick is matched by display name. */
+    /** A SAF grant can only come from the user picking the file again, so the re-pick must be the same name and format ([matchesRepick]). */
     suspend fun regrant(expected: DocumentEntity, picked: Uri): Boolean = withContext(Dispatchers.IO) {
         val meta = SafStorage.queryMetadata(context, picked)
-        if (!meta.displayName.startsWith(expected.title)) return@withContext false
+        val pickedFormat = resolveFormat(picked, meta.displayName, meta.mimeType)
+        if (!matchesRepick(expected.title, expected.format, meta.displayName, pickedFormat)) return@withContext false
         SafStorage.persistPermission(resolver, picked)
         // A handed-over document has no row to re-point, so the in-memory entry carries the new URI.
         if (expected.id < 0) {
@@ -152,7 +153,7 @@ class DocumentRepository(
         val now = System.currentTimeMillis()
         return DocumentEntity(
             uri = uri.toString(),
-            title = meta.displayName.ifBlank { "untitled" },
+            title = meta.displayName.ifBlank { UNTITLED },
             format = resolveFormat(uri, meta.displayName, meta.mimeType),
             sizeBytes = meta.sizeBytes,
             createdAt = now,

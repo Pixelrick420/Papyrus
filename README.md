@@ -97,8 +97,9 @@ committed, and a unit test fails if the current version's schema is missing or t
 - **Links** open on tap with no confirmation, in PDF and Markdown text and in DOCX / ODT — a PDF's in-document
   destination scrolls to that page instead of leaving the app. Only `http`, `https`, `mailto` and `tel` are followed;
   any other scheme is refused, and a link with nothing to open it raises a short toast, leaving the page as it was.
-- **Lost access** keeps what is on screen and offers a re-pick, matched against the title so the wrong file cannot be
-  accepted.
+- **Lost access** keeps what is on screen and offers a re-pick. The pick must have exactly the stored file name and the
+  same format; size is not compared, so a file edited since it was added is still accepted, and a file whose name only
+  starts the same is not.
 - **File info** is a bottom sheet: name, format, size, the provider's type, page count for PDFs, both timestamps and
   the content URI.
 - **Thumbnails** are one bitmap per document in an in-memory `LruCache`. A tile shows the format label until its
