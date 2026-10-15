@@ -8,6 +8,7 @@
     <string name="home_menu">More options</string>
     <string name="action_share">Share</string>
     <string name="action_remove">Remove</string>
+    <string name="action_undo">Undo</string>
     <string name="action_cancel">Cancel</string>
     <string name="home_selected_count">%1$d selected</string>
     <string name="home_removed_count">Removed %1$d files</string>
