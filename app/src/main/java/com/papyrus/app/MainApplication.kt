@@ -8,6 +8,9 @@ import com.papyrus.app.data.SettingsRepository
 import com.papyrus.app.data.ThumbnailLoader
 import com.papyrus.app.viewer.OFFICE_UNLOCK_DIR
 import com.papyrus.app.viewer.PDF_UNLOCK_DIR
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import org.acra.ACRA
 import org.acra.ReportField
 import org.acra.data.StringFormat
@@ -20,6 +23,13 @@ class MainApplication : Application() {
     val database: AppDatabase by lazy { AppDatabase.getInstance(this) }
     val settings: SettingsRepository by lazy { SettingsRepository(this) }
     val repository: DocumentRepository by lazy { DocumentRepository(this, database.documentDao(), settings) }
+
+    /**
+     * For work that must finish even if the screen that started it is gone, such as committing a
+     * removal whose undo window was still open when Home was cleared. Never cancelled: it lives and
+     * dies with the process.
+     */
+    val applicationScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     /** Application-scoped so the bitmap cache survives navigation and rotation. */
     val thumbnailLoader: ThumbnailLoader by lazy { ThumbnailLoader(this) }

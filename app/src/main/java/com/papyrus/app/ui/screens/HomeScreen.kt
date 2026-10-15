@@ -55,7 +55,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -106,6 +108,8 @@ import com.papyrus.app.ui.components.ControlHeight
 import com.papyrus.app.ui.components.DocumentThumbnail
 import com.papyrus.app.ui.components.SearchPill
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -114,6 +118,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 /** Everything the list needs in one value, so the loading, empty and no-match states never disagree for a frame. */
@@ -126,11 +131,15 @@ data class HomeUiState(
     val documents: List<DocumentEntity> = emptyList(),
     val results: List<DocumentEntity> = emptyList(),
     val selection: SelectionState = SelectionState(),
+    /** Names the single-row removal waiting out its undo window, or null; [HomeViewModel.undoRemove] takes it back. */
+    val pendingRemovalToken: Long? = null,
 )
 
 class HomeViewModel(
     private val repository: DocumentRepository,
     val thumbnailLoader: ThumbnailLoader,
+    /** Outlives this ViewModel: a removal still in its undo window when Home is cleared is committed here. */
+    private val removalScope: CoroutineScope,
 ) : ViewModel() {
 
     private val _query = MutableStateFlow("")
@@ -138,9 +147,44 @@ class HomeViewModel(
 
     private val _selection = MutableStateFlow(SelectionState())
 
-    /** Filtered in memory; starts "not loaded" so a populated library cannot flash its empty state. */
-    val uiState: StateFlow<HomeUiState> = combine(repository.documents, _query, _selection) { docs, q, selection ->
+    /**
+     * Rows removed with an undo window. The row is only hidden until the window ends; the grant, the
+     * row and the app-owned copy are touched in [commitRemoval] and nowhere before it. Held as a list
+     * so the bulk path can use the same mechanism if it ever drops its confirmation dialog.
+     */
+    private val pendingRemoval = PendingRemoval<List<DocumentEntity>>(
+        timer = { delayMillis, action ->
+            val job = viewModelScope.launch {
+                delay(delayMillis)
+                action()
+            }
+            PendingRemoval.Cancellation { job.cancel() }
+        },
+        windowMillis = UNDO_WINDOW_MILLIS,
+        commit = ::commitRemoval,
+    )
+
+    /**
+     * The one thing that hides rows: ids removed and not yet gone from the list. An id joins it when a
+     * removal begins and leaves it only on Undo, on a failed commit, or once the list itself no longer
+     * holds the row. No path clears it as a side effect of a timer or of the delete returning, so the
+     * database's own emission can never find a removed row visible in between.
+     */
+    private val hiddenIds = MutableStateFlow<Set<Long>>(emptySet())
+
+    /**
+     * Filtered in memory; starts "not loaded" so a populated library cannot flash its empty state.
+     * Hidden rows are left out of [HomeUiState.documents] and [HomeUiState.libraryEmpty] as well as
+     * the results, so bulk actions and the empty state agree with what is on screen.
+     */
+    val uiState: StateFlow<HomeUiState> = combine(
+        repository.documents, _query, _selection, pendingRemoval.pending, hiddenIds,
+    ) { all, q, selection, pending, hidden ->
         val needle = q.trim()
+        // A hidden id is dropped only after the list it filters has stopped containing it.
+        val gone = hidden.filterTo(HashSet()) { id -> all.none { it.id == id } }
+        if (gone.isNotEmpty()) hiddenIds.update { it - gone }
+        val docs = if (hidden.isEmpty()) all else all.filterNot { it.id in hidden }
         HomeUiState(
             loaded = true,
             libraryEmpty = docs.isEmpty(),
@@ -148,6 +192,7 @@ class HomeViewModel(
             documents = docs,
             results = docs.matches(needle),
             selection = selection,
+            pendingRemovalToken = pending?.token,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeUiState())
 
@@ -220,14 +265,44 @@ class HomeViewModel(
         }
     }
 
+    /** Hides the row and starts its undo window; the real removal happens only when the window ends ([commitRemoval]). */
     fun remove(document: DocumentEntity) {
-        viewModelScope.launch {
-            repository.remove(document)
-            _messages.send(UiText(R.string.home_removed))
+        hiddenIds.update { it + document.id }
+        pendingRemoval.begin(listOf(document))
+    }
+
+    /** Takes back the removal [token] names. A stale token, from a snackbar that outlived its window, does nothing. */
+    fun undoRemove(token: Long) {
+        val entry = pendingRemoval.pending.value?.takeIf { it.token == token } ?: return
+        if (pendingRemoval.undo(token)) hiddenIds.update { it - entry.item.mapTo(HashSet()) { document -> document.id } }
+    }
+
+    /**
+     * Releases the grant, deletes the row and deletes the owned copy. Called under [PendingRemoval]'s
+     * lock, so it only starts the work on [removalScope]. The rows are already in [hiddenIds] and stay
+     * there until the list drops them; a failed removal is the one case that takes them back out.
+     */
+    private fun commitRemoval(documents: List<DocumentEntity>) {
+        removalScope.launch {
+            for (document in documents) {
+                try {
+                    repository.remove(document)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    // Nothing was removed, so the list gets the row back instead of hiding it for good.
+                    hiddenIds.update { it - document.id }
+                }
+            }
         }
     }
 
-    /** Called only from the bulk-remove confirmation; the single-row [remove] stays immediate. */
+    /** A pending removal is committed rather than lost when Home goes away; a process death instead leaves the row in the library. */
+    override fun onCleared() {
+        pendingRemoval.flush()
+    }
+
+    /** Called only from the bulk-remove confirmation, which stays immediate: the dialog already asked. */
     fun removeSelected() {
         val selected = selectedDocuments()
         if (selected.isEmpty()) return
@@ -301,6 +376,9 @@ private val PlusIcon: ImageVector = ImageVector.Builder(
     }
 }.build()
 
+/** How long a single-row removal can be undone. Long enough to notice and reach the button, short enough not to linger. */
+private const val UNDO_WINDOW_MILLIS = 6_000L
+
 /** List inset; title and search pill use [TitleInset]. */
 private val ScreenPadding = 16.dp
 
@@ -327,7 +405,7 @@ fun HomeScreen(
     // Which row has its menu open, not a bare flag: one flag would open every row's menu at once.
     var menuFor by remember { mutableStateOf<Long?>(null) }
 
-    // Bulk remove is the only destructive bulk action, so it alone confirms; the ⋮ menu's Remove stays immediate.
+    // Bulk remove is the only destructive bulk action, so it alone confirms; the ⋮ menu's Remove can be undone instead.
     var confirmRemove by remember { mutableStateOf(false) }
 
     val dismissKeyboard: () -> Unit = {
@@ -362,6 +440,22 @@ fun HomeScreen(
 
     LaunchedEffect(viewModel) {
         viewModel.messages.collect { snackbar.showSnackbar(it.asString(context)) }
+    }
+
+    // The ViewModel's timer decides when the window ends, not the snackbar's own: the snackbar is
+    // indefinite and lives exactly as long as the removal is pending. Leaving composition, or the
+    // pending removal changing or ending, cancels this effect and so dismisses the snackbar; the
+    // token makes a late tap on a replaced snackbar's Undo a no-op.
+    val removedMessage = stringResource(R.string.home_removed)
+    val undoLabel = stringResource(R.string.action_undo)
+    LaunchedEffect(state.pendingRemovalToken) {
+        val token = state.pendingRemovalToken ?: return@LaunchedEffect
+        val result = snackbar.showSnackbar(
+            message = removedMessage,
+            actionLabel = undoLabel,
+            duration = SnackbarDuration.Indefinite,
+        )
+        if (result == SnackbarResult.ActionPerformed) viewModel.undoRemove(token)
     }
 
     // Dragging the list means the person is done typing. A drag interaction rather than

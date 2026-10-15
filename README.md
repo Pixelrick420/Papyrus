@@ -85,10 +85,13 @@ committed, and a unit test fails if the current version's schema is missing or t
   can write, rename or delete the file. The grant is probed first: a dead one raises a message instead of a chooser
   that opens and then fails inside someone else's app.
 - **Remove** deletes the row and releases the persisted SAF grant. An app-owned copy goes with its row; your own file
-  on disk is untouched.
+  on disk is untouched. A single row's Remove first only hides it and shows an **Undo** snackbar; the grant, the row and
+  the owned copy are touched when that window ends (six seconds), when another removal replaces it, or when Home is
+  closed. Undo puts the row back exactly as it was. If the app is killed inside the window the document is simply still
+  in the library.
 - **Bulk select** starts on a long-press. The header shows the picked count and a select-all toggle, and the bottom bar
-  shares the whole selection in one `ACTION_SEND_MULTIPLE` chooser or removes it after a confirmation. A single row's
-  ⋮ Remove still happens straight away.
+  shares the whole selection in one `ACTION_SEND_MULTIPLE` chooser or removes it after a confirmation, immediately
+  and without an undo.
 - **Find in file**, also on Ctrl+F, works on every format. PDF, text and Office step through matches one at a time:
   the current one is orange and the rest yellow. Markdown is a single `Spanned`, so it lights every match at once and
   its counter shows the total.
