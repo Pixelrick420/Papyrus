@@ -94,10 +94,8 @@ object PdfTextExtractor {
         private val previous = Placement()
         private var hasPrevious = false
 
-        // The page as stored (crop box, before rotation), and how it is turned for display.
-        private var cropWidth = 1f
-        private var cropHeight = 1f
-        private var rotation = 0
+        // The page's crop-box size and rotation, for turning glyph coordinates into display fractions.
+        private var frame = PdfPageFrame(1f, 1f, 0f, 0f, 0)
 
         var trackingBoxes = true
             private set
@@ -116,10 +114,7 @@ object PdfTextExtractor {
         )
 
         override fun startPage(page: PDPage) {
-            val crop = page.cropBox
-            cropWidth = crop.width.coerceAtLeast(1f)
-            cropHeight = crop.height.coerceAtLeast(1f)
-            rotation = ((page.rotation % 360) + 360) % 360
+            frame = PdfPageFrame.forGlyphs(page)
             super.startPage(page)
         }
 
@@ -216,21 +211,9 @@ object PdfTextExtractor {
         private fun corner(upX: Float, upY: Float, along: Float, up: Float) {
             val x = current.originX + current.dirX * along + upX * up
             val y = current.originY + current.dirY * along + upY * up
-            // Normalise into the unrotated page's top-left frame first, then turn clockwise a quarter at a time.
-            val nx = x / cropWidth
-            val ny = (cropHeight - y) / cropHeight
-            val dx: Float
-            val dy: Float
-            when (rotation) {
-                90 -> { dx = 1f - ny; dy = nx }
-                180 -> { dx = 1f - nx; dy = 1f - ny }
-                270 -> { dx = ny; dy = 1f - nx }
-                else -> { dx = nx; dy = ny }
-            }
-            box[0] = minOf(box[0], dx)
-            box[1] = minOf(box[1], dy)
-            box[2] = maxOf(box[2], dx)
-            box[3] = maxOf(box[3], dy)
+            // The text matrix is already crop-relative (PdfBox shifts it by the crop box's origin), so the
+            // glyph frame has no origin to fold out; the same arithmetic places a link's raw `/Rect`.
+            frame.include(x, y, box)
         }
 
         private fun appendSeparator() {
