@@ -47,8 +47,12 @@ over 20,000 characters is shown plain.
 ## Features
 
 The index is one Room row per document: URI, title, format, size, and the added and last-opened timestamps. Page count
-and MIME type are read live from the provider and the open PDF instead of being stored. Only the current schema is
-supported: there is no migration path from older versions, and a database written by one will not open.
+and MIME type are read live from the provider and the open PDF instead of being stored. Schema version 4 is the oldest
+supported one: earlier versions were test-only and are not migrated. The number was not reset, because installed
+databases are already at 4 and Room refuses a downgrade. Later versions add a `Migration` in `data/Migrations.kt`
+(starting with 4 -> 5) and are never replaced by a destructive fallback, since a row owns a file under
+`filesDir/imports` that wiping it would orphan. Room exports each version's schema to `app/schemas/`, which is
+committed, and a unit test fails if the current version's schema is missing or the migrations leave a gap.
 
 - **Open with** takes an `ACTION_VIEW` content URI from another app and shows it without indexing it. It opens in its
   own window rather than the caller's, so the other app stays usable behind it; back returns to that app and drops the

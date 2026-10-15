@@ -197,6 +197,13 @@ dependencies {
     testImplementation("net.sf.kxml:kxml2:2.3.0")
 }
 
+// Room exports each schema version as JSON here, and the file is committed: a migration is written and
+// tested against the exact schema a released database was built from. `.gitignore` re-includes this
+// directory because it ignores `*.json` globally.
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
+}
+
 // Static analysis, scoped to dead code and correctness. The rule selection and the
 // reasons each borderline ruleset is off live in config/detekt/detekt.yml.
 detekt {
