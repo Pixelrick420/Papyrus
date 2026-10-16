@@ -6,7 +6,8 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 
 /**
- * The one Room database: a single `documents` table (see [DocumentEntity]).
+ * The one Room database: the `documents` library plus the tables hanging off it ([ReadingProgressEntity],
+ * [BookmarkEntity]), each removed with its document by `ON DELETE CASCADE`.
  *
  * **Schema versions.** Version 4 is the oldest schema that is supported: earlier ones were test-only
  * and have no migration path. The number was deliberately not reset to 1, because devices already
@@ -21,7 +22,7 @@ import androidx.room.RoomDatabase
  * to find out.
  */
 @Database(
-    entities = [DocumentEntity::class],
+    entities = [DocumentEntity::class, ReadingProgressEntity::class, BookmarkEntity::class],
     version = Migrations.CURRENT_VERSION,
     exportSchema = true,
 )
