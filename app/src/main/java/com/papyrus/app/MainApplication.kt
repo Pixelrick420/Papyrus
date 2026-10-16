@@ -22,7 +22,7 @@ class MainApplication : Application() {
     /** Manual DI: lazily created so the ACRA sender process never opens the database. */
     val database: AppDatabase by lazy { AppDatabase.getInstance(this) }
     val settings: SettingsRepository by lazy { SettingsRepository(this) }
-    val repository: DocumentRepository by lazy { DocumentRepository(this, database.documentDao(), settings) }
+    val repository: DocumentRepository by lazy { DocumentRepository(this, database.documentDao(), database.readingProgressDao(), settings) }
 
     /**
      * For work that must finish even if the screen that started it is gone, such as committing a

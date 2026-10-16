@@ -68,6 +68,8 @@ class SettingsViewModel(private val repository: SettingsRepository) : ViewModel(
 
     fun setAutosaveEncrypted(enabled: Boolean) = repository.setAutosaveEncrypted(enabled)
 
+    fun setRememberPosition(enabled: Boolean) = repository.setRememberPosition(enabled)
+
     fun setSyntaxHighlighting(enabled: Boolean) = repository.setSyntaxHighlighting(enabled)
 
     fun setColorblindMode(enabled: Boolean) = repository.setColorblindMode(enabled)
@@ -184,6 +186,13 @@ fun SettingsScreen(
                         description = stringResource(R.string.settings_autosave_encrypted_desc),
                         checked = settings.autosaveEncrypted,
                         onCheckedChange = viewModel::setAutosaveEncrypted,
+                    )
+                    CardDivider()
+                    SwitchRow(
+                        title = stringResource(R.string.settings_remember_position),
+                        description = stringResource(R.string.settings_remember_position_desc),
+                        checked = settings.rememberPosition,
+                        onCheckedChange = viewModel::setRememberPosition,
                     )
                 }
 

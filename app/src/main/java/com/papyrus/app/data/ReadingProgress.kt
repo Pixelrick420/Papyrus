@@ -1,8 +1,11 @@
 package com.papyrus.app.data
 
+import androidx.room.Dao
 import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.PrimaryKey
+import androidx.room.Query
+import kotlinx.coroutines.flow.Flow
 
 /**
  * Where a library document was last read: one row per document, kept in its own table.
@@ -46,3 +49,56 @@ data class ReadingProgressEntity(
     val progress: Float,
     val updatedAt: Long,
 )
+
+/**
+ * The columns Home needs from a stored position: enough for a progress bar and "p. 12 of 200", and
+ * nothing that changes on every save. `updatedAt` and the zoom are left out on purpose, so a save that
+ * does not move the progress is an equal value and [DocumentRepository.readingProgress] does not
+ * re-emit it.
+ */
+data class ReadingProgressSummary(
+    val documentId: Long,
+    val locationKind: Int,
+    val locationUnit: Int,
+    val unitCount: Int,
+    val progress: Float,
+) {
+    val label: ProgressLabel get() = progressLabel(locationKind, locationUnit, unitCount, progress)
+}
+
+@Dao
+interface ReadingProgressDao {
+
+    @Query("SELECT * FROM reading_progress WHERE documentId = :documentId")
+    suspend fun get(documentId: Long): ReadingProgressEntity?
+
+    @Query("SELECT documentId, locationKind, locationUnit, unitCount, progress FROM reading_progress")
+    fun observeSummaries(): Flow<List<ReadingProgressSummary>>
+
+    /**
+     * Writes one position, replacing the document's previous one. A replace is safe here: nothing
+     * references this table, so it cascades into nothing (unlike `documents`, which is never replaced).
+     *
+     * The `WHERE EXISTS` makes a save for a document that was removed in the meantime a no-op instead
+     * of a foreign-key failure on a background coroutine.
+     */
+    @Query(
+        "INSERT OR REPLACE INTO reading_progress " +
+            "(documentId, locationKind, locationUnit, locationFraction, unitCount, zoomScale, progress, updatedAt) " +
+            "SELECT :documentId, :locationKind, :locationUnit, :locationFraction, :unitCount, :zoomScale, :progress, :updatedAt " +
+            "WHERE EXISTS (SELECT 1 FROM documents WHERE id = :documentId)",
+    )
+    suspend fun save(
+        documentId: Long,
+        locationKind: Int,
+        locationUnit: Int,
+        locationFraction: Float,
+        unitCount: Int,
+        zoomScale: Float,
+        progress: Float,
+        updatedAt: Long,
+    )
+
+    @Query("DELETE FROM reading_progress WHERE documentId = :documentId")
+    suspend fun reset(documentId: Long)
+}
