@@ -278,11 +278,8 @@ class ViewerViewModel(
         }
 
         return when (format) {
-            DocumentFormat.PDF -> when (PdfEncryption.status { openStream(uri) }) {
-                PdfEncryption.NOT_ENCRYPTED -> {
-                    val source = PdfPageSource.open(app, uri)
-                    ViewerContent.Pdf(source, source.loadAspectRatios())
-                }
+            DocumentFormat.PDF -> when (repository.pdfEncryption(uri)) {
+                PdfEncryption.NOT_ENCRYPTED -> openUnencryptedPdf(uri)
                 // Owner-only (permissions) encryption opens on the empty user password, no prompt.
                 PdfEncryption.OWNER_ONLY -> unlockPdf(uri, "")
                 PdfEncryption.USER_PASSWORD -> ViewerContent.NeedsPassword()
@@ -339,6 +336,24 @@ class ViewerViewModel(
         when (doc.format) {
             DocumentFormat.DOCX, DocumentFormat.ODT, DocumentFormat.DOC -> unlockOffice(doc.uri.toUri(), doc.format, password)
             else -> unlockPdf(doc.uri.toUri(), password)
+        }
+
+    /**
+     * Opens a PDF the byte screen found no `/Encrypt` in. If the renderer still wants a password the
+     * screen was wrong (a name written with escapes, say), so the real parser decides which kind of lock
+     * it is and the usual prompt or silent unlock follows, rather than the generic "protected" failure.
+     * That second check runs only on this path, where the first did not run a PdfBox load.
+     */
+    private suspend fun openUnencryptedPdf(uri: Uri): ViewerContent =
+        try {
+            val source = PdfPageSource.open(app, uri)
+            ViewerContent.Pdf(source, source.loadAspectRatios())
+        } catch (e: PdfPasswordException) {
+            when (PdfEncryption.authoritativeStatus { openStream(uri) }) {
+                PdfEncryption.USER_PASSWORD -> ViewerContent.NeedsPassword()
+                PdfEncryption.OWNER_ONLY -> unlockPdf(uri, "")
+                PdfEncryption.NOT_ENCRYPTED -> throw e
+            }
         }
 
     private suspend fun unlockPdf(uri: Uri, password: String): ViewerContent {
