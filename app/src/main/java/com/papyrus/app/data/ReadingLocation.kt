@@ -1,0 +1,154 @@
+package com.papyrus.app.data
+
+import kotlin.math.abs
+import kotlin.math.roundToInt
+
+/**
+ * What a [ReadingLocation.unit] counts. Each kind is an anchor that does not depend on the viewport
+ * width, the zoom or the text size, so a position survives a rotation, a pinch, an encoding change and
+ * a re-wrap: pixel offsets would not.
+ */
+enum class LocationKind(val code: Int) {
+    /** [ReadingLocation.unit] is a page index; the fraction is how far down that page the viewport top is. */
+    PAGE(1),
+
+    /** A 40-line chunk of a plain-text or code file, plus a fraction within the chunk. */
+    CHUNK(2),
+
+    /** A block of an Office-style document (DOCX, ODT, DOC, later EPUB), plus a fraction within it. */
+    BLOCK(3),
+
+    /** A character offset into the rendered Markdown text. It has no fraction: the offset is already fine. */
+    CHAR(4);
+
+    companion object {
+        /** `null` for a code this build does not know, so an unknown stored value is ignored, never a crash. */
+        fun fromCode(code: Int): LocationKind? = entries.firstOrNull { it.code == code }
+
+        /** The kind a format is read in, `null` for [DocumentFormat.UNKNOWN], which has no viewer. */
+        fun forFormat(format: DocumentFormat): LocationKind? = when (format) {
+            DocumentFormat.PDF -> PAGE
+            DocumentFormat.MARKDOWN -> CHAR
+            DocumentFormat.TEXT, DocumentFormat.CODE -> CHUNK
+            DocumentFormat.DOC, DocumentFormat.DOCX, DocumentFormat.ODT -> BLOCK
+            DocumentFormat.UNKNOWN -> null
+        }
+    }
+}
+
+/**
+ * A place in a document: the top of the viewport, as a [kind]-specific [unit] plus a [fraction] of
+ * that unit (0 when the kind has none). Small and embeddable, so reading position, bookmarks and the
+ * viewer's jump API all share it; the conversions are plain functions so none of it needs Compose.
+ */
+data class ReadingLocation(
+    val kind: LocationKind,
+    val unit: Int,
+    val fraction: Float = 0f,
+) {
+
+    /**
+     * This location moved onto a document that really has [unitCount] units (pages, chunks, blocks or
+     * characters). A file can change between opens and an encoding override changes chunk geometry, so
+     * a stored location is never trusted: an out-of-range unit lands on the start of the last one, and
+     * a NaN, negative or oversized fraction is repaired. Never throws, so a bad stored value can neither
+     * crash nor scroll to nowhere.
+     */
+    fun clampedTo(unitCount: Int): ReadingLocation {
+        val last = (unitCount - 1).coerceAtLeast(0)
+        val inRange = unit.coerceIn(0, last)
+        val within = if (kind == LocationKind.CHAR || inRange != unit) 0f else sanitizeFraction(fraction)
+        return ReadingLocation(kind, inRange, within)
+    }
+
+    /**
+     * How much of a [unitCount]-unit document lies above this location, 0..1. Pages, chunks and blocks
+     * count their fraction too, so a long page moves the figure; a character offset is its own ratio.
+     * [atEnd] means the viewport cannot scroll any further, which reads as done: the top of the last
+     * page is otherwise stuck just short of 100%.
+     */
+    fun progress(unitCount: Int, atEnd: Boolean = false): Float {
+        if (atEnd) return 1f
+        if (unitCount <= 0) return 0f
+        val at = clampedTo(unitCount)
+        val done = if (kind == LocationKind.CHAR) at.unit.toFloat() else at.unit + at.fraction
+        return (done / unitCount).coerceIn(0f, 1f)
+    }
+
+    /**
+     * Whether [other] is the same spot for movement detection: same unit, fraction within a hair. The
+     * tolerance absorbs rounding between a pixel offset and a fraction, so "I did not scroll" is not
+     * mistaken for a scroll.
+     */
+    fun isSameSpot(other: ReadingLocation): Boolean =
+        kind == other.kind && unit == other.unit && abs(fraction - other.fraction) <= SAME_SPOT_TOLERANCE
+
+    private companion object {
+        const val SAME_SPOT_TOLERANCE = 0.01f
+    }
+}
+
+/** [fraction] as something a fraction can be: NaN becomes 0, the rest is held to 0..1. */
+private fun sanitizeFraction(fraction: Float): Float = if (fraction.isNaN()) 0f else fraction.coerceIn(0f, 1f)
+
+/** How far [offsetPx] is into an item [sizePx] tall, 0..1; 0 for an item with no size yet. */
+fun fractionWithin(offsetPx: Int, sizePx: Int): Float =
+    if (sizePx <= 0) 0f else (offsetPx.toFloat() / sizePx).coerceIn(0f, 1f)
+
+/**
+ * The pixel offset into an item [sizePx] tall that [fraction] stands for, kept strictly inside the item:
+ * a full fraction would otherwise be the next item's top and read back as the next unit.
+ */
+fun offsetWithin(fraction: Float, sizePx: Int): Int =
+    if (sizePx <= 0) 0 else (sanitizeFraction(fraction) * sizePx).roundToInt().coerceIn(0, sizePx - 1)
+
+/**
+ * One observation of the viewport, with everything a save needs. [zoom] is the committed scale, so a
+ * pinch alone counts as having moved. [unitCount] is how many units the loaded content has right now.
+ */
+data class PositionSample(
+    val location: ReadingLocation,
+    val unitCount: Int,
+    val atEnd: Boolean,
+    val zoom: Float,
+) {
+    val progress: Float get() = location.progress(unitCount, atEnd)
+
+    fun isSameSpot(other: PositionSample): Boolean =
+        location.isSameSpot(other.location) && atEnd == other.atEnd && abs(zoom - other.zoom) <= ZOOM_TOLERANCE
+
+    private companion object {
+        const val ZOOM_TOLERANCE = 0.01f
+    }
+}
+
+/** Where a viewer should open: the (already trusted-or-clamped by the viewer) location and zoom. */
+data class RestoreRequest(val location: ReadingLocation, val zoom: Float)
+
+/** A stored position, as a restore request for a document of [format]; `null` if it cannot apply. */
+fun ReadingProgressEntity.toRestoreRequest(format: DocumentFormat): RestoreRequest? {
+    val kind = LocationKind.fromCode(locationKind) ?: return null
+    // A row written for another kind of content (the format of the row changed) means nothing here.
+    if (kind != LocationKind.forFormat(format)) return null
+    return RestoreRequest(ReadingLocation(kind, locationUnit, locationFraction), zoomScale)
+}
+
+/** What Home prints beside a row's progress bar. */
+sealed interface ProgressLabel {
+    /** "p. 12 of 200", one-based. */
+    data class Page(val page: Int, val count: Int) : ProgressLabel
+
+    /** "45%", rounded down so nothing reads 100% before it is. */
+    data class Percent(val percent: Int) : ProgressLabel
+}
+
+/**
+ * The label for a stored position. Only a PDF has pages worth naming; every other format shows a
+ * percentage, because "chunk 3 of 80" or "block 412" would mean nothing to a reader.
+ */
+fun progressLabel(kindCode: Int, unit: Int, unitCount: Int, progress: Float): ProgressLabel {
+    if (LocationKind.fromCode(kindCode) == LocationKind.PAGE && unitCount > 0) {
+        return ProgressLabel.Page((unit + 1).coerceIn(1, unitCount), unitCount)
+    }
+    return ProgressLabel.Percent((progress * 100f).toInt().coerceIn(0, 100))
+}
