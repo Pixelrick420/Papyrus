@@ -114,6 +114,8 @@ access</string>
     <string name="settings_autosave_external_desc">Add documents opened from other apps to your library automatically.</string>
     <string name="settings_autosave_encrypted">Autosave encrypted docs</string>
     <string name="settings_autosave_encrypted_desc">Add password-protected documents to your library automatically. They stay encrypted and the password is never stored.</string>
+    <string name="settings_remember_position">Remember reading position</string>
+    <string name="settings_remember_position_desc">Reopen library documents where you stopped and show your progress on Home. Only numbers are stored, on this device.</string>
     <string name="settings_section_about">About</string>
     <string name="settings_about_version">Version %1$s</string>
     <string name="settings_about_source">Source code</string>
