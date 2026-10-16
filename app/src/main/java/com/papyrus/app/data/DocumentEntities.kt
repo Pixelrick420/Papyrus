@@ -1,5 +1,6 @@
 package com.papyrus.app.data
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
@@ -89,4 +90,10 @@ data class DocumentEntity(
     val sizeBytes: Long,
     val createdAt: Long,
     val lastOpenedAt: Long,
+    /**
+     * Pinned by the reader. The default is spelled out for the schema, so the migration's
+     * `ADD COLUMN ... DEFAULT 0` and Room's own expectation agree. `upsertByUri` updates through
+     * `existing.copy(...)`, so the flag survives re-opening and re-granting a file.
+     */
+    @ColumnInfo(defaultValue = "0") val isFavourite: Boolean = false,
 )

@@ -8,8 +8,8 @@ import org.junit.Test
 import java.io.File
 
 /**
- * Guards the schema history. Today the chain is empty and trivially sound; the point is the day someone
- * bumps [Migrations.CURRENT_VERSION] and forgets the migration, or forgets to commit the exported schema.
+ * Guards the schema history: a bumped [Migrations.CURRENT_VERSION] without its migration, a migration that
+ * could lose rows, or a forgotten exported schema.
  */
 class MigrationsTest {
 
@@ -99,6 +99,44 @@ class MigrationsTest {
     @Test
     fun `a migration that goes backwards is reported without looping`() {
         assertTrue(problems(4 to 3, current = 5).any { "does not move forward" in it })
+    }
+
+    @Test
+    fun `the 4 to 5 migration is registered as exactly one step from the baseline`() {
+        val step = Migrations.ALL.single()
+        assertEquals(4, step.startVersion)
+        assertEquals(5, step.endVersion)
+        assertEquals(5, Migrations.CURRENT_VERSION)
+    }
+
+    @Test
+    fun `the 4 to 5 statements only add, so no existing row can be lost`() {
+        // An allow-list: every statement must open with one of the additive shapes below, which rules
+        // out DROP, DELETE, UPDATE, INSERT OR REPLACE and table rebuilds without matching on words
+        // that legitimately appear inside a foreign-key clause ("ON DELETE CASCADE").
+        val additive = Regex("^(ALTER TABLE `\\w+` ADD COLUMN |CREATE TABLE IF NOT EXISTS |CREATE INDEX IF NOT EXISTS )")
+        for (sql in Migrations.V4_TO_V5_SQL) {
+            assertTrue("not an additive statement: $sql", additive.containsMatchIn(sql))
+        }
+    }
+
+    @Test
+    fun `new tables are re-runnable and leave with their document`() {
+        val tables = Migrations.V4_TO_V5_SQL.filter { it.startsWith("CREATE TABLE") }
+        assertEquals(2, tables.size)
+        for (sql in tables) {
+            assertTrue("not idempotent: $sql", "IF NOT EXISTS" in sql)
+            assertTrue(
+                "no cascade to documents: $sql",
+                "REFERENCES `documents`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE" in sql,
+            )
+        }
+    }
+
+    @Test
+    fun `the new column has a default, so a v4 row is valid without being rewritten`() {
+        val alter = Migrations.V4_TO_V5_SQL.single { it.startsWith("ALTER TABLE") }
+        assertTrue("`isFavourite` INTEGER NOT NULL DEFAULT 0" in alter)
     }
 
     @Test

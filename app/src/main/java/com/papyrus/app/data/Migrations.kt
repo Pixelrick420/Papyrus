@@ -1,6 +1,7 @@
 package com.papyrus.app.data
 
 import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 
 /**
  * Every schema migration of [AppDatabase], in one place, plus the version numbers they are checked against.
@@ -12,7 +13,8 @@ import androidx.room.migration.Migration
  * have written. An `AutoMigration` still needs its `from` schema file exported, which is why `app/schemas/`
  * is committed.
  *
- * The list is empty because no schema after [BASELINE_VERSION] has shipped.
+ * 4 -> 5 is hand-written rather than an `AutoMigration`: the version-4 schema JSON was never exported
+ * (see [V4_TO_V5_SQL]), and an `AutoMigration` cannot be generated without it.
  */
 object Migrations {
 
@@ -20,10 +22,53 @@ object Migrations {
     const val BASELINE_VERSION = 4
 
     /** The version in `@Database`; raise it together with a migration in [ALL]. */
-    const val CURRENT_VERSION = 4
+    const val CURRENT_VERSION = 5
+
+    /**
+     * 4 -> 5, the one additive step that carries reading position, bookmarks and favourites together:
+     * unreleased work has no reason to publish intermediate versions.
+     *
+     * Every statement only adds. Nothing is dropped, rewritten or replaced, so existing rows keep their
+     * ids, and the library files under `filesDir/imports` they point at stay reachable.
+     *
+     * The SQL is written to match what Room expects of the entities, because Room compares the
+     * resulting tables to them (column names, types, nullability, defaults, foreign keys, indices) on
+     * the first open and throws on any difference. Keep it in step with [DocumentEntity],
+     * [ReadingProgressEntity] and [BookmarkEntity].
+     */
+    internal val V4_TO_V5_SQL: List<String> = listOf(
+        "ALTER TABLE `documents` ADD COLUMN `isFavourite` INTEGER NOT NULL DEFAULT 0",
+        "CREATE TABLE IF NOT EXISTS `reading_progress` (" +
+            "`documentId` INTEGER NOT NULL, " +
+            "`locationKind` INTEGER NOT NULL, " +
+            "`locationUnit` INTEGER NOT NULL, " +
+            "`locationFraction` REAL NOT NULL, " +
+            "`unitCount` INTEGER NOT NULL, " +
+            "`zoomScale` REAL NOT NULL, " +
+            "`progress` REAL NOT NULL, " +
+            "`updatedAt` INTEGER NOT NULL, " +
+            "PRIMARY KEY(`documentId`), " +
+            "FOREIGN KEY(`documentId`) REFERENCES `documents`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "CREATE TABLE IF NOT EXISTS `bookmarks` (" +
+            "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+            "`documentId` INTEGER NOT NULL, " +
+            "`locationKind` INTEGER NOT NULL, " +
+            "`locationUnit` INTEGER NOT NULL, " +
+            "`locationFraction` REAL NOT NULL, " +
+            "`label` TEXT NOT NULL, " +
+            "`createdAt` INTEGER NOT NULL, " +
+            "FOREIGN KEY(`documentId`) REFERENCES `documents`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "CREATE INDEX IF NOT EXISTS `index_bookmarks_documentId` ON `bookmarks` (`documentId`)",
+    )
+
+    private val MIGRATION_4_5 = object : Migration(4, 5) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            V4_TO_V5_SQL.forEach { db.execSQL(it) }
+        }
+    }
 
     /** Hand-written migrations, oldest first. Each must run from `startVersion` to `endVersion`. */
-    val ALL: Array<Migration> = emptyArray()
+    val ALL: Array<Migration> = arrayOf(MIGRATION_4_5)
 
     /**
      * What is wrong with [migrations] as a chain from [baseline] to [current], one message per problem,
