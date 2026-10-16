@@ -68,6 +68,10 @@ committed, and a unit test fails if the current version's schema is missing or t
   default the file is not indexed or listed on Home, and the password is never stored or logged. Save to library in the
   viewer menu, or the autosave switch below, keeps the still-encrypted file; opening it from Home asks for the password
   again.
+  A PDF is first scanned byte-for-byte for the `/Encrypt` key, so an ordinary PDF is recognised as unprotected without
+  the whole-file parse that only a protected one needs. The scan covers the whole file because the key can sit near the
+  start (linearized PDFs) or inside the cross-reference stream's dictionary (PDF 1.5) as well as at the end. If the
+  renderer still asks for a password after the scan found none, the full check runs and the usual prompt appears.
 - **Settings** is the gear on Home's title bar:
   - *Theme*: system default, light or dark. It applies to the whole app, status and navigation bar icons included.
   - *Syntax highlighting*, *Line numbers* and *Wrap long lines*: how plain text, logs and code are shown. Highlighting

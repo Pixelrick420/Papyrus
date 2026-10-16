@@ -13,6 +13,7 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileNotFoundException
 import java.io.InputStream
+import java.util.concurrent.ConcurrentHashMap
 
 class DocumentRepository(
     private val context: Context,
@@ -24,6 +25,13 @@ class DocumentRepository(
     /** In-memory only; ids are negative (Room's positive), -1 the viewer's sentinel, so counting starts at -2. */
     private val handedOver = mutableMapOf<Long, DocumentEntity>()
     private var nextHandedOverId = -2L
+
+    /**
+     * The encryption verdict [register] reached for a PDF it then handed over, so the viewer that opens
+     * it next does not run the same whole-file check again. Read once and then forgotten, so a re-pick
+     * or a retry asks afresh, and cleared when it grows past a handful of never-opened entries.
+     */
+    private val knownPdfEncryption = ConcurrentHashMap<String, PdfEncryption>()
 
     val documents: Flow<List<DocumentEntity>> = dao.observeAll()
 
@@ -110,6 +118,11 @@ class DocumentRepository(
         FileProvider.getUriForFile(context, "${context.packageName}$FILE_PROVIDER_SUFFIX", file)
     }
 
+    /** What opening the PDF at [uri] needs: the verdict [register] already reached if there is one, else a fresh check. */
+    suspend fun pdfEncryption(uri: Uri): PdfEncryption = withContext(Dispatchers.IO) {
+        knownPdfEncryption.remove(uri.toString()) ?: PdfEncryption.status { openStream(uri) }
+    }
+
     /** Readability of a stored document, for the share action's pre-flight check. */
     suspend fun probeShare(document: DocumentEntity): SafAccess =
         withContext(Dispatchers.IO) { SafStorage.probeAccess(resolver, document.uri.toUri()) }
@@ -140,7 +153,12 @@ class DocumentRepository(
     /** An unreadable file reads as not encrypted, so it fails in the renderer rather than prompting. */
     private fun isEncrypted(format: DocumentFormat, uri: Uri): Boolean =
         when (format) {
-            DocumentFormat.PDF -> PdfEncryption.status { openStream(uri) } != PdfEncryption.NOT_ENCRYPTED
+            DocumentFormat.PDF -> PdfEncryption.status { openStream(uri) }.also { status ->
+                if (status != PdfEncryption.NOT_ENCRYPTED) {
+                    if (knownPdfEncryption.size >= MAX_KNOWN_PDF_STATUS) knownPdfEncryption.clear()
+                    knownPdfEncryption[uri.toString()] = status
+                }
+            } != PdfEncryption.NOT_ENCRYPTED
             DocumentFormat.DOCX, DocumentFormat.ODT, DocumentFormat.DOC -> OfficeEncryption.isEncrypted({ openStream(uri) })
             else -> false
         }
@@ -173,6 +191,7 @@ class DocumentRepository(
 
     private companion object {
         const val FILE_PROVIDER_SUFFIX = ".fileprovider"
+        const val MAX_KNOWN_PDF_STATUS = 8
 
         /** Formats whose encryption this app can detect; others are indexed and fail on open. */
         val ENCRYPTABLE = setOf(
