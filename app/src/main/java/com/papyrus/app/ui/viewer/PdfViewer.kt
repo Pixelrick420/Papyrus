@@ -53,6 +53,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import com.papyrus.app.R
+import com.papyrus.app.data.LocationKind
 import com.papyrus.app.viewer.NormRect
 import com.papyrus.app.viewer.PdfLinkTarget
 import com.papyrus.app.viewer.PdfPageGeometry
@@ -94,8 +95,10 @@ internal fun PdfViewer(
     pageJump: PdfPageJump? = null,
     loadLinks: suspend (Int) -> List<PdfPageLink>? = { null },
     onLinkTarget: (PdfLinkTarget) -> Unit = {},
+    position: PositionHooks = PositionHooks.None,
 ) {
-    val listState = rememberLazyListState()
+    val restoreTarget = rememberRestoredTarget(LocationKind.PAGE, source.pageCount, position)
+    val listState = rememberLazyListState(initialFirstVisibleItemIndex = restoreTarget?.unit ?: 0)
     val geometry = rememberLazyScrollGeometry(listState)
     val scrolling by remember { derivedStateOf { listState.isScrollInProgress } }
     // The page whose top edge has crossed the middle of the screen, not the one clipping the top.
@@ -158,6 +161,8 @@ internal fun PdfViewer(
     LaunchedEffect(zoom.lastCommit) {
         zoom.lastCommit?.let { hAnchor.settle(zoom) }
     }
+
+    LazyPositionEffects(listState, LocationKind.PAGE, source.pageCount, zoom, position, restoreTarget)
 
     BoxWithConstraints(modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant)) {
         val baseWidthPx = with(LocalDensity.current) { maxWidth.roundToPx() }

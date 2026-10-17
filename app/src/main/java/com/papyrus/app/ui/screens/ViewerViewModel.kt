@@ -12,6 +12,9 @@ import com.papyrus.app.R
 import com.papyrus.app.data.AppSettings
 import com.papyrus.app.data.DocumentEntity
 import com.papyrus.app.data.DocumentFormat
+import com.papyrus.app.data.PositionSample
+import com.papyrus.app.data.PositionTracker
+import com.papyrus.app.data.RestoreRequest
 import com.papyrus.app.data.SafAccess
 import com.papyrus.app.data.shareIntent
 import com.papyrus.app.ui.UiText
@@ -41,6 +44,7 @@ import com.papyrus.app.viewer.TextEncodings
 import com.papyrus.app.viewer.TextSniffer
 import com.papyrus.app.viewer.readTextChunks
 import com.papyrus.app.viewer.readTextString
+import com.papyrus.app.ui.viewer.clampScale
 import com.papyrus.app.ui.viewer.countOccurrences
 import com.papyrus.app.ui.viewer.findBlockHits
 import com.papyrus.app.ui.viewer.findChunkHits
@@ -52,6 +56,7 @@ import io.noties.markwon.ext.strikethrough.StrikethroughPlugin
 import io.noties.markwon.ext.tables.TablePlugin
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -166,6 +171,12 @@ data class ViewerUiState(
     val savedToLibrary: Boolean = false,
     /** A charset name picked by hand for a text or Markdown file; null leaves detection in charge. */
     val encodingOverride: String? = null,
+    /**
+     * Where the viewer should open, from the stored reading position; null when there is nothing to
+     * restore. Set with the document and before its content, so the viewer can place itself on its
+     * first layout instead of flashing the top.
+     */
+    val restore: RestoreRequest? = null,
 )
 
 class ViewerViewModel(
@@ -208,7 +219,39 @@ class ViewerViewModel(
     /** Per document: a shared directory would let a viewer delete another's images. */
     private val mediaDir: File by lazy { File(app.cacheDir, "office-media/$documentId") }
 
+    /**
+     * When the reading position may be saved. Declared above `init`: `load()` runs inline on the main
+     * dispatcher and would otherwise reach it before it exists.
+     */
+    private val tracker = PositionTracker(now = { System.nanoTime() / NANOS_PER_MILLI })
+
+    /**
+     * The library id the position is stored under: the document's own, or the new row's once a
+     * transient document has been saved. 0 while there is none, so nothing is written for a document
+     * that is not in the library.
+     */
+    private var persistedId: Long = documentId.coerceAtLeast(0L)
+
+    private var saveJob: Job? = null
+
+    /**
+     * One writer, in order, that outlives this ViewModel: the last position is still written after the
+     * viewer closes. Conflated, because only the newest position matters.
+     */
+    private val outbox = Channel<Pair<Long, PositionSample>>(Channel.CONFLATED)
+
     init {
+        app.applicationScope.launch {
+            for ((id, sample) in outbox) {
+                try {
+                    repository.saveReadingProgress(id, sample)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    // Best effort: a missed save only means the previous position is reopened.
+                }
+            }
+        }
         viewModelScope.launch { load() }
     }
 
@@ -227,11 +270,70 @@ class ViewerViewModel(
             _state.value = ViewerUiState(content = ViewerContent.Failed(UiText(R.string.viewer_error_not_found)))
             return
         }
-        _state.value = ViewerUiState(document = doc, canSaveToLibrary = doc.id < 0, encodingOverride = encodingName)
+        val restore = restoreFor(doc)
+        tracker.beginLoad(restorePending = restore != null)
+        _state.value = ViewerUiState(
+            document = doc,
+            canSaveToLibrary = doc.id < 0,
+            encodingOverride = encodingName,
+            restore = restore,
+        )
         repository.markOpened(doc.id)
         val content = loadContentSafely(doc)
         _state.update { it.copy(content = content) }
         autosaveIfEnabled()
+    }
+
+    /**
+     * Where to open [doc]: the position the viewer last showed if it has been open (a re-grant reload
+     * rebuilds the viewer at the top), otherwise the stored one. Nothing when the setting is off.
+     */
+    private suspend fun restoreFor(doc: DocumentEntity): RestoreRequest? {
+        if (!app.settings.current.rememberPosition) return null
+        tracker.latest?.let { return RestoreRequest(it.location, clampScale(it.zoom)) }
+        val stored = repository.restoreRequest(doc.id, doc.format) ?: return null
+        return stored.copy(zoom = clampScale(stored.zoom))
+    }
+
+    /**
+     * What a freshly composed viewer should open at: the latest position it reported (so a rotation or
+     * a reload comes back to the same place at the same zoom), else the stored one.
+     */
+    fun restoreTarget(): RestoreRequest? =
+        tracker.latest?.let { RestoreRequest(it.location, clampScale(it.zoom)) } ?: _state.value.restore
+
+    /** The viewer placed the document at [applied] (read back after scrolling), which opens the save gate. */
+    fun onRestored(applied: PositionSample) = tracker.restoreApplied(applied)
+
+    /** The viewport now shows [sample]; called as often as it changes, so it only records and schedules. */
+    fun onPosition(sample: PositionSample) {
+        if (!app.settings.current.rememberPosition) return
+        tracker.observe(sample)
+        scheduleSave()
+    }
+
+    /** Writes the pending position now: the app is going to the background, where the process may be killed. */
+    fun flushPosition() = commitPosition(force = true)
+
+    /**
+     * One coroutine for as long as a save is outstanding, so a stream of position changes costs a field
+     * write each, not a coroutine each. Does nothing for a document that is not in the library.
+     */
+    private fun scheduleSave() {
+        if (persistedId <= 0 || saveJob?.isActive == true || tracker.nextDelay() == null) return
+        saveJob = viewModelScope.launch {
+            while (true) {
+                val wait = tracker.nextDelay() ?: break
+                if (wait > 0) delay(wait) else commitPosition(force = false)
+            }
+        }
+    }
+
+    private fun commitPosition(force: Boolean) {
+        val id = persistedId
+        if (id <= 0) return // not in the library (yet): the position stays pending
+        val sample = tracker.take(force) ?: return
+        outbox.trySend(id to sample)
     }
 
     /** Every failure mode maps to a screen of its own, so the callers only ever see content to show. */
@@ -425,13 +527,19 @@ class ViewerViewModel(
         if (_state.value.savingToLibrary || _state.value.savedToLibrary) return
         _state.update { it.copy(savingToLibrary = true) }
         viewModelScope.launch {
-            val saved = try {
+            val savedId = try {
                 repository.saveToLibrary(doc)
-                true
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                false
+                null
+            }
+            val saved = savedId != null
+            if (savedId != null) {
+                // From here on the position (and later bookmarks) are kept under the library row, and a
+                // position reached before the save is written now.
+                persistedId = savedId
+                scheduleSave()
             }
             _state.update { it.copy(savingToLibrary = false, savedToLibrary = saved) }
             if (notify) _messages.value = UiText(if (saved) R.string.viewer_save_done else R.string.viewer_save_failed)
@@ -636,6 +744,9 @@ class ViewerViewModel(
     private fun forcedCharset(): Charset? = encodingName?.let(TextEncodings::charsetOrNull)
 
     override fun onCleared() {
+        // viewModelScope is already cancelled here; the outbox writer is not, and drains this last position.
+        commitPosition(force = true)
+        outbox.close()
         (_state.value.content as? ViewerContent.Pdf)?.source?.close()
         pageTextSource?.close()
         unlockedFile?.delete()
@@ -654,5 +765,6 @@ class ViewerViewModel(
         const val MAX_TEXT_FIND_HITS = 100_000
         const val FIND_DEBOUNCE_MILLIS = 200L
         const val KEY_ENCODING = "encoding"
+        const val NANOS_PER_MILLI = 1_000_000L
     }
 }

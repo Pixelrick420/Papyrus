@@ -68,14 +68,17 @@ interface ZoomAnchor {
 
 /** Gesture scale paints a live graphicsLayer multiplier; committed scale drives layout. */
 @Stable
-class ZoomState(private val scope: CoroutineScope) {
+class ZoomState(private val scope: CoroutineScope, initialScale: Float = REST_SCALE) {
+
+    /** Where it starts: a restored reading position opens at its own zoom, already in place for the first layout. */
+    private val startScale = clampScale(initialScale)
 
     /** Drives layout. Only moves when a gesture ends or a control is tapped. */
-    var committedScale by mutableFloatStateOf(REST_SCALE)
+    var committedScale by mutableFloatStateOf(startScale)
         private set
 
     /** What the fingers are doing right now, including any rubber-banded overshoot. */
-    var gestureScale by mutableFloatStateOf(REST_SCALE)
+    var gestureScale by mutableFloatStateOf(startScale)
         private set
 
     /** True from the first frame of a pinch until the snap-back has settled. */
@@ -205,7 +208,7 @@ class ZoomState(private val scope: CoroutineScope) {
 
     /** [focal] anchors the change. Unspecified focal means a plain re-layout, right for a button. */
     fun set(value: Float, focal: Offset = Offset.Unspecified) {
-        val target = value.coerceIn(MIN_SCALE, MAX_SCALE)
+        val target = clampScale(value)
         if (focal != Offset.Unspecified) focalPoint = focal
         snapping = false
         settleJob?.cancel()
@@ -217,10 +220,13 @@ class ZoomState(private val scope: CoroutineScope) {
 }
 
 @Composable
-fun rememberZoomState(): ZoomState {
+fun rememberZoomState(initialScale: Float = REST_SCALE): ZoomState {
     val scope = rememberCoroutineScope()
-    return remember { ZoomState(scope) }
+    return remember { ZoomState(scope, initialScale) }
 }
+
+/** [value] held to the surface's [MIN_SCALE]..[MAX_SCALE]; NaN, which `coerceIn` would pass through, rests. */
+fun clampScale(value: Float): Float = if (value.isNaN()) REST_SCALE else value.coerceIn(MIN_SCALE, MAX_SCALE)
 
 /** Same node as the scroll modifier, pinch claimed in the Initial pass, graphicsLayer applied last. */
 fun Modifier.zoomable(state: ZoomState): Modifier = this
