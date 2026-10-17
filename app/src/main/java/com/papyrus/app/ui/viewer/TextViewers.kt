@@ -56,6 +56,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.papyrus.app.R
+import com.papyrus.app.data.LocationKind
 import com.papyrus.app.viewer.CodeLanguage
 import com.papyrus.app.viewer.LexStates
 import com.papyrus.app.viewer.OfficeBlock
@@ -120,6 +121,7 @@ fun MarkdownViewer(
     findQuery: String,
     zoom: ZoomState,
     modifier: Modifier = Modifier,
+    position: PositionHooks = PositionHooks.None,
 ) {
     val scroll = rememberScrollState()
     val geometry = rememberScrollGeometry(scroll)
@@ -131,6 +133,17 @@ fun MarkdownViewer(
     val rendered = rememberRenderedMarkdown(markwon, source, text, textPx, textColor, linkColor)
     val highlighted = rememberHighlightedText(rendered, findQuery)
     val textState = remember { MarkdownTextState() }
+    // The column's own 16.dp padding sits above the text inside the scrolled content.
+    val contentTopPx = with(LocalDensity.current) { 16.dp.toPx() }
+    MarkdownPositionEffects(
+        scroll = scroll,
+        layout = { textState.view?.layout },
+        textLength = text.length,
+        zoom = zoom,
+        position = position,
+        target = rememberRestoredTarget(LocationKind.CHAR, text.length, position),
+        contentTopPx = contentTopPx,
+    )
     // Markwon leaves the TextView without a movement method, which is why its links do nothing at
     // all today; this one makes them tappable and routes the tap through the viewer's own opener
     // instead of the resolver that turns a `file://` link into a crash.
@@ -278,9 +291,12 @@ fun PlainTextViewer(
     zoom: ZoomState,
     modifier: Modifier = Modifier,
     options: PlainTextOptions = PlainTextOptions(),
+    position: PositionHooks = PositionHooks.None,
 ) {
-    val listState = rememberLazyListState()
+    val restoreTarget = rememberRestoredTarget(LocationKind.CHUNK, chunks.size, position)
+    val listState = rememberLazyListState(initialFirstVisibleItemIndex = restoreTarget?.unit ?: 0)
     val geometry = rememberLazyScrollGeometry(listState)
+    LazyPositionEffects(listState, LocationKind.CHUNK, chunks.size, zoom, position, restoreTarget)
 
     // A chunk is 40 lines, so it can be taller than the screen. This brings the chunk in; its own
     // `FindText` then scrolls to the current match inside it, once per step.
@@ -546,9 +562,12 @@ fun OfficeViewer(
     zoom: ZoomState,
     modifier: Modifier = Modifier,
     jumpTo: OutlineJump? = null,
+    position: PositionHooks = PositionHooks.None,
 ) {
-    val listState = rememberLazyListState()
+    val restoreTarget = rememberRestoredTarget(LocationKind.BLOCK, blocks.size, position)
+    val listState = rememberLazyListState(initialFirstVisibleItemIndex = restoreTarget?.unit ?: 0)
     val geometry = rememberLazyScrollGeometry(listState)
+    LazyPositionEffects(listState, LocationKind.BLOCK, blocks.size, zoom, position, restoreTarget)
 
     // The outline names a heading by its block index, which is its row, so a jump is a plain scroll.
     LaunchedEffect(jumpTo) {

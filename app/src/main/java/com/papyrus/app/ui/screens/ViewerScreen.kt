@@ -73,6 +73,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.papyrus.app.R
@@ -95,6 +97,8 @@ import com.papyrus.app.ui.viewer.PdfSelectionState
 import com.papyrus.app.ui.viewer.PdfViewer
 import com.papyrus.app.ui.viewer.PlainTextOptions
 import com.papyrus.app.ui.viewer.PlainTextViewer
+import com.papyrus.app.ui.viewer.PositionHooks
+import com.papyrus.app.ui.viewer.REST_SCALE
 import com.papyrus.app.ui.viewer.ReadoutBadge
 import com.papyrus.app.ui.viewer.ZoomState
 import com.papyrus.app.ui.viewer.copyToClipboard
@@ -122,7 +126,17 @@ fun ViewerScreen(
     val message by viewModel.messages.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
-    val zoom = rememberZoomState()
+    // A fresh composition (a rotation, say) starts at the zoom the viewer last had, not at 1x.
+    val zoom = rememberZoomState(initialScale = remember { viewModel.restoreTarget()?.zoom ?: REST_SCALE })
+    // Re-read when a (re)load hands over a new request, not on every position change; the viewers apply it once.
+    val restore = remember(state.restore) { viewModel.restoreTarget() }
+    val position = remember(restore, viewModel) { PositionHooks(restore, viewModel::onRestored, viewModel::onPosition) }
+    // The document may arrive after this screen is composed; its zoom is set before its content shows.
+    LaunchedEffect(restore) {
+        restore?.zoom?.let { if (it != zoom.committedScale) zoom.set(it) }
+    }
+    // The process can be killed once the app is in the background, and onCleared is not guaranteed then.
+    LifecycleEventEffect(Lifecycle.Event.ON_STOP) { viewModel.flushPosition() }
     val snackbar = remember { SnackbarHostState() }
     val selectionScope = rememberCoroutineScope()
     val chooserTitle = stringResource(R.string.action_share)
@@ -302,6 +316,7 @@ fun ViewerScreen(
                             pageJump = pageJump,
                             loadLinks = viewModel::pageLinks,
                             onLinkTarget = followPdfLink,
+                            position = position,
                         )
                         is ViewerContent.Markdown -> MarkdownViewer(
                             markwon = content.markwon,
@@ -309,6 +324,7 @@ fun ViewerScreen(
                             text = content.text,
                             findQuery = find.query,
                             zoom = zoom,
+                            position = position,
                         )
                         is ViewerContent.PlainText -> {
                             // Keyed on the fields, not the content: comparing two contents would walk every chunk.
@@ -333,6 +349,7 @@ fun ViewerScreen(
                                 activeOccurrence = find.activeOccurrence,
                                 zoom = zoom,
                                 options = options,
+                                position = position,
                             )
                         }
                         is ViewerContent.Office -> OfficeViewer(
@@ -342,6 +359,7 @@ fun ViewerScreen(
                             activeOccurrence = find.activeOccurrence,
                             zoom = zoom,
                             jumpTo = outlineJump,
+                            position = position,
                         )
                         // The dialog covers the page; only an in-flight retry is worth showing behind it.
                         is ViewerContent.NeedsPassword ->
