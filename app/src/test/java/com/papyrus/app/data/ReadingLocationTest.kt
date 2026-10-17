@@ -220,4 +220,12 @@ class ReadingLocationTest {
     fun `a pdf row with no page count falls back to percent`() {
         assertEquals(ProgressLabel.Percent(10), progressLabel(LocationKind.PAGE.code, 3, 0, 0.1f))
     }
+
+    @Test
+    fun `a summary labels itself from its own columns`() {
+        val pdf = ReadingProgressSummary(1, LocationKind.PAGE.code, locationUnit = 11, unitCount = 200, progress = 0.057f)
+        assertEquals(ProgressLabel.Page(12, 200), pdf.label)
+        val md = ReadingProgressSummary(2, LocationKind.CHAR.code, locationUnit = 450, unitCount = 1000, progress = 0.45f)
+        assertEquals(ProgressLabel.Percent(45), md.label)
+    }
 }

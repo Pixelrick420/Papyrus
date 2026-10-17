@@ -6,6 +6,10 @@
     <string name="home_added_files">Added %d files</string>
     <string name="home_skipped_encrypted">Skipped %1$d password-protected file(s)</string>
     <string name="home_menu">More options</string>
+    <string name="home_reset_progress">Reset progress</string>
+    <string name="home_progress_page">p. %1$d of %2$d</string>
+    <string name="home_progress_percent">%1$d%%</string>
+    <string name="home_progress_cd">Progress: %1$s</string>
     <string name="action_share">Share</string>
     <string name="action_remove">Remove</string>
     <string name="action_undo">Undo</string>

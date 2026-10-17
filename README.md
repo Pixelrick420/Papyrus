@@ -50,9 +50,15 @@ The index is one Room row per document: URI, title, format, size, and the added 
 and MIME type are read live from the provider and the open PDF instead of being stored. Schema version 4 is the oldest
 supported one: earlier versions were test-only and are not migrated. The number was not reset, because installed
 databases are already at 4 and Room refuses a downgrade. Later versions add a `Migration` in `data/Migrations.kt`
-(starting with 4 -> 5) and are never replaced by a destructive fallback, since a row owns a file under
-`filesDir/imports` that wiping it would orphan. Room exports each version's schema to `app/schemas/`, which is
-committed, and a unit test fails if the current version's schema is missing or the migrations leave a gap.
+and are never replaced by a destructive fallback, since a row owns a file under `filesDir/imports` that wiping it
+would orphan. Room exports each version's schema to `app/schemas/`, which is committed, and a unit test fails if the
+current version's schema is missing or the migrations leave a gap.
+
+The current version is 5. Its one additive step from 4 is plain SQL, not an `AutoMigration`, because the version-4
+schema file was never exported and an `AutoMigration` cannot be generated without it. It adds a `reading_progress`
+table (one row per document), a `bookmarks` table and a `documents.isFavourite` column defaulting to 0. Both new tables
+reference `documents(id)` with `ON DELETE CASCADE`, so removing a document removes what hangs off it. `documents` is
+never written with `OnConflictStrategy.REPLACE`: a replace is a delete plus an insert and would cascade that away.
 
 - **Open with** takes an `ACTION_VIEW` content URI from another app and shows it without indexing it. It opens in its
   own window rather than the caller's, so the other app stays usable behind it; back returns to that app and drops the
@@ -83,6 +89,8 @@ committed, and a unit test fails if the current version's schema is missing or t
     opened. Off by default.
   - *Autosave encrypted documents*: the same for password-protected documents, saved once they unlock, including ones
     picked from Home. Off by default; while it is off the viewer menu offers Save to library for them instead.
+  - *Remember reading position*: library documents reopen where you stopped, and Home shows your progress. On by
+    default.
   - *About*: version, source link and license.
 - **Search** filters the library by title, in memory, over the list the screen already holds.
 - **Share** sends the document's own SAF URI through `ACTION_SEND` with `FLAG_GRANT_READ_URI_PERMISSION`, so no target
@@ -99,6 +107,27 @@ committed, and a unit test fails if the current version's schema is missing or t
 - **Find in file**, also on Ctrl+F, works on every format. PDF, text and Office step through matches one at a time:
   the current one is orange and the rest yellow. Markdown is a single `Spanned`, so it lights every match at once and
   its counter shows the total.
+- **Reading position** reopens a library document where the reader stopped, at the zoom they had. The place is an
+  anchor that does not depend on the viewport width, the zoom or the text size, so it survives a rotation, a pinch, an
+  encoding change and a re-wrap: a PDF page plus the fraction down it, a 40-line text chunk plus a fraction, an Office
+  block (DOCX, ODT, DOC) plus a fraction, and for Markdown a character offset into the rendered text. A stored place is
+  clamped against what actually loaded, because a file can change between opens, so a bad one can only land on the
+  nearest real place.
+  - It is stored in its own `reading_progress` table, as numbers only: the anchor, the committed zoom, the derived
+    progress (0 to 1) and a timestamp. A save never touches `documents`, so Home's order (`lastOpenedAt`) and its list
+    do not change, and an unlocked password-protected document leaves no readable fragment in the database.
+  - Nothing is saved before the restore has been applied, and the first position seen afterwards is a starting point,
+    not a save: opening a document and leaving without scrolling keeps the previous position. After that a position is
+    written once the reader has been still for about a second and a half, when the app goes to the background, and when
+    the viewer closes. Writes are ordered and never on the main thread.
+  - Home shows a thin progress bar on every row that has a position, with "p. 12 of 200" for a PDF and a percentage for
+    the rest; a never-opened document shows nothing. Progress is (page + fraction) / pages for a PDF, the same over
+    chunks or blocks for text and Office documents, and the offset over the text length for Markdown; a viewer that
+    cannot scroll any further counts as 100%. **Reset progress** in a row's menu forgets the position.
+  - A document handed over by another app is not in the library, so nothing is stored for it. If it is saved to the
+    library, its position is kept under the new row from then on.
+  - *Remember reading position* in Settings (on by default) turns all of this off: nothing is read or written, and
+    Home shows no progress. What was stored stays and applies again when the switch is turned back on.
 - **Zoom** is a pinch or a double-tap, 0.5x to 3x, the double-tap toggling between 1x and 2.5x. Text surfaces scale the
   type size, so content re-wraps and the scroll bounds stay correct.
 - **Links** open on tap with no confirmation, in PDF and Markdown text and in DOCX / ODT — a PDF's in-document
