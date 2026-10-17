@@ -87,18 +87,18 @@ class TextSnifferTest {
 
     @Test
     fun `legacy 8-bit text is accepted, since the viewer decodes it with a detected charset`() {
-        // What Excel writes for a CSV: Windows-1252, where é is E9 and the curly quotes sit in 0x80-0x9F.
+        // Excel writes CSVs in Windows-1252, where é is E9 and curly quotes sit in 0x80-0x9F.
         assertTrue(sniff("Name;Café;“quoted”\n".toByteArray(TextEncodings.WINDOWS_1252)))
         assertTrue(sniff("Привет, мир\n".toByteArray(charset("windows-1251"))))
         assertTrue(sniff("こんにちは\n".toByteArray(charset("Shift_JIS"))))
-        // Invalid as UTF-8, but short and clean: a lone lead byte and a cut sequence read as Latin text.
+        // Invalid UTF-8, but short and clean: a lone lead byte reads as Latin text.
         assertTrue(sniff(byteArrayOf(0xC3.toByte(), 0x28)))
         assertTrue(sniff(byteArrayOf(0xE2.toByte(), 0x82.toByte())))
     }
 
     @Test
     fun `invalid utf-8 that is also full of control bytes is still binary`() {
-        // Accepting legacy text must not open the door to binaries: the control ratio and NUL rules still apply.
+        // Legacy text is fine, binaries are not: the control-ratio and NUL rules still apply.
         assertFalse(sniff(byteArrayOf(0xC3.toByte(), 0x28) + ByteArray(20) { 0x01 }))
         assertFalse(sniff("good text ".toByteArray() + byteArrayOf(0xFF.toByte(), 0x00, 0xFE.toByte())))
     }
@@ -114,13 +114,13 @@ class TextSnifferTest {
 
     @Test
     fun `utf-16 text is not mistaken for utf-8 text`() {
-        // Little-endian UTF-16 of "hi" with no mark, a NUL after every ASCII byte: only a BOM vouches for UTF-16.
+        // UTF-16LE "hi" with no mark: a NUL after every byte, and only a BOM vouches for it.
         assertFalse(sniff("hi".toByteArray(Charsets.UTF_16LE)))
     }
 
     @Test
     fun `a window that ends inside a multi-byte character is still utf-8`() {
-        // 8191 ASCII bytes then a 2-byte é: the window cuts it in half, which says nothing against the file.
+        // 8191 ASCII bytes then a 2-byte é: the window cuts it in half, which says nothing bad.
         val head = ByteArray(TextSniffer.MAX_SNIFF_BYTES) { 'a'.code.toByte() }
         head[head.size - 1] = 0xC3.toByte()
 

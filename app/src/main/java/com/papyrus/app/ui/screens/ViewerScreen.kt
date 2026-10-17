@@ -165,7 +165,6 @@ fun ViewerScreen(
     var infoOpen by remember { mutableStateOf(false) }
     var encodingOpen by remember { mutableStateOf(false) }
     var outlineOpen by remember { mutableStateOf(false) }
-    // The heading the outline last chose; the Office viewer scrolls to it.
     var outlineJump by remember { mutableStateOf<OutlineJump?>(null) }
 
     // Only a document that used heading styles has an outline; without one the menu item is not offered.
@@ -192,7 +191,8 @@ fun ViewerScreen(
         else -> false
     }
 
-    // The charset applies to text that was decoded from bytes: plain text, code and Markdown. PDF and Office files have none.
+    // The charset applies only to text decoded from bytes: plain text, code and Markdown.
+    // PDF and Office files have none.
     val encodingAvailable = state.content is ViewerContent.PlainText || state.content is ViewerContent.Markdown
 
     val closeFind: () -> Unit = {
@@ -532,7 +532,6 @@ private fun ViewerHeader(
                         enabled = findAvailable,
                         onClick = { onMenuOpenChange(false); onFind() },
                     )
-                    // Only for a document with headings: it lists them to jump between.
                     if (outlineAvailable) {
                         DropdownMenuItem(
                             text = { Text(stringResource(R.string.viewer_outline_title)) },
@@ -543,7 +542,6 @@ private fun ViewerHeader(
                         text = { Text(stringResource(R.string.viewer_info_title)) },
                         onClick = { onMenuOpenChange(false); onInfo() },
                     )
-                    // Only for a file that was decoded from bytes, where a wrong guess shows as garbled text.
                     if (encodingAvailable) {
                         DropdownMenuItem(
                             text = { Text(stringResource(R.string.viewer_encoding_title)) },

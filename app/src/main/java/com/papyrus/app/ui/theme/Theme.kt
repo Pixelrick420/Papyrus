@@ -8,25 +8,12 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
-/**
- * The app's blue. It used to be read off the launcher icon background so icon and UI were one
- * colour; the icon is now a white page with grey lines, so this stands alone. It is `primary` in
- * *both* schemes -- not a tint in one and the tone-80 step in the other -- so the same blue shows
- * in light and dark.
- */
+/** The app's blue, `primary` in *both* schemes, so the same blue shows in light and dark. */
 private val Blue = Color(0xFF326AE3)
 
 /**
- * Fixed, not wallpaper-derived: Android 12's `dynamicLightColorScheme` tinted every surface role
- * with the wallpaper hue, and stock M3 below it fell back to a lavender `background` (#FFFBFE =
- * 255/251/254). Three surfaces paint from a surface role -- PDF letterbox, home cards, Office table
- * cells -- so a white page sat on a coloured field.
- *
- * One blue: every accent role is [Blue] or a tonal step of it, containers included, so a filled
- * `primaryContainer` never reads as a second brand colour. Neutrals are true greys (R == G == B):
- * M3's `surfaceVariant` #E7E0EC is visibly lavender, and one step per channel is enough to tint a
- * full-screen background. `background` is #FBFBFB, not white, to avoid glare without a cast.
- * `error` keeps the M3 baseline -- the re-grant banner needs a warning red, and red is not an accent.
+ * Fixed, not wallpaper-derived: Android 12's dynamic scheme tinted every surface with the wallpaper
+ * hue, so a white page sat on a coloured field. Accents are [Blue]; neutrals are true greys.
  */
 private val LightColors: ColorScheme = lightColorScheme(
     primary = Blue,
@@ -66,13 +53,8 @@ private val LightColors: ColorScheme = lightColorScheme(
 )
 
 /**
- * Colour-blind safe scheme. The neutral surfaces are the same as [LightColors] -- the app still
- * has to read as paper -- but the accents come from the Okabe-Ito palette, the eight-hue set
- * chosen to stay distinguishable under protanopia, deuteranopia and tritanopia. [primary] is
- * Okabe-Ito blue, [secondary] is vermillion and [tertiary] is bluish green; unlike the default
- * scheme, which leans on a single blue and lets stroke thickness carry the active/passive
- * distinction, these three are separable by hue alone. Vermillion and bluish green are darkened
- * a step from their Okabe-Ito values so white on-colours clear 4.5:1.
+ * Colour-blind safe: accents come from the Okabe-Ito palette, separable by hue alone under
+ * protanopia, deuteranopia and tritanopia; surfaces match [LightColors] so a page still reads as paper.
  */
 private val ColorblindColors: ColorScheme = lightColorScheme(
     primary = Color(0xFF0072B2),

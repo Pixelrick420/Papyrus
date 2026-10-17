@@ -9,13 +9,12 @@ import java.io.FileNotFoundException
 import java.io.IOException
 import java.io.InputStream
 
-/** Copies a handed-over document into filesDir/imports so it outlives the intent grant that delivered it. */
+/** Copies a document into filesDir/imports so it outlives the intent grant that delivered it. */
 object LibraryImport {
 
     /** Where saved copies live; also the only path the FileProvider exposes (see file_paths.xml). */
     fun importsDir(context: Context): File = File(context.filesDir, IMPORTS_DIR)
 
-    /** Streams [source] into filesDir/imports under a sanitized name and returns the new file. */
     suspend fun copyToImports(context: Context, source: Uri): File = withContext(Dispatchers.IO) {
         val meta = SafStorage.queryMetadata(context, source)
         val dir = importsDir(context)
@@ -36,7 +35,7 @@ object LibraryImport {
         return file.delete()
     }
 
-    /** True when [file] lies directly in [dir] — canonical, so a sibling `imports-evil` never matches. */
+    /** True when [file] lies in [dir] — canonical, so a sibling `imports-evil` never matches. */
     internal fun isInside(dir: File, file: File): Boolean = runCatching {
         file.canonicalFile.parentFile == dir.canonicalFile
     }.getOrDefault(false)
@@ -75,7 +74,7 @@ object LibraryImport {
     private fun openSource(context: Context, source: Uri): InputStream =
         context.contentResolver.openInputStream(source) ?: throw FileNotFoundException(source.toString())
 
-    /** Streams into a temp file beside [target], then renames it into place; a failure leaves nothing. */
+    /** Streams to a temp file beside [target], then renames it in; a failure leaves nothing. */
     internal fun copyStream(openStream: () -> InputStream, target: File): File {
         val temp = File.createTempFile(TEMP_PREFIX, TEMP_SUFFIX, target.parentFile)
         var moved = false
@@ -89,7 +88,6 @@ object LibraryImport {
         return target
     }
 
-    /** On-disk name for a copy: display name, URI segment or timestamp, sanitized and given a MIME extension. */
     internal fun importFileName(
         displayName: String?,
         uriSegment: String?,
@@ -102,7 +100,6 @@ object LibraryImport {
         return withExtension(base, extension)
     }
 
-    /** A name nothing in [existing] holds: `report.pdf` becomes `report (1).pdf` on the first clash. */
     internal fun uniqueName(name: String, existing: Set<String>): String {
         if (name !in existing) return name
         val dot = name.lastIndexOf('.')
@@ -129,7 +126,6 @@ object LibraryImport {
         ?.trimEnd('.')
         ?.takeIf { it.isNotBlank() }
 
-    /** Truncates the stem to a filesystem-safe length before deciding whether to append [extension]. */
     private fun withExtension(name: String, extension: String?): String {
         val stem = name.take(MAX_STEM_LENGTH).trimEnd('.')
         val hasExtension = stem.contains('.') && stem.substringAfterLast('.').isNotEmpty()

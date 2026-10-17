@@ -11,7 +11,6 @@ import java.io.File
 import java.io.IOException
 import java.util.UUID
 
-/** Persists each crash report as a JSON file in app-private storage. Nothing is transmitted. */
 class LocalFileReportSender : ReportSender {
     override fun send(context: Context, errorContent: CrashReportData) {
         try {

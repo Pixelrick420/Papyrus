@@ -53,7 +53,6 @@ data class OfficeCell(
     val background: Int? = null,
     val align: BlockAlign = BlockAlign.START,
 ) {
-    /** Index of the last column this cell occupies; inclusive. */
     val lastColumn: Int get() = column + colspan - 1
 }
 
@@ -153,7 +152,6 @@ internal class RichTextBuilder {
         }
     }
 
-    /** Appends text that already carries spans of its own. */
     fun appendRich(value: String, valueSpans: List<TextSpan>) {
         val offset = text.length
         text.append(value)
@@ -244,7 +242,7 @@ internal class RunProps {
     var color: Int? = null
     var background: Int? = null
 
-    /** A new layer: this one's say wherever it has one, [base]'s everywhere else. Neither is changed. */
+    /** This layer's property wherever it has one, [base]'s elsewhere; neither is changed. */
     fun mergedOver(base: RunProps): RunProps {
         val out = RunProps()
         out.bold = bold ?: base.bold
@@ -313,7 +311,9 @@ internal fun safeLink(url: String?): String? {
     return if (SAFE_SCHEMES.any { lower.startsWith(it) }) trimmed else null
 }
 
-/** Left-indent in twips (1/1440 inch) to a step of a quarter inch, so a block quote and a deep one differ. */
+/**
+ * Left-indent in twips (1/1440 inch) to a quarter-inch step, so a block quote and a deeper one differ.
+ */
 internal fun indentLevel(twips: Int?): Int = ((twips ?: 0) / INDENT_STEP_TWIPS).coerceIn(0, MAX_INDENT_STEPS)
 
 private const val INDENT_STEP_TWIPS = 360
@@ -341,7 +341,7 @@ internal fun twipsToDp(twips: Int): Float = twips / TWIPS_PER_DP
 
 private const val TWIPS_PER_DP = 9f
 
-/** Alignment as written by either format: `both` / `justify` read as [BlockAlign.START], see [BlockAlign]. */
+/** Alignment as either format writes it; `both`/`justify` read as [BlockAlign.START]. */
 internal fun alignOf(value: String?): BlockAlign? = when (value) {
     "center" -> BlockAlign.CENTER
     "right", "end" -> BlockAlign.END
@@ -370,7 +370,7 @@ internal fun displayBullet(raw: String?, level: Int): String {
     }
 }
 
-/** [format] is an OOXML `numFmt`: decimal, decimalZero, lowerLetter, upperLetter, lowerRoman, upperRoman. */
+/** [format] is an OOXML `numFmt`: decimal, decimalZero, lower/upperLetter, lower/upperRoman. */
 internal fun formatListNumber(n: Int, format: String): String = when (format) {
     "lowerLetter" -> letters(n)
     "upperLetter" -> letters(n).uppercase()

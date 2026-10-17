@@ -14,18 +14,16 @@ data class TextEncoding(
     val name: String get() = charset.name()
 }
 
-/** A statistical opinion on bytes that are not valid UTF-8: a charset name, or null for no opinion. */
+/** A statistical opinion on bytes that are not valid UTF-8: a charset name, or null for none. */
 fun interface CharsetGuesser {
     fun guess(sample: ByteArray, length: Int): String?
 }
 
-/** One row of the encoding picker. */
 data class EncodingChoice(val charsetName: String, val label: String)
 
 /**
- * Picks a charset for a file's bytes. Order: byte-order mark, UTF-16 without one (a NUL beside every
- * other byte), strict UTF-8, then the platform's statistical detector, then Windows-1252, which
- * decodes every byte and is what a "Latin-1" file nearly always is.
+ * Picks a charset for a file's bytes: BOM, UTF-16 without one, strict UTF-8, the platform detector,
+ * then Windows-1252, which decodes every byte and is what a "Latin-1" file nearly always is.
  */
 object TextEncodings {
 
@@ -35,7 +33,9 @@ object TextEncodings {
     /** A zero byte beside a share of the sample's byte pairs this large marks UTF-16 without a BOM. */
     private const val UTF16_ZERO_SHARE_PERCENT = 10
 
-    /** The other half of each pair is at most this fraction of the first: real UTF-16 is lopsided, binary is not. */
+    /**
+     * The other half of each pair is at most this fraction of the first: real UTF-16 is lopsided, binary is not.
+     */
     private const val UTF16_LOPSIDED_FACTOR = 10
 
     val WINDOWS_1252: Charset = Charset.forName("windows-1252")
@@ -72,7 +72,7 @@ object TextEncodings {
         null
     }
 
-    /** The BOM at the head of [bytes], if there is one; the four-byte UTF-32 marks are tested before UTF-16's. */
+    /** The BOM at the head of [bytes], if any; the four-byte UTF-32 marks are tested before UTF-16's. */
     fun byteOrderMark(bytes: ByteArray, length: Int): TextEncoding? = when {
         bytes.startsWith(length, 0xEF, 0xBB, 0xBF) -> TextEncoding(Charsets.UTF_8, 3, EncodingSource.BOM)
         bytes.startsWith(length, 0xFF, 0xFE, 0x00, 0x00) -> TextEncoding(UTF_32LE, 4, EncodingSource.BOM)
@@ -83,9 +83,8 @@ object TextEncodings {
     }
 
     /**
-     * How many bytes to skip when [charset] was chosen by hand: the BOM only if it is this charset's own, so
-     * picking Windows-1252 for a UTF-8 file shows the three stray characters rather than hiding them.
-     * UTF-16LE is judged on `FF FE` alone, since `FF FE 00 00` is also UTF-16LE text starting with a NUL.
+     * Bytes to skip when [charset] was chosen by hand: the BOM only if it is this charset's own, so
+     * picking Windows-1252 for a UTF-8 file shows the stray characters rather than hiding them.
      */
     fun bomLengthFor(charset: Charset, bytes: ByteArray, length: Int): Int = when (charset) {
         Charsets.UTF_8 -> if (bytes.startsWith(length, 0xEF, 0xBB, 0xBF)) 3 else 0
@@ -97,8 +96,8 @@ object TextEncodings {
     }
 
     /**
-     * [truncated] says the sample is only the head of a longer file, so a multi-byte sequence cut off by
-     * its end is not evidence against UTF-8. [guesser] is asked only about bytes that are not UTF-8.
+     * [truncated] marks the sample as the head of a longer file, so a cut-off multi-byte sequence is not
+     * evidence against UTF-8. [guesser] is asked only about bytes that are not UTF-8.
      */
     fun detect(
         sample: ByteArray,
@@ -122,7 +121,7 @@ object TextEncodings {
         return TextEncoding(WINDOWS_1252, 0, EncodingSource.FALLBACK)
     }
 
-    /** Strict: overlong forms, surrogates and anything past U+10FFFF are rejected, as a real decoder would. */
+    /** Strict: overlong forms, surrogates and anything past U+10FFFF are rejected, as a real decoder does. */
     fun isValidUtf8(bytes: ByteArray, length: Int, truncated: Boolean = false): Boolean {
         var i = 0
         while (i < length) {
@@ -159,7 +158,9 @@ object TextEncodings {
         return true
     }
 
-    /** Latin text in UTF-16 has a zero in the high byte of nearly every unit, so zeros pile up on one side of the pairs. */
+    /**
+     * Latin text in UTF-16 has a zero in the high byte of nearly every unit, so zeros pile up on one side of the pairs.
+     */
     private fun guessUtf16WithoutBom(bytes: ByteArray, length: Int): Charset? {
         val pairs = length / 2
         if (pairs < 2) return null

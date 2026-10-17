@@ -20,16 +20,12 @@
             android:resizeableActivity="true"
             android:windowSoftInputMode="adjustNothing"
             android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation|keyboardHidden">
-            <!--
-              configChanges keeps scroll/zoom/find alive across a resize (the Compose-only default);
-              uiMode/locale/layoutDirection/fontScale are left out so MarkdownViewer's AndroidView
-              recreates, and adjustNothing stops the IME re-measuring the viewer.
-            -->
+            <!-- configChanges keeps scroll/zoom/find alive across a resize (the Compose-only default);
+                 uiMode/locale/layoutDirection/fontScale are left out so MarkdownViewer's AndroidView recreates, and adjustNothing stops the IME re-measuring the viewer. -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-            <!-- "Open with" from file managers / other apps -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -48,7 +44,7 @@
             </intent-filter>
         </activity>
 
-        <!-- Lets a local copy under filesDir/imports leave as a content:// URI when shared. -->
+        <!-- Shares filesDir/imports as a content:// URI. -->
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

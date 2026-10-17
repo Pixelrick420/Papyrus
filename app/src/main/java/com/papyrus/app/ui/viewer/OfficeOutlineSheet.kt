@@ -28,7 +28,9 @@ class OutlineJump(val index: Int)
 /** One level of heading depth, in the indent a title gets. */
 private val OUTLINE_INDENT = 16.dp
 
-/** The document's headings as a list to jump from; [entries] are never empty (the caller hides the menu item then). */
+/**
+ * The document's headings as a list to jump from; [entries] is never empty (the caller hides the menu item then).
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun OfficeOutlineSheet(

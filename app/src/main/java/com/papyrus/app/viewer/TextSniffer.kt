@@ -4,11 +4,7 @@ import java.io.InputStream
 
 /**
  * Whether a file [DocumentFormat.detect] left unclassified is still worth showing as text; reads only the head.
- *
- * Text is UTF-8, UTF-16 or UTF-32 behind a byte-order mark, or any run of bytes with no NUL and almost no
- * control characters: a legacy 8-bit file (Windows-1252, Shift_JIS, KOI8-R) is the same thing to this check,
- * since the viewer decodes it with a detected or chosen charset. A NUL is what separates it from binary,
- * which is why UTF-16 is accepted only with its mark.
+ * Any run of bytes with no NUL and few control characters counts, so UTF-16 needs its mark to get past that.
  */
 object TextSniffer {
 
@@ -17,7 +13,9 @@ object TextSniffer {
     /** Share of control characters other than \n \r \t above which the bytes count as binary. */
     private const val MAX_CONTROL_RATIO = 0.02
 
-    /** Checked before UTF-8 decoding because some binaries decode as valid UTF-8, a ZIP of ASCII names among them. */
+    /**
+     * Checked before UTF-8 decoding: some binaries decode as valid UTF-8, a ZIP of ASCII names among them.
+     */
     private val BINARY_MAGIC: List<Pair<String, ByteArray>> = listOf(
         "zip" to byteArrayOf(0x50, 0x4B, 0x03, 0x04), // PK.. also docx/odt/apk/jar
         "zip-empty" to byteArrayOf(0x50, 0x4B, 0x05, 0x06),

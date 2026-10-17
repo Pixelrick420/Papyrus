@@ -1,6 +1,6 @@
 package com.papyrus.app.viewer
 
-/** Which [CodeLanguage] a file's name selects. Names only: the content is never sniffed for a language. */
+/** Which [CodeLanguage] a file's name selects; the content is never sniffed for a language. */
 object CodeLanguages {
 
     /** Null for anything without a definition, which then shows as plain text. */

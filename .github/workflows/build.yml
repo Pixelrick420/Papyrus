@@ -66,21 +66,16 @@ jobs:
 
   release:
     name: Publish release
-    # `always()` is load-bearing. A tag push skips `ci` (its `if` is branch-only), and a
-    # skipped job skips everything that `needs` it -- so without this the release would
-    # never publish. The release job runs the unit tests itself, so gating on `ci` buys
-    # nothing anyway; this ordering just keeps the tag build behind the branch build.
+    # `always()` is load-bearing: a tag push skips `ci` (branch-only `if`), and a skipped job skips
+    # everything that `needs` it, so without this the release never publishes.
     if: always() && github.ref_type == 'tag'
     needs: ci
     runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:
-      # fetch-depth: 0 is load-bearing, not hygiene. The versionCode assert below compares
-      # this build against the previous release tag, and the default shallow fetch hands the
-      # runner neither the other tags nor the file contents of the previous release: `git tag`
-      # comes back empty and there is nothing to compare against. The ci job above needs no
-      # history and deliberately keeps the default shallow fetch.
+      # fetch-depth: 0 is load-bearing: the versionCode assert compares against the previous release
+      # tag, and a shallow fetch returns neither the tags nor the previous file contents. `ci` needs no history.
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
@@ -118,12 +113,8 @@ jobs:
       - name: Unit tests
         run: ./gradlew --no-daemon testDebugUnitTest
 
-      # The release key lives in repository secrets, never in the repo: a keystore that
-      # is committed is a compromised key, and one that only exists on a runner is
-      # regenerated per run, so no two releases share a signing identity and users cannot
-      # upgrade-install over each other. Secrets are string-only, so the keystore travels
-      # base64-encoded in PAPYRUS_KEYSTORE_BASE64 and is decoded back to a binary file
-      # here. See README "Releases" for the one-time setup.
+      # The release key lives in repository secrets, never the repo -- a committed keystore is a
+      # compromised key. Secrets are string-only, so the keystore travels base64-encoded in PAPYRUS_KEYSTORE_BASE64.
       - name: Check signing secrets are present
         env:
           KEYSTORE_B64: ${{ secrets.PAPYRUS_KEYSTORE_BASE64 }}
@@ -168,13 +159,11 @@ jobs:
           count=0
           for apk in app/build/outputs/apk/release/*.apk; do
             echo "::group::$apk"
-            # Also fails on an unsigned APK, so a build that silently lost its signing
-            # config is caught here rather than shipped.
+            # Fails on an unsigned APK, catching a build that silently lost its signing config.
             "$build_tools/apksigner" verify --print-certs --verbose "$apk"
             echo "::endgroup::"
-            # Belt and braces: a signed APK is not automatically a *release*-signed one.
-            # The debug key would satisfy apksigner while producing an artifact that can
-            # never be replaced by a properly signed build.
+            # A signed APK is not automatically release-signed: the debug key satisfies apksigner
+            # but makes an artifact no properly signed build can replace.
             if "$build_tools/apksigner" verify --print-certs "$apk" \
               | grep -q 'CN=Android Debug'; then
               echo "::error::$apk is signed with the Android debug certificate"
@@ -196,22 +185,14 @@ jobs:
             exit 1
           fi
 
-      # The versionName assert above cannot catch a forgotten versionCode bump: a tag bumped
-      # to 0.4 while versionCode stays at 2 passes that check cleanly. versionCode is the only
-      # value the Android package manager uses to order releases, so a repeat is not a
-      # cosmetic slip -- the OS can never distinguish the new build from the one it is
-      # replacing, and Play Store rejects the upload outright. Compared against the previous
-      # release tag rather than a hardcoded number so this never needs editing as we version on.
+      # Catches a missed versionCode bump, which the versionName assert cannot: versionCode is the
+      # only value the package manager orders releases by, so a repeat ships an artifact the OS cannot tell apart. Compared against the previous release tag.
       - name: Assert versionCode increased
         run: |
           set -euo pipefail
           current=$(grep -om1 -P 'versionCode\s*=\s*\K\d+' app/build.gradle.kts)
-          # Picked with a read loop rather than `git tag | grep | head -1`: a head-terminated
-          # pipeline can hand its writer a SIGPIPE, which `pipefail` then reports as exit 141.
-          # Measured to need the tag list to outgrow the pipe buffer -- roughly 20k tags, so it
-          # is not reachable here today, and this only keeps a sharp edge out of the step that
-          # decides whether a release ships. A first-ever release has no earlier tag to compare
-          # against, which is a skip rather than a failure.
+          # A read loop, not `git tag | grep | head -1`: a head-terminated pipeline can SIGPIPE its
+          # writer, which `pipefail` reports as exit 141. Not reachable today (~20k tags needed), kept off the release gate.
           previous_tag=""
           while read -r candidate; do
             if [ "$candidate" != "$GITHUB_REF_NAME" ]; then

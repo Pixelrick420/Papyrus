@@ -18,9 +18,8 @@ data class PdfSelection(val start: PdfTextPos, val end: PdfTextPos) {
     val pages: IntRange get() = start.page..end.page
 
     /**
-     * What of [page] is selected, or null if none of it. A page in the middle is all selected, which
-     * is `to == Int.MAX_VALUE` rather than its length, so it can be said before that page's text has
-     * been read; every consumer clamps to the page.
+     * What of [page] is selected, null if none of it. A middle page is `to == Int.MAX_VALUE` rather
+     * than its length, so it can be reported before that page's text is read; consumers clamp to it.
      */
     fun spanOn(page: Int): PageSpan? {
         if (page !in pages) return null
@@ -40,13 +39,15 @@ data class PdfSelection(val start: PdfTextPos, val end: PdfTextPos) {
     }
 }
 
-/** A point on a page in page-relative units, 0..1 across and down from the top-left. [aspect] is height over width, so distances match what the reader sees. */
+/**
+ * A point on a page in page-relative units, 0..1 across and down from the top-left. [aspect] is height
+ * over width, so distances match what the reader sees.
+ */
 data class PagePoint(val page: Int, val x: Float, val y: Float, val aspect: Float)
 
 /**
- * Where pages sit relative to one another: every page [widthPx] wide, [gapPx] apart, each as tall as
- * its own [aspectOf] says. That is enough to tell which page a finger is on once a drag leaves the
- * page it started on, so a selection can cross a page break without asking the layout.
+ * Where pages sit relative to one another, enough to tell which page a finger is on once a drag leaves
+ * the page it started on, so a selection can cross a page break without asking the layout.
  */
 class PdfPageGeometry(
     private val pageCount: Int,
@@ -59,9 +60,8 @@ class PdfPageGeometry(
     fun heightOf(page: Int): Float = (widthPx * aspectOf(page)).coerceAtLeast(1f)
 
     /**
-     * The point [xPx], [yPx] pixels from page [page]'s top-left, however far outside it, as a point on
-     * the page it actually lies over. Off the ends, and in a gap between two, it lands on the nearer
-     * page: the nearest character is the natural answer to a finger that has run off the text.
+     * [xPx], [yPx] pixels from page [page]'s top-left, however far outside it, as a point on the page it
+     * actually lies over. Off the ends or in a gap it lands on the nearer page.
      */
     fun locate(page: Int, xPx: Float, yPx: Float): PagePoint {
         val last = (pageCount - 1).coerceAtLeast(0)

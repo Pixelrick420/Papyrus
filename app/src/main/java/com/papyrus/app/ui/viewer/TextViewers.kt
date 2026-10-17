@@ -128,7 +128,8 @@ fun MarkdownViewer(
     val textColor = MaterialTheme.colorScheme.onSurface.toArgb()
     val linkColor = MaterialTheme.colorScheme.primary.toArgb()
     val baseTextPx = with(LocalDensity.current) { MARKDOWN_BASE_SP.toPx() }
-    // Pixels, not sp: `TextView.textSize` reads sp, so handing it `toPx()` scaled the body by the density twice.
+    // Pixels, not sp: `TextView.textSize` reads sp, so handing it `toPx()` scaled the body by the
+    // density twice.
     val textPx = baseTextPx * zoom.committedScale
     val rendered = rememberRenderedMarkdown(markwon, source, text, textPx, textColor, linkColor)
     val highlighted = rememberHighlightedText(rendered, findQuery)
@@ -144,9 +145,8 @@ fun MarkdownViewer(
         target = rememberRestoredTarget(LocationKind.CHAR, text.length, position),
         contentTopPx = contentTopPx,
     )
-    // Markwon leaves the TextView without a movement method, which is why its links do nothing at
-    // all today; this one makes them tappable and routes the tap through the viewer's own opener
-    // instead of the resolver that turns a `file://` link into a crash.
+    // Markwon leaves the TextView without a movement method, so its links do nothing; this one routes the
+    // tap through the viewer's own opener instead of the resolver that turns a `file://` link into a crash.
     val opener = LocalLinkOpener.current
     val movement = remember(opener) { GuardedLinkMovementMethod(opener) }
 
@@ -169,12 +169,13 @@ fun MarkdownViewer(
                 ) {
                     AndroidView(
                         modifier = Modifier.fillMaxWidth(),
-                        // The native TextView is outside the Compose type system; its size tracks that scale.
+                        // Native TextView: outside the Compose type system, its size tracks that scale.
                         factory = { context ->
                             TextView(context).apply {
                                 setTextSize(TypedValue.COMPLEX_UNIT_PX, textPx)
                                 setLineSpacing(0f, LINE_SPACING_MULTIPLIER)
-                                // The setter, not `isTextSelectable = true`: that resolves to the read-only val.
+                                // The setter, not `isTextSelectable = true`: that resolves to the
+                                // read-only val.
                                 setTextIsSelectable(true)
                             }
                         },
@@ -182,8 +183,8 @@ fun MarkdownViewer(
                             view.setTextColor(textColor)
                             view.setLinkTextColor(linkColor)
                             view.movementMethod = movement
-                            // Committed scale, not live: the preview layer paints the in-flight gesture,
-                            // gesture, and resizing per frame relaid out the whole document.
+                            // Committed scale, not live: the preview layer paints the in-flight gesture, and
+                            // resizing per frame relaid out the whole document.
                             view.setTextSize(TypedValue.COMPLEX_UNIT_PX, textPx)
                             // Only on a change: setting text kills a copy in progress; the view too, since
                             // `ScaledTypography` composes differently at 1x.
@@ -200,7 +201,10 @@ fun MarkdownViewer(
     }
 }
 
-/** Plain fields, not Compose state: the update block runs during layout, and state would recompose per set. */
+/**
+ * Plain fields, not Compose state: the update block runs during layout, and state would recompose
+ * on every set.
+ */
 private class MarkdownTextState {
     var view: TextView? = null
     var text: Spanned? = null
@@ -264,8 +268,8 @@ private fun Spanned.withHighlight(query: String): Spanned {
 }
 
 /**
- * What the plain-text surface needs besides its chunks. The chunk list itself never changes with these,
- * so a settings toggle redraws rows and re-measures nothing that was read from the file.
+ * What the plain-text surface needs besides its chunks. None of these change the chunk list, so a settings
+ * toggle redraws rows and re-measures nothing read from the file.
  */
 @Immutable
 class PlainTextOptions(
@@ -338,7 +342,7 @@ fun PlainTextViewer(
     }
 }
 
-/** Inside [ScaledTypography], so every size it measures is the one on screen at the committed zoom. */
+/** Inside [ScaledTypography], so every measured size is the on-screen size at the committed zoom. */
 @Composable
 private fun PlainTextList(
     chunks: List<String>,
@@ -356,7 +360,8 @@ private fun PlainTextList(
     val density = LocalDensity.current
     val textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace)
     val measurer = rememberTextMeasurer(cacheSize = NUMBER_LAYOUT_CACHE)
-    // Monospace, so one measured run gives the width of every column, in the pixels of the current zoom.
+    // Monospace, so one measured run gives the width of every column, in the pixels of the
+    // current zoom.
     val columnPx = remember(measurer, textStyle) { measurer.measure(COLUMN_PROBE, textStyle).size.width / COLUMN_PROBE.length.toFloat() }
 
     val gutter = if (options.showLineNumbers) {
@@ -364,7 +369,8 @@ private fun PlainTextList(
         val digits = options.lineCount.coerceAtLeast(1).toString().length
         val numberColor = colors.onSurfaceVariant.copy(alpha = GUTTER_ALPHA)
         val dividerColor = colors.outlineVariant
-        // Remembered, so the chunks on screen are not all handed a new object, and recompose, on every pass.
+        // Remembered, so the chunks on screen are not all handed a new object, and recompose, on
+        // every pass.
         remember(columnPx, gapPx, digits, measurer, textStyle, numberColor, dividerColor) {
             Gutter(
                 widthPx = columnPx * digits + gapPx * 2,
@@ -379,9 +385,8 @@ private fun PlainTextList(
     }
     val gutterWidth = with(density) { (gutter?.widthPx ?: 0f).toDp() }
 
-    // The widest line sets the extent, not the lines currently composed: a width that followed the visible
-    // chunks would change as the list scrolls and drag the sideways position with it. Capped well under
-    // Compose's limit on a layout dimension, which a long minified line at a high zoom would otherwise pass.
+    // The widest line sets the extent, not the composed lines: a width that followed the visible chunks would
+    // drag the sideways position as the list scrolls. Capped under Compose's layout-dimension limit.
     val unwrappedWidth: Dp? = if (options.wrapLines) {
         null
     } else {
@@ -432,7 +437,10 @@ private fun PlainTextList(
     }
 }
 
-/** One chunk of 40 lines, its text coloured as source if it has a language, its numbers drawn beside it if asked for. */
+/**
+ * One chunk of 40 lines, coloured as source if it has a language, its numbers drawn beside it if
+ * asked for.
+ */
 @Composable
 private fun TextChunk(
     text: String,
@@ -515,8 +523,8 @@ private fun DrawScope.drawGutter(layout: TextLayoutResult, lineStarts: IntArray,
 }
 
 /**
- * Offset of each line's first character. A final chunk that ends in a newline has an empty line after
- * it, which editors leave unnumbered, so [dropEmptyTail] omits it.
+ * Offset of each line's first character. A final chunk ending in a newline has an empty line after it,
+ * which editors leave unnumbered, so [dropEmptyTail] omits it.
  */
 private fun lineStartOffsets(text: String, dropEmptyTail: Boolean): IntArray {
     var count = 1
@@ -527,7 +535,10 @@ private fun lineStartOffsets(text: String, dropEmptyTail: Boolean): IntArray {
     return if (dropEmptyTail && count > 1 && text.endsWith('\n')) starts.copyOf(count - 1) else starts
 }
 
-/** Holds the column under the pinch fixed when unwrapped text rescales: the other anchors only know about rows. */
+/**
+ * Holds the column under the pinch fixed when unwrapped text rescales; the other anchors only know
+ * about rows.
+ */
 private class SidewaysZoomAnchor(private val scroll: ScrollState) : ZoomAnchor {
 
     private var target: Float? = null
@@ -540,7 +551,10 @@ private class SidewaysZoomAnchor(private val scroll: ScrollState) : ZoomAnchor {
         target = anchoredScroll(scroll.value.toFloat(), focal.x, commit)
     }
 
-    /** The new width lands a measure after the commit, and `maxValue` lags it, so this chases it a few frames. */
+    /**
+     * The new width lands a measure after the commit, and `maxValue` lags it, so this chases it for
+     * a few frames.
+     */
     suspend fun settle(zoom: ZoomState) {
         val wanted = target ?: return
         target = null
@@ -614,7 +628,7 @@ fun OfficeViewer(
     }
 }
 
-/** Scroll speed (dp/s) that reveals the knob on text surfaces; the PDF viewer keeps the 880 default. */
+/** Scroll speed (dp/s) revealing the knob on text surfaces; the PDF viewer keeps its 880 default. */
 private val TEXT_SHOW_VELOCITY = 1600.dp
 private const val HIGHLIGHT_DEBOUNCE_MS = 150L
 private val MARKDOWN_BASE_SP = 16.sp
@@ -629,5 +643,5 @@ private const val NUMBER_LAYOUT_CACHE = 64
 private const val TRUNCATED_ITEM_KEY = "truncated"
 private const val SIDEWAYS_SETTLE_FRAMES = 3
 
-/** Under the 2^16 or so a layout dimension can reach once the other one is tall; lines past it clip. */
+/** Under the ~2^16 a layout dimension reaches once the other is tall; lines past it clip. */
 private const val MAX_UNWRAPPED_WIDTH_PX = 60_000f

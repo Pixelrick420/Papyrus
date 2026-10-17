@@ -6,7 +6,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** The undo window's contract: hidden until it ends, never committed twice, never committed after an Undo. */
+/** The undo window's contract: never committed twice, never committed after an Undo. */
 class PendingRemovalTest {
 
     /** A clock the test turns by hand: tasks fire only when [advance] passes their time. */
@@ -36,7 +36,7 @@ class PendingRemovalTest {
             }
         }
 
-        /** Runs the [index]th timer ever scheduled even if it was cancelled: one that lost a race with its own cancellation. */
+        /** Fires the [index]th timer even if cancelled, simulating a cancel that lost the race. */
         fun fireIgnoringCancellation(index: Int) {
             tasks[index].action()
         }
@@ -187,7 +187,7 @@ class PendingRemovalTest {
         observing.begin("a")
         timer.advance(5_000)
         observing.begin("b")
-        observing.begin("c") // replaces "b"
+        observing.begin("c")
 
         assertEquals(listOf<String?>("a", "b"), seenPending)
         assertEquals("c", observing.pending.value?.item)

@@ -251,7 +251,7 @@ private class DocxStylesReader(private val p: XmlPullParser) {
     }
 }
 
-/** One `w:lvl` of a numbering definition. [symbolFont]: the bullet is a Symbol or Wingdings glyph. */
+/** One `w:lvl`; [symbolFont] means the bullet is a Symbol or Wingdings glyph. */
 internal class NumLevel(val format: String, val text: String, val start: Int, val symbolFont: Boolean)
 
 internal class DocxNumbering(

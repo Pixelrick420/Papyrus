@@ -5,9 +5,7 @@ import java.io.ByteArrayOutputStream
 
 /**
  * In-memory Word 97-2003 builders: a `.doc` is binary, so a fixture cannot be reviewed in a diff.
- * [doc] assembles the FIB, piece table and text; [compound] wraps any streams in an OLE2 container
- * whose FAT serves both the mini and the regular stream path, so tests exercise whichever a real
- * document of that size would take.
+ * [compound]'s FAT serves both the mini and regular stream paths, as a real document of that size would.
  */
 internal object DocFixtures {
 

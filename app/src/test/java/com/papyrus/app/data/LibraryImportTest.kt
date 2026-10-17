@@ -13,7 +13,7 @@ import java.io.File
 import java.io.IOException
 import java.io.InputStream
 
-/** The name chain and the copy's failure contract: no partial file ever survives a failed copy. */
+/** The name chain and the copy's failure contract: no partial file survives a failed copy. */
 class LibraryImportTest {
 
     @get:Rule

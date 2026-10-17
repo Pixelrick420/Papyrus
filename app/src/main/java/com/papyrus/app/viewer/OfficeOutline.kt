@@ -1,9 +1,8 @@
 package com.papyrus.app.viewer
 
 /**
- * One heading in a document's outline. [index] is the block it came from, which is also its row in
- * the viewer's list, so jumping to it is a scroll to that row. [depth] is relative: 0 is the
- * shallowest heading the document has, whatever its style was called.
+ * One heading: [index] is the block it came from, also its row in the viewer's list, and [depth] is
+ * relative, 0 being the shallowest heading the document has whatever its style was called.
  */
 data class OutlineEntry(val index: Int, val depth: Int, val title: String)
 
@@ -16,9 +15,8 @@ private const val MAX_TITLE_CHARS = 200
 private const val MAX_OUTLINE_DEPTH = 5
 
 /**
- * The headings of [blocks] in reading order, or empty when the author never used heading styles
- * (the caller then has nothing worth offering). A heading with no visible words is left out, and a
- * heading that wraps or carries a line break shows as one line.
+ * The headings of [blocks] in reading order, or empty when the author never used heading styles.
+ * A heading with no visible words is left out, and one that wraps or breaks shows as a single line.
  */
 fun officeOutline(blocks: List<OfficeBlock>): List<OutlineEntry> {
     // `depth` holds the heading's own level here; it is made relative below, once the shallowest is known.

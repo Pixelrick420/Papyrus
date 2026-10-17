@@ -6,7 +6,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Equations used to vanish from a .docx without a trace. They now read as typed text, so these pin
+ * Equations used to vanish from a .docx without a trace; they now read as typed text, so these pin
  * the shape of that text for the constructs Word actually produces.
  */
 class DocxMathTest {
@@ -59,7 +59,7 @@ class DocxMathTest {
 
     @Test
     fun `a script with no raised form falls back to caret and brackets, never half converted`() {
-        // "n+1" has a raised "n" but no raised letter for everything in "x+y"; one stray glyph would misread.
+        // "n+1" has a raised "n", but "x+y" has no raised letters; one stray glyph would misread.
         assertEquals("e^(x+y)", display(sup(r("e"), r("x+y"))))
         assertEquals("a_(n+1)", display(sub(r("a"), r("n+1"))))
     }

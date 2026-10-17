@@ -10,10 +10,8 @@ plugins {
     id("dev.detekt")
 }
 
-// ---------------------------------------------------------------------------
-// F-Droid guard: fail the build if ANY configuration (direct or transitive)
-// tries to resolve Google Mobile Services, Firebase, ML Kit or Play libraries.
-// ---------------------------------------------------------------------------
+// F-Droid guard: fail the build if any configuration (direct or transitive) resolves
+// GMS, Firebase, ML Kit or Play libraries.
 val forbiddenGroups = listOf(
     "com.google.android.gms",
     "com.google.firebase",
@@ -33,28 +31,8 @@ configurations.configureEach {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Opt-in release signing.
-//
-// Signing credentials are read from Gradle properties first, then environment
-// variables, and the `release` signing config is only created when all four are
-// present. With none of them set -- the normal local and F-Droid case -- `release`
-// stays unsigned exactly as before, so the default build can never accidentally
-// produce a debug-signed artifact that looks shippable.
-//
-// Release signing is supplied per build, never committed. CI passes the real
-// keystore in through these four variables from repository secrets:
-//   PAPYRUS_STORE_FILE=/path/to/papyrus-release.jks
-//   PAPYRUS_STORE_PASSWORD=<store password>
-//   PAPYRUS_KEY_ALIAS=<key alias>
-//   PAPYRUS_KEY_PASSWORD=<key password>
-//
-// The keystore itself is deliberately absent from the repository. It is also
-// deliberately not reproducible per build: a key generated inside the runner
-// differs on every run, which makes each release mutually uninstallable and
-// unusable as an app-store upload. Back the one keystore up somewhere private
-// and permanent -- losing it means never shipping an update to an installed app.
-// ---------------------------------------------------------------------------
+// Opt-in release signing: `release` gets a signing config only when all four PAPYRUS_*
+// properties/env vars are set, so the default build stays unsigned. The keystore is never committed, and a per-run key would make releases mutually uninstallable.
 fun signingSetting(name: String): String? =
     providers.gradleProperty(name).orNull?.takeIf { it.isNotBlank() }
         ?: providers.environmentVariable(name).orNull?.takeIf { it.isNotBlank() }
@@ -72,8 +50,7 @@ android {
     namespace = "com.papyrus.app"
     compileSdk = 37
 
-    // Pinned so `stripReleaseDebugSymbols` finds a strip tool; without it AGP falls back to
-    // its own NDK default (27.0.120779), which isn't installed here.
+    // Pinned so `stripReleaseDebugSymbols` finds a strip tool; AGP's NDK default (27.0.120779) isn't installed here.
     ndkVersion = "28.2.13676358"
 
     defaultConfig {
@@ -128,8 +105,7 @@ android {
 
     packaging {
         resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
-        // pdfbox-android pulls in BouncyCastle, which also ships post-quantum crypto
-        // parameter files Papyrus never uses; those ~4 MB of PQC data are dead weight.
+        // pdfbox-android's BouncyCastle ships ~4 MB of post-quantum crypto parameter files Papyrus never uses.
         resources.excludes += "org/bouncycastle/pqc/**"
         jniLibs.useLegacyPackaging = false // keep any .so page-aligned for 16 KB devices
     }
@@ -142,16 +118,13 @@ kotlin {
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
 
-    // AndroidX core
     implementation("androidx.core:core-ktx:1.16.0")
     implementation("androidx.activity:activity-compose:1.10.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
 
-    // Lifecycle / ViewModel
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.9.0")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.9.0")
 
-    // Jetpack Compose
     implementation(platform("androidx.compose:compose-bom:2026.09.00"))
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-graphics")
@@ -159,7 +132,6 @@ dependencies {
     implementation("androidx.compose.material:material-icons-core")
     implementation("androidx.navigation:navigation-compose:2.9.0")
 
-    // Room (SQLite index of documents / page order)
     implementation("androidx.room:room-runtime:2.8.5")
     implementation("androidx.room:room-ktx:2.8.5")
     ksp("androidx.room:room-compiler:2.8.5")
@@ -168,70 +140,47 @@ dependencies {
     // AAR port; the platform's PdfRenderer draws the pages.
     implementation("com.tom-roush:pdfbox-android:2.0.27.0")
 
-    // Markdown (MIT) - Spannable output, no WebView, no image loader / network
+    // Markdown (MIT): Spannable output, no WebView or network.
     val markwon = "4.6.2"
     implementation("io.noties.markwon:core:$markwon")
     implementation("io.noties.markwon:ext-strikethrough:$markwon")
     implementation("io.noties.markwon:ext-tables:$markwon")
 
-    // Local-only crash reporting (replaces Crashlytics)
-    //
-    // `auto-service` is excluded on purpose: it reaches us only as a leaked runtime
-    // dependency of acra-core and drags in Guava, which is dead weight. It is an
-    // annotation processor needed only to build ACRA itself; at runtime our sender
-    // is wired through the app's own
-    // META-INF/services/org.acra.sender.ReportSenderFactory file.
+    // Local-only crash reporting (replaces Crashlytics). `auto-service` is excluded on purpose: it
+    // leaks in from acra-core and drags in Guava; our sender loads via the app's own META-INF/services file.
     implementation("ch.acra:acra-core:5.12.0") {
         exclude(group = "com.google.auto.service", module = "auto-service")
     }
 
-    // Unit tests. JUnit 4 rather than JUnit 5 because the extractor and sniffer tests need no
-    // Android runtime beyond a stubbed XmlPullParser, and JUnit 4 is what the AGP `testDebugUnitTest`
-    // task runs without an extra runner dependency. Robolectric is deliberately absent: these tests
-    // cover pure parsing logic, and pulling in Robolectric would put a full Android framework on the
-    // test classpath for no coverage gain.
+    // JUnit 4, not 5: the extractor/sniffer tests need no Android runtime beyond a stubbed
+    // XmlPullParser, and AGP's testDebugUnitTest runs JUnit 4 without an extra runner. No Robolectric -- these tests cover pure parsing logic.
     testImplementation("junit:junit:4.13.2")
-    // kxml2 is a *reference* XmlPullParser implementation. The extractor takes its parser from an
-    // injected factory precisely so these tests can substitute this one: android.util.Xml is a
-    // platform stub under plain JUnit, and Robolectric would be a heavy way to get a working parser.
+    // kxml2 is a reference XmlPullParser: the extractor takes its parser from an injected factory so
+    // tests can substitute this one, since android.util.Xml is a platform stub under plain JUnit.
     testImplementation("net.sf.kxml:kxml2:2.3.0")
 }
 
-// Room exports each schema version as JSON here, and the file is committed: a migration is written and
-// tested against the exact schema a released database was built from. `.gitignore` re-includes this
-// directory because it ignores `*.json` globally.
+// Room exports each schema version as JSON here, committed so a migration is written against the exact
+// schema a release was built from. `.gitignore` re-includes this dir because it ignores `*.json` globally.
 ksp {
     arg("room.schemaLocation", "$projectDir/schemas")
 }
 
-// Static analysis, scoped to dead code and correctness. The rule selection and the
-// reasons each borderline ruleset is off live in config/detekt/detekt.yml.
+// Static analysis scoped to dead code and correctness; rule selection and reasons live in config/detekt/detekt.yml.
 detekt {
     buildUponDefaultConfig = false
     allRules = false
     config.setFrom(rootProject.file("config/detekt/detekt.yml"))
     baseline.set(file("$rootDir/config/detekt/baseline.xml"))
-    // detekt 2.x replaced 1.x's weight-based maxIssues with failOnSeverity. The old
-    // config used the maxIssues=0 default (any finding fails), so Info -- the lowest
-    // severity -- preserves that strictness.
+    // detekt 2.x replaced 1.x's weight-based maxIssues with failOnSeverity; Info -- the lowest
+    // severity -- preserves the old maxIssues=0 strictness.
     failOnSeverity = FailOnSeverity.Info
-    // Type resolution is left off: it would require detekt to run against the
-    // compiled classpath (and therefore after every Kotlin compile). Every rule
-    // enabled in the config works on the AST alone.
+    // Type resolution is left off: it would need detekt to run against the compiled classpath. Every enabled rule works on the AST alone.
     ignoreFailures = false
 }
 
-// ---------------------------------------------------------------------------
-// Local device install helpers
-//
-// `release` carries no signingConfig unless the build was given PAPYRUS_*
-// properties (see the block above), so a plain local `assembleRelease` still
-// produces an unsigned, store-ready artifact. What we hand to adb is a throwaway
-// copy signed with the local debug keystore, purely so adb will accept it. The
-// debug key must never become the release build type's permanent signing config:
-// that would produce an APK that looks shippable but must never reach F-Droid or
-// Play.
-// ---------------------------------------------------------------------------
+// Local device install helpers. `release` is unsigned unless the PAPYRUS_* properties were given, so we
+// hand adb a throwaway debug-signed copy. The debug key must never become the release build type's signing config.
 
 val sdkDirectory = androidComponents.sdkComponents.sdkDirectory.get().asFile
 val adb = sdkDirectory.resolve("platform-tools/adb")
@@ -240,10 +189,7 @@ val apksigner = sdkDirectory.resolve(
 )
 val debugKeystore = File(System.getProperty("user.home"), ".android/debug.keystore")
 
-/**
- * Runs [command] to completion, returning its trimmed stdout and throwing on failure. Called only
- * from a task action, never at configuration time.
- */
+/** Runs [command] to completion, returning trimmed stdout and throwing on failure. Task-action only, never at configuration time. */
 fun runCommand(command: List<String>): String {
     val process = ProcessBuilder(command).redirectErrorStream(true).start()
     val output = process.inputStream.bufferedReader().readText().trim()
@@ -254,11 +200,8 @@ fun runCommand(command: List<String>): String {
 
 fun runAdb(vararg args: String): String = runCommand(listOf(adb.absolutePath) + args)
 
-/**
- * Resolves the single APK for [variant], signed name first. AGP writes `app-<variant>.apk` when the
- * variant has a signing config and `app-<variant>-unsigned.apk` when it does not, so both are probed:
- * `release` only gets a config when the build was given PAPYRUS_* properties.
- */
+/** Resolves the single APK for [variant], probing the signed and `-unsigned` names: `release`
+ *  only gets a signing config when the build was given PAPYRUS_* properties. */
 fun pickApk(variant: String): File {
     val out = layout.buildDirectory.dir("outputs/apk/$variant").get().asFile
     return listOf(File(out, "app-$variant.apk"), File(out, "app-$variant-unsigned.apk"))
@@ -266,10 +209,9 @@ fun pickApk(variant: String): File {
         ?: error("No APK for $variant in ${out.absolutePath}. Did assemble$variant run?")
 }
 
-/** True when AGP already signed this output. `apksigner` would reject a second signature. */
+/** True when AGP already signed this output; apksigner rejects a second signature. */
 fun isAlreadySigned(apk: File): Boolean = !apk.name.contains("-unsigned")
 
-/** Copies [apk] aside and signs the copy with the local debug keystore. */
 fun signForLocalInstall(apk: File): File {
     require(apk.isFile) { "APK not found: ${apk.absolutePath}" }
     require(apksigner.isFile) { "apksigner not found: ${apksigner.absolutePath}" }
@@ -293,11 +235,8 @@ fun signForLocalInstall(apk: File): File {
     return signed
 }
 
-/**
- * Registers a task that builds [variant], signs the result if AGP left it unsigned, and
- * adb-installs it. Signing is read off the artifact rather than declared, because `release` is
- * unsigned by default and signed when the build supplied PAPYRUS_* properties.
- */
+/** Registers a task that builds [variant], signs it if AGP left it unsigned, and adb-installs it.
+ *  Signing is read off the artifact because `release` is unsigned by default. */
 fun registerLocalInstall(
     name: String,
     variant: String,

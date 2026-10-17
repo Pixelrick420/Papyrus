@@ -32,7 +32,10 @@ import androidx.compose.ui.unit.dp
 import com.papyrus.app.R
 import com.papyrus.app.ui.components.SearchPill
 
-/** Find in file, drawn with the same [SearchPill] as Home; the caller places it in the layout flow, above the document. */
+/**
+ * Find in file, drawn with the same [SearchPill] as Home. The caller places it in the layout
+ * flow, above the document.
+ */
 @Composable
 fun FindInFileBar(
     query: String,
@@ -70,7 +73,7 @@ fun FindInFileBar(
             text = query,
             onTextChange = onQueryChange,
             hint = stringResource(R.string.viewer_find_hint),
-            // Enter steps to the next match. Where there is no step target it does nothing.
+            // Enter steps to the next match when there is one.
             onSearch = {
                 if (dismissKeyboardOnStep) keyboard?.hide()
                 if (canNavigate) onNext()
@@ -78,8 +81,7 @@ fun FindInFileBar(
             modifier = Modifier.weight(1f),
             focusRequester = requester,
             trailing = {
-                // Grows from nothing when the first character is typed, so the field narrows
-                // smoothly instead of jumping.
+                // Grows from nothing on the first keystroke, so the field narrows smoothly instead of jumping.
                 Box(Modifier.animateContentSize()) {
                     if (hasQuery) {
                         Text(

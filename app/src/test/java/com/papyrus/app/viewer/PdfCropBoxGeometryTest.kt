@@ -8,21 +8,15 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 /**
- * A glyph box and a link rectangle over the same point of a page must land on the same page fractions,
- * whatever the page's crop-box origin and `/Rotate`.
- *
- * Glyphs arrive crop-relative (PdfBox's text engine shifts them by the crop box's lower-left) and a
- * link's `/Rect` arrives in raw page space, so the two go through different [PdfPageFrame] factories.
- * These tests fix that contract at the seam. They deliberately draw no text: pdfbox-android loads its
- * standard fonts and glyph list from Android assets, which a plain JVM test has no way to provide.
- * The "PdfBox really does shift glyphs by the crop origin" half of the contract was checked against a
- * real extraction (PdfBox 2.0.29 on desktop: text at one crop-relative spot produced identical boxes at
- * crop origins (0, 0) and (100, 200) on all four rotations); an instrumented test is the place to pin it
- * against the shipped artifact.
+ * A glyph box and a link rectangle over the same page point must land on the same page fractions,
+ * whatever the crop origin and `/Rotate` (glyphs crop-relative, `/Rect` raw). No text: fonts need assets.
  */
 class PdfCropBoxGeometryTest {
 
-    /** Built from the corner array directly: this port's four-argument [PDRectangle] takes width and height, not a corner. */
+    /**
+     * Built from the corner array directly: this port's four-argument [PDRectangle] takes width and
+     * height, not a corner.
+     */
     private fun rect(llx: Float, lly: Float, urx: Float, ury: Float): PDRectangle =
         PDRectangle(COSArray().apply {
             add(COSFloat(llx))

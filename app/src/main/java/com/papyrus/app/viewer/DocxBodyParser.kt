@@ -12,10 +12,10 @@ internal class DocxRels(val targets: Map<String, String>, val links: Map<String,
     }
 }
 
-/** A footnote or endnote the body pointed at, in reading order; [label] is the marker left in the text. */
+/** Footnote or endnote the body pointed at, in reading order; [label] is its marker in the text. */
 internal class NoteRef(val endnote: Boolean, val id: String, val label: String)
 
-/** A comment the body pointed at, in reading order; [label] ("C1") is the marker left in the text. */
+/** Comment the body pointed at, in reading order; [label] ("C1") is its marker in the text. */
 internal class CommentRef(val id: String, val label: String)
 
 private val HYPERLINK_FIELD = Regex("HYPERLINK\\s+\"([^\"]+)\"", RegexOption.IGNORE_CASE)
@@ -374,7 +374,7 @@ internal class DocxBodyParser(
         if (text.isNotEmpty()) appendText(text, element = true)
     }
 
-    /** A field whose instruction says HYPERLINK: its result runs, until the field ends, are the link text. */
+    /** A HYPERLINK field: its result runs, until the field ends, are the link text. */
     private fun startField(fieldText: String) {
         val url = HYPERLINK_FIELD.find(fieldText)?.groupValues?.get(1)
         val safe = safeLink(url)
@@ -394,7 +394,7 @@ internal class DocxBodyParser(
     private fun imageWidthDp(): Float? =
         imageWidthEmu?.let { (it / EMU_PER_DP).toFloat() }?.takeIf { it > 0f }
 
-    /** The marker goes into the text now; the note itself is read from its own part and appended at the end. */
+    /** The marker goes into the text now; the note itself is read from its own part later. */
     private fun addNoteReference(p: XmlPullParser, endnote: Boolean) {
         val id = p.attr("w:id") ?: return
         val label = if (endnote) formatListNumber(++endnoteCount, "lowerRoman") else (++footnoteCount).toString()
@@ -402,7 +402,7 @@ internal class DocxBodyParser(
         appendText(label, element = true, withFormat = format().copy(script = ScriptShift.SUPER))
     }
 
-    /** The marker goes into the text now; the comment is read from `comments.xml` and appended after the body. */
+    /** The marker goes into the text now; the comment is read from `comments.xml` later. */
     private fun addCommentReference(p: XmlPullParser) {
         val id = p.attr("w:id") ?: return
         val label = "C${++commentCount}"

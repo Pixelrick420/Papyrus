@@ -7,13 +7,12 @@ import java.io.Reader
 import java.io.SequenceInputStream
 import java.nio.charset.Charset
 
-/** Lines per `LazyColumn` item of the plain-text viewer; a chunk's first line is `index * this + 1`. */
+/** Lines per `LazyColumn` item; a chunk's first line is `index * this + 1`. */
 const val TEXT_LINES_PER_CHUNK = 40
 
 /**
- * A text file as the plain-text viewer shows it. [lineCount] counts a trailing empty line, like an editor;
- * [maxLineColumns] is the widest line in monospace columns (wide CJK characters count twice, a tab four),
- * which is what a no-wrap view sizes its scroll extent from.
+ * A text file as the plain-text viewer shows it. [lineCount] counts a trailing empty line, like an
+ * editor; [maxLineColumns] is the widest line in monospace columns, what a no-wrap view sizes from.
  */
 class TextChunks(
     val chunks: List<String>,
@@ -26,9 +25,8 @@ class TextChunks(
 class DecodedString(val text: String, val encoding: TextEncoding, val truncated: Boolean)
 
 /**
- * Decodes straight into chunks, so a large file is never held as bytes, then one big string, then
- * chunks. Lines end at `\n`, `\r\n` or a lone `\r`, and chunks join them with `\n`. Reads at most
- * [maxBytes]; [forced] skips detection.
+ * Decodes straight into chunks, so a large file is never held as bytes, then one string, then chunks.
+ * Lines end at `\n`, `\r\n` or a lone `\r`; reads at most [maxBytes]; [forced] skips detection.
  */
 fun readTextChunks(
     input: InputStream,
@@ -77,7 +75,7 @@ fun readTextChunks(
     }
     if (column > maxColumns) maxColumns = column
     if (opened.truncated) chunk.dropCutCharacter()
-    // The last chunk, unless the text ended exactly on a chunk's last newline: that would add an empty one.
+    // Last chunk, unless the text ended on a chunk's final newline, which would add an empty one.
     if (chunk.isNotEmpty() || chunks.isEmpty()) chunks += chunk.toString()
     return TextChunks(chunks, lineCount, maxColumns, opened.encoding, opened.truncated)
 }
@@ -105,8 +103,8 @@ internal class OpenedText(
 }
 
 /**
- * Reads a sample to choose the charset, then hands the sample back in front of the rest of the stream,
- * so the file is opened once; providers differ on whether a second open is allowed.
+ * Reads a sample to choose the charset, then hands it back in front of the rest of the stream, so
+ * the file is opened once; providers differ on whether a second open is allowed.
  */
 internal fun openText(input: InputStream, maxBytes: Int, forced: Charset?, guesser: CharsetGuesser?): OpenedText {
     val head = ByteArray(TextEncodings.SAMPLE_BYTES)
@@ -122,7 +120,7 @@ internal fun openText(input: InputStream, maxBytes: Int, forced: Charset?, guess
     return OpenedText(InputStreamReader(limited, encoding.charset), encoding, limited)
 }
 
-/** Ends at [limit] bytes, and notes whether the source still had more: that is the file being cut short. */
+/** Ends at [limit] bytes and notes whether the source still had more: the file was cut short. */
 internal class LimitedInputStream(private val source: InputStream, private var remaining: Long) : InputStream() {
 
     var cutShort = false
@@ -169,7 +167,7 @@ private fun InputStream.readUpTo(buffer: ByteArray): Int {
     return total
 }
 
-/** A cut through a multi-byte character decodes to U+FFFD, which is the cut and not the file's content. */
+/** A cut through a multi-byte character decodes to U+FFFD, which is the cut, not the file's content. */
 private fun StringBuilder.dropCutCharacter() {
     if (isNotEmpty() && last() == '\uFFFD') setLength(length - 1)
 }
@@ -181,7 +179,8 @@ private fun columnsOf(c: Char): Int = when {
     else -> 1
 }
 
-/** East Asian wide and fullwidth blocks, enough to size a scroll extent; a surrogate counts one, so a pair counts two. */
+/** East Asian wide and fullwidth blocks, enough to size a scroll extent; a surrogate counts one, so
+ * a pair counts two. */
 private const val FIRST_WIDE = 0x1100
 
 private fun isWide(c: Char): Boolean =

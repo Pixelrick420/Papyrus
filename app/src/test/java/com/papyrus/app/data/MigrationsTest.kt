@@ -7,10 +7,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
 
-/**
- * Guards the schema history: a bumped [Migrations.CURRENT_VERSION] without its migration, a migration that
- * could lose rows, or a forgotten exported schema.
- */
+/** Guards the schema history: a bumped version without its migration, a migration that could lose
+ *  rows, or a forgotten exported schema. */
 class MigrationsTest {
 
     private fun migration(from: Int, to: Int) = object : Migration(from, to) {
@@ -111,9 +109,8 @@ class MigrationsTest {
 
     @Test
     fun `the 4 to 5 statements only add, so no existing row can be lost`() {
-        // An allow-list: every statement must open with one of the additive shapes below, which rules
-        // out DROP, DELETE, UPDATE, INSERT OR REPLACE and table rebuilds without matching on words
-        // that legitimately appear inside a foreign-key clause ("ON DELETE CASCADE").
+        // An allow-list of additive statement shapes, which rules out DROP, DELETE, UPDATE and table
+        // rebuilds without matching words that legitimately appear in a foreign key ("ON DELETE CASCADE").
         val additive = Regex("^(ALTER TABLE `\\w+` ADD COLUMN |CREATE TABLE IF NOT EXISTS |CREATE INDEX IF NOT EXISTS )")
         for (sql in Migrations.V4_TO_V5_SQL) {
             assertTrue("not an additive statement: $sql", additive.containsMatchIn(sql))

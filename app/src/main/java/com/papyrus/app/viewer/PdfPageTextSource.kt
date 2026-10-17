@@ -13,13 +13,8 @@ import kotlinx.coroutines.withContext
 import java.io.Closeable
 
 /**
- * A PDF's page text and links, read one page at a time as a reader touches them.
- *
- * Find reads every page up front, which is right for a search and far too slow for a finger that has
- * just gone down on page 212. One [PDDocument] stays open until [close], because loading one parses
- * the whole file and the next page a drag runs onto should not pay that again — the same open
- * document is what reads a page's text and its links, so neither is read twice. It is not
- * thread-safe, so every read goes through one lock.
+ * A PDF's page text and links, read a page at a time as touched; one [PDDocument] stays open until
+ * [close] since loading parses the whole file, and reads share a lock as it is not thread-safe.
  */
 class PdfPageTextSource(
     private val context: Context,
@@ -47,7 +42,7 @@ class PdfPageTextSource(
         return PdfTextExtractor.extractPage(open, index)
     }
 
-    /** The page's links, or null if the document cannot be read or has no such page. Read once per page. */
+    /** The page's links, or null if unreadable or no such page. Read once per page. */
     suspend fun links(index: Int): List<PdfPageLink>? = lock.withLock {
         if (closed) return@withLock null
         linkPages[index]?.let { return@withLock it }
@@ -61,14 +56,14 @@ class PdfPageTextSource(
         return PdfLinkExtractor.extract(open, index)
     }
 
-    /** A document that failed to load is not retried: loading is the expensive part, and it would fail the same way. */
+    /** Loading is expensive, so a failed document is not retried — it would fail the same way. */
     private fun open(): PDDocument? {
         if (unreadable) return null
         PDFBoxResourceLoader.init(context)
         val loaded = try {
             context.contentResolver.openInputStream(uri)?.use { PDDocument.load(it) }
         } catch (ignored: Exception) {
-            // Anything PdfBox cannot parse, not only an IOException: it throws unchecked on some malformed files.
+            // PdfBox throws unchecked on malformed files, so catch Exception, not just IOException.
             null
         }
         if (loaded == null) unreadable = true

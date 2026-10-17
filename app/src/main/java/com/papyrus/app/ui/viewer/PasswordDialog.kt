@@ -26,7 +26,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.papyrus.app.R
 
-/** The typed password lives in a plain [remember] — never saved state — so it cannot outlive the dialog. */
+/** The password lives in a plain [remember], never saved state, so it cannot outlive the dialog. */
 @Composable
 fun PasswordDialog(
     incorrect: Boolean,

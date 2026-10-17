@@ -4,9 +4,8 @@ import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /**
- * What a [ReadingLocation.unit] counts. Each kind is an anchor that does not depend on the viewport
- * width, the zoom or the text size, so a position survives a rotation, a pinch, an encoding change and
- * a re-wrap: pixel offsets would not.
+ * What a [ReadingLocation.unit] counts. Each kind anchors to something independent of viewport width,
+ * zoom and text size, so a position survives rotation, pinch, encoding change and re-wrap.
  */
 enum class LocationKind(val code: Int) {
     /** [ReadingLocation.unit] is a page index; the fraction is how far down that page the viewport top is. */
@@ -37,9 +36,8 @@ enum class LocationKind(val code: Int) {
 }
 
 /**
- * A place in a document: the top of the viewport, as a [kind]-specific [unit] plus a [fraction] of
- * that unit (0 when the kind has none). Small and embeddable, so reading position, bookmarks and the
- * viewer's jump API all share it; the conversions are plain functions so none of it needs Compose.
+ * A place in a document: the top of the viewport, as a [kind]-specific [unit] plus a [fraction] of that
+ * unit (0 when the kind has none). Shared by reading position, bookmarks and the viewer's jump API.
  */
 data class ReadingLocation(
     val kind: LocationKind,
@@ -48,11 +46,8 @@ data class ReadingLocation(
 ) {
 
     /**
-     * This location moved onto a document that really has [unitCount] units (pages, chunks, blocks or
-     * characters). A file can change between opens and an encoding override changes chunk geometry, so
-     * a stored location is never trusted: an out-of-range unit lands on the start of the last one, and
-     * a NaN, negative or oversized fraction is repaired. Never throws, so a bad stored value can neither
-     * crash nor scroll to nowhere.
+     * Moves this location onto a document with [unitCount] units. Files change between opens and an
+     * encoding override shifts chunk geometry, so a stored value is repaired, never trusted.
      */
     fun clampedTo(unitCount: Int): ReadingLocation {
         val last = (unitCount - 1).coerceAtLeast(0)
@@ -62,10 +57,8 @@ data class ReadingLocation(
     }
 
     /**
-     * How much of a [unitCount]-unit document lies above this location, 0..1. Pages, chunks and blocks
-     * count their fraction too, so a long page moves the figure; a character offset is its own ratio.
-     * [atEnd] means the viewport cannot scroll any further, which reads as done: the top of the last
-     * page is otherwise stuck just short of 100%.
+     * How much of a [unitCount]-unit document lies above this location, 0..1. [atEnd] means the viewport
+     * cannot scroll further, which reads as done: the last page top is otherwise stuck short of 100%.
      */
     fun progress(unitCount: Int, atEnd: Boolean = false): Float {
         if (atEnd) return 1f
@@ -76,9 +69,8 @@ data class ReadingLocation(
     }
 
     /**
-     * Whether [other] is the same spot for movement detection: same unit, fraction within a hair. The
-     * tolerance absorbs rounding between a pixel offset and a fraction, so "I did not scroll" is not
-     * mistaken for a scroll.
+     * Whether [other] is the same spot: same unit, fraction within a hair. The tolerance absorbs rounding
+     * between a pixel offset and a fraction, so "I did not scroll" is not mistaken for a scroll.
      */
     fun isSameSpot(other: ReadingLocation): Boolean =
         kind == other.kind && unit == other.unit && abs(fraction - other.fraction) <= SAME_SPOT_TOLERANCE
@@ -104,7 +96,7 @@ fun offsetWithin(fraction: Float, sizePx: Int): Int =
 
 /**
  * One observation of the viewport, with everything a save needs. [zoom] is the committed scale, so a
- * pinch alone counts as having moved. [unitCount] is how many units the loaded content has right now.
+ * pinch alone counts as having moved.
  */
 data class PositionSample(
     val location: ReadingLocation,

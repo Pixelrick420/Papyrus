@@ -5,7 +5,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** Which matches are orange and which are yellow, and how a block's current match is split across its pieces. */
+/** Which matches are orange vs yellow, and how a block's current match splits across its pieces. */
 class FindHighlightTest {
 
     private fun colours(text: String, highlight: FindHighlight?) =

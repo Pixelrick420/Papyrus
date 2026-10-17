@@ -3,19 +3,8 @@ package com.papyrus.app.data
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-/**
- * Every schema migration of [AppDatabase], in one place, plus the version numbers they are checked against.
- *
- * Prefer an explicit [Migration] object for anything non-trivial (a rename, a split or merge, a data
- * rewrite, a changed constraint): it is plain SQL a reviewer can read and a `MigrationTestHelper` can
- * run against the exported schema JSON. Use Room's `AutoMigration` only for a simple additive change,
- * such as a new nullable column or a new table, where the generated SQL is obviously what you would
- * have written. An `AutoMigration` still needs its `from` schema file exported, which is why `app/schemas/`
- * is committed.
- *
- * 4 -> 5 is hand-written rather than an `AutoMigration`: the version-4 schema JSON was never exported
- * (see [V4_TO_V5_SQL]), and an `AutoMigration` cannot be generated without it.
- */
+/** Every schema migration of [AppDatabase]. 4 -> 5 is hand-written because the version-4 schema JSON
+ *  was never exported, so Room could not auto-generate it. */
 object Migrations {
 
     /** The oldest supported schema. Databases below it were test-only and are not migrated. */
@@ -25,16 +14,8 @@ object Migrations {
     const val CURRENT_VERSION = 5
 
     /**
-     * 4 -> 5, the one additive step that carries reading position, bookmarks and favourites together:
-     * unreleased work has no reason to publish intermediate versions.
-     *
-     * Every statement only adds. Nothing is dropped, rewritten or replaced, so existing rows keep their
-     * ids, and the library files under `filesDir/imports` they point at stay reachable.
-     *
-     * The SQL is written to match what Room expects of the entities, because Room compares the
-     * resulting tables to them (column names, types, nullability, defaults, foreign keys, indices) on
-     * the first open and throws on any difference. Keep it in step with [DocumentEntity],
-     * [ReadingProgressEntity] and [BookmarkEntity].
+     * 4 -> 5. Every statement only adds, so existing rows keep their ids and the files under
+     * `filesDir/imports` stay reachable; Room compares the result to its entities on first open.
      */
     internal val V4_TO_V5_SQL: List<String> = listOf(
         "ALTER TABLE `documents` ADD COLUMN `isFavourite` INTEGER NOT NULL DEFAULT 0",
@@ -67,17 +48,12 @@ object Migrations {
         }
     }
 
-    /** Hand-written migrations, oldest first. Each must run from `startVersion` to `endVersion`. */
+    /** Hand-written migrations, oldest first. */
     val ALL: Array<Migration> = arrayOf(MIGRATION_4_5)
 
     /**
-     * What is wrong with [migrations] as a chain from [baseline] to [current], one message per problem,
-     * empty when it is sound. Kept apart from the list so a unit test can hold the list to it: a version
-     * bump without a migration would otherwise be found only by a user with an old database.
-     *
-     * Sound means: from [baseline] there is exactly one migration to take at each step, none of them
-     * goes backwards, and the walk lands exactly on [current]. Any migration the walk never visits is
-     * reported too, since Room would silently never use it.
+     * Problems with [migrations] as a chain from [baseline] to [current], one message each, empty when
+     * sound. A unit test holds the list to it, so a version bump without a migration cannot ship.
      */
     internal fun chainProblems(migrations: List<Migration>, baseline: Int, current: Int): List<String> {
         val problems = ArrayList<String>()

@@ -31,10 +31,7 @@ class PdfPageText(
         return needle.isNotEmpty() && text.contains(needle, ignoreCase = true)
     }
 
-    /**
-     * Number of matches on the page, whether or not their boxes were kept. Non-overlapping, like the
-     * highlights, so it is also [matchGroups]'s length when the limit cuts nothing off.
-     */
+    /** Match count, including ones whose boxes were dropped; non-overlapping like [matchGroups]. */
     fun countMatches(query: String): Int {
         val needle = normalizeQuery(query)
         if (needle.isEmpty()) return 0
@@ -42,11 +39,8 @@ class PdfPageText(
     }
 
     /**
-     * One entry per match, in order, each holding that match's rectangles: one per line it covers, so
-     * a wrapping match is two or more rectangles but still one match. A match with no drawable glyph
-     * keeps an empty entry rather than being skipped, so entry `i` is always the `i`-th match.
-     * Stops once [limit] rectangles are collected; empty when there are no boxes or no match, which
-     * [contains] tells apart.
+     * One entry per match in order, each holding that match's rectangles (one per line it covers);
+     * a match with no drawable glyph keeps an empty entry. Stops once [limit] rectangles exist.
      */
     fun matchGroups(query: String, limit: Int = MAX_RECTS_PER_PAGE): List<List<NormRect>> {
         val needle = normalizeQuery(query)
@@ -70,11 +64,8 @@ class PdfPageText(
     val isSelectable: Boolean get() = boxes.isNotEmpty() && text.any { !it.isWhitespace() }
 
     /**
-     * The character whose box is nearest ([x], [y]), in the units of the boxes, or null when no
-     * character has one. Inside a box is distance 0; the first of two overlapping boxes wins.
-     *
-     * [CharHit.distance] is in page heights. [aspect] (height over width) shrinks the sideways axis to
-     * match, so an equal step across and down counts the same whatever the page's shape.
+     * The box nearest ([x], [y]), or null when none exists; 0 inside a box, first overlap wins.
+     * Distance is in page heights, with [aspect] (height/width) shrinking the sideways axis.
      */
     fun nearestChar(x: Float, y: Float, aspect: Float = 1f): CharHit? {
         if (boxes.isEmpty()) return null
@@ -96,10 +87,7 @@ class PdfPageText(
         return if (best < 0) null else CharHit(best, sqrt(bestSquared))
     }
 
-    /**
-     * The caret nearest ([x], [y]), 0 to the page's character count: before or after the closest
-     * character, by which half of its box the point is in. Null when no character has a box.
-     */
+    /** Caret nearest ([x], [y]) — 0..char count, by which half of the closest box; null if none. */
     fun caretAt(x: Float, y: Float, aspect: Float = 1f): Int? {
         val hit = nearestChar(x, y, aspect) ?: return null
         val o = hit.index * 4
@@ -107,9 +95,8 @@ class PdfPageText(
     }
 
     /**
-     * The word holding [index], as a range of character indices, or null if that is not a word
-     * (whitespace, or off the page). The platform's own word rules break it, so a Chinese run splits
-     * where a reader would, not only at spaces.
+     * The word holding [index] as a range, or null if not a word (whitespace or off the page).
+     * The platform's own rules break it, so a Chinese run splits where a reader would.
      */
     fun wordAround(index: Int): IntRange? {
         if (index !in text.indices) return null
@@ -122,10 +109,7 @@ class PdfPageText(
         return start until end
     }
 
-    /**
-     * One rectangle per line for [start] up to but not including [end]; a wrapping selection is
-     * several. Both ends clamp to the page, so `Int.MAX_VALUE` means "to the end". Empty without boxes.
-     */
+    /** One rectangle per line for [start, end); a wrapping selection is several. Both ends clamp. */
     fun selectionRects(start: Int, end: Int, limit: Int = MAX_RECTS_PER_PAGE): List<NormRect> {
         if (boxes.isEmpty()) return emptyList()
         val from = start.coerceIn(0, text.length)
@@ -134,10 +118,7 @@ class PdfPageText(
         return ArrayList<NormRect>().also { appendLineRects(from, to, it, limit) }
     }
 
-    /**
-     * The text of [start] up to but not including [end], clamped to the page. A wrap becomes a
-     * newline, so a copy breaks where the page does; every other separator is already in the text.
-     */
+    /** Text of [start, end), clamped to the page; a wrap becomes a newline. */
     fun textBetween(start: Int, end: Int): String {
         val from = start.coerceIn(0, text.length)
         val to = end.coerceIn(from, text.length)
@@ -195,7 +176,6 @@ class PdfPageText(
         if (open && out.size < limit) out += NormRect(left, top, right, bottom)
     }
 
-    /** How far [v] is outside [low]..[high]: 0 inside. */
     private fun distanceToSpan(v: Float, low: Float, high: Float): Float =
         if (v < low) low - v else if (v > high) v - high else 0f
 

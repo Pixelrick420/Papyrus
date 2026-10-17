@@ -25,9 +25,8 @@ class MainApplication : Application() {
     val repository: DocumentRepository by lazy { DocumentRepository(this, database.documentDao(), database.readingProgressDao(), settings) }
 
     /**
-     * For work that must finish even if the screen that started it is gone, such as committing a
-     * removal whose undo window was still open when Home was cleared. Never cancelled: it lives and
-     * dies with the process.
+     * Work that must finish even if the screen that started it is gone (e.g. committing a removal
+     * whose undo window was still open). Never cancelled: it lives and dies with the process.
      */
     val applicationScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 

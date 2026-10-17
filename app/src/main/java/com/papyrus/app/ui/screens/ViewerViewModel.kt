@@ -75,15 +75,12 @@ import kotlin.coroutines.cancellation.CancellationException
 sealed interface ViewerContent {
     data object Loading : ViewerContent
     data class Pdf(val source: PdfPageSource, val aspectRatios: List<Float>) : ViewerContent
-    /** [text] for find and render; [source] lets a table re-snapshot force a fresh render. [encoding] is what the file was decoded as. */
+    /** [text] for find and render; [source] lets a table re-snapshot force a fresh render.
+     * [encoding] is what the file was decoded as. */
     data class Markdown(val markwon: Markwon, val source: String, val text: Spanned, val encoding: TextEncoding? = null) : ViewerContent
 
-    /**
-     * Forty lines to a chunk. [language] and [lexStates] are set only for source files with a language
-     * definition: the states say where each chunk's scan starts, so a block comment crossing a chunk
-     * boundary still colours as one. [lineCount] and [maxLineColumns] size the line-number gutter and the
-     * no-wrap scroll extent; [truncated] means the file was longer than the read limit.
-     */
+    /** Forty lines to a chunk. [language]/[lexStates] are set only for source files: the states say
+     * where each chunk's scan starts, so a block comment crossing a boundary still colours as one. */
     data class PlainText(
         val chunks: List<String>,
         val encoding: TextEncoding? = null,
@@ -94,7 +91,7 @@ sealed interface ViewerContent {
         val truncated: Boolean = false,
     ) : ViewerContent
     data class Office(val blocks: List<OfficeBlock>) : ViewerContent
-    /** A document waiting on its password; [incorrect] flags a rejected attempt, [checking] an in-flight one. */
+    /** A document waiting on its password; [incorrect] flags a rejected attempt, [checking] one in flight. */
     data class NeedsPassword(val incorrect: Boolean = false, val checking: Boolean = false) : ViewerContent
     data class Failed(val message: UiText) : ViewerContent
 }
@@ -108,7 +105,8 @@ data class FindState(
     val position: Int = -1,
     /** Markdown is one `Spanned`, so matches highlight with no target to step between. */
     val occurrences: Int = 0,
-    /** PDF only, by page index; a wrapping match is several rectangles but one entry, unless past the box budget. */
+    /** PDF only, by page index; a wrapping match is several rectangles but one entry, unless past
+     * the box budget. */
     val pageMatches: Map<Int, List<List<NormRect>>> = emptyMap(),
 ) {
     val count: Int get() = if (hits.isNotEmpty()) hits.size else occurrences
@@ -165,17 +163,15 @@ data class ViewerUiState(
     val find: FindState = FindState(),
     /** Raised instead of an error, so the content on screen survives the lost grant. */
     val needsRegrant: Boolean = false,
-    /** True only for a handed-over document: library rows are already saved; an encrypted file copies the original. */
+    /** True only for a handed-over document: library rows are already saved, and an encrypted file
+     * copies the original. */
     val canSaveToLibrary: Boolean = false,
     val savingToLibrary: Boolean = false,
     val savedToLibrary: Boolean = false,
     /** A charset name picked by hand for a text or Markdown file; null leaves detection in charge. */
     val encodingOverride: String? = null,
-    /**
-     * Where the viewer should open, from the stored reading position; null when there is nothing to
-     * restore. Set with the document and before its content, so the viewer can place itself on its
-     * first layout instead of flashing the top.
-     */
+    /** Where the viewer should open, from the stored reading position; null when nothing is stored.
+     * Set with the document and before its content, so the first layout places it without flashing the top. */
     val restore: RestoreRequest? = null,
 )
 
@@ -193,7 +189,7 @@ class ViewerViewModel(
     /** Wrap, line numbers and highlighting are read live, so a toggle needs no reload. */
     val settings: StateFlow<AppSettings> = app.settings.settings
 
-    /** Kept in the saved-state handle so a hand-picked encoding survives process death along with the document id. */
+    /** Kept in the saved-state handle so a hand-picked encoding survives process death. */
     private var encodingName: String? = savedState[KEY_ENCODING]
 
     private val _messages = MutableStateFlow<UiText?>(null)
@@ -219,25 +215,18 @@ class ViewerViewModel(
     /** Per document: a shared directory would let a viewer delete another's images. */
     private val mediaDir: File by lazy { File(app.cacheDir, "office-media/$documentId") }
 
-    /**
-     * When the reading position may be saved. Declared above `init`: `load()` runs inline on the main
-     * dispatcher and would otherwise reach it before it exists.
-     */
+    /** When the reading position may be saved. Declared above `init`: `load()` runs inline on the main
+     * dispatcher and would otherwise reach it before it exists. */
     private val tracker = PositionTracker(now = { System.nanoTime() / NANOS_PER_MILLI })
 
-    /**
-     * The library id the position is stored under: the document's own, or the new row's once a
-     * transient document has been saved. 0 while there is none, so nothing is written for a document
-     * that is not in the library.
-     */
+    /** The library id the position is stored under: the document's own, or the new row's once saved.
+     * 0 while there is none, so nothing is written for a document not in the library. */
     private var persistedId: Long = documentId.coerceAtLeast(0L)
 
     private var saveJob: Job? = null
 
-    /**
-     * One writer, in order, that outlives this ViewModel: the last position is still written after the
-     * viewer closes. Conflated, because only the newest position matters.
-     */
+    /** One writer, in order, that outlives this ViewModel: the last position is still written after
+     * the viewer closes. Conflated, because only the newest position matters. */
     private val outbox = Channel<Pair<Long, PositionSample>>(Channel.CONFLATED)
 
     init {
@@ -284,10 +273,8 @@ class ViewerViewModel(
         autosaveIfEnabled()
     }
 
-    /**
-     * Where to open [doc]: the position the viewer last showed if it has been open (a re-grant reload
-     * rebuilds the viewer at the top), otherwise the stored one. Nothing when the setting is off.
-     */
+    /** Where to open [doc]: the position last shown if it has been open (a re-grant reload rebuilds at
+     * the top), otherwise the stored one. Nothing when the setting is off. */
     private suspend fun restoreFor(doc: DocumentEntity): RestoreRequest? {
         if (!app.settings.current.rememberPosition) return null
         tracker.latest?.let { return RestoreRequest(it.location, clampScale(it.zoom)) }
@@ -302,23 +289,21 @@ class ViewerViewModel(
     fun restoreTarget(): RestoreRequest? =
         tracker.latest?.let { RestoreRequest(it.location, clampScale(it.zoom)) } ?: _state.value.restore
 
-    /** The viewer placed the document at [applied] (read back after scrolling), which opens the save gate. */
+    /** The viewer placed the document at [applied], read back after scrolling; opens the save gate. */
     fun onRestored(applied: PositionSample) = tracker.restoreApplied(applied)
 
-    /** The viewport now shows [sample]; called as often as it changes, so it only records and schedules. */
+    /** The viewport now shows [sample]; called often, so it only records and schedules. */
     fun onPosition(sample: PositionSample) {
         if (!app.settings.current.rememberPosition) return
         tracker.observe(sample)
         scheduleSave()
     }
 
-    /** Writes the pending position now: the app is going to the background, where the process may be killed. */
+    /** Writes the pending position now: the app is going to the background, where it may be killed. */
     fun flushPosition() = commitPosition(force = true)
 
-    /**
-     * One coroutine for as long as a save is outstanding, so a stream of position changes costs a field
-     * write each, not a coroutine each. Does nothing for a document that is not in the library.
-     */
+    /** One coroutine for as long as a save is outstanding, so a stream of position changes costs a
+     * field write each, not a coroutine each. Does nothing outside the library. */
     private fun scheduleSave() {
         if (persistedId <= 0 || saveJob?.isActive == true || tracker.nextDelay() == null) return
         saveJob = viewModelScope.launch {
@@ -440,12 +425,8 @@ class ViewerViewModel(
             else -> unlockPdf(doc.uri.toUri(), password)
         }
 
-    /**
-     * Opens a PDF the byte screen found no `/Encrypt` in. If the renderer still wants a password the
-     * screen was wrong (a name written with escapes, say), so the real parser decides which kind of lock
-     * it is and the usual prompt or silent unlock follows, rather than the generic "protected" failure.
-     * That second check runs only on this path, where the first did not run a PdfBox load.
-     */
+    /** Opens a PDF the byte screen found no `/Encrypt` in. If the renderer still wants a password the
+     * screen was wrong, so the real parser decides the lock kind and the usual unlock path follows. */
     private suspend fun openUnencryptedPdf(uri: Uri): ViewerContent =
         try {
             val source = PdfPageSource.open(app, uri)
@@ -503,7 +484,7 @@ class ViewerViewModel(
         openStream(uri).use(TextSniffer::looksLikeText)
     }.getOrDefault(false)
 
-    /** Asked for by the info sheet when it opens, so a document nobody inspects never pays the provider call. */
+    /** Asked for by the info sheet when it opens, so an uninspected document never pays the provider call. */
     suspend fun mimeType(document: DocumentEntity): String? = repository.mimeTypeOf(document)
 
     /** Probed first: a chooser opened over a dead grant works, then fails inside the chosen app. */
@@ -546,7 +527,7 @@ class ViewerViewModel(
         }
     }
 
-    /** The password stays a local: never state, the saved-state handle, or a log, and dropped when the attempt ends. */
+    /** The password stays a local: never state, saved state, or a log, and dropped when the attempt ends. */
     fun submitPassword(password: String) {
         val doc = _state.value.document ?: return
         val current = _state.value.content
@@ -569,10 +550,8 @@ class ViewerViewModel(
         _state.update { it.copy(content = ViewerContent.Failed(UiText(R.string.viewer_password_cancelled))) }
     }
 
-    /**
-     * Re-reads a text or Markdown file as [charsetName], or with detection again when it is null. The old
-     * content stays on screen until the new arrives, so the page does not flash and the scroll holds.
-     */
+    /** Re-reads a text or Markdown file as [charsetName], or by detection again when null. The old
+     * content stays until the new arrives, so the page does not flash and the scroll holds. */
     fun setEncoding(charsetName: String?) {
         val doc = _state.value.document ?: return
         val content = _state.value.content
@@ -635,7 +614,7 @@ class ViewerViewModel(
         if (query.isBlank()) return FindResult()
         return when (val content = _state.value.content) {
             is ViewerContent.PlainText -> {
-                // A newer keystroke cancels this job; the scan notices between chunks instead of finishing a 32 MB file for nothing.
+                // A newer keystroke cancels this job; the scan stops between chunks instead of finishing the file.
                 val running = currentCoroutineContext()
                 FindResult(hits = findChunkHits(content.chunks, query, MAX_TEXT_FIND_HITS) { !running.isActive })
             }
@@ -688,7 +667,7 @@ class ViewerViewModel(
     /** One page's links. Shares [pageTextSource] with [pageText], so the document is opened once. */
     suspend fun pageLinks(index: Int): List<PdfPageLink>? = pageSource()?.links(index)
 
-    /** The one-page-at-a-time reader for the current bytes, opened once and reused until the file changes. */
+    /** One-page reader for the current bytes, opened once and reused until the file changes. */
     private fun pageSource(): PdfPageTextSource? {
         val uri = contentUri
         if (uri.isEmpty()) return null
@@ -740,7 +719,7 @@ class ViewerViewModel(
     private fun openStream(uri: Uri): InputStream =
         app.contentResolver.openInputStream(uri) ?: throw FileNotFoundException(uri.toString())
 
-    /** The charset picked by hand, or null to detect; a name that is no longer supported falls back to detection. */
+    /** The charset picked by hand, or null to detect; an unsupported name falls back to detection. */
     private fun forcedCharset(): Charset? = encodingName?.let(TextEncodings::charsetOrNull)
 
     override fun onCleared() {

@@ -5,7 +5,6 @@ import androidx.annotation.StringRes
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalContext
 
-/** Lets ViewModels emit localisable messages without holding a Context. */
 class UiText(@param:StringRes val id: Int, vararg val args: Any) {
     fun asString(context: Context): String = context.getString(id, *args)
 }

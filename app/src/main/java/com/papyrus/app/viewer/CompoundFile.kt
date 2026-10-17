@@ -4,12 +4,8 @@ import java.io.IOException
 import java.io.InputStream
 
 /**
- * Minimal OLE2/CFB reader: header validation, DIFAT/FAT assembly, a linear directory scan, and
- * random reads over a stream's sector chain (mini streams through the root's mini FAT). Shared by
- * the Word 97-2003 `.doc` extractor and the encrypted-OOXML unwrapper, both of which walk streams
- * of a compound file by name. Every read opens a fresh stream through [openStream] and bounds-checks
- * against [fileLength], so a truncated or cyclic file throws [IOException] instead of looping or
- * allocating on hostile sizes. Read-only: chains are never buffered whole.
+ * Minimal OLE2/CFB reader shared by the Word `.doc` extractor and the encrypted-OOXML unwrapper.
+ * Read-only and bounds-checked: a truncated or cyclic file throws instead of looping or over-allocating.
  */
 internal class CompoundFile(private val openStream: () -> InputStream, private val fileLength: Long) {
     private class Entry(val name: String, val type: Int, val start: Int, val size: Long)

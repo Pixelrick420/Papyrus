@@ -11,17 +11,18 @@ import java.io.InputStream
 import java.util.zip.ZipInputStream
 
 /**
- * Dependency-free extraction for .docx / .odt (ZIP + XML) via java.util.zip and the platform
+ * Dependency-free .docx / .odt extraction (ZIP + XML) via java.util.zip and the platform
  * XmlPullParser; the archive is walked twice so peak memory stays proportional to the body XML.
  */
 class OfficeTextExtractor(
     private val mediaDir: File?,
     private val mimeByName: (String) -> String = ::guessMimeType,
-    /** Injected because [Xml.newPullParser] is a platform stub, so a JVM unit test would get null instead of a parser. */
+    /** Injected because [Xml.newPullParser] is a platform stub that returns null in JVM unit tests. */
     private val newParserFactory: () -> XmlPullParser = { Xml.newPullParser() },
 ) {
 
-    /** [openStream] must return a fresh stream on every call, once for the body and once for the media. The caller closes it. */
+    /** [openStream] must return a fresh stream on every call, once for the body and once for the
+     * media. The caller closes it. */
     fun extract(openStream: () -> InputStream, format: DocumentFormat): List<OfficeBlock> {
         val bodyEntry = when (format) {
             DocumentFormat.DOCX -> DOCX_BODY
@@ -74,7 +75,7 @@ class OfficeTextExtractor(
         return blocks
     }
 
-    /** Reads one part, or null once it passes [MAX_PART_BYTES]; the rest of the entry is skipped by the next `nextEntry`. */
+    /** Reads one part, or null past [MAX_PART_BYTES]; the next `nextEntry` skips the rest of the entry. */
     private fun readPart(zip: ZipInputStream): ByteArray? {
         val out = ByteArrayOutputStream()
         val buffer = ByteArray(MEDIA_COPY_BUFFER)
@@ -86,10 +87,8 @@ class OfficeTextExtractor(
         }
     }
 
-    /**
-     * Byte budget so photographs cannot fill the disk or heap. Reserve then consume: [canReserve] is
-     * the cheap pre-check, [consume] the authoritative charge.
-     */
+    /** Byte budget so photographs cannot fill the disk or heap. Reserve then consume: [canReserve] is
+     * the cheap pre-check, [consume] the authoritative charge. */
     private class MediaBudget {
         private var remaining = MAX_TOTAL_MEDIA_BYTES
         private var count = 0
@@ -133,10 +132,8 @@ class OfficeTextExtractor(
         null
     }
 
-    /**
-     * Streams wanted entries to [sink], charging the budget as each arrives rather than buffering
-     * them all. The per-entry cap counts bytes, not `entry.size`, which can be -1 when streamed.
-     */
+    /** Streams wanted entries to [sink], charging the budget as each arrives rather than buffering
+     * them all. The per-entry cap counts bytes, not `entry.size`, which can be -1 when streamed. */
     private fun readMedia(
         openStream: () -> InputStream,
         wanted: Set<String>,
@@ -160,10 +157,8 @@ class OfficeTextExtractor(
         }
     }
 
-    /**
-     * Reads the body XML part, capped at [MAX_BODY_BYTES]; over the cap throws [IOException] so the
-     * document fails rather than parses from a truncated body.
-     */
+    /** Reads the body XML part, capped at [MAX_BODY_BYTES]; over the cap throws [IOException] so the
+     * document fails rather than parses from a truncated body. */
     private fun readEntry(zip: ZipInputStream): ByteArray {
         val out = ByteArrayOutputStream()
         val buffer = ByteArray(MEDIA_COPY_BUFFER)
@@ -177,7 +172,7 @@ class OfficeTextExtractor(
         }
     }
 
-    /** Reads one entry, capped at the smaller of its declared size and [MAX_IMAGE_BYTES]; null if it exceeds that. */
+    /** Reads one entry, capped at the smaller of its declared size and [MAX_IMAGE_BYTES]; null if over. */
     private fun readBounded(zip: ZipInputStream, declaredSize: Long, buffer: ByteArray): ByteArray? {
         val out = ByteArrayOutputStream(
             if (declaredSize in 1..MAX_IMAGE_BYTES) declaredSize.toInt() else MEDIA_COPY_BUFFER,
@@ -210,10 +205,8 @@ class OfficeTextExtractor(
         fallback
     }
 
-    /**
-     * `rId7 -> word/media/image3.png` for embedded targets and `rId9 -> https://...` for external ones
-     * (hyperlinks). Both empty when the rels part is absent.
-     */
+    /** `rId7 -> word/media/image3.png` for embedded targets and `rId9 -> https://...` for external
+     * ones (hyperlinks). Both empty when the rels part is absent. */
     private fun parseRels(xml: ByteArray?): DocxRels {
         if (xml == null || xml.isEmpty()) return DocxRels.EMPTY
         val targets = HashMap<String, String>()
@@ -237,7 +230,7 @@ class OfficeTextExtractor(
         return DocxRels(targets, links)
     }
 
-    /** Relationship targets are relative to `word/`, though some producers write an absolute `/word/...`. */
+    /** Targets are relative to `word/`, though some producers write an absolute `/word/...`. */
     private fun resolveDocxTarget(target: String): String = when {
         target.startsWith("/") -> target.removePrefix("/")
         target.startsWith("$DOCX_DIR/") -> target
@@ -337,7 +330,7 @@ class OfficeTextExtractor(
         private const val MAX_BODY_BYTES = 32 * 1024 * 1024
         private const val MEDIA_COPY_BUFFER = 64 * 1024
 
-        /** Parts that only add formatting (styles, numbering, notes): bigger than this and they are ignored. */
+        /** Parts that only add formatting (styles, numbering, notes) are ignored past this size. */
         private const val MAX_PART_BYTES = 16 * 1024 * 1024
 
         /** Zip-slip guard: media names come from the document, so never trust their path shape. */

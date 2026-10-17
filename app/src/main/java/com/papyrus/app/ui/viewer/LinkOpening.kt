@@ -13,16 +13,14 @@ import com.papyrus.app.viewer.resolvedLink
 import io.noties.markwon.core.spans.LinkSpan
 
 /**
- * How a document surface asks for a link to be opened. A viewer screen provides one so every surface
- * in it reports a link that nothing could handle the same way; the default does nothing.
+ * How a document surface asks for a link to be opened. A viewer provides one so every surface in it
+ * reports an unhandled link the same way; the default does nothing.
  */
 internal val LocalLinkOpener = staticCompositionLocalOf<(String) -> Unit> { { _ -> } }
 
 /**
- * Opens [url] in whichever app handles it, and says whether one took it. The URL is filtered first
- * ([resolvedLink]) so a document can never send the reader to a `javascript:`, `file:` or `intent:`
- * address. Every failure is reported as `false` — no app for the scheme, a provider that refuses it,
- * anything else — because the caller shows a message and a viewer must not crash on a bad link.
+ * Opens [url] in whichever app handles it, `false` when none did. Filtered through [resolvedLink] first
+ * so a document can never send the reader to a `javascript:`, `file:` or `intent:` address.
  */
 internal fun openLink(context: Context, url: String): Boolean {
     val resolved = resolvedLink(url) ?: return false
@@ -38,14 +36,8 @@ internal fun openLink(context: Context, url: String): Boolean {
 }
 
 /**
- * A [LinkMovementMethod] that hands a tapped link to [onLink] instead of letting the span's own
- * resolver run.
- *
- * Markwon's default resolver catches only `ActivityNotFoundException`, so tapping a `file://` link
- * in a Markdown document would surface `FileUriExposedException` and crash. Intercepting the tap
- * here means the resolver is never reached, and the scheme filter and the failure report stay in
- * [onLink] with every other link path. Everything that is not a [LinkSpan] tap is passed to the
- * superclass unchanged, so long-press selection keeps working.
+ * A [LinkMovementMethod] that hands a tapped link to [onLink] instead of the span's own resolver,
+ * which catches only `ActivityNotFoundException` and so would crash on a `file://` tap.
  */
 internal class GuardedLinkMovementMethod(private val onLink: (String) -> Unit) : LinkMovementMethod() {
 
@@ -60,13 +52,12 @@ internal class GuardedLinkMovementMethod(private val onLink: (String) -> Unit) :
         return super.onTouchEvent(widget, buffer, event)
     }
 
-    /** The destination of the link under a touch, or null when the touch is not on one. */
     private fun linkUnder(widget: TextView, buffer: Spannable, x: Float, y: Float): String? {
         val layout = widget.layout ?: return null
         val column = x.toInt() - widget.totalPaddingLeft + widget.scrollX
         val row = y.toInt() - widget.totalPaddingTop + widget.scrollY
         val line = layout.getLineForVertical(row)
-        // Outside the line's own extent, so a touch on blank space beside it is not a link tap.
+        // Outside the line's extent, so a touch on blank space beside it is not a link tap.
         if (column < layout.getLineLeft(line) || column > layout.getLineRight(line)) return null
         val offset = layout.getOffsetForHorizontal(line, column.toFloat())
         // A touch at the right edge of a link resolves to the offset just past it.

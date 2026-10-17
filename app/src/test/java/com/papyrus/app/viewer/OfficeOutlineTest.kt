@@ -5,7 +5,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** The outline is a list of places to jump to, so a wrong index sends the reader to the wrong paragraph. */
+/** The outline lists jump targets, so a wrong index sends the reader to the wrong paragraph. */
 class OfficeOutlineTest {
 
     private fun h(text: String, level: Int) = OfficeBlock.Heading(text, level)

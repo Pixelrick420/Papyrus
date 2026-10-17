@@ -19,7 +19,6 @@ enum class SafAccess {
     Unreadable,
 }
 
-/** Open-document picker that requests a persistable read grant. */
 class OpenPersistableDocument : ActivityResultContracts.OpenDocument() {
     override fun createIntent(context: Context, input: Array<String>): Intent =
         super.createIntent(context, input).addFlags(
@@ -28,7 +27,6 @@ class OpenPersistableDocument : ActivityResultContracts.OpenDocument() {
         )
 }
 
-/** Multi-select variant of [OpenPersistableDocument]. */
 class OpenPersistableDocuments : ActivityResultContracts.OpenMultipleDocuments() {
     override fun createIntent(context: Context, input: Array<String>): Intent =
         super.createIntent(context, input).addFlags(
@@ -40,7 +38,10 @@ class OpenPersistableDocuments : ActivityResultContracts.OpenMultipleDocuments()
 object SafStorage {
     data class Metadata(val displayName: String, val sizeBytes: Long, val mimeType: String?)
 
-    /** Call right after the pick or the OS drops the grant on reboot. Read-only: some providers refuse a write request outright. */
+    /**
+     * Call right after the pick, or the OS drops the grant on reboot.
+     * Read-only: some providers refuse a write request outright.
+     */
     fun persistPermission(resolver: ContentResolver, uri: Uri): Boolean =
         take(resolver, uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
 

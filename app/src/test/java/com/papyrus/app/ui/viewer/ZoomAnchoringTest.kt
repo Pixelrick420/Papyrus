@@ -97,8 +97,7 @@ class ZoomAnchoringTest {
         assertTrue("expected an undershoot, was ${zoom.gestureScale}", zoom.gestureScale < MIN_SCALE)
 
         // The band converges on MIN_SCALE from below, so a pinch held open settles just under the
-        // bound instead of collapsing the page. Asserted loosely: past a handful of steps the
-        // remaining gap is below float resolution and the scale reads as exactly MIN_SCALE.
+        // bound instead of collapsing the page, and past a few steps reads as exactly MIN_SCALE.
         repeat(36) { zoom.applyGesture(0.8f) }
         assertTrue("rubber band let the page collapse to ${zoom.gestureScale}", zoom.gestureScale >= MIN_SCALE - 0.05f)
 

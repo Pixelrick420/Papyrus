@@ -186,7 +186,7 @@ class SyntaxHighlighterTest {
         val js = language("a.js")
         val states = SyntaxHighlighter.chunkStartStates(js, listOf("const s = `one", "two`;"))
 
-        // The template literal is the second multi-line construct JavaScript defines, after the block comment.
+        // The template literal is JavaScript's second multi-line construct, after the block comment.
         assertEquals(2, states[1])
         assertEquals(listOf("STRING:two`"), tokens("a.js", "two`;", states[1]))
     }
@@ -221,7 +221,7 @@ class SyntaxHighlighterTest {
         for (extension in sample) assertNotNull(extension, CodeLanguages.forFileName("file.$extension"))
     }
 
-    /** Whatever the input, tokens come out in order, inside the text and never overlapping, and the scan ends. */
+    /** Whatever the input, tokens stay ordered and in range, and the scan ends. */
     @Test
     fun `every language survives garbage and keeps its tokens ordered and in range`() {
         val pieces = listOf(

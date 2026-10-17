@@ -27,10 +27,8 @@ const val OFFICE_UNLOCK_DIR = "office-unlock"
 class DocumentPasswordException : IOException("Password-protected document")
 
 /**
- * Encryption detection and password-based decryption for `.docx` (ECMA-376 Agile) and `.odt`
- * (OpenDocument 1.2 CBC), hand-rolled on [javax.crypto] so no dependency is added. A corrupt or
- * unknown file reads as [Party.NOT_ENCRYPTED] so it fails generically rather than prompting;
- * a recognized-but-unsupported scheme reads as [Party.UNSUPPORTED] for the same reason.
+ * Encryption detection and password decryption for `.docx` (ECMA-376 Agile) and `.odt` (OpenDocument
+ * 1.2 CBC). An unreadable file is [Party.NOT_ENCRYPTED], an unsupported scheme [Party.UNSUPPORTED].
  */
 object OfficeEncryption {
 
@@ -129,7 +127,6 @@ object OfficeEncryption {
         decryptPackage(cfb, packageSize, secretKey, agile.keyDataSalt, agile.hashName, target)
     }
 
-    /** True when the verifier does not match, i.e. the password is wrong. */
     private fun wrongPassword(agile: AgileInfo, h: ByteArray): Boolean {
         val actual = MessageDigest.getInstance(jcaHash(agile.hashName)).digest(
             aesCbcDecrypt(

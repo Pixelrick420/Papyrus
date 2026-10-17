@@ -6,20 +6,8 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 
 /**
- * The one Room database: the `documents` library plus the tables hanging off it ([ReadingProgressEntity],
- * [BookmarkEntity]), each removed with its document by `ON DELETE CASCADE`.
- *
- * **Schema versions.** Version 4 is the oldest schema that is supported: earlier ones were test-only
- * and have no migration path. The number was deliberately not reset to 1, because devices already
- * hold a version-4 database and Room throws on a downgrade. Every later schema change therefore adds
- * a `Migration` for it to [Migrations.ALL], starting with 4 -> 5, and bumps [Migrations.CURRENT_VERSION].
- * The schema of each released version is exported to `app/schemas/` and committed, so a migration can
- * be written and tested against the exact JSON the shipped database was built from.
- *
- * There is intentionally no `fallbackToDestructiveMigration`, in any build type: a row points at an
- * app-owned copy under `filesDir/imports`, so wiping rows on a version mismatch would orphan those
- * files for good. A missing migration is a crash on launch in development, which is the right place
- * to find out.
+ * Version 4 is the oldest supported schema; the number was not reset to 1 because installed devices
+ * already hold v4 and Room throws on downgrade. No destructive fallback: wiping rows orphans app-owned files.
  */
 @Database(
     entities = [DocumentEntity::class, ReadingProgressEntity::class, BookmarkEntity::class],
