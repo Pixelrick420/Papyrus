@@ -51,6 +51,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Scaffold
@@ -79,6 +80,8 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -95,6 +98,8 @@ import com.papyrus.app.data.DocumentEntity
 import com.papyrus.app.data.DocumentFormat
 import com.papyrus.app.data.DocumentRepository
 import com.papyrus.app.data.OpenPersistableDocuments
+import com.papyrus.app.data.ProgressLabel
+import com.papyrus.app.data.ReadingProgressSummary
 import com.papyrus.app.data.SafAccess
 import com.papyrus.app.data.ThumbnailLoader
 import com.papyrus.app.data.shareIntent
@@ -130,6 +135,8 @@ data class HomeUiState(
     /** The unfiltered library, so a bulk action resolves ids the current query may be hiding. */
     val documents: List<DocumentEntity> = emptyList(),
     val results: List<DocumentEntity> = emptyList(),
+    /** Stored reading progress by document id; empty while "Remember reading position" is off. */
+    val progress: Map<Long, ReadingProgressSummary> = emptyMap(),
     val selection: SelectionState = SelectionState(),
     /** Names the single-row removal waiting out its undo window, or null; [HomeViewModel.undoRemove] takes it back. */
     val pendingRemovalToken: Long? = null,
@@ -178,8 +185,10 @@ class HomeViewModel(
      * the results, so bulk actions and the empty state agree with what is on screen.
      */
     val uiState: StateFlow<HomeUiState> = combine(
-        repository.documents, _query, _selection, pendingRemoval.pending, hiddenIds,
-    ) { all, q, selection, pending, hidden ->
+        // Progress is its own table and flow, so it joins here without a save re-emitting the documents.
+        combine(repository.documents, repository.readingProgress) { documents, progress -> documents to progress },
+        _query, _selection, pendingRemoval.pending, hiddenIds,
+    ) { (all, progress), q, selection, pending, hidden ->
         val needle = q.trim()
         // A hidden id is dropped only after the list it filters has stopped containing it.
         val gone = hidden.filterTo(HashSet()) { id -> all.none { it.id == id } }
@@ -191,6 +200,7 @@ class HomeViewModel(
             query = needle,
             documents = docs,
             results = docs.matches(needle),
+            progress = progress,
             selection = selection,
             pendingRemovalToken = pending?.token,
         )
@@ -269,6 +279,11 @@ class HomeViewModel(
     fun remove(document: DocumentEntity) {
         hiddenIds.update { it + document.id }
         pendingRemoval.begin(listOf(document))
+    }
+
+    /** Forgets where the reader was in [document]; the next open starts at the top. Nothing else about it changes. */
+    fun resetProgress(document: DocumentEntity) {
+        viewModelScope.launch { repository.resetReadingProgress(document.id) }
     }
 
     /** Takes back the removal [token] names. A stale token, from a snackbar that outlived its window, does nothing. */
@@ -610,6 +625,8 @@ fun HomeScreen(
                                 viewModel.remove(doc)
                             },
                             onShare = { shareDocument(doc) },
+                            progress = state.progress[doc.id],
+                            onResetProgress = { viewModel.resetProgress(doc) },
                             // Filtering, removing and re-sorting glide instead of snapping.
                             modifier = Modifier.animateItem(),
                         )
@@ -807,6 +824,8 @@ private fun DocumentRow(
     onLongPress: () -> Unit,
     onRemove: () -> Unit,
     onShare: () -> Unit,
+    progress: ReadingProgressSummary?,
+    onResetProgress: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -859,6 +878,8 @@ private fun DocumentRow(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+                // Only a document with a stored position has one; a never-opened row stays as it was.
+                if (progress != null) ProgressLine(progress)
             }
             // The checkbox takes the ⋮'s exact slot, so the row's contents hold still between modes.
             if (selecting) {
@@ -879,6 +900,12 @@ private fun DocumentRow(
                             text = { Text(stringResource(R.string.action_share)) },
                             onClick = { onMenuOpenChange(false); onShare() },
                         )
+                        if (progress != null) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.home_reset_progress)) },
+                                onClick = { onMenuOpenChange(false); onResetProgress() },
+                            )
+                        }
                         DropdownMenuItem(
                             text = { Text(stringResource(R.string.action_remove)) },
                             onClick = { onMenuOpenChange(false); onRemove() },
@@ -887,5 +914,40 @@ private fun DocumentRow(
                 }
             }
         }
+    }
+}
+
+/**
+ * A thin bar and a label under the row's subtitle. The label is "p. 12 of 200" for a PDF and a
+ * percentage for everything else; the bar and the label are one thing to a screen reader, so they are
+ * spoken once as "Progress: ...".
+ */
+@Composable
+private fun ProgressLine(progress: ReadingProgressSummary) {
+    val label = when (val parts = progress.label) {
+        is ProgressLabel.Page -> stringResource(R.string.home_progress_page, parts.page, parts.count)
+        is ProgressLabel.Percent -> stringResource(R.string.home_progress_percent, parts.percent)
+    }
+    val spoken = stringResource(R.string.home_progress_cd, label)
+    Row(
+        Modifier
+            .padding(top = 4.dp)
+            .clearAndSetSemantics { contentDescription = spoken },
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        LinearProgressIndicator(
+            progress = { progress.progress.coerceIn(0f, 1f) },
+            modifier = Modifier
+                .weight(1f)
+                .height(3.dp)
+                .clip(RoundedCornerShape(2.dp)),
+        )
+        Text(
+            label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+        )
     }
 }
