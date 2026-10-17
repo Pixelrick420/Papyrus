@@ -89,7 +89,7 @@ never written with `OnConflictStrategy.REPLACE`: a replace is a delete plus an i
     opened. Off by default.
   - *Autosave encrypted documents*: the same for password-protected documents, saved once they unlock, including ones
     picked from Home. Off by default; while it is off the viewer menu offers Save to library for them instead.
-  - *Remember reading position*: library documents reopen where you stopped, and Home shows your progress. On by
+  - *Remember reading position*: library documents reopen where you stopped. On by
     default.
   - *About*: version, source link and license.
 - **Search** filters the library by title, in memory, over the list the screen already holds.
@@ -120,14 +120,10 @@ never written with `OnConflictStrategy.REPLACE`: a replace is a delete plus an i
     not a save: opening a document and leaving without scrolling keeps the previous position. After that a position is
     written once the reader has been still for about a second and a half, when the app goes to the background, and when
     the viewer closes. Writes are ordered and never on the main thread.
-  - Home shows a thin progress bar on every row that has a position, with "p. 12 of 200" for a PDF and a percentage for
-    the rest; a never-opened document shows nothing. Progress is (page + fraction) / pages for a PDF, the same over
-    chunks or blocks for text and Office documents, and the offset over the text length for Markdown; a viewer that
-    cannot scroll any further counts as 100%. **Reset progress** in a row's menu forgets the position.
   - A document handed over by another app is not in the library, so nothing is stored for it. If it is saved to the
     library, its position is kept under the new row from then on.
-  - *Remember reading position* in Settings (on by default) turns all of this off: nothing is read or written, and
-    Home shows no progress. What was stored stays and applies again when the switch is turned back on.
+  - *Remember reading position* in Settings (on by default) turns all of this off: nothing is read or written. What
+    was stored stays and applies again when the switch is turned back on.
 - **Zoom** is a pinch or a double-tap, 0.5x to 3x, the double-tap toggling between 1x and 2.5x. Text surfaces scale the
   type size, so content re-wraps and the scroll bounds stay correct.
 - **Links** open on tap with no confirmation, in PDF and Markdown text and in DOCX / ODT — a PDF's in-document

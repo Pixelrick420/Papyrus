@@ -132,23 +132,3 @@ fun ReadingProgressEntity.toRestoreRequest(format: DocumentFormat): RestoreReque
     if (kind != LocationKind.forFormat(format)) return null
     return RestoreRequest(ReadingLocation(kind, locationUnit, locationFraction), zoomScale)
 }
-
-/** What Home prints beside a row's progress bar. */
-sealed interface ProgressLabel {
-    /** "p. 12 of 200", one-based. */
-    data class Page(val page: Int, val count: Int) : ProgressLabel
-
-    /** "45%", rounded down so nothing reads 100% before it is. */
-    data class Percent(val percent: Int) : ProgressLabel
-}
-
-/**
- * The label for a stored position. Only a PDF has pages worth naming; every other format shows a
- * percentage, because "chunk 3 of 80" or "block 412" would mean nothing to a reader.
- */
-fun progressLabel(kindCode: Int, unit: Int, unitCount: Int, progress: Float): ProgressLabel {
-    if (LocationKind.fromCode(kindCode) == LocationKind.PAGE && unitCount > 0) {
-        return ProgressLabel.Page((unit + 1).coerceIn(1, unitCount), unitCount)
-    }
-    return ProgressLabel.Percent((progress * 100f).toInt().coerceIn(0, 100))
-}
