@@ -28,9 +28,8 @@ class DocumentRepository(
     private var nextHandedOverId = -2L
 
     /**
-     * The encryption verdict [register] reached for a PDF it then handed over, so the viewer that opens
-     * it next does not run the same whole-file check again. Read once and then forgotten, so a re-pick
-     * or a retry asks afresh, and cleared when it grows past a handful of never-opened entries.
+     * Encryption verdict [register] reached for a PDF it handed over, so the next viewer skips the
+     * whole-file check. Read once, then forgotten; cleared past a handful of entries.
      */
     private val knownPdfEncryption = ConcurrentHashMap<String, PdfEncryption>()
 
@@ -65,7 +64,6 @@ class DocumentRepository(
         }
     }
 
-    /** Stores [entity] transiently under a fresh negative id; the caller opens the returned id. */
     private fun handOver(entity: DocumentEntity): Long {
         val id = nextHandedOverId--
         handedOver.clear()
@@ -90,7 +88,10 @@ class DocumentRepository(
         dao.upsertByUri(entity)
     }
 
-    /** Opens a document another app passed over without indexing it; the intent's read grant lasts only for this entry. */
+    /**
+     * Opens a document another app passed over without indexing it; the intent's read grant lasts
+     * only for this entry.
+     */
     suspend fun openHandedOver(uri: Uri): Long = withContext(Dispatchers.IO) {
         handOver(buildEntity(uri))
     }
@@ -100,7 +101,7 @@ class DocumentRepository(
     suspend fun saveToLibrary(source: DocumentEntity): Long = withContext(Dispatchers.IO) {
         val file = LibraryImport.copyToImports(context, source.uri.toUri())
         val now = System.currentTimeMillis()
-        // Autosave saves the same file every time it is opened, so an identical copy is reused, not added again.
+        // Autosave re-saves the same file on each open, so an identical copy is reused rather than added.
         findSavedDuplicate(source.title, file)?.let { existing ->
             file.delete()
             dao.touch(existing.id, now)
@@ -121,7 +122,7 @@ class DocumentRepository(
         }
     }
 
-    /** A library row whose app-owned copy has [title] and exactly the bytes of [copy], the file just made. */
+    /** Library row whose app-owned copy matches [title] and the exact bytes of [copy]. */
     private suspend fun findSavedDuplicate(title: String, copy: File): DocumentEntity? {
         val candidates = LibraryImport.importsDir(context).listFiles().orEmpty()
         for (candidate in candidates) {
@@ -132,14 +133,17 @@ class DocumentRepository(
         return null
     }
 
-    /** Removes only the index entry — never the user's own file; an app-owned copy goes with its row. */
+    /** Removes the index entry only, never the user's file; an app-owned copy goes with its row. */
     suspend fun remove(document: DocumentEntity) = withContext(Dispatchers.IO) {
         SafStorage.releasePermission(resolver, document.uri.toUri())
         dao.deleteById(document.id)
         LibraryImport.deleteOwnedCopy(context, document.uri.toUri())
     }
 
-    /** SAF URIs share as-is; a local copy has no grant and cannot leave as a bare file:// URI, so it uses a FileProvider. */
+    /**
+     * SAF URIs share as-is. A local copy has no grant and cannot leave as a bare file:// URI, so it
+     * goes through a FileProvider.
+     */
     suspend fun resolveShareUri(uri: Uri): Uri = withContext(Dispatchers.IO) {
         if (uri.scheme != "file") return@withContext uri
         val path = uri.path ?: return@withContext uri
@@ -148,7 +152,9 @@ class DocumentRepository(
         FileProvider.getUriForFile(context, "${context.packageName}$FILE_PROVIDER_SUFFIX", file)
     }
 
-    /** What opening the PDF at [uri] needs: the verdict [register] already reached if there is one, else a fresh check. */
+    /**
+     * What opening the PDF at [uri] needs: the verdict [register] reached, if any, else a fresh check.
+     */
     suspend fun pdfEncryption(uri: Uri): PdfEncryption = withContext(Dispatchers.IO) {
         knownPdfEncryption.remove(uri.toString()) ?: PdfEncryption.status { openStream(uri) }
     }
@@ -157,15 +163,18 @@ class DocumentRepository(
     suspend fun probeShare(document: DocumentEntity): SafAccess =
         withContext(Dispatchers.IO) { SafStorage.probeAccess(resolver, document.uri.toUri()) }
 
-    /** The provider's current MIME type, not a stored copy; null when it reports none or the grant is gone. */
+    /** Provider's live MIME type, not a stored copy; null when it reports none or the grant is gone. */
     suspend fun mimeTypeOf(document: DocumentEntity): String? =
         withContext(Dispatchers.IO) { SafStorage.queryMimeType(resolver, document.uri.toUri()) }
 
-    /** The type the share action declares: the provider's live answer, resolved against the detected format. */
+    /** Type the share declares: the provider's live answer resolved against the detected format. */
     suspend fun shareTypeFor(document: DocumentEntity): String =
         shareMimeType(document.format, mimeTypeOf(document))
 
-    /** A SAF grant can only come from the user picking the file again, so the re-pick must be the same name and format ([matchesRepick]). */
+    /**
+     * A SAF grant can only come from the user picking the file again, so the re-pick must match
+     * [matchesRepick]: same name and format.
+     */
     suspend fun regrant(expected: DocumentEntity, picked: Uri): Boolean = withContext(Dispatchers.IO) {
         val meta = SafStorage.queryMetadata(context, picked)
         val pickedFormat = resolveFormat(picked, meta.displayName, meta.mimeType)
@@ -180,7 +189,7 @@ class DocumentRepository(
         true
     }
 
-    /** An unreadable file reads as not encrypted, so it fails in the renderer rather than prompting. */
+    /** An unreadable file reads as not encrypted, so the renderer fails rather than prompting. */
     private fun isEncrypted(format: DocumentFormat, uri: Uri): Boolean =
         when (format) {
             DocumentFormat.PDF -> PdfEncryption.status { openStream(uri) }.also { status ->
@@ -209,7 +218,7 @@ class DocumentRepository(
         )
     }
 
-    /** Falls back to sniffing the file head on UNKNOWN, so a .conf or extension-less script still opens as text. */
+    /** Sniffs the file head on UNKNOWN, so a .conf or extension-less script still opens as text. */
     private fun resolveFormat(uri: Uri, displayName: String, mimeType: String?): DocumentFormat {
         val detected = DocumentFormat.detect(displayName, mimeType)
         if (detected != DocumentFormat.UNKNOWN) return detected

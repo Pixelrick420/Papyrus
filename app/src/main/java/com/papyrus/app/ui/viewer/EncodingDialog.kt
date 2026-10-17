@@ -25,11 +25,7 @@ import androidx.compose.ui.unit.dp
 import com.papyrus.app.R
 import com.papyrus.app.viewer.TextEncodings
 
-/**
- * Lets a person re-read a text file as another charset when detection got it wrong. [override] is the
- * charset picked by hand, or null while detection is in charge. [onSelect] gets a charset name, or null
- * for "Auto-detect".
- */
+/** Re-reads a text file as another charset when detection got it wrong. */
 @Composable
 fun EncodingDialog(
     override: String?,

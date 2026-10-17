@@ -29,11 +29,11 @@ interface DocumentDao {
     @Query("UPDATE documents SET lastOpenedAt = :timestamp WHERE id = :id")
     suspend fun touch(id: Long, timestamp: Long)
 
-    /** A SAF re-pick returns a new URI for the same document, so the row is re-bound to it, keeping its history. */
+    /** Re-binds the row to a new URI: SAF re-picking the same document returns a different one. */
     @Query("UPDATE documents SET uri = :uri WHERE id = :id")
     suspend fun updateUri(id: Long, uri: String)
 
-    /** Sniffing can only resolve a format once the row exists, so this runs after insert. */
+    /** Sniffing needs the row to exist, so this runs after insert. */
     @Query("UPDATE documents SET format = :format WHERE id = :id")
     suspend fun updateFormat(id: Long, format: DocumentFormat)
 
@@ -41,8 +41,8 @@ interface DocumentDao {
     suspend fun deleteById(id: Long)
 
     /**
-     * Registering a document counts as opening it, so the row is stamped here, in the same write,
-     * instead of by a second write that would make the library query run again.
+     * Registering counts as opening, so the row is stamped here in the same write
+     * instead of by a second write that would re-run the library query.
      */
     @Transaction
     suspend fun upsertByUri(document: DocumentEntity): Long {

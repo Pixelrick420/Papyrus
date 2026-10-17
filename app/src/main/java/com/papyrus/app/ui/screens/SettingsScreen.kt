@@ -111,8 +111,7 @@ fun SettingsScreen(
     var themeDialogOpen by remember { mutableStateOf(false) }
 
     // Opened in the person's browser; Papyrus itself still never touches the network. The viewer's
-    // own opener is reused so every link in the app opens the same way and cannot throw: it refuses
-    // any scheme other than http(s), mailto and tel, and reports nothing openable as `false`.
+    // opener is reused so every link opens the same way and refuses any scheme but http(s), mailto, tel.
     val openUrl: (String) -> Unit = { openLink(context, it) }
 
     Scaffold { padding ->
@@ -294,7 +293,6 @@ private fun CardDivider() {
     )
 }
 
-/** A label over its value; clickable when the caller passes a click modifier. */
 @Composable
 private fun SettingsRow(title: String, value: String, modifier: Modifier = Modifier) {
     Column(

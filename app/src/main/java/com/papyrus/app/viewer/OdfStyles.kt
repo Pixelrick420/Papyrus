@@ -9,7 +9,7 @@ private const val DEFAULT_WEIGHT = 400
 private const val MAX_STYLE_CHAIN = 20
 private const val MAX_HEADING_LEVEL = 6
 
-/** Applies a `style:text-properties` element to this layer. An attribute not present changes nothing. */
+/** Applies a `style:text-properties` element to this layer; a missing attribute changes nothing. */
 internal fun RunProps.applyOdf(p: XmlPullParser) {
     p.attr("fo:font-weight")?.let { bold = it == "bold" || (it.toIntOrNull() ?: DEFAULT_WEIGHT) >= BOLD_WEIGHT }
     p.attr("fo:font-style")?.let { italic = it == "italic" || it == "oblique" }
@@ -21,7 +21,7 @@ internal fun RunProps.applyOdf(p: XmlPullParser) {
     (p.attr("style:font-name") ?: p.attr("fo:font-family"))?.let { mono = isMonoFont(it) }
 }
 
-/** "super 58%", "sub", or a signed percentage ("33%", "-33% 58%"): positive raises, negative lowers. */
+/** "super 58%", "sub", or a signed percentage: positive raises, negative lowers. */
 private fun scriptOf(value: String): ScriptShift {
     val head = value.trim().substringBefore(' ')
     return when {
@@ -49,7 +49,7 @@ private fun odfNumFormat(value: String?): String = when (value) {
     else -> "decimal"
 }
 
-/** One `style:style`. Properties are what the style says itself; inheritance is [OdfStyles]'s job. */
+/** One `style:style`; its properties are its own, inheritance is [OdfStyles]'s job. */
 internal class OdfStyle(val name: String, val family: String) {
     var parent: String? = null
     val runProps = RunProps()
@@ -60,7 +60,6 @@ internal class OdfStyle(val name: String, val family: String) {
     var background: Int? = null
 }
 
-/** One level of a `text:list-style`. */
 internal class OdfListLevel(
     val bullet: Boolean,
     val bulletChar: String,
@@ -126,8 +125,8 @@ internal class OdfStyles {
     }
 
     /**
-     * 0 for body text. `text:h` is a heading by element; this is for a `text:p` whose style, or one it
-     * inherits from, is the built-in Title or "Heading N" (names encode a space as `_20_`).
+     * 0 for body text. `text:h` is a heading element; this handles a `text:p` whose style (or an
+     * inherited one) is the built-in Title or "Heading N" (space encoded as `_20_`).
      */
     fun headingLevel(name: String?): Int {
         for (style in chain("paragraph", name)) {
@@ -146,7 +145,7 @@ internal class OdfStyles {
     }
 }
 
-/** Reads the style definitions from [xml] into [sheet]; stops at the document body, which holds none. */
+/** Reads style definitions from [xml] into [sheet]; stops at the body, which holds none. */
 internal fun readOdfStyles(xml: ByteArray, sheet: OdfStyles, newParser: ParserFactory) {
     OdfStylesReader(newParser(xml.inputStream()), sheet).read()
 }

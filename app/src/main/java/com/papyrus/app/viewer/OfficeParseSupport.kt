@@ -13,7 +13,9 @@ internal const val MAX_MERGE_SPAN = 64
 internal const val COMMENT_RANGE_FILL = 0xFFF2CC
 internal const val COMMENT_MARKER_FILL = 0xFFD966
 
-/** The raised "C1" left in the text where a comment is anchored; its own format, so it never becomes part of a link. */
+/**
+ * The raised "C1" left in the text where a comment is anchored; its own format, so it never joins a link.
+ */
 internal val COMMENT_MARKER_FORMAT = CharFormat(
     bold = true,
     script = ScriptShift.SUPER,
@@ -24,8 +26,7 @@ private val ISO_DATE = Regex("""\d{4}-\d{2}-\d{2}.*""")
 
 /**
  * "Alice · 2024-05-01 10:15" from a comment's author and its ISO-8601 stamp, or null when it names
- * neither. Minutes are enough, and the stamp's zone is not the reader's to care about, so both are
- * dropped; a stamp that is not a date at all is ignored rather than shown as noise.
+ * neither. Minutes are enough; the stamp's zone is dropped, and a non-date stamp is ignored.
  */
 internal fun commentByline(author: String?, stamp: String?): String? {
     val who = author?.trim().orEmpty()
@@ -33,12 +34,11 @@ internal fun commentByline(author: String?, stamp: String?): String? {
     return listOf(who, whenText).filter { it.isNotEmpty() }.joinToString(" · ").ifEmpty { null }
 }
 
-/** "2024-05-01T10:15" is sixteen characters. */
 private const val ISO_MINUTES = 16
 
 /**
- * An image the body referenced: where it sits, and what the document said about it. [index] is the
- * block position it was seen at, before any image was inserted.
+ * An image the body referenced: where it sits and what the document said. [index] is the block
+ * position it was seen at, before any image was inserted.
  */
 internal class PendingImage(
     val zipName: String,
@@ -47,7 +47,6 @@ internal class PendingImage(
     var altText: String?,
 )
 
-/** What a table cell holds, as the parsers collect it. */
 internal class CellContent(
     val text: String,
     val spans: List<TextSpan> = emptyList(),
@@ -103,7 +102,9 @@ internal class Grid {
         return rows.size < rowLimit
     }
 
-    /** Records the cell ending here; only RESTART may open a new merge origin, anything else ends the merge at this column. */
+    /**
+     * Records the cell ending here; only RESTART opens a new merge origin, anything else ends the merge at this column.
+     */
     fun openCellAt(column: Int, content: CellContent, colspan: Int, merge: MergeState): Slot {
         val origin = mergeOrigins[column]
         if (merge == MergeState.CONTINUE && origin != null) {
@@ -121,7 +122,6 @@ internal class Grid {
             align = content.align,
         )
         row += slot
-        // A plain cell ends any merge open at this column; a RESTART begins a new one.
         if (merge == MergeState.RESTART) mergeOrigins[column] = slot else mergeOrigins.remove(column)
         return slot
     }

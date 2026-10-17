@@ -42,13 +42,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 
 /*
- * A PDF page is a bitmap, so there is no text for the platform's selection to work on. The page's
- * extracted text and per-character boxes (the same ones find highlights use) are hit-tested by hand
- * instead. Everything is in page-relative units, so a selection survives zooming and can run across
- * pages.
+ * A PDF page is a bitmap with no selectable text, so its extracted characters are hit-tested by
+ * hand. All units are page-relative, so a selection survives zoom and can run across pages.
  */
 
-/** How near a long-press must land to a character to pick its word. */
 internal val SelectionReach = 24.dp
 
 internal val HandleRadius = 8.dp
@@ -59,11 +56,8 @@ internal val HandleGrabRadius = 28.dp
 private val HandleStem = 2.dp
 
 /**
- * What is selected in one PDF. A page's text is read only when the reader first points at it, or when
- * a page is scrolled into a selection spanning it.
- *
- * Each gesture report restarts the work: the text for a page a drag has just reached may still be
- * loading, and only the newest position matters.
+ * What is selected in one PDF. A page's text is read on first point, or when a page scrolls into a
+ * selection. Each gesture report restarts the work: only the newest position matters.
  */
 @Stable
 internal class PdfSelectionState(
@@ -85,7 +79,6 @@ internal class PdfSelectionState(
     /** The word the long-press landed on: what a drag extends from, in either direction. */
     private var anchorWord: Pair<PdfTextPos, PdfTextPos>? = null
 
-    /** The end that stays put while the other is dragged by its handle. */
     private var fixedEnd: PdfTextPos? = null
 
     fun textOf(page: Int): PdfPageText? = texts[page]
@@ -97,7 +90,7 @@ internal class PdfSelectionState(
         return loaded
     }
 
-    /** A long-press at [point]: selects the word there, if there is one within [reach] (page heights). */
+    /** A long-press at [point]: selects the word there. [reach] is in page heights, not pixels. */
     fun startAt(point: PagePoint, reach: Float) {
         cancelWork()
         anchorWord = null
@@ -117,7 +110,6 @@ internal class PdfSelectionState(
         }
     }
 
-    /** The finger of a long-press moved to [point]: the selection is the word it began on plus the way to there. */
     fun dragTo(point: PagePoint) {
         dragJob?.cancel()
         dragJob = scope.launch(start = CoroutineStart.UNDISPATCHED) {
@@ -128,7 +120,6 @@ internal class PdfSelectionState(
         }
     }
 
-    /** A handle was taken: the other end is held still. */
     fun startHandle(isStart: Boolean) {
         val current = selection ?: return
         cancelWork()
@@ -136,7 +127,7 @@ internal class PdfSelectionState(
         fixedEnd = if (isStart) current.end else current.start
     }
 
-    /** The grabbed handle moved to [point]. Passing the other end makes the two swap roles, as they do on a phone. */
+    /** Passing the other end makes the two swap roles, as they do on a phone. */
     fun dragHandle(point: PagePoint) {
         val fixed = fixedEnd ?: return
         dragJob?.cancel()
@@ -147,7 +138,6 @@ internal class PdfSelectionState(
         }
     }
 
-    /** The finger is up: the selection stays, but nothing is being dragged. */
     fun finishGesture() {
         anchorWord = null
         fixedEnd = null
@@ -160,7 +150,7 @@ internal class PdfSelectionState(
         selection = null
     }
 
-    /** The selected text, pages joined by a newline, reading any page of a long selection not yet read. Null if there is none. */
+    /** Selected text, pages joined by newlines, loading any page not yet read. Null if none. */
     suspend fun selectedText(): String? {
         val current = selection ?: return null
         val out = StringBuilder()
@@ -186,7 +176,7 @@ internal class PdfSelectionState(
     }
 }
 
-/** A selection end's knob position on a page, in that page's pixels. */
+/** A selection end's knob position in that page's pixels. */
 internal class HandleSpot(val x: Float, val top: Float, val bottom: Float, private val radius: Float) {
     /** Below the line, so the finger holding it does not cover the text. */
     val knob: Offset get() = Offset(x, bottom + radius)
@@ -198,10 +188,8 @@ internal class HandleSpot(val x: Float, val top: Float, val bottom: Float, priva
 /** The knob taken, and the line's offset from the finger, to keep while it is dragged. */
 internal class HandleGrab(val isStart: Boolean, val toLine: Offset)
 
-/** The knobs a page draws: the start one if the selection begins on it, the end one if it ends on it. */
 internal class PageHandles(val start: HandleSpot?, val end: HandleSpot?) {
 
-    /** The knob under [point] within [radius], the nearer if both are. */
     fun grab(point: Offset, radius: Float): HandleGrab? {
         val s = start
         val e = end
@@ -272,11 +260,11 @@ internal fun DrawScope.drawSelection(rects: List<NormRect>, handles: PageHandles
 
 private const val SELECTION_ALPHA = 0.3f
 
-/** A faint wash plus an underline: enough to read as a link, light enough not to hide the page under it. */
+/** Light enough not to hide the page under it. */
 private const val LINK_FILL_ALPHA = 0.12f
 private const val LINK_LINE_ALPHA = 0.6f
 
-/** How near a tap must land to a link rectangle, in page pixels, before it counts as hitting the link. */
+/** Link hit slop, in page pixels. */
 internal val LinkTapSlop = 4.dp
 
 /**
@@ -290,13 +278,8 @@ private sealed interface Press {
 }
 
 /**
- * Long-press selects, drag extends, tap dismisses or follows a link, a knob moves an end. [geometry]
- * places a finger that has left the page, [handles] holds this page's knobs, [links] its link
- * rectangles and [pageSize] the pixels they are drawn at. Nothing is claimed until the touch is
- * known: a moving press or a second finger is ignored, so scroll and pinch-zoom are unaffected, and
- * an ordinary tap is watched but not consumed, so double-tap zoom still works. Only a long-press, a
- * knob or a tap that landed on a link consumes, and being innermost it does so before the list's
- * scroll sees the drag.
+ * Long-press selects, drag extends, tap dismisses or follows a link, a knob moves an end. Nothing
+ * is claimed until the touch is known, so scroll, pinch-zoom and double-tap zoom are unaffected.
  */
 internal fun Modifier.pdfSelectionGestures(
     state: PdfSelectionState,
@@ -349,7 +332,6 @@ internal fun Modifier.pdfSelectionGestures(
     }
 }
 
-/** The link whose rectangle holds [point] (page pixels), or null when none does. */
 private fun linkAt(links: List<PdfPageLink>, size: IntSize, point: Offset, slopPx: Float): PdfLinkTarget? {
     if (links.isEmpty() || size == IntSize.Zero) return null
     val w = size.width.toFloat()
@@ -365,7 +347,7 @@ private fun linkAt(links: List<PdfPageLink>, size: IntSize, point: Offset, slopP
     return null
 }
 
-/** Waits to see what a press is: held still for the long-press time, let go early, or something else. */
+/** Classifies a press: held still, let go early, or something else. */
 private suspend fun AwaitPointerEventScope.classifyPress(down: PointerInputChange): Press {
     var verdict: Press? = null
     withTimeoutOrNull(viewConfiguration.longPressTimeoutMillis) {

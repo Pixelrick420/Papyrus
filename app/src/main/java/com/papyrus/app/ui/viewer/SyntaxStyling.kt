@@ -10,7 +10,7 @@ import androidx.compose.ui.text.font.FontStyle
 import com.papyrus.app.viewer.SyntaxTokens
 import com.papyrus.app.viewer.TokenKind
 
-/** One style per [TokenKind]; two sets of colours, because pale-on-dark and dark-on-pale are different problems. */
+/** One style per [TokenKind]; two colour sets, since pale-on-dark and dark-on-pale differ. */
 @Immutable
 class SyntaxPalette private constructor(private val styles: Array<SpanStyle>) {
 
@@ -18,7 +18,6 @@ class SyntaxPalette private constructor(private val styles: Array<SpanStyle>) {
 
     companion object {
 
-        /** Whether [surface] is dark enough that the pale set reads better on it than the dark one. */
         fun forSurface(surface: Color): SyntaxPalette = if (surface.luminance() < DARK_SURFACE_LUMINANCE) Dark else Light
 
         // Close to GitHub's light and dark code colours: familiar, and checked for contrast on both themes.
@@ -70,8 +69,8 @@ class SyntaxPalette private constructor(private val styles: Array<SpanStyle>) {
 class SyntaxStyling(val tokens: SyntaxTokens, val palette: SyntaxPalette)
 
 /**
- * [text] with its syntax colours under any find highlights, added last so a match wins over the colour
- * and each match gets exactly one style: the same layering [formattedText] uses for Office formatting.
+ * [text] with syntax colours and find highlights, highlights added last so a match wins over the
+ * colour and gets exactly one style, matching [formattedText]'s Office layering.
  */
 internal fun syntaxHighlightedText(text: String, syntax: SyntaxStyling, highlight: FindHighlight?): AnnotatedString {
     val ranges = if (highlight == null) emptyList<IntRange>() else findMatchRanges(text, highlight.query)

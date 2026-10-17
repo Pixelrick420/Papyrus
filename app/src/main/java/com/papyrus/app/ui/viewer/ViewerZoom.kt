@@ -61,7 +61,7 @@ data class ScaleCommit(val from: Float, val to: Float, val focal: Offset) {
 fun anchoredScroll(scroll: Float, focal: Float, commit: ScaleCommit): Float =
     commit.ratio * (scroll + focal) - focal
 
-/** [onCommit] runs before the new scale is published, while the pinched layout is still on screen. */
+/** Runs before the new scale is published, while the pinched layout is still on screen. */
 interface ZoomAnchor {
     fun onCommit(commit: ScaleCommit)
 }
@@ -70,7 +70,7 @@ interface ZoomAnchor {
 @Stable
 class ZoomState(private val scope: CoroutineScope, initialScale: Float = REST_SCALE) {
 
-    /** Where it starts: a restored reading position opens at its own zoom, already in place for the first layout. */
+    /** Restored reading positions open at their own zoom, in place for the first layout. */
     private val startScale = clampScale(initialScale)
 
     /** Drives layout. Only moves when a gesture ends or a control is tapped. */
@@ -106,7 +106,6 @@ class ZoomState(private val scope: CoroutineScope, initialScale: Float = REST_SC
     private var snapping = false
     private val anchors = mutableListOf<ZoomAnchor>()
 
-    /** The scale actually on screen, mid-gesture or at rest. */
     val effectiveScale: Float get() = if (isZooming) gestureScale else committedScale
 
     /** Extra multiplier during a gesture, exactly 1 when not zooming so the two never compound. */
@@ -225,10 +224,10 @@ fun rememberZoomState(initialScale: Float = REST_SCALE): ZoomState {
     return remember { ZoomState(scope, initialScale) }
 }
 
-/** [value] held to the surface's [MIN_SCALE]..[MAX_SCALE]; NaN, which `coerceIn` would pass through, rests. */
+/** Held to [MIN_SCALE]..[MAX_SCALE]; NaN, which `coerceIn` passes through, rests. */
 fun clampScale(value: Float): Float = if (value.isNaN()) REST_SCALE else value.coerceIn(MIN_SCALE, MAX_SCALE)
 
-/** Same node as the scroll modifier, pinch claimed in the Initial pass, graphicsLayer applied last. */
+/** Same node as the scroll modifier: pinch claimed in the Initial pass, graphicsLayer last. */
 fun Modifier.zoomable(state: ZoomState): Modifier = this
     .pointerInput(state) {
         awaitEachGesture {
@@ -279,15 +278,21 @@ fun Modifier.zoomable(state: ZoomState): Modifier = this
         }
     }
 
-/** Scroll offset that puts the point [fraction] down an item back under [focal]; [before] is the list's start content padding. */
+/**
+ * Offset that puts the point [fraction] down an item back under [focal]; [before] is start padding.
+ */
 fun lazyAnchorScrollOffset(focal: Float, fraction: Float, newItemSize: Float, before: Int): Int =
     (before - (focal - fraction * newItemSize)).roundToInt()
 
-/** Scroll distance that puts the point [fraction] down an item back under [focal]; positive moves content up. */
+/**
+ * Distance that puts the point [fraction] down an item back under [focal]; positive moves content up.
+ */
 fun lazyAnchorDelta(focal: Float, fraction: Float, itemTop: Float, itemSize: Float): Float =
     itemTop - (focal - fraction * itemSize)
 
-/** Pins the item under the focal point, requesting the scroll in [onCommit] against the item's predicted size. */
+/**
+ * Pins the item under the focal point, requesting the scroll in [onCommit] against its predicted size.
+ */
 class LazyZoomAnchor(
     private val list: LazyListState,
     private val paddingScalesWithZoom: Boolean = false,
@@ -338,7 +343,9 @@ class LazyZoomAnchor(
     }
 }
 
-/** Pins content under the focal point once the new scale is laid out; [anchorBridge] paints the scroll still owed. */
+/**
+ * Pins content under the focal point after the new scale lays out; [anchorBridge] paints owed scroll.
+ */
 class ScrollZoomAnchor(private val scroll: ScrollState, val horizontal: Boolean) : ZoomAnchor {
 
     private class Goal(val target: () -> Float)

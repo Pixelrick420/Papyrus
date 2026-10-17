@@ -6,18 +6,8 @@ import java.nio.charset.Charset
 import java.nio.charset.CodingErrorAction
 
 /**
- * A statistical charset detector built on the platform's own decoders, because Android ships no
- * `CharsetDetector`: `android.icu.text` carries `Collator`, `Normalizer` and the like, but not that
- * class -- only the standalone `com.ibm.icu` jar has it, and pulling in all of ICU4J for one guess is
- * not worth it. [TextEncodings] vets whatever name this returns.
- *
- * Named for the ICU detector it replaces. It reads the sample under every charset the picker offers,
- * discards the readings that do not decode cleanly, and keeps the one whose text looks most like prose.
- * Lowercase letters count most and uppercase the least, because ordinary text is mostly lowercase --
- * which is also what tells Windows-1251 from KOI8-R, whose letter cases sit in opposite halves of the
- * high bytes. Accented Latin (0xC0-0xFF, where a mis-read of a non-Latin byte lands) is discounted so it
- * cannot outscore the script those bytes actually are. The probably-Latin default wins unless a
- * non-Latin reading is both clearly better and on a sample that is mostly high bytes.
+ * Statistical charset detector on the platform's own decoders: Android ships no `CharsetDetector`, and
+ * ICU4J for one guess is not worth it. Scores each reading by prose-likeness, favouring lowercase.
  */
 internal object StatisticalCharsetGuesser : CharsetGuesser {
 
@@ -30,13 +20,22 @@ internal object StatisticalCharsetGuesser : CharsetGuesser {
     /** A non-Latin reading must beat the best Latin one by this or the Windows-1252 default stands. */
     private const val MIN_ADVANTAGE = 0.15
 
-    /** Text is mostly lowercase, so an uppercase letter is weaker evidence of a good reading than a lowercase one. */
+    /**
+     * Text is mostly lowercase, so an uppercase letter is weaker evidence of a good reading than a
+     * lowercase one.
+     */
     private const val UPPERCASE_WEIGHT = 0.5
 
-    /** Latin-1 supplement and extended letters are common in real text, but also where a mis-read of a non-Latin byte lands. */
+    /**
+     * Latin-1 supplement and extended letters are common in real text, but also where a mis-read of a
+     * non-Latin byte lands.
+     */
     private const val LATIN_EXTENDED_WEIGHT = 0.6
 
-    /** Latin charsets the Windows-1252 fallback already covers; a reading under one of these never overrides it. */
+    /**
+     * Latin charsets the Windows-1252 fallback already covers; a reading under one of these never
+     * overrides it.
+     */
     private val LATIN_CHARSETS = setOf(
         "windows-1252", "ISO-8859-1", "ISO-8859-15", "ISO-8859-2", "windows-1250", "windows-1254",
     )
@@ -100,8 +99,8 @@ internal object StatisticalCharsetGuesser : CharsetGuesser {
     private fun letterWeight(c: Char): Double = if (isLatinExtended(c)) LATIN_EXTENDED_WEIGHT else 1.0
 
     /**
-     * CJK punctuation (`、` `。` `「` and their like) is as much natural text as a letter. Scoring it as a
-     * stray symbol would prefer a wrong reading that happens to turn those bytes into an ideograph instead.
+     * CJK punctuation is natural text as much as a letter: scoring it as a stray symbol would wrongly
+     * prefer a reading that turns those bytes into an ideograph.
      */
     private fun isCjkPunctuation(c: Char): Boolean =
         c.code in 0x3000..0x303F || c.code in 0xFE30..0xFE4F || c.code in 0xFF00..0xFFEF

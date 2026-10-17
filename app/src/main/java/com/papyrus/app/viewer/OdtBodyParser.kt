@@ -9,7 +9,10 @@ private const val MAX_LIST_LEVEL = 8
 
 private fun XmlPullParser.attr(name: String): String? = getAttributeValue(null, name)
 
-/** A span or repeat count: at least 1, and no more than [MAX_MERGE_SPAN] so a hostile file cannot ask for thousands. */
+/**
+ * A span or repeat count: at least 1, and no more than [MAX_MERGE_SPAN], so a hostile file cannot
+ * ask for thousands.
+ */
 private fun XmlPullParser.countAttr(name: String): Int =
     getAttributeValue(null, name)?.toIntOrNull()?.coerceIn(1, MAX_MERGE_SPAN) ?: 1
 
@@ -18,8 +21,8 @@ private fun XmlPullParser.outlineLevel(): Int =
     getAttributeValue(null, "text:outline-level")?.toIntOrNull()?.coerceIn(1, 6) ?: 1
 
 /**
- * Reads an ODF `content.xml` body into [blocks], a single pass as a state machine as [DocxBodyParser]
- * notes. Not safe to reuse: one instance parses one document.
+ * Reads an ODF `content.xml` body into [blocks] in a single pass, as a state machine like [DocxBodyParser].
+ * One instance parses one document, so it is not reusable.
  */
 internal class OdtBodyParser(
     private val newParser: ParserFactory,
@@ -30,7 +33,7 @@ internal class OdtBodyParser(
     private val footnotes = ArrayList<OfficeBlock.Note>()
     private val endnotes = ArrayList<OfficeBlock.Note>()
 
-    /** What the paragraph being read is: its style, whether it is a heading, and where it sits in a list. */
+    /** The paragraph being read: its style, whether it is a heading, and its list position. */
     private class ParaInfo(val styleName: String?, val headingLevel: Int, val listMarker: String?, val listLevel: Int)
 
     /** One open `text:list`. [counter] is the number of the current item. */
@@ -48,14 +51,14 @@ internal class OdtBodyParser(
     )
 
     /**
-     * A `text:note` being read. Its body is kept apart from the paragraph it annotates, and the
-     * formatting state of that paragraph is put away until the note is closed.
+     * A `text:note` being read. Its body is kept apart from the paragraph it annotates, whose formatting
+     * state is put away until the note closes.
      */
     private class NoteFrame(
         val endnote: Boolean,
         val savedSpans: List<RunProps>,
         val savedLink: String?,
-        /** An `office:annotation` rather than a `text:note`; [outer] is the note it sat inside, if any. */
+        /** An `office:annotation`, not a `text:note`; [outer] is the note it sat inside, if any. */
         val comment: Boolean = false,
         val outer: NoteFrame? = null,
     ) {
@@ -172,8 +175,8 @@ internal class OdtBodyParser(
     }
 
     /**
-     * Text goes to a note's body in a note, a table cell's buffer in a cell, else the paragraph, and
-     * only from inside a paragraph element: whitespace between tags is layout, not content.
+     * Text goes to a note's body in a note, a cell's buffer in a cell, else the paragraph, and only from
+     * inside a paragraph element: whitespace between tags is layout, not content.
      */
     private fun appendText(text: String, withFormat: CharFormat = format) {
         val open = note
@@ -246,7 +249,8 @@ internal class OdtBodyParser(
                         // Under a rowspan from above: absent, as in DOCX, but it does occupy its column;
                         // widening a neighbour here stretched the cell beside a middle-column merge.
                         (verticalCoveredUntil[column] ?: -1) >= rowIndex -> column++
-                        // A producer that omits the spanned attribute: a covered cell extends its left neighbour.
+                        // A producer that omits the spanned attribute: a covered cell extends its
+                        // left neighbour.
                         else -> {
                             grid.widenLastColumn()
                             column++
@@ -443,8 +447,8 @@ internal class OdtBodyParser(
     }
 
     /**
-     * A cell draws as lines of text, so a list item there carries its marker in the text. Alignment is
-     * the first paragraph's: a column of figures is right-aligned paragraph by paragraph.
+     * A cell draws as lines of text, so a list item there carries its marker in the text. Alignment comes
+     * from the first paragraph: a column of figures is right-aligned paragraph by paragraph.
      */
     private fun endCellParagraph() {
         if (tableDepth == 1 && paragraphElementDepth == 0) {
@@ -482,8 +486,8 @@ internal class OdtBodyParser(
     }
 
     /**
-     * The marker for the paragraph that starts here. Only an item's *first* paragraph carries one; the
-     * rest are continuations, indented with it but unmarked, and a list header is never numbered.
+     * The marker for the paragraph that starts here. Only an item's *first* paragraph carries one; the rest
+     * are continuations, indented but unmarked, and a list header is never numbered.
      */
     private fun consumeMarker(): String {
         val frame = listStack.last()
@@ -515,7 +519,7 @@ internal class OdtBodyParser(
 
     /**
      * The citation is the label the document chose, falling back to a count; the marker goes into the
-     * paragraph that held the note, which is where the note began since its body added nothing to it.
+     * paragraph that held the note, since the note's body added nothing to it.
      */
     private fun endNote() {
         val frame = note ?: return
@@ -536,8 +540,8 @@ internal class OdtBodyParser(
     }
 
     /**
-     * A comment's body is read like a note's and kept for the end. Its marker goes in at once for a
-     * comment at a point, and at the end of the range for one on a range, where Word puts it too.
+     * A comment's body is read like a note's and kept for the end. The marker goes in at once for a comment
+     * at a point, and at the range's end for one on a range, where Word puts it too.
      */
     private fun startComment(p: XmlPullParser) {
         note = NoteFrame(false, ArrayList(spanStack), link, comment = true, outer = note).also {
@@ -582,7 +586,6 @@ internal class OdtBodyParser(
         appendSection(comments)
     }
 
-    /** A rule, then [items]. */
     private fun appendSection(items: List<OfficeBlock>) {
         if (items.isEmpty() || blocks.size >= OfficeTextExtractor.MAX_BLOCKS) return
         blocks += OfficeBlock.Divider

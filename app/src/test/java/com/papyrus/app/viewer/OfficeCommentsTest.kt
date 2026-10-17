@@ -5,7 +5,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
 
-/** Comments are text the document's reviewer wrote; they must be readable, and never leak into the body. */
+/** Reviewer-written text that must stay readable and never leak into the body. */
 class OfficeCommentsTest {
 
     private fun extractDocx(bytes: ByteArray) = OfficeTextExtractor(

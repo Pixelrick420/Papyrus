@@ -30,7 +30,7 @@ import com.papyrus.app.data.DocumentEntity
 import com.papyrus.app.data.ThumbnailLoader
 import com.papyrus.app.data.ThumbnailResult
 
-/** Fixed-size leading slot: claiming the row width would starve the row's weighted title column down to zero. */
+/** Fixed-size leading slot: claiming the row width would starve the title column to zero. */
 @Composable
 fun DocumentThumbnail(
     document: DocumentEntity,
@@ -47,7 +47,8 @@ fun DocumentThumbnail(
         modifier
             .size(TILE_SIZE)
             .clip(shape)
-            // surfaceVariant, never white: a document page is mostly white, which made loaded, loading and failed indistinguishable.
+            // surfaceVariant, never white: a page is mostly white, so loaded, loading and failed
+            // were indistinguishable.
             .background(MaterialTheme.colorScheme.surfaceVariant)
             // Hairline for the same reason: a white page on a near-white card has no edge otherwise.
             .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f), shape),
@@ -67,7 +68,8 @@ fun DocumentThumbnail(
                 if (bitmap != null) {
                     Image(
                         bitmap = bitmap.asImageBitmap(),
-                        // Decorative: the title beside it already names the document, so a screen reader would hear it twice.
+                        // Decorative: the title beside it already names the document, so a screen
+                        // reader would hear it twice.
                         contentDescription = null,
                         // Crop, top-anchored: a centred crop slices off the first lines, and those identify
                         // the document (a text tile's first line sits only ~6px down).

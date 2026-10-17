@@ -28,7 +28,7 @@ object Routes {
     const val VIEWER = "viewer/{$ARG_DOCUMENT_ID}"
     const val SETTINGS = "settings"
 
-    // Only the Room row id travels through navigation, which avoids URI-encoding pitfalls in route strings.
+    // Only the Room row id travels; avoids URI-encoding pitfalls in route strings.
     fun viewer(documentId: Long) = "viewer/$documentId"
 }
 

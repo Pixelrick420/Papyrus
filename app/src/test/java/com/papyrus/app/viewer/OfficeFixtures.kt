@@ -120,6 +120,5 @@ internal object OfficeFixtures {
     /** A stream factory for [OfficeTextExtractor.extract], which opens the archive more than once. */
     fun streamFactory(bytes: ByteArray): () -> java.io.InputStream = { ByteArrayInputStream(bytes) }
 
-    /** The kxml2 parser the injected factory returns. */
     fun parser(): XmlPullParser = org.xmlpull.v1.XmlPullParserFactory.newInstance().newPullParser()
 }

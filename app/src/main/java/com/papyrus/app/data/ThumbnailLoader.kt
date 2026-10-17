@@ -26,13 +26,13 @@ import java.io.InputStream
 sealed interface ThumbnailResult {
     data class Image(val bitmap: Bitmap) : ThumbnailResult
 
-    /** A lost SAF grant is the user's to fix: the document has to be picked again, never an empty tile. */
+    /** A lost SAF grant needs a re-pick, never an empty tile. */
     data object NoAccess : ThumbnailResult
 
     data class Unavailable(val reason: String) : ThumbnailResult
 }
 
-/** One bitmap per document, not per page, so a 200-page scan holds a single PdfRenderer bitmap in the LruCache. */
+/** One bitmap per document, not per page, so a long scan holds a single renderer bitmap. */
 class ThumbnailLoader(private val context: Context) {
 
     private val cache = object : LruCache<String, Bitmap>(cacheBytes()) {
@@ -42,7 +42,7 @@ class ThumbnailLoader(private val context: Context) {
     /** Keyed by id@sizeBytes: an external size change re-thumbnails, a rename does not. */
     fun cached(document: DocumentEntity): Bitmap? = cache.get(key(document))
 
-    /** Scrolling a row out and back re-runs produceState, so the per-key mutex collapses two overlapping loads into one render. */
+    /** The per-key mutex collapses overlapping loads from a row re-scrolled into view. */
     private val inFlight = mutableMapOf<String, Mutex>()
 
     private fun gateFor(key: String): Mutex = synchronized(inFlight) { inFlight.getOrPut(key) { Mutex() } }
@@ -86,7 +86,7 @@ class ThumbnailLoader(private val context: Context) {
         DocumentFormat.UNKNOWN -> null
     }
 
-    /** Closes the PdfPageSource right after page 1; holding one per list row exhausts the open-PD budget. */
+    /** Closes PdfPageSource right after page 1: holding one per row exhausts the open-PD budget. */
     private suspend fun renderPdf(uri: Uri): Bitmap? =
         PdfPageSource.open(context, uri).use { source ->
             val page = source.render(0, THUMBNAIL_PDF_WIDTH_PX) ?: return@use null
@@ -103,7 +103,7 @@ class ThumbnailLoader(private val context: Context) {
     }
 
     private fun renderOffice(document: DocumentEntity): Bitmap? {
-        // mediaDir = null: thumbnails are text only, and writing document media would double the cacheDir cost of opening.
+        // mediaDir = null: thumbnails are text only, and writing media would double the cacheDir cost.
         val uri = document.uri.toUri()
         val blocks = if (document.format == DocumentFormat.DOC) {
             DocTextExtractor.extract { openStream(uri) ?: throw FileNotFoundException(uri.toString()) }

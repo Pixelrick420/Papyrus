@@ -12,7 +12,6 @@ enum class ThemeMode {
     LIGHT,
     DARK;
 
-    /** [systemDark] is only consulted for [SYSTEM]; the other two ignore the device setting. */
     fun isDark(systemDark: Boolean): Boolean = when (this) {
         SYSTEM -> systemDark
         LIGHT -> false
@@ -24,24 +23,21 @@ data class AppSettings(
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
     /** Documents another app hands over are copied into the library as they open. */
     val autosaveExternal: Boolean = false,
-    /** Password-protected PDFs kept in the library when opened; off, the viewer menu offers Save to library instead. */
+    /** Password-protected PDFs saved to the library on open; off, the menu offers Save to library. */
     val autosaveEncrypted: Boolean = false,
-    /**
-     * Reopen a library document where the reader stopped. Off, nothing about the position is read or
-     * written, and Home shows no progress; what was stored stays put and applies again when it is back on.
-     */
+    /** Reopen a library document where the reader stopped. Off, the position is neither read nor
+     * written and stored values apply again when it is back on. */
     val rememberPosition: Boolean = true,
-    /** Plain text, logs and code wrap at the screen's edge; off, each line stays on one row and the view scrolls sideways. */
+    /** Text, logs and code wrap at the screen's edge; off, lines stay on one row and the view scrolls sideways. */
     val wrapLines: Boolean = true,
-    /** A gutter of line numbers beside plain text, logs and code. */
     val showLineNumbers: Boolean = false,
-    /** Colour for comments, strings and keywords in the source and config files that have a language definition. */
+    /** Colour for comments, strings and keywords in source files that have a language definition. */
     val syntaxHighlighting: Boolean = true,
-    /** Use colour-blind safe palette. */
     val colorblindMode: Boolean = false,
 )
 
-/** App preferences in plain SharedPreferences, read synchronously so a forced theme is known before the first frame. */
+/** App preferences in plain SharedPreferences, read synchronously so a forced theme is known
+ * before the first frame. */
 class SettingsRepository(context: Context) {
 
     private val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)

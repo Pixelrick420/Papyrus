@@ -3,20 +3,8 @@ package com.papyrus.app.viewer
 import java.util.Base64
 
 /**
- * Three-page PDFs written by qpdf 11.9, not by PdfBox, because the layouts that matter to the encryption
- * screen are ones PdfBox 2.x will not write: *linearized* files keep the trailer carrying `/Encrypt` near
- * the start, and *xref-stream* (PDF 1.5) files keep it inside the xref stream's dictionary. Encrypted ones
- * are AES-128; the user password is "user-secret" and the owner password "owner-secret".
- *
- * Regenerate with, from any three-page PDF `base.pdf`:
- * ```
- * qpdf --linearize base.pdf linearizedPlain.pdf
- * qpdf --object-streams=generate --compress-streams=y base.pdf xrefStreamPlain.pdf
- * qpdf --linearize --encrypt user-secret owner-secret 128 --use-aes=y -- base.pdf linearizedUserPassword.pdf
- * qpdf --object-streams=generate --encrypt user-secret owner-secret 128 --use-aes=y -- base.pdf xrefStreamUserPassword.pdf
- * qpdf --linearize --encrypt "" owner-secret 128 --use-aes=y -- base.pdf linearizedOwnerOnly.pdf
- * qpdf --object-streams=generate --encrypt "" owner-secret 128 --use-aes=y -- base.pdf xrefStreamOwnerOnly.pdf
- * ```
+ * Three-page PDFs written by qpdf 11.9, not PdfBox, which will not write these layouts: linearized and
+ * xref-stream files keep `/Encrypt` in the trailer or xref stream. AES-128; user-secret / owner-secret.
  */
 internal object PdfEncryptionFixtures {
 

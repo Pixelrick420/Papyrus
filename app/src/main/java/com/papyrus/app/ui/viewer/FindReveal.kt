@@ -24,20 +24,19 @@ import com.papyrus.app.viewer.TextSpan
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 
-// A chunk, block or page can be taller than the screen, so a match needs its own reveal, not just its container's.
+// A chunk, block or page can exceed the screen, so a match needs its own reveal, not its container's.
 
-/** One navigation to a match; whoever draws it scrolls once and marks this consumed. Owned above the lazy list. */
+/** One navigation to a match; the drawer scrolls once, then marks it consumed. */
 internal class RevealTicket {
     var consumed = false
 }
 
-/** Room kept around the current match when it is scrolled into view, so it is not flush with an edge. */
+/** Room around the current match when scrolled into view, so it is not flush with an edge. */
 internal val RevealMargin = 48.dp
 
 /**
- * Text with find highlights; [reveal] goes only to the container holding the current match.
- * [syntax] colours source code under the highlights. [softWrap] off keeps each line on one row, for a
- * view that scrolls sideways, and [onLayout] hands the laid-out text to a caller that draws beside it.
+ * Text with find highlights; [reveal] goes only to the container holding the current match, and
+ * [syntax] colours source code under the highlights.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -93,7 +92,7 @@ internal fun FindText(
     )
 }
 
-/** Brings [index] into composition so its own match can be revealed; an item already on screen stays put. */
+/** Brings [index] into composition so its match can be revealed; an item on screen stays put. */
 internal suspend fun LazyListState.scrollToItemUnlessVisible(index: Int) {
     if (layoutInfo.visibleItemsInfo.none { it.index == index }) scrollToItem(index)
 }

@@ -4,7 +4,10 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** A re-pick is accepted only for the same name and format; anything looser could re-point a row at the wrong file. */
+/**
+ * A re-pick is accepted only for the same name and format; anything looser could re-point a row at the
+ * wrong file.
+ */
 class RegrantMatchTest {
 
     private fun matches(

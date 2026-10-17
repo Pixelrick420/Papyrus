@@ -13,11 +13,8 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/**
- * What a tap on office text meets. `formattedText` must attach its own listener that hands the URL
- * back to the viewer, never the framework's default UriHandler, and must leave ranges without a
- * target alone. Pure ui-text, so a plain JVM test is enough — no Compose, no Android.
- */
+/** What a tap on office text meets: `formattedText` must attach its own listener that hands the URL
+ *  back to the viewer, not the framework's UriHandler, and leave ranges without a target alone. */
 class OfficeLinkSpansTest {
 
     private val palette = FormatPalette(surface = Color.White, link = Color.Blue)

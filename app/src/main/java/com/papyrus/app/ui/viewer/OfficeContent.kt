@@ -84,14 +84,13 @@ internal fun OfficeBlockView(
 /** One step of paragraph indentation, as extracted: a quarter inch of the page. */
 private val INDENT_STEP = 16.dp
 
-/** One level of list nesting, and the room a marker has before the text starts. */
 private val LIST_INDENT = 20.dp
 private val MARKER_WIDTH = 20.dp
 
 private fun TextStyle.withAlign(align: BlockAlign): TextStyle =
     if (align == BlockAlign.START) this else copy(textAlign = align.toTextAlign())
 
-/** The marker is beside the text rather than in it, so it is neither searchable nor shifted by the find offsets. */
+/** Marker sits beside the text, not in it, so find offsets stay on the document's own words. */
 @Composable
 private fun OfficeListItemView(
     block: OfficeBlock.ListItem,
@@ -249,10 +248,12 @@ private val MIN_CELL_HEIGHT = 40.dp
 /** Width a cell spends outside its text: gap and padding, both sides. */
 private val CELL_CHROME = (CELL_GAP + CELL_PADDING) * 2
 
-/** `Constraints` cannot represent a height past this; a cell taller than it is cut short rather than crashing. */
+/**
+ * `Constraints` cannot represent a height past this; a taller cell is cut short, not crashed.
+ */
 private const val MAX_CELL_PX = 250_000
 
-/** Marks which cells of the [TableGrid] a child occupies; [TableGrid] reads it back off the child. */
+/** Marks which [TableGrid] cells a child occupies; read back off the child. */
 private fun Modifier.gridCell(row: Int, column: Int, colspan: Int = 1, rowspan: Int = 1): Modifier =
     layoutId(GridCell(row, column, colspan.coerceAtLeast(1), rowspan.coerceAtLeast(1)))
 
@@ -388,7 +389,9 @@ private sealed interface ImageState {
     data object Failed : ImageState
 }
 
-/** From configuration, not a measured constraint: the image is `fillMaxWidth`, so measuring is circular. */
+/**
+ * From configuration, not a measured constraint: the image is `fillMaxWidth`, so measuring loops.
+ */
 @Composable
 private fun viewportWidthPx(): Int = with(LocalDensity.current) {
     LocalConfiguration.current.screenWidthDp.dp.toPx()

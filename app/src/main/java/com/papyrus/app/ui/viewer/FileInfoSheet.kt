@@ -25,7 +25,6 @@ import com.papyrus.app.data.DocumentFormat
 import java.text.DateFormat
 import java.util.Date
 
-/** `selectable` means "wrap fully", not "copyable": a URI has no natural break to truncate at. */
 @Composable
 private fun InfoRow(label: String, value: String, selectable: Boolean = false) {
     Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
@@ -44,10 +43,6 @@ private fun InfoRow(label: String, value: String, selectable: Boolean = false) {
     }
 }
 
-/**
- * Stored fields come from [document]. [pageCount] and [mimeType] are live values the caller supplies;
- * a null one, because it is not known yet or the provider would not say, just hides its row.
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FileInfoSheet(

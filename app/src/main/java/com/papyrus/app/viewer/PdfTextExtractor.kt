@@ -10,26 +10,30 @@ import kotlin.math.abs
 import kotlin.coroutines.cancellation.CancellationException
 
 /**
- * Extracts each page's text and the box of every character, so find-in-file can highlight matches on
- * the rasterised page. Text is rebuilt from glyphs rather than taken from [PDFTextStripper.getText],
- * because the stripper normalises (a ligature becomes two letters) and positions stop lining up.
+ * Each page's text plus the box of every character, so find-in-file can highlight matches. Rebuilt
+ * from glyphs because [PDFTextStripper.getText] normalises and positions stop lining up.
  */
 object PdfTextExtractor {
 
-    /** Characters document-wide whose boxes are kept; 16 bytes each, about 32 MB. Past it pages are searchable but not highlightable. */
+    /**
+     * Characters document-wide whose boxes are kept (16 bytes each, about 32 MB); past it pages stay
+     * searchable but not highlightable.
+     */
     private const val MAX_BOXED_CHARS = 2_000_000
 
-    /** Box height as fractions of the font size, sized from the font because PdfBox's `heightDir` is its nominal glyph height, about 20% short of the real ascender (6.9pt for 12pt Helvetica, where 'd' rises to 8.6pt). */
+    /**
+     * Box height as a fraction of font size; PdfBox's `heightDir` is ~20% short of the real ascender.
+     */
     private const val ASCENT_FRACTION = 0.8f
     private const val DESCENT_FRACTION = 0.22f
 
-    /** A gap wider than this fraction of the font size is a word space; a space is 0.25 em and kerning under 0.1 em. */
+    /** A gap past this fraction of font size is a word space (a space is 0.25 em). */
     private const val WORD_GAP_FRACTION = 0.2f
 
     /** A shift off the baseline past this fraction of the font size starts a new line. */
     private const val LINE_SHIFT_FRACTION = 0.5f
 
-    /** One [PdfPageText] per page; a page that fails to parse yields an empty page rather than aborting the document. */
+    /** One [PdfPageText] per page; a page that fails to parse is empty, not fatal. */
     fun extract(document: PDDocument): List<PdfPageText> {
         val collector = PageCollector()
         var boxedChars = 0
@@ -184,9 +188,8 @@ object PdfTextExtractor {
         }
 
         /**
-         * [current]'s bounding box as page-relative (left, top, right, bottom) in the displayed page.
-         * Built from the text matrix, not `xDirAdj`/`yDirAdj`: those follow the text's own direction
-         * rather than the page's `/Rotate`, so on a rotated page they place every box wrongly.
+         * [current]'s box as page-relative (left, top, right, bottom). Built from the text matrix, not
+         * `xDirAdj`/`yDirAdj`, which follow the text's direction and misplace boxes on a rotated page.
          */
         private fun boxOfCurrent(): FloatArray {
             val size = current.size

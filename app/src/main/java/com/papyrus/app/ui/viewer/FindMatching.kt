@@ -5,10 +5,8 @@ import com.papyrus.app.viewer.OfficeBlock
 import com.papyrus.app.viewer.OfficeCell
 import com.papyrus.app.viewer.splitLines
 
-/*
- * Matching is `indexOf(ignoreCase = true)`, never `lowercase()` on both sides: lower-casing can
- * change a string's length and shift every later match offset.
- */
+// Match with indexOf(ignoreCase = true), never lowercase() both sides: lower-casing can
+// change a string's length and shift every later match offset.
 
 /**
  * Advances past the whole match, so "aa" in "aaaa" is two hits, not three -- the editor convention,
@@ -40,11 +38,8 @@ fun countOccurrences(text: String, query: String): Int {
 }
 
 /**
- * One hit per match, not per chunk, so the find bar steps each match once and the counter is exact.
- *
- * [limit] bounds the list, because a short query in a 32 MB file matches millions of times and every hit is
- * a boxed index; the first [limit] matches in document order are kept. [shouldStop] is polled once per
- * chunk so a superseded search can give up halfway; what it returns then is not meant to be used.
+ * One hit per match, not per chunk, so the find bar steps each match once. [limit] caps the list
+ * (a short query in a 32 MB file matches millions of times); [shouldStop] is polled per chunk.
  */
 fun findChunkHits(
     chunks: List<String>,
@@ -76,7 +71,7 @@ fun findBlockHits(blocks: List<OfficeBlock>, query: String): List<Int> {
 internal fun officeBlockLines(block: OfficeBlock): List<String> = when (block) {
     is OfficeBlock.Heading -> listOf(block.text)
     is OfficeBlock.Paragraph -> listOf(block.text)
-    // The marker is drawn beside the text, not in it, so it is not searchable: matches stay on the document's words.
+    // The marker is drawn beside the text, not in it, so it is not searchable.
     is OfficeBlock.ListItem -> listOf(block.text)
     is OfficeBlock.Note -> listOf(block.text)
     is OfficeBlock.Table -> block.rows.flatMap { row -> row.flatMap(::officeCellLines) }

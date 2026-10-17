@@ -11,10 +11,8 @@ import java.io.FileInputStream
 import java.util.Base64
 
 /**
- * The OOXML fixture is a real msoffcrypto-produced Agile `.docx`, kept as base64 so the decrypt
- * path is validated against an independent producer rather than only against a sibling encryptor.
- * The ODF fixture is generated the same way with a hand-rolled ODF 1.2 CBC writer, because the
- * LibreOffice on this machine can only emit the newer 1.3 package form this code rejects.
+ * Fixtures are real, independently produced: msoffcrypto Agile `.docx` and a hand-rolled ODF 1.2 CBC
+ * package, since local LibreOffice only emits the 1.3 form this code rejects.
  */
 class OfficeEncryptionTest {
 

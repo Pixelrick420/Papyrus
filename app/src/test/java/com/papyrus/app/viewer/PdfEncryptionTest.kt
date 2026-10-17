@@ -129,7 +129,7 @@ class PdfEncryptionTest {
 
     // ---- the byte screen that spares an unencrypted PDF a whole-file PdfBox load ----
 
-    /** A source that counts how often it is opened: the plain-PDF path must open it once, to scan, and no more. */
+    /** Counts opens: the plain-PDF path must open once, to scan, and no more. */
     private class CountingSource(private val bytes: ByteArray) : () -> InputStream {
         var opens = 0
             private set
@@ -148,7 +148,7 @@ class PdfEncryptionTest {
 
     @Test
     fun `the fixtures really are linearized and xref-stream files`() {
-        // Guards the fixtures themselves: a regenerated file that lost its layout would make the tests below vacuous.
+        // Guards the fixtures: a regenerated file that lost its layout would make tests below vacuous.
         assertTrue(containsAscii(PdfEncryptionFixtures.linearizedPlain, "/Linearized"))
         assertTrue(containsAscii(PdfEncryptionFixtures.linearizedUserPassword, "/Linearized"))
         assertTrue(containsAscii(PdfEncryptionFixtures.linearizedOwnerOnly, "/Linearized"))

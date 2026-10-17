@@ -10,7 +10,10 @@ private const val TEXT_PLAIN = "text/plain"
 /** Placeholder answers that say nothing about the file. */
 private val GENERIC_TYPES = setOf("application/octet-stream", "application/binary", WILDCARD)
 
-/** The provider's own type, unless a placeholder or a plain-text mislabel; falls back to the detected format's type, then the wildcard. */
+/**
+ * The provider's type, unless a placeholder or plain-text mislabel; else the detected
+ * format's type, then the wildcard.
+ */
 internal fun shareMimeType(format: DocumentFormat, reportedMimeType: String?): String {
     val declared = format.mimeTypes.firstOrNull()
     val reported = reportedMimeType?.trim()?.takeIf { it.isNotEmpty() }
@@ -21,7 +24,7 @@ internal fun shareMimeType(format: DocumentFormat, reportedMimeType: String?): S
     return reported
 }
 
-/** The collective type for a multi-share: one type if every file resolves to it, so the chooser can narrow; the wildcard otherwise. */
+/** One type if every file resolves to it, so the chooser can narrow; wildcard otherwise. */
 internal fun sharedMimeType(types: List<String>): String {
     val first = types.firstOrNull() ?: return WILDCARD
     return if (types.all { it == first }) first else WILDCARD

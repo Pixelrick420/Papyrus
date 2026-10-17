@@ -7,7 +7,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.util.BitSet
 
-/** Match-to-rectangle mapping (which characters a match covers and where it splits) and selection (where a point lands, and what it picks up). */
+/**
+ * Match-to-rectangle mapping (which characters a match covers, where it splits) and selection (where a point lands).
+ */
 class PdfPageTextTest {
 
     /** One line of characters charWidth apart; spaces get no box, as the extractor emits. */

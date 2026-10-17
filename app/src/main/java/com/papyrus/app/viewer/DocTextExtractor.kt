@@ -4,16 +4,8 @@ import java.io.IOException
 import java.io.InputStream
 
 /**
- * Dependency-free extraction for Word 97-2003 `.doc`. The file is an OLE2 compound document, so
- * the container is walked first (via [CompoundFile]), then the FIB is read from the `WordDocument`
- * stream and its `fcClx` followed into the `0Table`/`1Table` stream for the piece table. Decoded
- * pieces become the same [OfficeBlock] list `OfficeTextExtractor` produces, so the viewer,
- * thumbnail and find-in-file surfaces are shared unchanged.
- *
- * Read-only: sector chains are read through the fresh-stream factory (the caller closes each
- * stream) and never buffered whole, and output is bounded by [MAX_BLOCKS] / [MAX_TOTAL_CHARS]
- * the way the ZIP extractor is bounded. Every malformed input surfaces as [IOException], which
- * the existing catch arms map to `Failed` (viewer) and `Unavailable` (thumbnail).
+ * Dependency-free Word 97-2003 `.doc` extraction: walks the OLE2 [CompoundFile], follows the FIB's
+ * `fcClx` into the piece table, and emits the same [OfficeBlock] list as `OfficeTextExtractor`.
  */
 object DocTextExtractor {
 
@@ -23,10 +15,8 @@ object DocTextExtractor {
     /** Mirrors `OfficeTextExtractor.MAX_TABLE_ROWS`; past it the table is dropped whole. */
     const val MAX_TABLE_ROWS = 2_000
 
-    /**
-     * Characters decoded before extraction stops. A crafted file can claim a multi-gigabyte body;
-     * real documents sit far below this, and truncation beats an out-of-memory crash.
-     */
+    /** Characters decoded before extraction stops: a crafted file can claim a multi-gigabyte body,
+     * and truncation beats an out-of-memory crash. */
     const val MAX_TOTAL_CHARS = 16_000_000
 
     /** [openStream] must return a fresh stream on every call; the caller closes it. */
@@ -94,10 +84,8 @@ object DocTextExtractor {
         return cfb.read(fib.tableStream, fib.fcClx, fib.lcbClx.toInt())
     }
 
-    /**
-     * Walks the Clx: zero or more Prc chunks (`clxt` 1, a skipped `cbGrpprl` grpprl) followed by
-     * the Pcdt (`clxt` 2) that holds the PlcPcd. Returns the PlcPcd location within [clx].
-     */
+    /** Walks the Clx: zero or more Prc chunks (`clxt` 1, a skipped `cbGrpprl` grpprl), then the Pcdt
+     * (`clxt` 2) holding the PlcPcd. Returns the PlcPcd location within [clx]. */
     private fun findPcdt(clx: ByteArray): Pair<Int, Long> {
         var pos = 0
         while (pos < clx.size) {
@@ -153,11 +141,8 @@ object DocTextExtractor {
     }
 
     /**
-     * Text → blocks. Word's depth-1 table syntax is visible in the text stream: a cell ends with
-     * a cell mark (0x07) and the row's TTP immediately follows the last cell's mark, so
-     * `cell\x07cell\x07\x07` is one row — adjacent marks mean TTP. Nested tables carry their
-     * depth in property sprms the text stream never shows, so their boundaries arrive as plain
-     * paragraph marks and join their cell with a newline instead.
+     * Text → blocks. A cell ends with a cell mark (0x07) and the row's TTP follows the last cell's
+     * mark, so `cell\x07cell\x07\x07` is one row; nested tables arrive as plain paragraph marks.
      */
     private class BlockBuilder {
         private enum class State { PARA, ROW, BETWEEN }
@@ -167,12 +152,12 @@ object DocTextExtractor {
         private val cell = StringBuilder()
         private val row = mutableListOf<String>()
         private val rows = mutableListOf<List<String>>()
-        /** Empty or result-visible per depth: field instructions (between 0x13 and 0x14) are not content. */
+        /** Per-depth flag: field instructions (between 0x13 and 0x14) are not content. */
         private val fieldDepth = ArrayDeque<Boolean>()
         private var state = State.PARA
         private var tableUsable = true
 
-        /** Set once [MAX_BLOCKS] is reached so the piece loop stops decoding instead of feeding a dead builder. */
+        /** Set once [MAX_BLOCKS] is reached, so the piece loop stops instead of feeding a dead builder. */
         var full = false
             private set
 
@@ -284,7 +269,7 @@ object DocTextExtractor {
     }
 }
 
-/** FcCompressed 8-bit text: cp1252-style specials map to their Unicode characters, the rest are Latin-1. */
+/** FcCompressed 8-bit text: cp1252 specials map to Unicode, the rest are Latin-1. */
 private fun decodeCompressed(bytes: ByteArray): String {
     val out = CharArray(bytes.size)
     for (i in bytes.indices) out[i] = compressedChar(bytes[i].toInt() and 0xFF)

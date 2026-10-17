@@ -56,7 +56,7 @@ private const val FOCUS_ANIMATION_MS = 180
 /** Both backgrounds sit far from this: #121212 is about 0.01, #FBFBFB about 0.96. */
 private const val DARK_BACKGROUND_LUMINANCE = 0.5f
 
-/** Shared pill for Home and find-in-file; [trailing] fills the end and owns its own end inset. */
+/** Shared pill for Home and find-in-file; [trailing] fills the end and owns its end inset. */
 @Composable
 fun SearchPill(
     text: String,

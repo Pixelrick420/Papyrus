@@ -1,6 +1,6 @@
 package com.papyrus.app.viewer
 
-/** What a stretch of source is, for colouring; the UI maps each kind to a style, this file knows no colours. */
+/** What a stretch of source is, for colouring; the UI maps each kind to a style. */
 enum class TokenKind { COMMENT, STRING, NUMBER, KEYWORD, LITERAL, TYPE, FUNCTION, ANNOTATION, VARIABLE, PROPERTY, TAG, ATTRIBUTE }
 
 /** Append-only token list in three int arrays, not an object per token: a chunk holds hundreds. */
@@ -35,9 +35,8 @@ class SyntaxTokens {
 }
 
 /**
- * The scanner's state at the start of each chunk: 0 for ordinary code, otherwise the construct left open
- * by the chunk before (a block comment, a triple-quoted string, an HTML tag). A chunk is 40 lines, so
- * without this a comment crossing a boundary would colour as code from there on.
+ * The scanner's state at the start of each chunk: 0, or the construct left open by the chunk before.
+ * A chunk is 40 lines, so without it a comment crossing a boundary would colour as code from there on.
  */
 class LexStates internal constructor(private val states: IntArray) {
     operator fun get(chunk: Int): Int = states.getOrElse(chunk) { 0 }
@@ -66,7 +65,7 @@ class CodeLanguage(
     val quotes: String = "\"'",
     /** Quotes from [quotes] that take no backslash escape. */
     val rawQuotes: String = "",
-    /** Quotes that only ever open a character literal (`'a'`), because the same mark is also a lifetime or a symbol. */
+    /** Quotes that only open a character literal, since the mark may also be a lifetime or symbol. */
     val charLiteralQuotes: String = "",
     val escape: Char = '\\',
     /** `@name`: a decorator, an annotation, a CSS at-rule. */
@@ -102,8 +101,8 @@ class CodeLanguage(
 object SyntaxHighlighter {
 
     /**
-     * A chunk longer than this is shown plain: styling tens of thousands of spans costs more than it helps,
-     * and such a chunk is minified code, which colour does not make readable.
+     * A chunk longer than this is shown plain: styling tens of thousands of spans costs more than it
+     * helps, and such a chunk is minified code, which colour does not make readable.
      */
     const val MAX_HIGHLIGHT_CHARS = 20_000
 
@@ -118,7 +117,7 @@ object SyntaxHighlighter {
     fun endState(language: CodeLanguage, text: String, startState: Int = 0): Int =
         Scanner(language, text, null).run(startState)
 
-    /** One pass over every chunk, so each can later be coloured alone, in any order, as the list scrolls. */
+    /** One pass over every chunk, so each can later be coloured alone, in any order. */
     fun chunkStartStates(language: CodeLanguage, chunks: List<String>): LexStates {
         val states = IntArray(chunks.size)
         var state = 0
@@ -182,7 +181,7 @@ private class Scanner(
         return 0
     }
 
-    /** Consumes one token starting at [pos]; returns a state only when a multi-line construct ran off the end. */
+    /** Consumes one token at [pos]; returns a state only when a multi-line construct ran off the end. */
     private fun token(c: Char, atLineStart: Boolean): Int {
         if (lang.multilineStarts.indexOf(c) >= 0) {
             val state = openMultiline()
@@ -209,7 +208,7 @@ private class Scanner(
         return 0
     }
 
-    /** -1 when no multi-line construct opens here; otherwise the state left behind, 0 if it closed inside the chunk. */
+    /** -1 when nothing opens here; otherwise the state left behind, 0 if it closed inside the chunk. */
     private fun openMultiline(): Int {
         for (i in lang.multiline.indices) {
             val d = lang.multiline[i]
@@ -433,7 +432,9 @@ private class Scanner(
         emit(start, pos, TokenKind.TYPE)
     }
 
-    /** `$name`, `${name}`, `$1`, `$?`, and with [CodeLanguage.parenVariables] `$(NAME)`; false when it is just a dollar sign. */
+    /**
+     * `$name`, `${name}`, `$1`, `$?`, and with [CodeLanguage.parenVariables] `$(NAME)`; false for a bare `$`.
+     */
     private fun variable(): Boolean {
         var i = pos + 1
         if (i >= n) return false

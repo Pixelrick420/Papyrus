@@ -21,9 +21,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * What survives being read out of a page. The failure modes matter most: one annotation PdfBox
- * chokes on must not cost the page its other links, and nothing a document writes may make
- * extraction throw. Fixtures are built in memory, as [PdfEncryptionTest] does.
+ * What survives being read out of a page. The failure modes matter most: one annotation PdfBox chokes
+ * on must not cost the page its other links, and nothing a document writes may make extraction throw.
  */
 class PdfLinkExtractorTest {
 
@@ -36,9 +35,8 @@ class PdfLinkExtractorTest {
     private val drawn = NormRect(0.1f, 0.25f, 0.3f, 0.5f)
 
     /**
-     * This port's four-argument [PDRectangle] adds its third and fourth values to the first two
-     * instead of treating them as an upper-right corner, so build the corner array directly — the
-     * same shape a document writes and [PDAnnotation.getRectangle] reads back.
+     * This port's four-argument [PDRectangle] adds its third and fourth values to the first two instead of
+     * treating them as an upper-right corner, so build the corner array directly.
      */
     private fun rect(llx: Float, lly: Float, urx: Float, ury: Float): PDRectangle =
         PDRectangle(COSArray().apply {

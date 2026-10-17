@@ -9,11 +9,8 @@ import java.io.InputStream
 const val PDF_UNLOCK_DIR = "pdf-unlock"
 
 /**
- * What opening a PDF will need. A corrupt PDF reads as [NOT_ENCRYPTED], so it fails generically
- * rather than prompting for a password.
- *
- * [OWNER_ONLY] opens on the empty password with no prompt, and counts as encrypted for the library and
- * autosave. [USER_PASSWORD] prompts.
+ * What opening a PDF needs; a corrupt one reads as [NOT_ENCRYPTED] so it fails rather than prompts.
+ * [OWNER_ONLY] opens on the empty password silently; [USER_PASSWORD] prompts.
  */
 enum class PdfEncryption {
     NOT_ENCRYPTED,
@@ -28,15 +25,16 @@ enum class PdfEncryption {
         private val ENCRYPT_TOKEN = "/Encrypt".toByteArray(Charsets.US_ASCII)
 
         /**
-         * The common case costs one allocation-free pass over the bytes instead of a PdfBox load, which
-         * reads the whole file into memory and parses it: a file that never mentions `/Encrypt` cannot be
-         * encrypted, so it is [NOT_ENCRYPTED] without a load. Only a file that does is handed to
-         * [authoritativeStatus], so the three answers are exactly the ones PdfBox gives.
+         * Common case: one allocation-free pass over the bytes instead of a PdfBox load, which reads
+         * the whole file and parses it. Only a file mentioning `/Encrypt` goes to [authoritativeStatus].
          */
         fun status(openStream: () -> InputStream): PdfEncryption =
             if (mentionsEncryption(openStream)) authoritativeStatus(openStream) else NOT_ENCRYPTED
 
-        /** The PdfBox verdict, a full parse. [status] reaches it only after the byte screen finds `/Encrypt`; the viewer reaches it when the renderer asks for a password the screen did not expect. */
+        /**
+         * The PdfBox verdict, a full parse. [status] reaches it after the byte screen finds `/Encrypt`;
+         * the viewer reaches it when the renderer asks for a password the screen did not expect.
+         */
         fun authoritativeStatus(openStream: () -> InputStream): PdfEncryption =
             try {
                 openStream().use { stream ->
@@ -52,15 +50,8 @@ enum class PdfEncryption {
             }
 
         /**
-         * Whether the bytes contain the `/Encrypt` key at all. The key lives in a trailer dictionary, and
-         * where that is varies: at the end of a classic file, near the *start* of a linearized one (its
-         * first-page trailer), and inside the xref stream's dictionary in a PDF 1.5 file, which sits ahead
-         * of a stream that can run to megabytes. A head window and a tail window can miss that last case, so
-         * this reads the whole stream once, in fixed chunks, keeping only the few bytes a token split across
-         * two chunks needs. A false positive (the token in page text) just costs the PdfBox check; a miss
-         * cannot silently open an encrypted file, because the renderer then asks for a password and the
-         * viewer falls back to [authoritativeStatus]. Past [scanLimit] bytes it gives up and says yes. An
-         * unreadable stream says no, as [authoritativeStatus] does, so the renderer reports the real error.
+         * Whether the bytes contain the `/Encrypt` key: its trailer can sit at the end, near the start
+         * (linearized), or in a PDF 1.5 xref stream, so this scans the whole stream in fixed chunks.
          */
         internal fun mentionsEncryption(openStream: () -> InputStream, scanLimit: Long = MAX_SCAN_BYTES): Boolean =
             try {

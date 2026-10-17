@@ -10,17 +10,12 @@ import com.tom_roush.pdfbox.pdmodel.interactive.documentnavigation.destination.P
 import kotlin.coroutines.cancellation.CancellationException
 
 /**
- * A PDF page's links, read on demand.
- *
- * A link is a link annotation: a rectangle plus either a URI action (open elsewhere) or a GoTo
- * destination (jump within the document). Any other action — JavaScript, launch, a named action —
- * is not something a reader can follow, so it is skipped. So is anything malformed: one bad
- * annotation must not cost the page its other links, and an unreadable page has no links rather
- * than an error. Nothing here throws.
+ * A PDF page's links, read on demand: a rectangle plus either a URI action (open elsewhere) or a GoTo
+ * destination. Unfollowable or malformed annotations are skipped, and nothing here throws.
  */
 object PdfLinkExtractor {
 
-    /** The links of page [index], in the same page-relative unit as find highlights. Empty on any failure. */
+    /** Page [index]'s links, in the same unit as find highlights; empty on any failure. */
     fun extract(document: PDDocument, index: Int): List<PdfPageLink> {
         if (index !in 0 until document.numberOfPages) return emptyList()
         val links = ArrayList<PdfPageLink>()
@@ -44,7 +39,7 @@ object PdfLinkExtractor {
         return links
     }
 
-    /** [annotation] as a page link, or null when it is not a link, has no area, or goes nowhere we can follow. */
+    /** [annotation] as a page link, or null when it is not a link, has no area, or goes nowhere. */
     private fun linkOf(annotation: PDAnnotation, frame: PdfPageFrame, document: PDDocument): PdfPageLink? {
         val link = annotation as? PDAnnotationLink ?: return null
         val rect = link.rectangle ?: return null
@@ -54,9 +49,8 @@ object PdfLinkExtractor {
     }
 
     /**
-     * Where [link] points. A URI action is filtered through [resolvedLink] so only http/https/mailto/tel
-     * survive; a GoTo action is resolved to a page of [document]. A link with the destination directly on
-     * the annotation and no action is read the same way.
+     * Where [link] points: a URI action filtered through [resolvedLink] so only http/https/mailto/tel
+     * survive, or a GoTo destination resolved to a page of [document].
      */
     private fun targetOf(link: PDAnnotationLink, document: PDDocument): PdfLinkTarget? {
         when (val action = link.action) {
@@ -68,7 +62,6 @@ object PdfLinkExtractor {
         return pageOf(link.destination, document)
     }
 
-    /** The destination as a page index of [document], or null when it is not a real page destination. */
     private fun pageOf(destination: PDDestination?, document: PDDocument): PdfLinkTarget? {
         val page = destination as? PDPageDestination ?: return null
         // `page` is null when the destination carries a page number rather than a page object.

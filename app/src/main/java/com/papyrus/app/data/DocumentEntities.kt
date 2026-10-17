@@ -14,9 +14,8 @@ enum class DocumentFormat(
     MARKDOWN("MD", setOf("md", "markdown", "mdown"), setOf("text/markdown", "text/x-markdown")),
     TEXT("TXT", setOf("txt", "text", "log"), setOf("text/plain")),
     DOC("DOC", setOf("doc"), setOf("application/msword")),
-    // Macro-enabled files and templates share the .docx package layout (`word/document.xml`); nothing
-    // here runs a macro, it only reads the body. `.dot` is left out on purpose: it is also Graphviz's
-    // extension, and a text file must not be claimed as a Word 97 template.
+    // Macro-enabled files and templates share the .docx layout (`word/document.xml`); nothing runs a macro here.
+    // `.dot` is out: it is also Graphviz's extension, so a text file is not read as a Word 97 template.
     DOCX(
         "DOCX", setOf("docx", "docm", "dotx", "dotm"),
         setOf(
@@ -48,18 +47,24 @@ enum class DocumentFormat(
             "xml", "svg", "html", "htm", "css", "scss", "sass", "less", "vue", "svelte", "gradle",
             "cmake", "mk", "makefile", "dockerfile", "patch", "diff", "gitignore", "editorconfig",
         ),
-        // No MIME types: providers report these as text/plain or octet-stream, which the picker filter admits anyway.
+        // No MIME types: providers report these as text/plain or octet-stream, which the picker
+        // filter admits anyway.
         emptySet(),
     ),
     UNKNOWN("?", emptySet(), emptySet());
 
     companion object {
-        /** Picker MIME filter. octet-stream and the text wildcard cover providers that mislabel .md and .docx. */
+        /**
+         * Picker MIME filter; octet-stream and the text wildcard cover providers that mislabel .md/.docx.
+         */
         val pickerMimeTypes: Array<String> =
             (entries.filter { it != UNKNOWN }.flatMap { it.mimeTypes } + "text/*" + "application/octet-stream")
                 .toTypedArray()
 
-        /** Extension beats MIME; the whole name is matched only when there is no dot, or `report.conf.txt` claims `conf`. */
+        /**
+         * Extension beats MIME; the whole name is matched only when there is no dot, or `report.conf.txt`
+         * claims `conf`.
+         */
         fun detect(displayName: String?, mimeType: String?): DocumentFormat {
             val name = displayName?.lowercase().orEmpty()
             val ext = name.substringAfterLast('.', "").let { if (name.contains('.')) it else "" }
@@ -73,9 +78,8 @@ enum class DocumentFormat(
 }
 
 /**
- * No MIME type or page count: the info sheet is the only reader of either, so it takes them live
- * from the provider and the open PDF. No `lastOpenedAt` index either: the one list query reads
- * every row, so SQLite gains nothing from it. Add it back with the sort and filter work.
+ * No MIME type, page count or `lastOpenedAt` index: the info sheet reads the first two live, and the one
+ * list query reads every row, so an index would buy nothing. Add it back with the sort and filter work.
  */
 @Entity(
     tableName = "documents",
@@ -91,9 +95,8 @@ data class DocumentEntity(
     val createdAt: Long,
     val lastOpenedAt: Long,
     /**
-     * Pinned by the reader. The default is spelled out for the schema, so the migration's
-     * `ADD COLUMN ... DEFAULT 0` and Room's own expectation agree. `upsertByUri` updates through
-     * `existing.copy(...)`, so the flag survives re-opening and re-granting a file.
+     * Pinned by the reader. The default is spelled out so the migration's `ADD COLUMN ... DEFAULT 0` matches
+     * Room's expectation; `upsertByUri` copies the row, so the flag survives re-opening and re-granting.
      */
     @ColumnInfo(defaultValue = "0") val isFavourite: Boolean = false,
 )

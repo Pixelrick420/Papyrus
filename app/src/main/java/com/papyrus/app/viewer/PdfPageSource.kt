@@ -74,7 +74,10 @@ class PdfPageSource private constructor(
         }
     }
 
-    /** Closes after any in-flight render; the detached body is guarded so an escaping exception can't kill the process. */
+    /**
+     * Closes after any in-flight render; the detached body is guarded so an escaping exception can't
+     * kill the process.
+     */
     override fun close() {
         CoroutineScope(dispatcher).launch {
             runCatching {

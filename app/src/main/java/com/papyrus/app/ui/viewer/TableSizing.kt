@@ -5,23 +5,14 @@ import kotlin.math.max
 import kotlin.math.min
 
 /**
- * What each column of a table would like and what it can live with, in dp, cell gap and padding
- * included. [preferredDp] is the column's longest line on one line, capped so prose wraps rather than
- * making the column ever wider; [minDp] is how far it can be squeezed before a word has to break or
- * the column stops being readable.
+ * Each column's wanted and minimum width in dp, gap and padding included; [minDp] is how far it
+ * squeezes before a word must break.
  */
 internal class ColumnMetrics(val minDp: FloatArray, val preferredDp: FloatArray)
 
 /**
- * Sizes columns from their content, the way an HTML `table-layout: auto` table does, because a .doc
- * table arrives as text only and the OOXML/ODF column widths would need style resolution. One width
- * for every column made a serial-number column as wide as a prose one.
- *
- * Glyph widths are estimated, not measured: a text layout per cell is a layout per cell on the main
- * thread, for tables that can run to thousands of rows, and a few percent of error only shifts a
- * column edge by a few dp. [emDp] is the cell text's size in dp *including* zoom (zoom scales
- * `fontScale`), which is what makes the widths follow it. Cells spanning several columns are ignored
- * until the single-column ones have set the widths, then only widen columns that cannot hold them.
+ * Sizes columns from content like HTML auto layout, since a .doc table arrives as text only;
+ * widths are estimated, not measured, because per-cell layout is too costly for large tables.
  */
 internal fun measureColumns(
     rows: List<List<OfficeCell>>,
@@ -56,9 +47,8 @@ internal fun measureColumns(
         min(preferred[it], squeezed)
     }
 
-    // Narrowest spans first, as HTML does, so a wide merged title is judged against columns that already
-    // hold their own content. The need is capped like any prose: a 300-character title row must wrap
-    // across the table, not make it 1800dp wide.
+    // Narrowest spans first, as HTML does, so a wide merged title is judged against columns that
+    // already hold their own content. The need is capped like any prose, so a long title wraps.
     for (span in spanning.sortedBy { it.last - it.first }) {
         val columns = span.last - span.first + 1
         val need = min(span.lineDp, capText) + chromeDp
@@ -73,11 +63,8 @@ internal fun measureColumns(
 }
 
 /**
- * Fits [metrics] into [availableDp]. A table that already fits is left at its preferred widths rather
- * than stretched, or a two-column table would spread a serial number across half the screen. One that
- * does not fit gives up width in proportion to how much each column has to spare, so prose columns
- * shrink and short ones stay put. If even the minimums do not fit, the minimums are returned and the
- * table scrolls horizontally.
+ * Fits [metrics] into [availableDp]: an already-fitting table keeps its preferred widths, a larger
+ * one gives up width in proportion to each column's spare, and below the minimums it scrolls.
  */
 internal fun fitColumns(metrics: ColumnMetrics, availableDp: Float): FloatArray {
     val preferred = metrics.preferredDp
@@ -95,10 +82,8 @@ internal fun fitColumns(metrics: ColumnMetrics, availableDp: Float): FloatArray 
 internal data class GridCell(val row: Int, val column: Int, val colspan: Int, val rowspan: Int)
 
 /**
- * Row heights for cells that would each like [natural] px (parallel to [cells]). A row is as tall as the
- * tallest cell sitting in that row alone, and never under [minRow]. A cell spanning rows is judged after
- * those, against the rows it covers together: if it is taller, the last of them grows by the shortfall,
- * so the rows above keep their own height. A span running past the last row is cut at it.
+ * Row heights for cells wanting [natural] px each (parallel to [cells]). A row is as tall as its
+ * tallest single-row cell, never under [minRow]; a rowspan grows its last row by any shortfall.
  */
 internal fun rowHeights(cells: List<GridCell>, natural: IntArray, rowCount: Int, minRow: Int): IntArray {
     val heights = IntArray(rowCount) { minRow }
@@ -119,7 +104,7 @@ private class SpanNeed(val first: Int, val last: Int, val lineDp: Float)
 
 private class Extent(val lineEm: Float, val wordEm: Float)
 
-/** Widest line, and widest unbreakable run, of [text] in ems. Lines are split on `\n`, as a cell's paragraphs are. */
+/** Widest line and widest unbreakable run of [text] in ems; lines split on `\n` as cells do. */
 private fun extentOf(text: String): Extent {
     var line = 0f
     var word = 0f
@@ -142,7 +127,7 @@ private fun extentOf(text: String): Extent {
                 val advance = advanceEm(ch)
                 line += advance
                 word += advance
-                // CJK has no spaces, but a line may break after any character, so each is its own "word".
+                // CJK has no spaces, but breaks after any character, so each is its own word.
                 if (isBreakEverywhere(ch)) {
                     widestWord = max(widestWord, word)
                     word = 0f
@@ -156,8 +141,8 @@ private fun extentOf(text: String): Extent {
 private fun isBreakEverywhere(ch: Char): Boolean = ch.code >= WIDE_FROM && !ch.isSurrogate()
 
 /**
- * Approximate advance of [ch] in ems for Roboto, which is what the theme uses. The tracking term is
- * Material's 0.4sp on 12sp body-small text; without it every line would come out about 3% short.
+ * Approximate advance of [ch] in ems for Roboto, the theme's font. The tracking term is Material's
+ * 0.4sp on 12sp body-small text; without it every line comes out about 3% short.
  */
 private fun advanceEm(ch: Char): Float = TRACKING_EM + when {
     ch in '0'..'9' -> 0.56f
@@ -178,7 +163,7 @@ private fun advanceEm(ch: Char): Float = TRACKING_EM + when {
         '.', ',', ':', ';', '\'', '!', '|' -> 0.27f
         else -> 0.52f
     }
-    // Indic scripts mix wide base letters with zero-width vowel signs; this is the average per code point.
+    // Indic scripts mix wide base letters with zero-width vowel signs; average per code point.
     ch.code in INDIC_START..INDIC_END -> 0.75f
     // Half of a surrogate pair: an emoji is two chars and roughly one em.
     ch.isSurrogate() -> 0.5f
@@ -187,13 +172,13 @@ private fun advanceEm(ch: Char): Float = TRACKING_EM + when {
     else -> 0.58f
 }
 
-/** A column is never narrower than this much text: wide enough for a serial number or a short code. */
+/** A column never narrower than this: enough for a serial number or short code. */
 private const val MIN_TEXT_EM = 3f
 
-/** Prose wraps past this many ems (about 260dp of 12sp text) instead of widening its column further. */
+/** Prose wraps past this many ems (~260dp of 12sp) instead of widening its column further. */
 private const val MAX_TEXT_EM = 22f
 
-/** A column with prose in it is squeezed to this many ems at the least, unless one word is wider. */
+/** Prose columns squeeze to this many ems at least, unless one word is wider. */
 private const val SQUEEZE_FLOOR_EM = 8f
 
 /** A single very long word (a URL) must not set the minimum: it breaks mid-word instead. */
@@ -201,7 +186,7 @@ private const val MAX_WORD_EM = 12f
 
 private const val TRACKING_EM = 0.034f
 
-/** Underestimating wraps a short value onto a second line for want of a few dp; overestimating costs only a few dp. */
+/** Underestimating wraps a short value for a few dp; overestimating costs a few dp. */
 private const val ESTIMATE_MARGIN = 1.04f
 
 private const val ASCII_END = 0x80

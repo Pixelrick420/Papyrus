@@ -22,11 +22,8 @@ import kotlinx.coroutines.flow.first
 import kotlin.math.roundToInt
 
 /**
- * How a viewer takes part in reading-position memory, as one parameter instead of three.
- *
- * [restore] says where to open (null: nowhere in particular). A viewer applies it once, reads the
- * result back and passes that to [onRestored], which is what opens the save gate; it then reports every
- * change of position through [onPosition]. [None] is for a viewer that stands alone.
+ * How a viewer takes part in reading-position memory, as one parameter instead of three: [restore] says
+ * where to open, [onRestored] opens the save gate once applied, and [onPosition] reports later changes.
  */
 @Immutable
 class PositionHooks(
@@ -40,9 +37,8 @@ class PositionHooks(
 }
 
 /**
- * Where to put a viewer of [unitCount] units, taken once per restore request: the request clamped to
- * what actually loaded. Keyed on the request alone, so a later change of content (a new encoding
- * re-chunks the text) does not run the restore again and scroll the reader back.
+ * Where to put a viewer of [unitCount] units, taken once per restore request and clamped to what
+ * loaded. Keyed on the request alone, so re-chunking the text does not scroll the reader back.
  */
 @Composable
 internal fun rememberRestoredTarget(kind: LocationKind, unitCount: Int, position: PositionHooks): ReadingLocation? =
@@ -62,12 +58,8 @@ internal fun LazyListState.positionSample(kind: LocationKind, unitCount: Int, sc
 }
 
 /**
- * Restores [target] in a lazy list, then reports every position the list shows.
- *
- * The list is created already at the target's item (see `initialFirstVisibleItemIndex` at the call
- * sites), so the first frame is the right place and the top of the document never flashes. What is
- * left is the part inside the item, which needs its measured size: waiting for it and for a frame
- * afterwards means the position read back for the save gate is the one that is really on screen.
+ * Restores [target] in a lazy list, then reports every position the list shows. The list is created
+ * already at the target item, so no top-of-document flash; the in-item offset needs the measured size.
  */
 @Composable
 internal fun LazyPositionEffects(
@@ -103,9 +95,8 @@ internal fun LazyPositionEffects(
 }
 
 /**
- * The same for Markdown, which is one TextView inside one scroll, so the anchor is a character offset:
- * the start of the line at the top of the viewport. [layout] is the TextView's current layout (null
- * until it has been measured) and [contentTopPx] the padding above the text inside the scrolled content.
+ * Same for Markdown: one TextView inside one scroll, so the anchor is the character offset of the line
+ * at the viewport top. [layout] is null until measured; [contentTopPx] is the padding above the text.
  */
 @Composable
 internal fun MarkdownPositionEffects(
@@ -121,9 +112,8 @@ internal fun MarkdownPositionEffects(
 
     LaunchedEffect(scroll, target) {
         if (target == null) return@LaunchedEffect
-        // Offset 0 is where it already is. Only a later offset needs the text laid out. A ScrollState
-        // reports Int.MAX_VALUE as its extent until the first measure, so that is what is waited out;
-        // a document that now fits the screen then measures 0 and the scroll below simply clamps.
+        // Offset 0 is already there; only a later offset needs the text laid out. A ScrollState reports
+        // Int.MAX_VALUE until the first measure, so wait that out; a document that now fits measures 0.
         if (target.unit > 0) {
             snapshotFlow { scroll.maxValue }.first { it != Int.MAX_VALUE }
             val textLayout = layout() ?: return@LaunchedEffect

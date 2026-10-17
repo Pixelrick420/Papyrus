@@ -42,7 +42,6 @@ internal fun isPaperWhite(rgb: Int): Boolean {
 
 private const val PAPER_CHANNEL_MIN = 0xF0
 
-/** Black on a light fill, white on a dark one. */
 internal fun readableOn(background: Color): Color =
     if (background.luminance() > MID_LUMINANCE) Color.Black else Color.White
 
@@ -97,11 +96,8 @@ private fun spanStyleFor(format: CharFormat, palette: FormatPalette): SpanStyle 
 }
 
 /**
- * [text] with the document's [spans] under any find highlights, added last so a match wins over
- * formatting and each match gets exactly one style.
- *
- * [onLink] takes a tapped link instead of the text framework's default handler, so a scheme the
- * document asks for but no app can open is reported instead of throwing.
+ * [text] with the document's [spans], find highlights added last so a match wins over formatting.
+ * [onLink] handles a tapped link itself, so an unopenable scheme is reported instead of throwing.
  */
 internal fun formattedText(
     text: String,

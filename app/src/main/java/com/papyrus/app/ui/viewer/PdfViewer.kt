@@ -70,17 +70,17 @@ private val PAGE_HIT_BORDER = 3.dp
 /** Gap between pages, and the margin above the first one, at 100%. */
 private val PAGE_GAP = 8.dp
 
-/** A drag emits a size change per frame, and each queues a rasterisation behind the source's mutex. */
+/** Each drag frame's size change queues a rasterisation behind the source's mutex. */
 private const val RESIZE_SETTLE_MILLIS = 150L
 
-/** The keyboard slides in over a few hundred ms, resizing the viewport each frame; wait for it to stop. */
+/** The keyboard animates in over a few hundred ms, resizing the viewport each frame. */
 private const val VIEWPORT_SETTLE_MILLIS = 150L
 
-/** A jump to a page of the PDF, like [OutlineJump] is for a document's outline. Identity, not
- *  equality: two jumps to the same page are still two jumps, so each one scrolls. */
+/** A jump to a page, like [OutlineJump] is for an outline. Identity, not equality: two jumps to
+ *  the same page are two jumps, so each scrolls. */
 internal class PdfPageJump(val page: Int)
 
-/** Zoom feeds the cached render width; [selectionState] is owned by the screen, and back is handled here. */
+/** Zoom feeds the cached render width; back is handled here. */
 @Composable
 internal fun PdfViewer(
     source: PdfPageSource,
@@ -190,7 +190,7 @@ internal fun PdfViewer(
         Box(Modifier.fillMaxSize().clipToBounds()) {
             LazyColumn(
                 state = listState,
-                // Both axes off from the first pinch until every finger is up, so the finger that lingers cannot scroll.
+                // Both axes locked until every finger lifts, so a lingering finger cannot scroll.
                 modifier = Modifier.fillMaxSize()
                     .horizontalScroll(hScroll, enabled = !zoom.isScrollLocked)
                     .zoomable(zoom)
@@ -252,10 +252,10 @@ internal fun PdfViewer(
 
 private const val DEFAULT_ASPECT = 1.414f
 
-/** The knob's bottom stop: the page indicator (16dp pad + ~29dp label) plus font-scale headroom. */
+/** The knob's bottom stop: the page indicator (~29dp label) plus font-scale headroom. */
 private val PAGE_INDICATOR_CLEARANCE = 56.dp
 
-/** [matches] is one rectangle list per match in order; [activeMatch] its index, or null on a page without it. */
+/** [matches] is one rectangle list per match; [activeMatch] its index, or null if absent. */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun PdfPage(

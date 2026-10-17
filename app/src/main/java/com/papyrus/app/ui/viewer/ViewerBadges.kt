@@ -33,7 +33,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
 
-/** How long a readout stays once what it shows stops changing. Same linger as the scroll knob. */
+/** How long a readout stays after its value stops changing; same linger as the scroll knob. */
 const val READOUT_LINGER_MILLIS = 1000L
 
 /** Quick in, so the readout is there while the eye is still on the change that caused it. */
@@ -43,8 +43,8 @@ private const val FADE_IN_MILLIS = 160
 private const val FADE_OUT_MILLIS = 320
 
 /**
- * Size a readout starts from when it appears, and settles to when it leaves. Small enough to be
- * felt rather than seen; the scroll knob uses it too, so all three read as one system.
+ * Size a readout starts from and settles to as it leaves. Small enough to be felt rather than
+ * seen; the scroll knob uses it too, so all three read as one system.
  */
 const val READOUT_POP_SCALE = 0.92f
 
@@ -53,11 +53,8 @@ internal val ReadoutFadeIn: TweenSpec<Float> = tween(FADE_IN_MILLIS, easing = Li
 internal val ReadoutFadeOut: TweenSpec<Float> = tween(FADE_OUT_MILLIS, easing = FastOutSlowInEasing)
 
 /**
- * A pill that is on screen only while [visible]: it fades in and grows slightly out of
- * [transformOrigin] (the corner it sits in), and leaves the same way, slower.
- *
- * Out of composition while hidden, so it costs nothing and cannot block a touch. The look is the
- * scroll knob's: black, white ring and text, all at [IDLE_ALPHA].
+ * Pill on screen only while [visible]: fades and grows out of [transformOrigin], leaving the same
+ * way slower. Out of composition while hidden, so it costs nothing and cannot block a touch.
  */
 @Composable
 fun ReadoutBadge(
@@ -86,13 +83,8 @@ fun ReadoutBadge(
 }
 
 /**
- * True from the moment [signal] changes until [lingerMillis] after it last did. Every change
- * restarts the wait, so a stream of them (a fling, a pinch) holds the readout up and only the
- * last one starts the countdown.
- *
- * The value [signal] has when this enters composition is not a change, so nothing shows until it
- * moves. While [hold] is true the countdown does not start: a pinch whose fingers rest keeps its
- * readout, and the linger runs from the moment they lift.
+ * True from [signal]'s first change until [lingerMillis] after it last changed; every change
+ * restarts the wait. While [hold] is true the countdown does not start.
  */
 @Composable
 fun <T> rememberLingerVisible(

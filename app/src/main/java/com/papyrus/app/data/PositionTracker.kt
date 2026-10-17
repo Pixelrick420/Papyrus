@@ -1,25 +1,8 @@
 package com.papyrus.app.data
 
 /**
- * Decides when a reading position may be saved. It is the whole save policy in one framework-free
- * class, so the ordering bugs it exists to prevent can be unit-tested without Compose or a database.
- *
- * **The classic bug.** Content loads, the list sits at the top, a save fires, and the stored position is
- * overwritten before the restore was applied. So the gate is shut until either the restore has been
- * applied ([restoreApplied]) or [beginLoad] was told there is nothing to restore. While it is shut,
- * [observe] is ignored entirely.
- *
- * **No movement, no write.** The first thing seen after the gate opens is the starting point
- * ("baseline"), not a save. Opening a document and leaving without scrolling therefore writes nothing,
- * and the previous position stays. Once the reader has moved, every later position is saved, even a
- * return to the starting point, because that is where they stopped.
- *
- * **Debounce.** A save is due only after [idleMillis] without further movement; [take] with `force`
- * hands over the pending position at once for the paths that cannot wait (the app going to the
- * background, the viewer closing).
- *
- * Not thread-safe: it is meant to be driven from the main thread, where the viewport is observed.
- * [now] is injected so tests control time.
+ * The save policy in one framework-free class, so its ordering bugs are unit-testable: the gate stays
+ * shut until a restore is applied, the first position seen is a baseline, and saves are debounced.
  */
 class PositionTracker(
     private val idleMillis: Long = DEFAULT_IDLE_MILLIS,
@@ -31,14 +14,12 @@ class PositionTracker(
     private var dirty = false
     private var changedAt = 0L
 
-    /** The most recent position seen while the gate was open: what to restore after a reload or rotation. */
+    /** Most recent position seen while the gate was open: what a reload or rotation restores. */
     var latest: PositionSample? = null
         private set
 
     /**
-     * A new load of the content started. With [restorePending] the gate stays shut until
-     * [restoreApplied]; without it there is nothing to restore and the gate opens now. An unsaved
-     * position from before the load is kept, and written once the gate is open again.
+     * Starts a load: the gate opens at once unless [restorePending], then only on [restoreApplied].
      */
     fun beginLoad(restorePending: Boolean) {
         open = !restorePending
@@ -46,7 +27,7 @@ class PositionTracker(
         moved = false
     }
 
-    /** The viewer placed the document at [applied] (as read back from the viewport after scrolling). */
+    /** Records the position the viewer actually applied, opening the save gate. */
     fun restoreApplied(applied: PositionSample) {
         open = true
         baseline = applied
@@ -54,7 +35,7 @@ class PositionTracker(
         moved = false
     }
 
-    /** The viewport now shows [sample]. Cheap: called as often as the position changes. */
+    /** The viewport now shows [sample]; called often, so keep it cheap. */
     fun observe(sample: PositionSample) {
         if (!open) return
         val base = baseline

@@ -91,17 +91,8 @@ fun rememberScrollGeometry(state: ScrollState): State<ScrollGeometry> {
 }
 
 /**
- * Fast-scroll knob, Google-Files style: hidden at rest, shown once [showVelocity] is exceeded,
- * pinned on screen while dragged. While hidden the strip has no touch node, so the whole screen
- * scrolls normally; while shown, only the knob and the rightmost half-button-wide band respond.
- *
- * @param onScrollBy drained by a single consumer, so drag frames cannot land out of order.
- * @param showVelocity scroll speed in dp/s that reveals the knob.
- * @param hideAfterMillis linger once the speed drops below [showVelocity].
- * @param topClearance reserves the track's top below a host overlay (the zoom badge).
- * @param bottomClearance reserves the track's bottom above a host overlay (the page indicator).
- * @param zoom held hidden while it zooms and for a beat after: a zoom's reflow reads as scroll
- *   speed and would teleport the knob.
+ * Fast-scroll knob, Google-Files style: hidden at rest, shown once scroll speed passes [showVelocity],
+ * pinned while dragged. A zoom's reflow reads as scroll speed, so a zoom holds it hidden for a beat.
  */
 @Composable
 fun Modifier.autoHideScrollbar(
@@ -314,7 +305,6 @@ fun Modifier.autoHideScrollbar(
         )
 }
 
-/** Top edge of the knob within the track, for hit-testing a touch that missed it. */
 private fun thumbTop(g: ScrollGeometry, trackHeight: Float, thumbHeight: Float, topMargin: Float): Float {
     val travel = (trackHeight - thumbHeight).coerceAtLeast(0f)
     val maxScroll = g.maxScroll.coerceAtLeast(1f)
@@ -358,7 +348,6 @@ private val KnobArrows: Path = Path().apply {
     close()
 }
 
-/** Touch strip: the knob diameter plus both insets. */
 val ScrollbarTouchTarget = KNOB_DIAMETER + KNOB_INSET * 2
 
 /** Reserved at the top of the strip for ViewerScreen's zoom badge, so the knob stops below it. */

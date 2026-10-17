@@ -10,8 +10,8 @@ import org.junit.rules.TemporaryFolder
 import java.io.File
 
 /**
- * What the extractor says about *how* text looks and is arranged (formatting, lists, links,
- * alignment, notes, shading, image metadata), unlike [OfficeTextExtractorTest]'s geometry checks.
+ * How the extractor reads text look and arrangement (formatting, lists, links, alignment, notes,
+ * shading, image metadata), unlike [OfficeTextExtractorTest]'s geometry checks.
  */
 class OfficeFormattingTest {
 
