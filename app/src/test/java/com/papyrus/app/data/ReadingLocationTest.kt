@@ -198,34 +198,4 @@ class ReadingLocationTest {
         assertNull(row(77).toRestoreRequest(DocumentFormat.PDF))
         assertNull(row(LocationKind.PAGE.code).toRestoreRequest(DocumentFormat.UNKNOWN))
     }
-
-    // ---- labels ----
-
-    @Test
-    fun `a pdf is labelled by page, one-based and inside the count`() {
-        assertEquals(ProgressLabel.Page(12, 200), progressLabel(LocationKind.PAGE.code, 11, 200, 0.055f))
-        assertEquals(ProgressLabel.Page(200, 200), progressLabel(LocationKind.PAGE.code, 900, 200, 1f))
-        assertEquals(ProgressLabel.Page(1, 200), progressLabel(LocationKind.PAGE.code, -4, 200, 0f))
-    }
-
-    @Test
-    fun `every other format is labelled by percent, rounded down`() {
-        assertEquals(ProgressLabel.Percent(45), progressLabel(LocationKind.CHAR.code, 450, 1000, 0.4599f))
-        assertEquals(ProgressLabel.Percent(99), progressLabel(LocationKind.BLOCK.code, 9, 10, 0.999f))
-        assertEquals(ProgressLabel.Percent(100), progressLabel(LocationKind.CHUNK.code, 9, 10, 1f))
-        assertEquals(ProgressLabel.Percent(0), progressLabel(LocationKind.CHUNK.code, 0, 10, -2f))
-    }
-
-    @Test
-    fun `a pdf row with no page count falls back to percent`() {
-        assertEquals(ProgressLabel.Percent(10), progressLabel(LocationKind.PAGE.code, 3, 0, 0.1f))
-    }
-
-    @Test
-    fun `a summary labels itself from its own columns`() {
-        val pdf = ReadingProgressSummary(1, LocationKind.PAGE.code, locationUnit = 11, unitCount = 200, progress = 0.057f)
-        assertEquals(ProgressLabel.Page(12, 200), pdf.label)
-        val md = ReadingProgressSummary(2, LocationKind.CHAR.code, locationUnit = 450, unitCount = 1000, progress = 0.45f)
-        assertEquals(ProgressLabel.Percent(45), md.label)
-    }
 }

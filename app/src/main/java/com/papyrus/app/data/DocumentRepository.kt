@@ -8,12 +8,7 @@ import com.papyrus.app.viewer.OfficeEncryption
 import com.papyrus.app.viewer.PdfEncryption
 import com.papyrus.app.viewer.TextSniffer
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.flowOf
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileNotFoundException
@@ -40,22 +35,6 @@ class DocumentRepository(
     private val knownPdfEncryption = ConcurrentHashMap<String, PdfEncryption>()
 
     val documents: Flow<List<DocumentEntity>> = dao.observeAll()
-
-    /**
-     * Stored reading progress by document id, for Home. It lives in its own table, so a position save
-     * never re-emits [documents], and it is switched off with the setting: while "Remember reading
-     * position" is off nothing is read, so Home shows no progress. Saves that do not change a summary
-     * (see [ReadingProgressSummary]) are dropped by `distinctUntilChanged`.
-     */
-    @OptIn(ExperimentalCoroutinesApi::class)
-    val readingProgress: Flow<Map<Long, ReadingProgressSummary>> = settings.settings
-        .map { it.rememberPosition }
-        .distinctUntilChanged()
-        .flatMapLatest { enabled ->
-            if (enabled) progressDao.observeSummaries().map { rows -> rows.associateBy { it.documentId } }
-            else flowOf(emptyMap())
-        }
-        .distinctUntilChanged()
 
     /**
      * The stored position of library document [id] as a restore request, or `null`: no row, a transient
@@ -85,8 +64,6 @@ class DocumentRepository(
             )
         }
     }
-
-    suspend fun resetReadingProgress(id: Long) = withContext(Dispatchers.IO) { progressDao.reset(id) }
 
     /** Stores [entity] transiently under a fresh negative id; the caller opens the returned id. */
     private fun handOver(entity: DocumentEntity): Long {
