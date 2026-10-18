@@ -108,6 +108,14 @@ class DocumentRepository(
     suspend fun markOpened(id: Long) = dao.touch(id, System.currentTimeMillis())
     suspend fun updateFormat(id: Long, format: DocumentFormat) = dao.updateFormat(id, format)
 
+    /** Pins or unpins library documents. Only that one column is written: a favourite never touches the order, progress or bookmarks. */
+    suspend fun setFavourite(ids: List<Long>, favourite: Boolean) {
+        val library = ids.filter { it > 0 }
+        if (library.isEmpty()) return
+        // Older SQLite builds cap a statement at 999 variables, so a very large selection goes in slices.
+        withContext(Dispatchers.IO) { library.chunked(MAX_IDS_PER_STATEMENT).forEach { dao.setFavourite(it, favourite) } }
+    }
+
     suspend fun register(uri: Uri): Long = withContext(Dispatchers.IO) {
         val entity = buildEntity(uri)
         // Not indexed by default: a row would put it in the library and persist a grant past the open.
@@ -276,6 +284,7 @@ class DocumentRepository(
     private companion object {
         const val FILE_PROVIDER_SUFFIX = ".fileprovider"
         const val MAX_KNOWN_PDF_STATUS = 8
+        const val MAX_IDS_PER_STATEMENT = 900
 
         /** Formats whose encryption this app can detect; others are indexed and fail on open. */
         val ENCRYPTABLE = setOf(

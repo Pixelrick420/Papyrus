@@ -36,6 +36,8 @@ data class AppSettings(
     /** JSON, XML, HTML and SVG files are indented as they open; off, they show exactly as stored. */
     val prettyPrint: Boolean = true,
     val colorblindMode: Boolean = false,
+    /** How Home orders the library. */
+    val librarySort: LibrarySort = LibrarySort.LAST_OPENED,
 )
 
 /** App preferences in plain SharedPreferences, read synchronously so a forced theme is known
@@ -95,9 +97,15 @@ class SettingsRepository(context: Context) {
         _settings.update { it.copy(colorblindMode = enabled) }
     }
 
+    fun setLibrarySort(sort: LibrarySort) {
+        prefs.edit { putString(KEY_LIBRARY_SORT, sort.name) }
+        _settings.update { it.copy(librarySort = sort) }
+    }
+
     private fun read(): AppSettings {
         val defaults = AppSettings()
         val storedTheme = prefs.getString(KEY_THEME_MODE, null)
+        val storedSort = prefs.getString(KEY_LIBRARY_SORT, null)
         return AppSettings(
             // An unknown name (a value from a newer build, say) falls back instead of crashing on launch.
             themeMode = ThemeMode.entries.firstOrNull { it.name == storedTheme } ?: defaults.themeMode,
@@ -109,6 +117,7 @@ class SettingsRepository(context: Context) {
             syntaxHighlighting = prefs.getBoolean(KEY_SYNTAX_HIGHLIGHTING, defaults.syntaxHighlighting),
             prettyPrint = prefs.getBoolean(KEY_PRETTY_PRINT, defaults.prettyPrint),
             colorblindMode = prefs.getBoolean(KEY_COLORBLIND_MODE, defaults.colorblindMode),
+            librarySort = LibrarySort.entries.firstOrNull { it.name == storedSort } ?: defaults.librarySort,
         )
     }
 
@@ -123,5 +132,6 @@ class SettingsRepository(context: Context) {
         const val KEY_SYNTAX_HIGHLIGHTING = "syntax_highlighting"
         const val KEY_PRETTY_PRINT = "pretty_print"
         const val KEY_COLORBLIND_MODE = "colorblind_mode"
+        const val KEY_LIBRARY_SORT = "library_sort"
     }
 }
