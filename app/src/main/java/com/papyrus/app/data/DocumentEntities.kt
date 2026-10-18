@@ -79,7 +79,8 @@ enum class DocumentFormat(
 
 /**
  * No MIME type, page count or `lastOpenedAt` index: the info sheet reads the first two live, and the one
- * list query reads every row, so an index would buy nothing. Add it back with the sort and filter work.
+ * list query reads every row (sorting and filtering happen in memory, in [libraryView]), so an index
+ * would buy nothing.
  */
 @Entity(
     tableName = "documents",
@@ -99,4 +100,17 @@ data class DocumentEntity(
      * Room's expectation; `upsertByUri` copies the row, so the flag survives re-opening and re-granting.
      */
     @ColumnInfo(defaultValue = "0") val isFavourite: Boolean = false,
+)
+
+/**
+ * This row as it is after being opened again as [fresh]: what the provider reports now (name, format,
+ * size) and the new open time. Everything the reader owns survives: the id (so progress and bookmarks keep
+ * their parent), when it was added, the stored URI and the favourite flag. Never replace the row instead:
+ * a replace is a delete plus an insert and would cascade that away.
+ */
+fun DocumentEntity.reopenedWith(fresh: DocumentEntity): DocumentEntity = copy(
+    title = fresh.title,
+    format = fresh.format,
+    sizeBytes = fresh.sizeBytes,
+    lastOpenedAt = fresh.lastOpenedAt,
 )

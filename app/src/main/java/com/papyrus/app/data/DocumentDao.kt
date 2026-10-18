@@ -41,6 +41,10 @@ interface DocumentDao {
     @Query("UPDATE documents SET format = :format WHERE id = :id")
     suspend fun updateFormat(id: Long, format: DocumentFormat)
 
+    /** One statement for any number of rows; an id that is gone is simply not updated. */
+    @Query("UPDATE documents SET isFavourite = :favourite WHERE id IN (:ids)")
+    suspend fun setFavourite(ids: List<Long>, favourite: Boolean)
+
     @Query("DELETE FROM documents WHERE id = :id")
     suspend fun deleteById(id: Long)
 
@@ -51,14 +55,7 @@ interface DocumentDao {
     @Transaction
     suspend fun upsertByUri(document: DocumentEntity): Long {
         val existing = getByUri(document.uri) ?: return insertIgnore(document)
-        update(
-            existing.copy(
-                title = document.title,
-                format = document.format,
-                sizeBytes = document.sizeBytes,
-                lastOpenedAt = document.lastOpenedAt,
-            ),
-        )
+        update(existing.reopenedWith(document))
         return existing.id
     }
 }
