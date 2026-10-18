@@ -88,9 +88,9 @@ import com.papyrus.app.ui.viewer.FileInfoSheet
 import com.papyrus.app.ui.viewer.FindInFileBar
 import com.papyrus.app.ui.viewer.LocalLinkOpener
 import com.papyrus.app.ui.viewer.MarkdownViewer
-import com.papyrus.app.ui.viewer.OfficeOutlineSheet
 import com.papyrus.app.ui.viewer.OfficeViewer
 import com.papyrus.app.ui.viewer.OutlineJump
+import com.papyrus.app.ui.viewer.OutlineSheet
 import com.papyrus.app.ui.viewer.PasswordDialog
 import com.papyrus.app.ui.viewer.PdfPageJump
 import com.papyrus.app.ui.viewer.PdfSelectionState
@@ -165,11 +165,15 @@ fun ViewerScreen(
     var infoOpen by remember { mutableStateOf(false) }
     var encodingOpen by remember { mutableStateOf(false) }
     var outlineOpen by remember { mutableStateOf(false) }
+    // The heading the outline last chose; the Office viewer scrolls to it.
     var outlineJump by remember { mutableStateOf<OutlineJump?>(null) }
 
-    // Only a document that used heading styles has an outline; without one the menu item is not offered.
+    // Only a document with an outline has the menu item: an Office document that used heading styles, or a
+    // PDF whose bookmarks have been read (off the main thread, so they arrive after the first page).
     val officeBlocks = (state.content as? ViewerContent.Office)?.blocks
-    val outline = remember(officeBlocks) { officeBlocks?.let { officeOutline(it) }.orEmpty() }
+    val officeEntries = remember(officeBlocks) { officeBlocks?.let { officeOutline(it) }.orEmpty() }
+    val isPdf = state.content is ViewerContent.Pdf
+    val outline = if (isPdf) state.pdfOutline else officeEntries
 
     // Held here (not in [PdfViewer]) so the header's Copy can reach it; keyed on the source.
     val selectionState = remember((state.content as? ViewerContent.Pdf)?.source) {
@@ -432,10 +436,12 @@ fun ViewerScreen(
     }
 
     if (outlineOpen && outline.isNotEmpty()) {
-        OfficeOutlineSheet(
+        OutlineSheet(
             entries = outline,
+            collapsible = isPdf,
             onSelect = { entry ->
-                outlineJump = OutlineJump(entry.index)
+                // The one jump mechanism of each viewer: a PDF scrolls to the page, an Office document to the block.
+                if (isPdf) pageJump = PdfPageJump(entry.index) else outlineJump = OutlineJump(entry.index)
                 outlineOpen = false
             },
             onDismiss = { outlineOpen = false },
