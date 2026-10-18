@@ -107,6 +107,8 @@ android {
         resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
         // pdfbox-android's BouncyCastle ships ~4 MB of post-quantum crypto parameter files Papyrus never uses.
         resources.excludes += "org/bouncycastle/pqc/**"
+        // Cert-path-validator i18n bundles; no bundled class references them.
+        resources.excludes += "org/bouncycastle/x509/**"
         jniLibs.useLegacyPackaging = false // keep any .so page-aligned for 16 KB devices
     }
 }
