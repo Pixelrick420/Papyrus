@@ -22,14 +22,26 @@ import kotlinx.coroutines.flow.first
 import kotlin.math.roundToInt
 
 /**
- * How a viewer takes part in reading-position memory, as one parameter instead of three: [restore] says
- * where to open, [onRestored] opens the save gate once applied, and [onPosition] reports later changes.
+ * A request to scroll a viewer to [location], from a link, the outline, go to page or a bookmark: the one
+ * jump mechanism of every format. A class rather than a bare location so each request is its own event:
+ * two jumps to the same place, with a scroll in between, must scroll twice. A location of another kind
+ * than the viewer's is ignored, and one past the end is clamped, so a stale bookmark can never scroll
+ * to nowhere. [revealOnly] moves only if the place is off screen (a link tapped on the page it names);
+ * otherwise the place's top meets the top of the viewport.
+ */
+class ViewerJump(val location: ReadingLocation, val revealOnly: Boolean = false)
+
+/**
+ * How a viewer takes part in reading-position memory and jumps, as one parameter instead of four: [restore]
+ * says where to open, [onRestored] opens the save gate once applied, [onPosition] reports later changes,
+ * and [jump] is the latest request to scroll somewhere else.
  */
 @Immutable
 class PositionHooks(
     val restore: RestoreRequest?,
     val onRestored: (PositionSample) -> Unit,
     val onPosition: (PositionSample) -> Unit,
+    val jump: ViewerJump? = null,
 ) {
     companion object {
         val None = PositionHooks(restore = null, onRestored = {}, onPosition = {})
@@ -67,6 +79,24 @@ internal fun LazyListState.positionSample(
 }
 
 /**
+ * Puts the top of the viewport at [target]: the item, then the in-item offset, which needs the item's
+ * measured size. Shared by the restore and by every jump, so the two cannot drift apart.
+ */
+internal suspend fun LazyListState.scrollToLocation(target: ReadingLocation) {
+    scrollToItem(target.unit)
+    if (target.fraction > 0f) {
+        val size = snapshotFlow {
+            layoutInfo.visibleItemsInfo.firstOrNull { it.index == target.unit }?.size ?: 0
+        }.first { it > 0 }
+        scrollToItem(target.unit, offsetWithin(target.fraction, size))
+    }
+}
+
+/** The jump's place if it is for a viewer of [kind], clamped to [unitCount] units; else null. */
+private fun ViewerJump?.targetFor(kind: LocationKind, unitCount: Int): ReadingLocation? =
+    this?.location?.takeIf { it.kind == kind }?.clampedTo(unitCount)
+
+/**
  * Restores [target] in a lazy list, then reports every position the list shows. The list is created
  * already at the target item, so no top-of-document flash; the in-item offset needs the measured size.
  *
@@ -74,6 +104,7 @@ internal fun LazyListState.positionSample(
  * the list's items, for lists where one stored unit spans several items (a table's bands): restore
  * splits the stored (unit, fraction) across the items, sampling folds the visible item back. Both
  * default to null — the identity mapping — which is every other viewer.
+ * A [PositionHooks.jump] scrolls the same list later, to any place of the document.
  */
 @Composable
 internal fun LazyPositionEffects(
@@ -93,17 +124,18 @@ internal fun LazyPositionEffects(
     LaunchedEffect(listState, target) {
         if (target == null) return@LaunchedEffect
         val (unit, fraction) = restore?.invoke(target.unit, target.fraction) ?: (target.unit to target.fraction)
-        listState.scrollToItem(unit)
-        if (fraction > 0f) {
-            val size = snapshotFlow {
-                listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == unit }?.size ?: 0
-            }.first { it > 0 }
-            listState.scrollToItem(unit, offsetWithin(fraction, size))
-        }
+        listState.scrollToLocation(ReadingLocation(kind, unit, fraction))
         withFrameNanos { }
         val applied = listState.positionSample(kind, unitCount, zoom.committedScale, sample)
             ?: PositionSample(target, unitCount, atEnd = false, zoom = zoom.committedScale)
         hooks.onRestored(applied)
+    }
+
+    val jump = position.jump
+    LaunchedEffect(listState, jump) {
+        val to = jump.targetFor(kind, unitCount) ?: return@LaunchedEffect
+        val (unit, fraction) = restore?.invoke(to.unit, to.fraction) ?: (to.unit to to.fraction)
+        if (jump?.revealOnly == true) listState.scrollToItemUnlessVisible(unit) else listState.scrollToLocation(ReadingLocation(kind, unit, fraction))
     }
 
     LaunchedEffect(listState, kind, unitCount) {
@@ -131,18 +163,18 @@ internal fun MarkdownPositionEffects(
 
     LaunchedEffect(scroll, target) {
         if (target == null) return@LaunchedEffect
-        // Offset 0 is already there; only a later offset needs the text laid out. A ScrollState reports
-        // Int.MAX_VALUE until the first measure, so wait that out; a document that now fits measures 0.
-        if (target.unit > 0) {
-            snapshotFlow { scroll.maxValue }.first { it != Int.MAX_VALUE }
-            val textLayout = layout() ?: return@LaunchedEffect
-            val line = textLayout.getLineForOffset(target.unit.coerceIn(0, textLayout.text.length))
-            scroll.scrollTo((textLayout.getLineTop(line) + contentTopPx).roundToInt())
-        }
+        scrollToOffset(scroll, layout, target.unit, contentTopPx)
         withFrameNanos { }
         val applied = markdownSample(scroll, layout(), textLength, zoom.committedScale, contentTopPx)
             ?: PositionSample(target, textLength, atEnd = false, zoom = zoom.committedScale)
         hooks.onRestored(applied)
+    }
+
+    val jump = position.jump
+    LaunchedEffect(scroll, jump) {
+        val to = jump.targetFor(LocationKind.CHAR, textLength) ?: return@LaunchedEffect
+        // A restore opens at the top already, but a jump to the start has to bring the reader back to it.
+        if (to.unit <= 0) scroll.scrollTo(0) else scrollToOffset(scroll, layout, to.unit, contentTopPx)
     }
 
     LaunchedEffect(scroll, textLength) {
@@ -150,6 +182,19 @@ internal fun MarkdownPositionEffects(
             .filterNotNull()
             .collect { hooks.onPosition(it) }
     }
+}
+
+/**
+ * Scrolls so the line holding character [offset] is at the top. Offset 0 is already there; a later one
+ * needs the text laid out. A ScrollState reports Int.MAX_VALUE until the first measure, so wait that out;
+ * a document that now fits measures 0.
+ */
+private suspend fun scrollToOffset(scroll: ScrollState, layout: () -> Layout?, offset: Int, contentTopPx: Float) {
+    if (offset <= 0) return
+    snapshotFlow { scroll.maxValue }.first { it != Int.MAX_VALUE }
+    val textLayout = layout() ?: return
+    val line = textLayout.getLineForOffset(offset.coerceIn(0, textLayout.text.length))
+    scroll.scrollTo((textLayout.getLineTop(line) + contentTopPx).roundToInt())
 }
 
 private fun markdownSample(

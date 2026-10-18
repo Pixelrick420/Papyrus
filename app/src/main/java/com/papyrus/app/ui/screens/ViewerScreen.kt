@@ -79,7 +79,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.papyrus.app.R
 import com.papyrus.app.data.DocumentFormat
+import com.papyrus.app.data.LocationKind
 import com.papyrus.app.data.OpenPersistableDocument
+import com.papyrus.app.data.ReadingLocation
 import com.papyrus.app.ui.AppViewModelProvider
 import com.papyrus.app.ui.asString
 import com.papyrus.app.ui.components.ControlHeight
@@ -90,10 +92,8 @@ import com.papyrus.app.ui.viewer.GoToDialog
 import com.papyrus.app.ui.viewer.LocalLinkOpener
 import com.papyrus.app.ui.viewer.MarkdownViewer
 import com.papyrus.app.ui.viewer.OfficeViewer
-import com.papyrus.app.ui.viewer.OutlineJump
 import com.papyrus.app.ui.viewer.OutlineSheet
 import com.papyrus.app.ui.viewer.PasswordDialog
-import com.papyrus.app.ui.viewer.PdfPageJump
 import com.papyrus.app.ui.viewer.PdfSelectionState
 import com.papyrus.app.ui.viewer.PdfViewer
 import com.papyrus.app.ui.viewer.PlainTextOptions
@@ -102,6 +102,7 @@ import com.papyrus.app.ui.viewer.PositionHooks
 import com.papyrus.app.ui.viewer.REST_SCALE
 import com.papyrus.app.ui.viewer.ReadoutBadge
 import com.papyrus.app.ui.viewer.TtsControls
+import com.papyrus.app.ui.viewer.ViewerJump
 import com.papyrus.app.ui.viewer.ZoomState
 import com.papyrus.app.ui.viewer.copyToClipboard
 import com.papyrus.app.ui.viewer.openLink
@@ -133,7 +134,12 @@ fun ViewerScreen(
     val zoom = rememberZoomState(initialScale = remember { viewModel.restoreTarget()?.zoom ?: REST_SCALE })
     // Re-read when a (re)load hands over a new request, not on every position change; the viewers apply it once.
     val restore = remember(state.restore) { viewModel.restoreTarget() }
-    val position = remember(restore, viewModel) { PositionHooks(restore, viewModel::onRestored, viewModel::onPosition) }
+    // The one scroll request of every format (links, outline, go to page): a new object is a new jump.
+    // Keyed on the content so a reload or an encoding change never replays the last one.
+    var jump by remember(state.content) { mutableStateOf<ViewerJump?>(null) }
+    val position = remember(restore, viewModel, jump) {
+        PositionHooks(restore, viewModel::onRestored, viewModel::onPosition, jump)
+    }
     // The document may arrive after this screen is composed; its zoom is set before its content shows.
     LaunchedEffect(restore) {
         restore?.zoom?.let { if (it != zoom.committedScale) zoom.set(it) }
@@ -153,13 +159,12 @@ fun ViewerScreen(
             if (!openLink(context, url)) Toast.makeText(context, R.string.viewer_link_failed, Toast.LENGTH_SHORT).show()
         }
     }
-    // A link to another page of the PDF, by identity: two taps on the same link are two jumps.
-    var pageJump by remember { mutableStateOf<PdfPageJump?>(null) }
+    // A link to another page of the PDF only reveals it: nothing moves if it is already on screen.
     val followPdfLink: (PdfLinkTarget) -> Unit = remember(context) {
         { target ->
             when (target) {
                 is PdfLinkTarget.External -> followLink(target.url)
-                is PdfLinkTarget.Internal -> pageJump = PdfPageJump(target.page)
+                is PdfLinkTarget.Internal -> jump = ViewerJump(ReadingLocation(LocationKind.PAGE, target.page), revealOnly = true)
             }
         }
     }
@@ -169,8 +174,6 @@ fun ViewerScreen(
     var encodingOpen by remember { mutableStateOf(false) }
     var outlineOpen by remember { mutableStateOf(false) }
     var goToOpen by remember { mutableStateOf(false) }
-    // The heading the outline last chose; the Office viewer scrolls to it.
-    var outlineJump by remember { mutableStateOf<OutlineJump?>(null) }
 
     // Only a document with an outline has the menu item: an Office document that used heading styles, or a
     // PDF whose bookmarks have been read (off the main thread, so they arrive after the first page).
@@ -359,7 +362,6 @@ fun ViewerScreen(
                             pageMatches = find.pageMatches,
                             activePage = find.activeIndex,
                             activeOccurrence = find.activeOccurrence,
-                            pageJump = pageJump,
                             loadLinks = viewModel::pageLinks,
                             onLinkTarget = followPdfLink,
                             position = position,
@@ -406,7 +408,6 @@ fun ViewerScreen(
                             activeHit = find.activeIndex,
                             activeOccurrence = find.activeOccurrence,
                             zoom = zoom,
-                            jumpTo = outlineJump,
                             position = position,
                             ttsBlock = tts.anchor.takeIf { ttsActive && it >= 0 },
                         )
@@ -485,8 +486,10 @@ fun ViewerScreen(
             entries = outline,
             collapsible = isPdf,
             onSelect = { entry ->
-                // The one jump mechanism of each viewer: a PDF scrolls to the page, an Office document to the block.
-                if (isPdf) pageJump = PdfPageJump(entry.index, toTop = true) else outlineJump = OutlineJump(entry.index)
+                // An outline entry is a page of a PDF and a block of an Office document: the same jump, in the
+                // location kind of the format.
+                val kind = if (isPdf) LocationKind.PAGE else LocationKind.BLOCK
+                jump = ViewerJump(ReadingLocation(kind, entry.index))
                 outlineOpen = false
             },
             onDismiss = { outlineOpen = false },
@@ -501,7 +504,7 @@ fun ViewerScreen(
             max = pageCount,
             onGo = { page ->
                 // The reader counts from 1; the viewer from 0.
-                pageJump = PdfPageJump(page - 1, toTop = true)
+                jump = ViewerJump(ReadingLocation(LocationKind.PAGE, page - 1))
                 goToOpen = false
             },
             onDismiss = { goToOpen = false },

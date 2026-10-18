@@ -617,7 +617,6 @@ fun OfficeViewer(
     activeOccurrence: Int?,
     zoom: ZoomState,
     modifier: Modifier = Modifier,
-    jumpTo: OutlineJump? = null,
     position: PositionHooks = PositionHooks.None,
     ttsBlock: Int? = null,
 ) {
@@ -651,12 +650,6 @@ fun OfficeViewer(
         unitOfBlock = units::splitAcrossBands,
         blockOfUnit = units::joinBands,
     )
-
-    // The outline names a heading by its block index, so the jump lands on the block's first unit.
-    LaunchedEffect(jumpTo) {
-        val target = jumpTo?.index ?: return@LaunchedEffect
-        if (target in blocks.indices) listState.scrollToItem(units.firstUnitOfBlock[target])
-    }
 
     // Follow-along: the block being read is revealed the same way, unless it is already on screen.
     LaunchedEffect(ttsBlock) {
