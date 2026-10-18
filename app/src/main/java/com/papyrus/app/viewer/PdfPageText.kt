@@ -31,31 +31,45 @@ class PdfPageText(
         return needle.isNotEmpty() && text.contains(needle, ignoreCase = true)
     }
 
-    /** Match count, including ones whose boxes were dropped; non-overlapping like [matchGroups]. */
-    fun countMatches(query: String): Int {
+    /** A page's answer to one query: every match counted, and the leading ones drawable. */
+    data class PageMatches(val count: Int, val groups: List<List<NormRect>>)
+
+    /**
+     * One scan for both the count and the rectangles: [count] includes matches past [limit] and
+     * ones whose boxes were dropped; [groups] holds one entry per match in order (empty when a
+     * match has no drawable glyph) until [limit] rectangles exist.
+     */
+    fun matches(query: String, limit: Int = MAX_RECTS_PER_PAGE): PageMatches {
         val needle = normalizeQuery(query)
-        if (needle.isEmpty()) return 0
-        return matchStarts(needle).count()
+        if (needle.isEmpty()) return PageMatches(0, emptyList())
+        val groups = if (boxes.isEmpty() || limit <= 0) null else ArrayList<List<NormRect>>()
+        var collected = 0
+        var count = 0
+        var from = 0
+        while (true) {
+            val at = text.indexOf(needle, from, ignoreCase = true)
+            if (at < 0) break
+            count++
+            if (groups != null && collected < limit) {
+                val rects = ArrayList<NormRect>()
+                appendLineRects(at, at + needle.length, rects, limit - collected)
+                groups += rects
+                collected += rects.size
+            }
+            from = at + needle.length
+        }
+        return PageMatches(count, groups ?: emptyList())
     }
+
+    /** Match count, including ones whose boxes were dropped; non-overlapping like [matches]. */
+    fun countMatches(query: String): Int = matches(query, limit = 0).count
 
     /**
      * One entry per match in order, each holding that match's rectangles (one per line it covers);
      * a match with no drawable glyph keeps an empty entry. Stops once [limit] rectangles exist.
      */
-    fun matchGroups(query: String, limit: Int = MAX_RECTS_PER_PAGE): List<List<NormRect>> {
-        val needle = normalizeQuery(query)
-        if (needle.isEmpty() || boxes.isEmpty()) return emptyList()
-        val groups = ArrayList<List<NormRect>>()
-        var collected = 0
-        for (at in matchStarts(needle)) {
-            if (collected >= limit) break
-            val rects = ArrayList<NormRect>()
-            appendLineRects(at, at + needle.length, rects, limit - collected)
-            groups += rects
-            collected += rects.size
-        }
-        return groups
-    }
+    fun matchGroups(query: String, limit: Int = MAX_RECTS_PER_PAGE): List<List<NormRect>> =
+        matches(query, limit).groups
 
     /** True when glyph boxes were kept. A page past the extractor's budget holds text without them. */
     val hasBoxes: Boolean get() = boxes.isNotEmpty()
@@ -125,17 +139,6 @@ class PdfPageText(
         val out = StringBuilder(to - from)
         for (i in from until to) out.append(if (lineBreaks[i]) '\n' else text[i])
         return out.toString()
-    }
-
-    /** Start of each non-overlapping match: the next search resumes after the whole match. */
-    private fun matchStarts(needle: String): Sequence<Int> = sequence {
-        var from = 0
-        while (true) {
-            val at = text.indexOf(needle, from, ignoreCase = true)
-            if (at < 0) return@sequence
-            yield(at)
-            from = at + needle.length
-        }
     }
 
     private fun appendLineRects(start: Int, end: Int, out: MutableList<NormRect>, limit: Int) {

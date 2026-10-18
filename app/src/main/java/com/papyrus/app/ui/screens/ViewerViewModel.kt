@@ -38,7 +38,6 @@ import com.papyrus.app.viewer.PdfPageText
 import com.papyrus.app.viewer.PdfPageLink
 import com.papyrus.app.viewer.PdfPageTextSource
 import com.papyrus.app.viewer.PdfPasswordException
-import com.papyrus.app.viewer.PdfTextExtractor
 import com.papyrus.app.viewer.PrettyPrint
 import com.papyrus.app.viewer.PrettyKind
 import com.papyrus.app.viewer.SyntaxHighlighter
@@ -53,8 +52,6 @@ import com.papyrus.app.ui.viewer.clampScale
 import com.papyrus.app.ui.viewer.countOccurrences
 import com.papyrus.app.ui.viewer.findBlockHits
 import com.papyrus.app.ui.viewer.findChunkHits
-import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
-import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.encryption.InvalidPasswordException
 import io.noties.markwon.Markwon
 import io.noties.markwon.ext.strikethrough.StrikethroughPlugin
@@ -208,6 +205,9 @@ class ViewerViewModel(
     /** Extracted once on first search, reused for every keystroke. */
     private var pdfPageText: List<PdfPageText>? = null
 
+    /** The over-budget file is mentioned once per find session, not once per keystroke. */
+    private var findBudgetWarned = false
+
     /** Cancelled per query; racing searches would let the older overwrite the newer. */
     private var findJob: Job? = null
 
@@ -267,6 +267,7 @@ class ViewerViewModel(
         // A re-load (after a re-grant) points at a new URI, so every URI-keyed cache from the
         // previous load is stale: drop the extracted find text and the decrypted copy.
         pdfPageText = null
+        findBudgetWarned = false
         pageTextSource?.close()
         pageTextSource = null
         pageTextSourceUri = null
@@ -642,6 +643,7 @@ class ViewerViewModel(
     }
 
     fun openFind() {
+        findBudgetWarned = false
         _state.update { it.copy(find = it.find.copy(open = true)) }
     }
 
@@ -700,34 +702,38 @@ class ViewerViewModel(
 
     /** A page repeats in hits per match; budget-exceeding pages still count, scans have no text. */
     private suspend fun findPdfPages(query: String): FindResult {
+        if (overFindBudget()) return FindResult()
         val pages = pdfPageText ?: extractPageText().also { pdfPageText = it }
         val hits = ArrayList<Int>()
         val pageMatches = HashMap<Int, List<List<NormRect>>>()
         pages.forEachIndexed { index, page ->
-            val count = page.countMatches(query)
-            if (count == 0) return@forEachIndexed
-            repeat(count) { hits += index }
-            val groups = page.matchGroups(query)
-            if (groups.any { it.isNotEmpty() }) pageMatches[index] = groups
+            val found = page.matches(query)
+            if (found.count == 0) return@forEachIndexed
+            repeat(found.count) { hits += index }
+            if (found.groups.any { it.isNotEmpty() }) pageMatches[index] = found.groups
         }
         return FindResult(hits = hits, pageMatches = pageMatches)
     }
 
-    /** Rethrows CancellationException; catching it caches empty text and breaks find. */
-    private fun extractPageText(): List<PdfPageText> {
-        PDFBoxResourceLoader.init(app)
-        val input = app.contentResolver.openInputStream(contentUri.toUri())
-            ?: return emptyList()
-        return try {
-            input.use { stream ->
-                PDDocument.load(stream).use { document -> PdfTextExtractor.extract(document) }
-            }
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            emptyList()
+    /**
+     * Past the budget find reports no matches and says why, once per find session: parsing the
+     * whole file again to gather them risks the heap, the same tradeoff the outline reader makes.
+     */
+    private fun overFindBudget(): Boolean {
+        if ((_state.value.document?.sizeBytes ?: 0L) <= MAX_PDF_FIND_BYTES) return false
+        if (!findBudgetWarned) {
+            findBudgetWarned = true
+            _messages.value = UiText(R.string.viewer_find_too_large)
         }
+        return true
     }
+
+    /**
+     * Every page's text on the one document [pageText] and [pageLinks] already share, so a second
+     * parse of the same file never sits on the heap beside the first. Empty when the file is
+     * unreadable. Rethrows CancellationException; catching it caches empty text and breaks find.
+     */
+    private suspend fun extractPageText(): List<PdfPageText> = pageSource()?.allPages() ?: emptyList()
 
     /** One page of text plus boxes; a search read is reused unless it was past the box budget. */
     suspend fun pageText(index: Int): PdfPageText? {
@@ -816,6 +822,9 @@ class ViewerViewModel(
         const val FIND_DEBOUNCE_MILLIS = 200L
         const val KEY_ENCODING = "encoding"
         const val NANOS_PER_MILLI = 1_000_000L
+
+        /** Past this the whole file is not parsed again just to gather find matches. */
+        const val MAX_PDF_FIND_BYTES = 64L * 1024 * 1024
 
         /** Past this a PDF is not opened a second time just to read its bookmarks. */
         const val MAX_OUTLINE_FILE_BYTES = 64L * 1024 * 1024

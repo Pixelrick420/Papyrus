@@ -43,13 +43,14 @@ data class ScrollGeometry(val offset: Float, val viewport: Float, val content: F
 
 /**
  * Height records persist per index so a visible-only mean cannot shift (and teleport the thumb)
- * as items enter; a size mismatch means zoom or reflow, so every record is retaken.
+ * as items enter; a size mismatch means zoom or reflow, so every record is retaken. The offset
+ * reads prefix sums, never a walk over every index below the first visible one.
  */
 @Composable
 fun rememberLazyScrollGeometry(state: LazyListState): State<ScrollGeometry> {
     val geometry = remember { mutableStateOf(ScrollGeometry(0f, 0f, 0f)) }
     LaunchedEffect(state) {
-        val measured = mutableMapOf<Int, Int>()
+        val measured = MeasuredHeights()
         snapshotFlow {
             val info = state.layoutInfo
             val viewport = info.viewportSize.height.toFloat()
@@ -57,12 +58,13 @@ fun rememberLazyScrollGeometry(state: LazyListState): State<ScrollGeometry> {
             if (visible.any { item -> measured[item.index]?.let { abs(it - item.size) > 1 } == true }) {
                 measured.clear()
             }
-            visible.forEach { measured[it.index] = it.size }
-            val knownSum = measured.values.sum()
-            val average = if (measured.isEmpty()) viewport else knownSum.toFloat() / measured.size
-            var offset = 0f
-            for (i in 0 until state.firstVisibleItemIndex) offset += measured[i]?.toFloat() ?: average
-            offset += state.firstVisibleItemScrollOffset
+            visible.forEach { measured.record(it.index, it.size) }
+            val knownSum = measured.total
+            val average = if (measured.size == 0) viewport else knownSum.toFloat() / measured.size
+            val first = state.firstVisibleItemIndex
+            // Unmeasured indices below the first visible one take the average, as the walk did.
+            val offset = measured.sumBelow(first) + average * (first - measured.countBelow(first)) +
+                state.firstVisibleItemScrollOffset
             ScrollGeometry(
                 offset = offset,
                 viewport = viewport,
@@ -72,6 +74,88 @@ fun rememberLazyScrollGeometry(state: LazyListState): State<ScrollGeometry> {
         }.collect { geometry.value = it }
     }
     return geometry
+}
+
+/**
+ * Measured item heights with running prefix sums, so an offset to any index is a logarithmic
+ * query instead of a per-frame walk over everything measured so far. Arrays grow by doubling
+ * (a rebuild, not a per-frame allocation) and keep their capacity across a reflow [clear].
+ */
+private class MeasuredHeights {
+    private val heights = mutableMapOf<Int, Int>()
+    private var sums = IntArray(INITIAL_CAPACITY)
+    private var counts = IntArray(INITIAL_CAPACITY)
+
+    /** Measured heights summed, and how many indices hold one. */
+    var total = 0
+        private set
+
+    val size: Int get() = heights.size
+
+    operator fun get(index: Int): Int? = heights[index]
+
+    fun clear() {
+        heights.clear()
+        sums.fill(0)
+        counts.fill(0)
+        total = 0
+    }
+
+    /** One measurement; an unchanged value costs no tree walk, a re-measured one is a delta. */
+    fun record(index: Int, height: Int) {
+        val previous = heights.put(index, height)
+        val delta = height - (previous ?: 0)
+        if (previous != null && delta == 0) return
+        total += delta
+        if (index + 2 > sums.size) {
+            growTo(index)
+            return // the rebuild folded in this very value
+        }
+        var i = index + 1
+        while (i < sums.size) {
+            sums[i] += delta
+            if (previous == null) counts[i] += 1
+            i += i and -i
+        }
+    }
+
+    /** Recorded height of every index below [index]; holes are the caller's average. */
+    fun sumBelow(index: Int): Int = walkBelow(index, sums)
+
+    /** How many indices below [index] hold a measurement. */
+    fun countBelow(index: Int): Int = walkBelow(index, counts)
+
+    private fun walkBelow(index: Int, tree: IntArray): Int {
+        var i = minOf(index, tree.size - 1)
+        var sum = 0
+        while (i > 0) {
+            sum += tree[i]
+            i -= i and -i
+        }
+        return sum
+    }
+
+    /** Doubles until [index] fits, re-adding every record into the fresh trees. */
+    private fun growTo(index: Int) {
+        var capacity = sums.size
+        while (capacity < index + 2) capacity *= 2
+        val newSums = IntArray(capacity)
+        val newCounts = IntArray(capacity)
+        for ((at, height) in heights) {
+            var i = at + 1
+            while (i < capacity) {
+                newSums[i] += height
+                newCounts[i] += 1
+                i += i and -i
+            }
+        }
+        sums = newSums
+        counts = newCounts
+    }
+
+    private companion object {
+        const val INITIAL_CAPACITY = 16
+    }
 }
 
 /** Geometry for a plain [ScrollState] (Markdown), which knows its content height exactly. */

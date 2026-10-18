@@ -86,6 +86,7 @@ access</string>
     <string name="viewer_find_none">No matches</string>
     <string name="viewer_find_counter">%1$d of %2$d</string>
     <string name="viewer_find_total">%1$d</string>
+    <string name="viewer_find_too_large">This file is too large to search.</string>
 
     <string name="viewer_regrant_message">Access to this file was lost. Pick it again to restore it.</string>
     <string name="viewer_regrant_action">Pick file</string>

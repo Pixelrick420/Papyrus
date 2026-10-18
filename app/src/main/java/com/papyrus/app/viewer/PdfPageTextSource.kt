@@ -73,6 +73,20 @@ class PdfPageTextSource(
         return PdfOutlineReader.read(open)
     }
 
+    /**
+     * Every page's text in order, or null if the document cannot be read — one whole-document pass on
+     * the already-open document, so find-in-file shares this parse instead of opening a second copy
+     * of the file. Not cached here; the caller holds the list as long as its search needs it, and
+     * the extractor's document-wide box budget still bounds what a huge file may keep.
+     */
+    suspend fun allPages(): List<PdfPageText>? = lock.withLock {
+        if (closed) null
+        else withContext(Dispatchers.IO) {
+            val open = document ?: open()
+            open?.let { PdfTextExtractor.extract(it) }
+        }
+    }
+
     /** A document that failed to load is not retried: loading is the expensive part, and it would fail the same way. */
     private fun open(): PDDocument? {
         if (unreadable) return null
