@@ -176,9 +176,9 @@ fun ViewerScreen(
     val officeEntries = remember(officeBlocks) { officeBlocks?.let { officeOutline(it) }.orEmpty() }
     val isPdf = state.content is ViewerContent.Pdf
     val outline = if (isPdf) state.pdfOutline else officeEntries
-    // Go to page needs pages; the menu item and Ctrl+G both ask this.
+    // Go to page needs enough pages to be worth numbering; the menu item and Ctrl+G both ask this.
     val pageCount = (state.content as? ViewerContent.Pdf)?.source?.pageCount ?: 0
-    val goToAvailable = pageCount > 0
+    val goToAvailable = pageCount >= MIN_GO_TO_PAGES
 
     // Held here (not in [PdfViewer]) so the header's Copy can reach it; keyed on the source.
     val selectionState = remember((state.content as? ViewerContent.Pdf)?.source) {
@@ -476,6 +476,9 @@ fun ViewerScreen(
 
 private const val FIND_ANIMATION_MS = 200
 
+/** Below this many pages the page list is short enough to scroll, so Go to page stays out of the menu. */
+private const val MIN_GO_TO_PAGES = 6
+
 /** Flat title row like Home's; a selection swaps the overflow menu for Copy and dismiss. */
 @Composable
 private fun ViewerHeader(
@@ -571,7 +574,7 @@ private fun ViewerHeader(
                             onClick = { onMenuOpenChange(false); onOutline() },
                         )
                     }
-                    // Only for a document with pages to number: a PDF.
+                    // Only for a PDF long enough to number: [MIN_GO_TO_PAGES] or more.
                     if (goToAvailable) {
                         DropdownMenuItem(
                             text = { Text(stringResource(R.string.viewer_goto_page_title)) },
