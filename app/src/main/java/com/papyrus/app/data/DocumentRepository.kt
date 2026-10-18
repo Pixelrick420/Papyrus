@@ -9,6 +9,7 @@ import com.papyrus.app.viewer.PdfEncryption
 import com.papyrus.app.viewer.TextSniffer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileNotFoundException
@@ -19,6 +20,7 @@ class DocumentRepository(
     private val context: Context,
     private val dao: DocumentDao,
     private val progressDao: ReadingProgressDao,
+    private val bookmarkDao: BookmarkDao,
     private val settings: SettingsRepository,
 ) {
     private val resolver get() = context.contentResolver
@@ -62,6 +64,36 @@ class DocumentRepository(
                 updatedAt = System.currentTimeMillis(),
             )
         }
+    }
+
+    /**
+     * The bookmarks of library document [id], live; nothing for a transient document, which has no
+     * row to hang them from. Scoped to the one document, so another document's changes never re-emit it.
+     */
+    fun observeBookmarks(id: Long): Flow<List<BookmarkEntity>> =
+        if (id <= 0) flowOf(emptyList()) else bookmarkDao.observe(id)
+
+    /** Adds a bookmark at [location]; see [BookmarkDao.addIfAllowed] for when it refuses. */
+    suspend fun addBookmark(id: Long, location: ReadingLocation, label: String): BookmarkAdd {
+        if (id <= 0) return BookmarkAdd.NotInLibrary
+        return withContext(Dispatchers.IO) { bookmarkDao.addIfAllowed(id, location, label, System.currentTimeMillis(), MAX_BOOKMARKS_PER_DOCUMENT) }
+    }
+
+    suspend fun renameBookmark(id: Long, label: String) = withContext(Dispatchers.IO) { bookmarkDao.rename(id, label) }
+
+    suspend fun deleteBookmark(id: Long) = withContext(Dispatchers.IO) { bookmarkDao.delete(id) }
+
+    /** Undo for a delete: the same row, id and creation time included, so the list returns to what it was. */
+    suspend fun restoreBookmark(bookmark: BookmarkEntity) = withContext(Dispatchers.IO) {
+        bookmarkDao.restore(
+            id = bookmark.id,
+            documentId = bookmark.documentId,
+            locationKind = bookmark.locationKind,
+            locationUnit = bookmark.locationUnit,
+            locationFraction = bookmark.locationFraction,
+            label = bookmark.label,
+            createdAt = bookmark.createdAt,
+        )
     }
 
     private fun handOver(entity: DocumentEntity): Long {
