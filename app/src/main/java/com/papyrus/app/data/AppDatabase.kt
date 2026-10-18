@@ -20,6 +20,8 @@ abstract class AppDatabase : RoomDatabase() {
 
     abstract fun readingProgressDao(): ReadingProgressDao
 
+    abstract fun bookmarkDao(): BookmarkDao
+
     companion object {
         private const val DB_NAME = "papyrus.db"
 
