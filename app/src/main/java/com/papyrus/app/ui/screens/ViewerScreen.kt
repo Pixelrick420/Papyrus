@@ -38,7 +38,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -85,6 +87,7 @@ import com.papyrus.app.data.ReadingLocation
 import com.papyrus.app.ui.AppViewModelProvider
 import com.papyrus.app.ui.asString
 import com.papyrus.app.ui.components.ControlHeight
+import com.papyrus.app.ui.viewer.BookmarksSheet
 import com.papyrus.app.ui.viewer.EncodingDialog
 import com.papyrus.app.ui.viewer.FileInfoSheet
 import com.papyrus.app.ui.viewer.FindInFileBar
@@ -127,6 +130,7 @@ fun ViewerScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val message by viewModel.messages.collectAsStateWithLifecycle()
+    val bookmarks by viewModel.bookmarks.collectAsStateWithLifecycle()
     val tts by viewModel.tts.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
@@ -174,6 +178,7 @@ fun ViewerScreen(
     var encodingOpen by remember { mutableStateOf(false) }
     var outlineOpen by remember { mutableStateOf(false) }
     var goToOpen by remember { mutableStateOf(false) }
+    var bookmarksOpen by remember { mutableStateOf(false) }
 
     // Only a document with an outline has the menu item: an Office document that used heading styles, or a
     // PDF whose bookmarks have been read (off the main thread, so they arrive after the first page).
@@ -204,6 +209,10 @@ fun ViewerScreen(
         is ViewerContent.Pdf, is ViewerContent.PlainText, is ViewerContent.Office, is ViewerContent.Markdown -> true
         else -> false
     }
+    // A bookmark needs a place on screen (the same surfaces as find) and a library row to hang from, which a
+    // handed-over document lacks until it is saved. Ctrl+D and the menu both ask this.
+    val bookmarkableContent = findAvailable
+    val bookmarksAvailable = bookmarkableContent && state.bookmarksAvailable
 
     // Read aloud is offered whenever find is (the same speakable formats), and the bar shows only
     // while *this* document is the one being read. An engine failure counts, so the reason stays on
@@ -241,6 +250,33 @@ fun ViewerScreen(
         }
     }
 
+    // An added bookmark offers Undo; anything else a bookmark action has to say is a plain message. Each is
+    // shown from its own coroutine so one waiting out its time never holds up the next event.
+    val bookmarkScope = rememberCoroutineScope()
+    val bookmarkAddedText = stringResource(R.string.bookmark_added)
+    val undoText = stringResource(R.string.action_undo)
+    LaunchedEffect(viewModel) {
+        viewModel.bookmarkEvents.collect { event ->
+            bookmarkScope.launch {
+                when (event) {
+                    is BookmarkEvent.Added -> {
+                        snackbar.currentSnackbarData?.dismiss()
+                        val result = snackbar.showSnackbar(
+                            message = bookmarkAddedText,
+                            actionLabel = undoText,
+                            duration = SnackbarDuration.Long,
+                        )
+                        if (result == SnackbarResult.ActionPerformed) viewModel.undoAddBookmark(event.bookmark)
+                    }
+                    is BookmarkEvent.Notice -> {
+                        snackbar.currentSnackbarData?.dismiss()
+                        snackbar.showSnackbar(event.text.asString(context))
+                    }
+                }
+            }
+        }
+    }
+
     Scaffold(snackbarHost = { SnackbarHost(snackbar) }) { padding ->
         // In landscape, stepping through matches hides a docked keyboard so the whole page shows.
         // A floating keyboard reports no inset, so this stays false and it is left open.
@@ -266,6 +302,9 @@ fun ViewerScreen(
                     } else if (event.key == Key.G && event.isCtrlPressed && goToAvailable) {
                         goToOpen = true
                         true
+                    } else if (event.key == Key.D && event.isCtrlPressed && bookmarksAvailable) {
+                        viewModel.addBookmark()
+                        true
                     } else {
                         false
                     }
@@ -276,6 +315,8 @@ fun ViewerScreen(
                 findAvailable = findAvailable,
                 outlineAvailable = outline.isNotEmpty(),
                 goToAvailable = goToAvailable,
+                bookmarkableContent = bookmarkableContent,
+                bookmarksAvailable = bookmarksAvailable,
                 encodingAvailable = encodingAvailable,
                 menuOpen = menuOpen,
                 selectionActive = selectionState.hasSelection,
@@ -290,6 +331,8 @@ fun ViewerScreen(
                 onFind = viewModel::openFind,
                 onOutline = { outlineOpen = true },
                 onGoTo = { goToOpen = true },
+                onAddBookmark = viewModel::addBookmark,
+                onBookmarks = { bookmarksOpen = true },
                 onEncoding = { encodingOpen = true },
                 onInfo = { infoOpen = true },
                 onShare = shareDocument,
@@ -510,6 +553,22 @@ fun ViewerScreen(
             onDismiss = { goToOpen = false },
         )
     }
+
+    if (bookmarksOpen && bookmarksAvailable) {
+        BookmarksSheet(
+            bookmarks = bookmarks,
+            unitCount = state.content.unitCount(),
+            onJump = { bookmark ->
+                // The same jump as the outline's; a bookmark whose place has gone is clamped by the viewer.
+                jump = ViewerJump(bookmark.location)
+                bookmarksOpen = false
+            },
+            onRename = viewModel::renameBookmark,
+            onDelete = viewModel::deleteBookmark,
+            onUndoDelete = viewModel::restoreBookmark,
+            onDismiss = { bookmarksOpen = false },
+        )
+    }
 }
 
 private const val FIND_ANIMATION_MS = 200
@@ -524,6 +583,8 @@ private fun ViewerHeader(
     findAvailable: Boolean,
     outlineAvailable: Boolean,
     goToAvailable: Boolean,
+    bookmarkableContent: Boolean,
+    bookmarksAvailable: Boolean,
     encodingAvailable: Boolean,
     menuOpen: Boolean,
     selectionActive: Boolean,
@@ -538,6 +599,8 @@ private fun ViewerHeader(
     onFind: () -> Unit,
     onOutline: () -> Unit,
     onGoTo: () -> Unit,
+    onAddBookmark: () -> Unit,
+    onBookmarks: () -> Unit,
     onEncoding: () -> Unit,
     onInfo: () -> Unit,
     onShare: () -> Unit,
@@ -633,6 +696,25 @@ private fun ViewerHeader(
                             text = { Text(stringResource(R.string.viewer_goto_page_title)) },
                             onClick = { onMenuOpenChange(false); onGoTo() },
                         )
+                    }
+                    if (bookmarkableContent) {
+                        if (bookmarksAvailable) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.bookmark_add)) },
+                                onClick = { onMenuOpenChange(false); onAddBookmark() },
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.bookmarks_title)) },
+                                onClick = { onMenuOpenChange(false); onBookmarks() },
+                            )
+                        } else {
+                            // A handed-over document has no library row to hang a bookmark from: say so, do not hide it.
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.bookmarks_unavailable)) },
+                                enabled = false,
+                                onClick = {},
+                            )
+                        }
                     }
                     DropdownMenuItem(
                         text = { Text(stringResource(R.string.viewer_info_title)) },

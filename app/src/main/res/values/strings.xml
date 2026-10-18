@@ -10,6 +10,7 @@
     <string name="action_remove">Remove</string>
     <string name="action_undo">Undo</string>
     <string name="action_cancel">Cancel</string>
+    <string name="action_save">Save</string>
     <string name="home_selected_count">%1$d selected</string>
     <string name="home_removed_count">Removed %1$d files</string>
     <string name="home_remove_confirm_title">Remove from list?</string>
@@ -78,6 +79,26 @@ access</string>
     <string name="viewer_save_done">Saved to your library</string>
     <string name="viewer_save_failed">Couldn\'t save this document.</string>
     <string name="viewer_pretty_failed">Couldn\'t format this file; showing it as stored.</string>
+
+    <string name="bookmark_add">Add bookmark</string>
+    <string name="bookmarks_title">Bookmarks</string>
+    <string name="bookmarks_unavailable">Save to your library to add bookmarks</string>
+    <string name="bookmark_added">Bookmark added</string>
+    <string name="bookmark_exists">Already bookmarked</string>
+    <string name="bookmark_limit">Bookmark limit reached (%1$d). Delete one to add another.</string>
+    <string name="bookmark_failed">Couldn\'t add that bookmark</string>
+    <string name="bookmark_deleted">Bookmark deleted</string>
+    <string name="bookmark_jump">Go to bookmark</string>
+    <string name="bookmark_summary_page">Page %1$d</string>
+    <string name="bookmark_summary_line">Line %1$d</string>
+    <string name="bookmark_summary_percent">%1$d%%</string>
+    <string name="bookmark_row_detail">%1$s · %2$s</string>
+    <string name="bookmark_rename_cd">Rename bookmark %1$s</string>
+    <string name="bookmark_delete_cd">Delete bookmark %1$s</string>
+    <string name="bookmark_rename_title">Rename bookmark</string>
+    <string name="bookmark_rename_label">Name</string>
+    <string name="bookmarks_empty_title">No bookmarks yet</string>
+    <string name="bookmarks_empty_hint">Choose Add bookmark in the menu to mark where you are. Bookmarks keep only the place, never the text.</string>
 
     <string name="viewer_find_hint">Find</string>
     <string name="viewer_find_close">Close find</string>
