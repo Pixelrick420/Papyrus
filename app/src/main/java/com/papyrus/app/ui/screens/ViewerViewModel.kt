@@ -23,6 +23,7 @@ import com.papyrus.app.viewer.CodeLanguage
 import com.papyrus.app.viewer.CodeLanguages
 import com.papyrus.app.viewer.DocTextExtractor
 import com.papyrus.app.viewer.DocumentPasswordException
+import com.papyrus.app.viewer.OutlineEntry
 import com.papyrus.app.viewer.StatisticalCharsetGuesser
 import com.papyrus.app.viewer.LexStates
 import com.papyrus.app.viewer.OfficeBlock
@@ -173,6 +174,8 @@ data class ViewerUiState(
     /** Where the viewer should open, from the stored reading position; null when nothing is stored.
      * Set with the document and before its content, so the first layout places it without flashing the top. */
     val restore: RestoreRequest? = null,
+    /** A PDF's bookmarks, once read; empty until then and for a document without any. */
+    val pdfOutline: List<OutlineEntry> = emptyList(),
 )
 
 class ViewerViewModel(
@@ -270,11 +273,32 @@ class ViewerViewModel(
         repository.markOpened(doc.id)
         val content = loadContentSafely(doc)
         _state.update { it.copy(content = content) }
+        loadPdfOutline()
         autosaveIfEnabled()
     }
 
-    /** Where to open [doc]: the position last shown if it has been open (a re-grant reload rebuilds at
-     * the top), otherwise the stored one. Nothing when the setting is off. */
+    /**
+     * Reads the bookmarks of a PDF that has just loaded. Launched after its first page is already
+     * showing, off the main thread, so a large outline never delays the page. The menu offers Outline
+     * only once this lands with something in it.
+     */
+    private fun loadPdfOutline() {
+        val shown = (_state.value.content as? ViewerContent.Pdf)?.source ?: return
+        // PdfBox parses the whole file into memory, and until the viewer shares one document it would be a
+        // second copy next to the renderer's: a very large file gets no outline rather than risk the heap.
+        if ((_state.value.document?.sizeBytes ?: 0L) > MAX_OUTLINE_FILE_BYTES) return
+        val source = pageSource() ?: return
+        viewModelScope.launch {
+            val entries = source.outline()?.takeIf { it.isNotEmpty() } ?: return@launch
+            // A re-grant may have replaced the document while this was reading: publish only for the one it was read for.
+            _state.update { if ((it.content as? ViewerContent.Pdf)?.source === shown) it.copy(pdfOutline = entries) else it }
+        }
+    }
+
+    /**
+     * Where to open [doc]: the position last shown if it has been open (a re-grant reload rebuilds at
+     * the top), otherwise the stored one. Nothing when the setting is off.
+     */
     private suspend fun restoreFor(doc: DocumentEntity): RestoreRequest? {
         if (!app.settings.current.rememberPosition) return null
         tracker.latest?.let { return RestoreRequest(it.location, clampScale(it.zoom)) }
@@ -542,6 +566,7 @@ class ViewerViewModel(
                 ViewerContent.Failed(UiText(R.string.viewer_error_generic, e.localizedMessage ?: e.javaClass.simpleName))
             }
             _state.update { it.copy(content = content) }
+            loadPdfOutline()
             autosaveIfEnabled()
         }
     }
@@ -745,5 +770,8 @@ class ViewerViewModel(
         const val FIND_DEBOUNCE_MILLIS = 200L
         const val KEY_ENCODING = "encoding"
         const val NANOS_PER_MILLI = 1_000_000L
+
+        /** Past this a PDF is not opened a second time just to read its bookmarks. */
+        const val MAX_OUTLINE_FILE_BYTES = 64L * 1024 * 1024
     }
 }
