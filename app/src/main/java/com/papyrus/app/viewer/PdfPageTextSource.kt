@@ -24,6 +24,7 @@ class PdfPageTextSource(
     private val lock = Mutex()
     private val pages = HashMap<Int, PdfPageText>()
     private val linkPages = HashMap<Int, List<PdfPageLink>>()
+    private var outlineCache: List<OutlineEntry>? = null
     private var document: PDDocument? = null
     private var unreadable = false
     private var closed = false
@@ -56,7 +57,23 @@ class PdfPageTextSource(
         return PdfLinkExtractor.extract(open, index)
     }
 
-    /** Loading is expensive, so a failed document is not retried — it would fail the same way. */
+    /**
+     * The document's bookmarks, or null if it cannot be read. Read once, on the same open document and
+     * under the same lock as the pages, off the main thread, so it never delays the first page.
+     */
+    suspend fun outline(): List<OutlineEntry>? = lock.withLock {
+        if (closed) return@withLock null
+        outlineCache?.let { return@withLock it }
+        withContext(Dispatchers.IO) { readOutline() }?.also { outlineCache = it }
+    }
+
+    /** Runs on the IO dispatcher, under [lock]. */
+    private fun readOutline(): List<OutlineEntry>? {
+        val open = document ?: open() ?: return null
+        return PdfOutlineReader.read(open)
+    }
+
+    /** A document that failed to load is not retried: loading is the expensive part, and it would fail the same way. */
     private fun open(): PDDocument? {
         if (unreadable) return null
         PDFBoxResourceLoader.init(context)
@@ -79,6 +96,7 @@ class PdfPageTextSource(
                     closed = true
                     pages.clear()
                     linkPages.clear()
+                    outlineCache = null
                     runCatching { document?.close() }
                     document = null
                 }
