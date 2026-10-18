@@ -10,6 +10,13 @@ import androidx.core.net.toUri
 import com.papyrus.app.MainApplication
 import com.papyrus.app.R
 import com.papyrus.app.data.AppSettings
+import com.papyrus.app.data.Bookmark
+import com.papyrus.app.data.BookmarkAdd
+import com.papyrus.app.data.BookmarkEntity
+import com.papyrus.app.data.MAX_BOOKMARKS_PER_DOCUMENT
+import com.papyrus.app.data.cleanBookmarkLabel
+import com.papyrus.app.data.forFormat
+import com.papyrus.app.data.summary
 import com.papyrus.app.data.DocumentEntity
 import com.papyrus.app.data.DocumentFormat
 import com.papyrus.app.data.PositionSample
@@ -54,6 +61,7 @@ import com.papyrus.app.viewer.TextSniffer
 import com.papyrus.app.viewer.chunkText
 import com.papyrus.app.viewer.readTextChunks
 import com.papyrus.app.viewer.readTextString
+import com.papyrus.app.ui.viewer.asText
 import com.papyrus.app.ui.viewer.clampScale
 import com.papyrus.app.ui.viewer.countOccurrences
 import com.papyrus.app.ui.viewer.findBlockHits
@@ -63,15 +71,21 @@ import io.noties.markwon.Markwon
 import io.noties.markwon.ext.strikethrough.StrikethroughPlugin
 import io.noties.markwon.ext.tables.TablePlugin
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.isActive
@@ -184,9 +198,32 @@ data class ViewerUiState(
     /** Where the viewer should open, from the stored reading position; null when nothing is stored.
      * Set with the document and before its content, so the first layout places it without flashing the top. */
     val restore: RestoreRequest? = null,
-    /** A PDF's bookmarks, once read; empty until then and for a document without any. */
+    /** A PDF's outline, once read; empty until then and for a document without any. */
     val pdfOutline: List<OutlineEntry> = emptyList(),
-)
+) {
+    /**
+     * Bookmarks hang from a library row, so a transient document has none until it is saved; from then on
+     * they are kept under the new row, like the reading position.
+     */
+    val bookmarksAvailable: Boolean get() = (document?.id ?: 0L) > 0L || savedToLibrary
+}
+
+/** What the viewer needs to say about a bookmark change, beyond the list itself updating. */
+sealed interface BookmarkEvent {
+    /** Offered with Undo; the row is the stored one, with its id. */
+    data class Added(val bookmark: BookmarkEntity) : BookmarkEvent
+
+    data class Notice(val text: UiText) : BookmarkEvent
+}
+
+/** How many units the viewers of this content count in: pages, chunks, blocks, or characters of Markdown. */
+internal fun ViewerContent.unitCount(): Int = when (this) {
+    is ViewerContent.Pdf -> source.pageCount
+    is ViewerContent.Markdown -> text.length
+    is ViewerContent.PlainText -> chunks.size
+    is ViewerContent.Office -> blocks.size
+    else -> 0
+}
 
 class ViewerViewModel(
     private val app: MainApplication,
@@ -237,7 +274,32 @@ class ViewerViewModel(
 
     /** The library id the position is stored under: the document's own, or the new row's once saved.
      * 0 while there is none, so nothing is written for a document not in the library. */
-    private var persistedId: Long = documentId.coerceAtLeast(0L)
+    private val persistedIdFlow = MutableStateFlow(documentId.coerceAtLeast(0L))
+    private var persistedId: Long
+        get() = persistedIdFlow.value
+        set(value) {
+            persistedIdFlow.value = value
+        }
+
+    /**
+     * The newest position the viewer reported, whatever the "remember position" setting says: a bookmark
+     * is asked for by the reader and needs the place on screen now, not a stored one.
+     */
+    private var viewport: PositionSample? = null
+
+    private val _bookmarkEvents = Channel<BookmarkEvent>(Channel.BUFFERED)
+    val bookmarkEvents = _bookmarkEvents.receiveAsFlow()
+
+    /**
+     * This document's bookmarks, in document order. The query is scoped to the one library row (and
+     * follows it if a handed-over document is saved), so another document's changes never wake it.
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val bookmarks: StateFlow<List<Bookmark>> = combine(
+        persistedIdFlow.flatMapLatest { repository.observeBookmarks(it) },
+        _state.map { it.document?.format }.distinctUntilChanged(),
+    ) { rows, format -> if (format == null) emptyList() else rows.forFormat(format) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS), emptyList())
 
     private var saveJob: Job? = null
 
@@ -286,6 +348,7 @@ class ViewerViewModel(
             return
         }
         val restore = restoreFor(doc)
+        viewport = null
         tracker.beginLoad(restorePending = restore != null)
         _state.value = ViewerUiState(
             document = doc,
@@ -410,10 +473,14 @@ class ViewerViewModel(
     }
 
     /** The viewer placed the document at [applied], read back after scrolling; opens the save gate. */
-    fun onRestored(applied: PositionSample) = tracker.restoreApplied(applied)
+    fun onRestored(applied: PositionSample) {
+        viewport = applied
+        tracker.restoreApplied(applied)
+    }
 
     /** The viewport now shows [sample]; called often, so it only records and schedules. */
     fun onPosition(sample: PositionSample) {
+        viewport = sample
         if (!app.settings.current.rememberPosition) return
         tracker.observe(sample)
         scheduleSave()
@@ -662,6 +729,90 @@ class ViewerViewModel(
         }
     }
 
+    /** "Page 12", "Line 340" or "45%": the label a bookmark gets unless the reader types one. Only a position. */
+    private fun positionalLabel(location: ReadingLocation, unitCount: Int): String =
+        location.summary(unitCount).asText(app)
+
+    /**
+     * Bookmarks the top of the viewport. The place is clamped to what loaded before it is stored, and the
+     * label is positional, never a text excerpt: an unlocked document leaves no plaintext in the database.
+     */
+    fun addBookmark() {
+        val id = persistedId
+        val sample = viewport
+        if (id <= 0) {
+            _bookmarkEvents.trySend(BookmarkEvent.Notice(UiText(R.string.bookmarks_unavailable)))
+            return
+        }
+        // Nothing has been laid out yet, so there is no place to mark.
+        if (sample == null) {
+            _bookmarkEvents.trySend(BookmarkEvent.Notice(UiText(R.string.bookmark_failed)))
+            return
+        }
+        val location = sample.location.clampedTo(sample.unitCount)
+        val label = positionalLabel(location, sample.unitCount)
+        // On the application scope: a bookmark asked for just before the viewer closes is still written.
+        app.applicationScope.launch {
+            val result = try {
+                repository.addBookmark(id, location, label)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                null
+            }
+            val event = when (result) {
+                is BookmarkAdd.Added -> BookmarkEvent.Added(result.bookmark)
+                BookmarkAdd.AlreadyBookmarked -> BookmarkEvent.Notice(UiText(R.string.bookmark_exists))
+                BookmarkAdd.LimitReached -> BookmarkEvent.Notice(UiText(R.string.bookmark_limit, MAX_BOOKMARKS_PER_DOCUMENT))
+                BookmarkAdd.NotInLibrary -> BookmarkEvent.Notice(UiText(R.string.bookmarks_unavailable))
+                null -> BookmarkEvent.Notice(UiText(R.string.bookmark_failed))
+            }
+            _bookmarkEvents.trySend(event)
+        }
+    }
+
+    /** Undo for an add: the row is removed again. */
+    fun undoAddBookmark(bookmark: BookmarkEntity) = deleteBookmarkRow(bookmark.id)
+
+    /** Renames to [typed] (the reader's own text); an emptied field falls back to the position. */
+    fun renameBookmark(bookmark: Bookmark, typed: String) {
+        val unitCount = _state.value.content.unitCount()
+        val label = cleanBookmarkLabel(typed, positionalLabel(bookmark.location, unitCount))
+        app.applicationScope.launch { runQuietly { repository.renameBookmark(bookmark.id, label) } }
+    }
+
+    /** Removes the row at once; [restoreBookmark] puts it back for Undo. */
+    fun deleteBookmark(bookmark: Bookmark) = deleteBookmarkRow(bookmark.id)
+
+    /** Undo for a delete: the same row, under its old id and creation time. */
+    fun restoreBookmark(bookmark: Bookmark) {
+        val row = BookmarkEntity(
+            id = bookmark.id,
+            documentId = persistedId,
+            locationKind = bookmark.location.kind.code,
+            locationUnit = bookmark.location.unit,
+            locationFraction = bookmark.location.fraction,
+            label = bookmark.label,
+            createdAt = bookmark.createdAt,
+        )
+        app.applicationScope.launch { runQuietly { repository.restoreBookmark(row) } }
+    }
+
+    private fun deleteBookmarkRow(id: Long) {
+        app.applicationScope.launch { runQuietly { repository.deleteBookmark(id) } }
+    }
+
+    /** A bookmark write that fails leaves the list as the database has it, which the screen already shows. */
+    private suspend fun runQuietly(block: suspend () -> Unit) {
+        try {
+            block()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            // Nothing to roll back: the flow re-emits whatever is stored.
+        }
+    }
+
     /** The password stays a local: never state, saved state, or a log, and dropped when the attempt ends. */
     fun submitPassword(password: String) {
         val doc = _state.value.document ?: return
@@ -905,6 +1056,7 @@ class ViewerViewModel(
         const val FIND_DEBOUNCE_MILLIS = 200L
         const val KEY_ENCODING = "encoding"
         const val NANOS_PER_MILLI = 1_000_000L
+        const val STOP_TIMEOUT_MILLIS = 5_000L
 
         /** Past this the whole file is not parsed again just to gather find matches. */
         const val MAX_PDF_FIND_BYTES = 64L * 1024 * 1024

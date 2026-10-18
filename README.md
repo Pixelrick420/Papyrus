@@ -137,6 +137,7 @@ never written with `OnConflictStrategy.REPLACE`: a replace is a delete plus an i
     library, its position is kept under the new row from then on.
   - *Remember reading position* in Settings (on by default) turns all of this off: nothing is read or written. What
     was stored stays and applies again when the switch is turned back on.
+    was stored stays and applies again when the switch is turned back on.
 - **Read aloud** speaks the open document through the platform speech engine, in the format's own reading units: a
   PDF page, a 40-line text chunk, an Office block, or a Markdown paragraph. It starts at the current reading position,
   scrolls each spoken unit into view and tints it, and offers a bar over the text with play/pause, a skip back and
@@ -145,6 +146,22 @@ never written with `OnConflictStrategy.REPLACE`: a replace is a delete plus an i
   continues with the screen off, from a media-playback foreground service whose notification offers play/pause and
   stop, and a platform `MediaSession` forwards headset and Bluetooth keys. No audio is written to disk and no text
   leaves the device; the speed is held for the session only.
+- **Bookmarks** work in every format. **Add bookmark** (viewer menu, or Ctrl+D) marks the top of the viewport and
+  offers Undo; **Bookmarks** opens a sheet listing the document's bookmarks in document order, each with its name, where
+  it is (`Page 12`, `Line 340` or `45%`) and the day it was made. Tapping one jumps there and closes the sheet; each row
+  has rename and delete, and a delete offers Undo from the sheet itself. A bookmark is a place in the same terms as the
+  reading position (a PDF page plus a fraction, a 40-line chunk, an Office block, a Markdown character offset), so it
+  survives a rotation, a pinch and a re-wrap, and one whose page or chunk has since gone (the file changed) is clamped
+  to the nearest real place instead of failing. Adding at a spot that already has one says *Already bookmarked*: the
+  same PDF page, within about two lines of text, a tenth of an Office block, or a couple of rows of Markdown. A document
+  holds at most 200.
+  - Names are positional (`Page 12`) unless the reader types one: a bookmark never stores an excerpt or a heading, so
+    an unlocked password-protected document leaves no readable fragment behind. Emptying a name restores the position.
+  - They live in the `bookmarks` table, removed with the document by `ON DELETE CASCADE`. A document handed over by
+    another app has no row, so the menu says to save it first; once saved, bookmarks are kept under the new row.
+    Bookmarks work whether or not *Remember reading position* is on.
+  - Outline entries, links, go to page and bookmarks all scroll through one jump, so they land the same way in every
+    format.
 - **Zoom** is a pinch or a double-tap, 0.5x to 3x, the double-tap toggling between 1x and 2.5x. Text surfaces scale the
   type size, so content re-wraps and the scroll bounds stay correct.
 - **Links** open on tap with no confirmation, in PDF and Markdown text and in DOCX / ODT — a PDF's in-document
