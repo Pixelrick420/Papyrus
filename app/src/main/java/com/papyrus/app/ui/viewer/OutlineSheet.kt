@@ -37,12 +37,6 @@ import com.papyrus.app.viewer.hasChildren
 import com.papyrus.app.viewer.initialFolds
 import com.papyrus.app.viewer.visibleOutline
 
-/**
- * A request to scroll the document to the block at [index]. A class rather than a bare number so each
- * tap is a new request: choosing the same heading twice, with a scroll in between, must scroll again.
- */
-class OutlineJump(val index: Int)
-
 /** One level of heading depth, in the indent a title gets. */
 private val OUTLINE_INDENT = 16.dp
 
