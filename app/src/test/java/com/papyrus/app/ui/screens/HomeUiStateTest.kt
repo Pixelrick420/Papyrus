@@ -2,6 +2,8 @@ package com.papyrus.app.ui.screens
 
 import com.papyrus.app.data.DocumentEntity
 import com.papyrus.app.data.DocumentFormat
+import com.papyrus.app.data.LibraryFilter
+import com.papyrus.app.data.LibrarySort
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -32,7 +34,7 @@ class HomeUiStateTest {
         selection: SelectionState = SelectionState(),
         pendingRemovalToken: Long? = null,
         hidden: Set<Long> = emptySet(),
-    ) = buildHomeUiState(all, query, selection, pendingRemovalToken, hidden)
+    ) = buildHomeUiState(all, ViewParams(query, LibraryFilter(), LibrarySort.LAST_OPENED), selection, pendingRemovalToken, hidden)
 
     @Test
     fun `a blank query keeps the whole library`() {

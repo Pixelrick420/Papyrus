@@ -4,6 +4,7 @@ import android.content.Intent
 import android.net.Uri
 import android.text.format.DateUtils
 import android.text.format.Formatter
+import androidx.annotation.StringRes
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.animation.AnimatedVisibility
@@ -32,11 +33,13 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.ui.graphics.Color
@@ -49,9 +52,11 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -81,6 +86,7 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -95,9 +101,15 @@ import com.papyrus.app.R
 import com.papyrus.app.data.DocumentEntity
 import com.papyrus.app.data.DocumentFormat
 import com.papyrus.app.data.DocumentRepository
+import com.papyrus.app.data.FormatGroup
+import com.papyrus.app.data.LibraryFilter
+import com.papyrus.app.data.LibrarySort
 import com.papyrus.app.data.OpenPersistableDocuments
 import com.papyrus.app.data.SafAccess
+import com.papyrus.app.data.SettingsRepository
 import com.papyrus.app.data.ThumbnailLoader
+import com.papyrus.app.data.availableGroups
+import com.papyrus.app.data.libraryView
 import com.papyrus.app.data.shareIntent
 import com.papyrus.app.data.shareIntentMultiple
 import com.papyrus.app.data.shareMimeType
@@ -124,6 +136,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -145,6 +158,11 @@ data class HomeUiState(
     val selection: SelectionState = SelectionState(),
     /** The removal waiting out its undo window, or null; [HomeViewModel.undoRemove] takes it back. */
     val pendingRemovalToken: Long? = null,
+    val filter: LibraryFilter = LibraryFilter(),
+    val sort: LibrarySort = LibrarySort.LAST_OPENED,
+    /** The format chips: what the library has plus what is selected, so a selected chip can always be unselected. */
+    val groups: List<FormatGroup> = emptyList(),
+    val hasFavourites: Boolean = false,
 )
 
 /**
@@ -153,12 +171,12 @@ data class HomeUiState(
  */
 internal fun buildHomeUiState(
     all: List<DocumentEntity>,
-    query: String,
+    params: ViewParams,
     selection: SelectionState,
     pendingRemovalToken: Long?,
     hidden: Set<Long>,
 ): HomeUiState {
-    val needle = query.trim()
+    val needle = params.query.trim()
     // Hiding first keeps `libraryEmpty` and the results agreeing with what the screen actually shows.
     val documents = if (hidden.isEmpty()) all else all.filterNot { it.id in hidden }
     return HomeUiState(
@@ -166,17 +184,14 @@ internal fun buildHomeUiState(
         libraryEmpty = documents.isEmpty(),
         query = needle,
         documents = documents,
-        results = documents.matches(needle),
+        results = libraryView(documents, needle, params.filter, params.sort),
         selection = selection,
         pendingRemovalToken = pendingRemovalToken,
+        filter = params.filter,
+        sort = params.sort,
+        groups = (availableGroups(documents) + params.filter.groups).distinct().sortedBy { it.ordinal },
+        hasFavourites = documents.any { it.isFavourite },
     )
-}
-
-/** The query as a filter: a case-insensitive title substring; a blank one keeps everything. */
-private fun List<DocumentEntity>.matches(text: String): List<DocumentEntity> {
-    val needle = text.trim()
-    if (needle.isEmpty()) return this
-    return filter { it.title.contains(needle, ignoreCase = true) }
 }
 
 /** How many share probes run at once: enough to hide a slow provider, few enough to stay polite. */
@@ -203,6 +218,9 @@ internal suspend fun <T> probeShareable(
     }.awaitAll().filterNotNull()
 }
 
+/** What the list is built with, apart from the library itself. */
+internal data class ViewParams(val query: String, val filter: LibraryFilter, val sort: LibrarySort)
+
 class HomeViewModel(
     private val repository: DocumentRepository,
     val thumbnailLoader: ThumbnailLoader,
@@ -210,10 +228,20 @@ class HomeViewModel(
      * Outlives this ViewModel, so a removal still in its undo window when Home is cleared commits here.
      */
     private val removalScope: CoroutineScope,
+    private val settings: SettingsRepository,
 ) : ViewModel() {
 
     private val _query = MutableStateFlow("")
     val query: StateFlow<String> = _query.asStateFlow()
+
+    /** Kept here, so it survives a rotation; not stored, a new session starts unfiltered. */
+    private val _filter = MutableStateFlow(LibraryFilter())
+
+    private val viewParams = combine(
+        _query,
+        _filter,
+        settings.settings.map { it.librarySort }.distinctUntilChanged(),
+    ) { query, filter, sort -> ViewParams(query.trim(), filter, sort) }
 
     private val _selection = MutableStateFlow(SelectionState())
 
@@ -256,9 +284,9 @@ class HomeViewModel(
      * [distinctUntilChanged] drops the second, identical state the prune above would otherwise publish.
      */
     val uiState: StateFlow<HomeUiState> = combine(
-        repository.documents, _query, _selection, pendingRemoval.pending, hiddenIds,
-    ) { all, q, selection, pending, hidden ->
-        buildHomeUiState(all, q, selection, pending?.token, hidden)
+        repository.documents, viewParams, _selection, pendingRemoval.pending, hiddenIds,
+    ) { all, params, selection, pending, hidden ->
+        buildHomeUiState(all, params, selection, pending?.token, hidden)
     }
         .distinctUntilChanged()
         .flowOn(Dispatchers.Default)
@@ -288,6 +316,28 @@ class HomeViewModel(
     private fun selectedDocuments(): List<DocumentEntity> {
         val ids = uiState.value.selection.ids
         return uiState.value.documents.filter { it.id in ids }
+    }
+
+    fun toggleGroup(group: FormatGroup) = _filter.update { it.toggled(group) }
+
+    fun toggleFavouritesFilter() = _filter.update { it.withFavouritesOnly(!it.favouritesOnly) }
+
+    fun clearFilters() {
+        _filter.value = LibraryFilter()
+    }
+
+    fun setSort(sort: LibrarySort) = settings.setLibrarySort(sort)
+
+    fun toggleFavourite(document: DocumentEntity) {
+        viewModelScope.launch {
+            try {
+                repository.setFavourite(listOf(document.id), !document.isFavourite)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                _messages.send(UiText(R.string.home_favourite_failed))
+            }
+        }
     }
 
     private val _messages = Channel<UiText>(Channel.BUFFERED)
@@ -602,33 +652,61 @@ fun HomeScreen(
                     modifier = Modifier.padding(horizontal = ScreenPadding),
                 )
             } else {
-                SearchPill(
-                    text = text,
-                    onTextChange = { value ->
-                        text = value
-                        viewModel.onQueryChange(value)
-                        // A new query starts from the top; otherwise a short result list can open
-                        // part-way down with its first rows out of view.
-                        if (listState.canScrollBackward) scope.launch { listState.scrollToItem(0) }
-                    },
-                    hint = stringResource(R.string.home_search_hint),
-                    // Search keeps the filter and just puts the keyboard away.
-                    onSearch = dismissKeyboard,
-                    iconContentDescription = stringResource(R.string.cd_search),
-                    // Padding first, then fill: the pill gets exactly the button's width.
-                    modifier = Modifier.padding(start = TitleInset, end = ScreenPadding),
-                    trailing = {
-                        // The slot is always reserved: only the icon fades, so the text never shifts sideways
-                        // when the first character is typed.
-                        ClearSearchButton(
-                            visible = text.isNotEmpty(),
-                            onClear = {
-                                text = ""
-                                viewModel.onQueryChange("")
-                            },
-                        )
-                    },
-                )
+                // The sort button's glyph lands on the old right edge (4dp + its 12dp inset = ScreenPadding), so the
+                // pill only gives up the room the button itself takes.
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(start = TitleInset, end = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    SearchPill(
+                        text = text,
+                        onTextChange = { value ->
+                            text = value
+                            viewModel.onQueryChange(value)
+                            // A new query starts from the top; otherwise a short result list can open
+                            // part-way down with its first rows out of view.
+                            if (listState.canScrollBackward) scope.launch { listState.scrollToItem(0) }
+                        },
+                        hint = stringResource(R.string.home_search_hint),
+                        // Search keeps the filter and just puts the keyboard away.
+                        onSearch = dismissKeyboard,
+                        iconContentDescription = stringResource(R.string.cd_search),
+                        modifier = Modifier.weight(1f),
+                        trailing = {
+                            // The slot is always reserved: only the icon fades, so the text never shifts sideways
+                            // when the first character is typed.
+                            ClearSearchButton(
+                                visible = text.isNotEmpty(),
+                                onClear = {
+                                    text = ""
+                                    viewModel.onQueryChange("")
+                                },
+                            )
+                        },
+                    )
+                    SortButton(
+                        current = state.sort,
+                        onSelect = { sort ->
+                            viewModel.setSort(sort)
+                            if (listState.canScrollBackward) scope.launch { listState.scrollToItem(0) }
+                        },
+                    )
+                }
+                if (!state.libraryEmpty && (state.groups.size > 1 || state.hasFavourites || state.filter.isActive)) {
+                    FilterChipsRow(
+                        groups = state.groups,
+                        filter = state.filter,
+                        showFavourites = state.hasFavourites || state.filter.favouritesOnly,
+                        onToggleGroup = { group ->
+                            viewModel.toggleGroup(group)
+                            if (listState.canScrollBackward) scope.launch { listState.scrollToItem(0) }
+                        },
+                        onToggleFavourites = {
+                            viewModel.toggleFavouritesFilter()
+                            if (listState.canScrollBackward) scope.launch { listState.scrollToItem(0) }
+                        },
+                    )
+                }
             }
 
             Box(Modifier.weight(1f).fillMaxWidth()) {
@@ -674,6 +752,7 @@ fun HomeScreen(
                                 viewModel.remove(doc)
                             },
                             onShare = { shareDocument(doc) },
+                            onToggleFavourite = { viewModel.toggleFavourite(doc) },
                             // Filtering, removing and re-sorting glide instead of snapping.
                             modifier = Modifier.animateItem(),
                         )
@@ -686,6 +765,8 @@ fun HomeScreen(
                     visible = state.loaded && state.results.isEmpty(),
                     libraryEmpty = state.libraryEmpty && state.query.isEmpty(),
                     query = state.query,
+                    filtersActive = state.filter.isActive && !state.libraryEmpty,
+                    onClearFilters = viewModel::clearFilters,
                 )
             }
         }
@@ -778,6 +859,8 @@ private fun EmptyStateOverlay(
     visible: Boolean,
     libraryEmpty: Boolean,
     query: String,
+    filtersActive: Boolean,
+    onClearFilters: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     AnimatedVisibility(
@@ -786,16 +869,128 @@ private fun EmptyStateOverlay(
         enter = fadeIn(tween(300, delayMillis = 120)),
         exit = ExitTransition.None,
     ) {
-                EmptyState(
-                    title = if (libraryEmpty && query.isEmpty()) {
-                        stringResource(R.string.home_empty_title)
-                    } else {
-                        stringResource(R.string.home_search_none, query)
-                    },
-                    libraryEmpty = libraryEmpty && query.isEmpty(),
-                    modifier = Modifier.fillMaxSize(),
-                )
+        // Three different situations: nothing added yet, filters that hide everything, a search with no hit.
+        // Only the filters can be undone in one tap, so only they get the button.
+        EmptyState(
+            title = when {
+                libraryEmpty -> stringResource(R.string.home_empty_title)
+                filtersActive && query.isEmpty() -> stringResource(R.string.home_filter_none)
+                else -> stringResource(R.string.home_search_none, query)
+            },
+            libraryEmpty = libraryEmpty,
+            actionLabel = if (filtersActive) stringResource(R.string.home_filter_clear) else null,
+            onAction = onClearFilters,
+            modifier = Modifier.fillMaxSize(),
+        )
     }
+}
+
+/** An icon beside the search pill that opens the sort menu; the current order is marked and spoken. */
+@Composable
+private fun SortButton(
+    current: LibrarySort,
+    onSelect: (LibrarySort) -> Unit,
+) {
+    var open by remember { mutableStateOf(false) }
+    val currentLabel = stringResource(current.labelRes())
+    Box {
+        IconButton(onClick = { open = true }) {
+            Icon(
+                painter = painterResource(R.drawable.ic_sort),
+                contentDescription = stringResource(R.string.home_sort_cd, currentLabel),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            for (sort in LibrarySort.entries) {
+                val isCurrent = sort == current
+                DropdownMenuItem(
+                    text = { Text(stringResource(sort.labelRes())) },
+                    // The mark holds its place on every row, so the labels line up.
+                    leadingIcon = {
+                        if (isCurrent) {
+                            Icon(Icons.Default.Check, contentDescription = null)
+                        } else {
+                            Spacer(Modifier.size(24.dp))
+                        }
+                    },
+                    onClick = {
+                        open = false
+                        onSelect(sort)
+                    },
+                    modifier = Modifier.semantics { selected = isCurrent },
+                )
+            }
+        }
+    }
+}
+
+/** Format chips from what the library has, then Favourites; the row scrolls sideways on a narrow screen. */
+@Composable
+private fun FilterChipsRow(
+    groups: List<FormatGroup>,
+    filter: LibraryFilter,
+    showFavourites: Boolean,
+    onToggleGroup: (FormatGroup) -> Unit,
+    onToggleFavourites: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    LazyRow(
+        modifier = modifier.fillMaxWidth().padding(top = 4.dp),
+        contentPadding = PaddingValues(start = TitleInset, end = ScreenPadding),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        if (showFavourites) {
+            item(key = "favourites") {
+                FilterChoiceChip(
+                    label = stringResource(R.string.home_filter_favourites),
+                    selected = filter.favouritesOnly,
+                    onClick = onToggleFavourites,
+                )
+            }
+        }
+        items(groups, key = { it.name }) { group ->
+            FilterChoiceChip(
+                label = stringResource(group.labelRes()),
+                selected = group in filter.groups,
+                onClick = { onToggleGroup(group) },
+            )
+        }
+    }
+}
+
+/** Selected state shows as a check as well as the fill, so it never rests on colour alone. */
+@Composable
+private fun FilterChoiceChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    FilterChip(
+        selected = selected,
+        onClick = onClick,
+        label = { Text(label) },
+        leadingIcon = if (selected) {
+            { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp)) }
+        } else {
+            null
+        },
+    )
+}
+
+@StringRes
+private fun LibrarySort.labelRes(): Int = when (this) {
+    LibrarySort.LAST_OPENED -> R.string.home_sort_last_opened
+    LibrarySort.NAME_ASC -> R.string.home_sort_name_asc
+    LibrarySort.NAME_DESC -> R.string.home_sort_name_desc
+    LibrarySort.DATE_ADDED -> R.string.home_sort_date_added
+    LibrarySort.SIZE -> R.string.home_sort_size
+}
+
+@StringRes
+private fun FormatGroup.labelRes(): Int = when (this) {
+    FormatGroup.PDF -> R.string.home_filter_pdf
+    FormatGroup.WORD -> R.string.home_filter_word
+    FormatGroup.ODT -> R.string.home_filter_odt
+    FormatGroup.MARKDOWN -> R.string.home_filter_markdown
+    FormatGroup.TEXT -> R.string.home_filter_text
+    FormatGroup.CODE -> R.string.home_filter_code
 }
 
 /**
@@ -826,11 +1021,13 @@ private fun ClearSearchButton(
     }
 }
 
-/** Both empty states: a first-run library is centred, a failed search sits near the top. */
+/** The empty states: a first-run library is centred; a search or filter that hides everything sits near the top. */
 @Composable
 private fun EmptyState(
     title: String,
     libraryEmpty: Boolean,
+    actionLabel: String?,
+    onAction: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -859,6 +1056,12 @@ private fun EmptyState(
                 modifier = Modifier.padding(top = 4.dp),
             )
         }
+        if (actionLabel != null) {
+            OutlinedButton(
+                onClick = onAction,
+                modifier = Modifier.padding(top = 16.dp).heightIn(min = ControlHeight),
+            ) { Text(actionLabel) }
+        }
     }
 }
 
@@ -874,6 +1077,7 @@ private fun DocumentRow(
     onLongPress: () -> Unit,
     onRemove: () -> Unit,
     onShare: () -> Unit,
+    onToggleFavourite: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -913,12 +1117,24 @@ private fun DocumentRow(
                     .padding(horizontal = 14.dp),
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
-                Text(
-                    doc.title,
-                    style = MaterialTheme.typography.titleMedium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    // fill = false: a short title keeps the star next to it, a long one still ends in an ellipsis.
+                    Text(
+                        doc.title,
+                        style = MaterialTheme.typography.titleMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                    if (doc.isFavourite) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_star),
+                            contentDescription = stringResource(R.string.home_favourite_marker),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(start = 6.dp).size(14.dp),
+                        )
+                    }
+                }
                 Text(
                     "$sizeLabel · $openedLabel",
                     style = MaterialTheme.typography.bodySmall,
@@ -945,6 +1161,16 @@ private fun DocumentRow(
                         DropdownMenuItem(
                             text = { Text(stringResource(R.string.action_share)) },
                             onClick = { onMenuOpenChange(false); onShare() },
+                        )
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    stringResource(
+                                        if (doc.isFavourite) R.string.home_favourite_remove else R.string.home_favourite_add,
+                                    ),
+                                )
+                            },
+                            onClick = { onMenuOpenChange(false); onToggleFavourite() },
                         )
                         DropdownMenuItem(
                             text = { Text(stringResource(R.string.action_remove)) },
