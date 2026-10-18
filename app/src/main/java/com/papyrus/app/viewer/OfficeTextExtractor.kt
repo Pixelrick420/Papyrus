@@ -58,29 +58,7 @@ class OfficeTextExtractor(
             parseOdt(body, found, pending, blockBudget)
         }
 
-        if (pending.isNotEmpty() && mediaDir != null) {
-            val wanted = pending.mapTo(HashSet()) { it.zipName }
-            val budget = MediaBudget()
-            // zipName -> the file it was written to, so one entry referenced from several places inserts one
-            // block per *reference* while its bytes are read and written once.
-            val written = HashMap<String, File>()
-            readMedia(openStream, wanted, budget) { zipName, bytes ->
-                val file = writeMedia(zipName, bytes) ?: return@readMedia
-                written[zipName] = file
-            }
-            // Insert at the recorded position so images land where they appeared rather than being appended.
-            var inserted = 0
-            pending.forEach { image ->
-                // A dangling relationship or a budget rejection lands here as null; the text still renders.
-                val file = written[image.zipName] ?: return@forEach
-                if (blocks.size >= blockBudget) return@forEach
-                // `index` was recorded before any image went in, so each image already inserted pushed
-                // it down by one; without the offset, images drifted up and clustered near the first.
-                val block = OfficeBlock.Image(file, mimeByName(image.zipName), image.widthDp, image.altText)
-                blocks.add((image.index + inserted).coerceIn(0, blocks.size), block)
-                inserted++
-            }
-        }
+        OfficeMedia(mediaDir, mimeByName).insertImages(openStream, pending, blocks, blockBudget)
         return blocks
     }
 
@@ -96,76 +74,6 @@ class OfficeTextExtractor(
         }
     }
 
-    /** Byte budget so photographs cannot fill the disk or heap. Reserve then consume: [canReserve] is
-     * the cheap pre-check, [consume] the authoritative charge. */
-    private class MediaBudget {
-        private var remaining = MAX_TOTAL_MEDIA_BYTES
-        private var count = 0
-
-        /** True when an entry of [declaredSize] (-1 when unknown) could plausibly be accepted. */
-        fun canReserve(declaredSize: Long): Boolean {
-            if (count >= MAX_IMAGES) return false
-            if (declaredSize > MAX_IMAGE_BYTES) return false
-            if (declaredSize > remaining) return false
-            return true
-        }
-
-        fun consume(size: Int): Boolean {
-            if (size > MAX_IMAGE_BYTES || size > remaining) return false
-            remaining -= size
-            count++
-            return true
-        }
-    }
-
-    private fun writeMedia(zipName: String, bytes: ByteArray): File? {
-        val dir = mediaDir ?: return null
-        if (!dir.exists() && !dir.mkdirs()) return null
-        // Two entries in one archive can sanitise to the same name; disambiguate rather than clobber.
-        val target = File(dir, sanitiseName(zipName))
-        if (!target.exists()) return target.writeOrNull(bytes)
-        val base = target.nameWithoutExtension
-        val ext = target.extension.ifEmpty { "bin" }
-        var suffix = 1
-        while (true) {
-            val candidate = File(dir, "$base-$suffix.$ext")
-            if (!candidate.exists()) return candidate.writeOrNull(bytes)
-            suffix++
-        }
-    }
-
-    private fun File.writeOrNull(bytes: ByteArray): File? = try {
-        writeBytes(bytes)
-        this
-    } catch (_: IOException) {
-        null
-    }
-
-    /** Streams wanted entries to [sink], charging the budget as each arrives rather than buffering
-     * them all. The per-entry cap counts bytes, not `entry.size`, which can be -1 when streamed. */
-    private fun readMedia(
-        openStream: () -> InputStream,
-        wanted: Set<String>,
-        budget: MediaBudget,
-        sink: (zipName: String, bytes: ByteArray) -> Unit,
-    ) {
-        if (wanted.isEmpty()) return
-        openStream().use { input ->
-            ZipInputStream(input).use { zip ->
-                val buffer = ByteArray(MEDIA_COPY_BUFFER)
-                while (true) {
-                    val entry = zip.nextEntry ?: break
-                    if (entry.isDirectory || entry.name !in wanted) continue
-                    // Reserve before reading: an entry the budget will never accept must not be decoded at all.
-                    if (!budget.canReserve(entry.size)) continue
-                    val bytes = readBounded(zip, entry.size, buffer) ?: continue
-                    if (!budget.consume(bytes.size)) continue
-                    sink(entry.name, bytes)
-                }
-            }
-        }
-    }
-
     /** Reads the body XML part, capped at [MAX_BODY_BYTES]; over the cap throws [IOException] so the
      * document fails rather than parses from a truncated body. */
     private fun readEntry(zip: ZipInputStream): ByteArray {
@@ -177,23 +85,6 @@ class OfficeTextExtractor(
             if (n < 0) return out.toByteArray()
             total += n
             if (total > MAX_BODY_BYTES) throw IOException("document body is too large")
-            out.write(buffer, 0, n)
-        }
-    }
-
-    /** Reads one entry, capped at the smaller of its declared size and [MAX_IMAGE_BYTES]; null if over. */
-    private fun readBounded(zip: ZipInputStream, declaredSize: Long, buffer: ByteArray): ByteArray? {
-        val out = ByteArrayOutputStream(
-            if (declaredSize in 1..MAX_IMAGE_BYTES) declaredSize.toInt() else MEDIA_COPY_BUFFER,
-        )
-        while (true) {
-            // A sized entry that yields more than it declared is rejected, not truncated into a corrupt image.
-            val overBudget = out.size() >= MAX_IMAGE_BYTES
-            val overDeclared = declaredSize >= 0 && out.size() >= declaredSize
-            if (overBudget) return null
-            if (overDeclared) return out.toByteArray()
-            val n = zip.read(buffer)
-            if (n < 0) return out.toByteArray()
             out.write(buffer, 0, n)
         }
     }
@@ -340,8 +231,6 @@ class OfficeTextExtractor(
 
         /** Cap on the body XML part read into memory before parsing. */
         private const val MAX_BODY_BYTES = 32 * 1024 * 1024
-        private const val MEDIA_COPY_BUFFER = 64 * 1024
-
         /** Parts that only add formatting (styles, numbering, notes) are ignored past this size. */
         private const val MAX_PART_BYTES = 16 * 1024 * 1024
 
