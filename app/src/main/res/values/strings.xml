@@ -66,6 +66,11 @@ access</string>
     <string name="viewer_menu">More options</string>
     <string name="viewer_outline_expand">Expand %1$s</string>
     <string name="viewer_outline_collapse">Collapse %1$s</string>
+    <string name="viewer_goto_page_title">Go to page</string>
+    <string name="viewer_goto_page_label">Page</string>
+    <string name="viewer_goto_of">of %1$d</string>
+    <string name="viewer_goto_page_error">Enter a page from 1 to %1$d</string>
+    <string name="viewer_goto_go">Go</string>
     <string name="viewer_outline_title">Outline</string>
     <string name="viewer_find_title">Find in file</string>
     <string name="viewer_info_title">File info</string>

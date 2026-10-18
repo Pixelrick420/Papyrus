@@ -76,9 +76,13 @@ private const val RESIZE_SETTLE_MILLIS = 150L
 /** The keyboard animates in over a few hundred ms, resizing the viewport each frame. */
 private const val VIEWPORT_SETTLE_MILLIS = 150L
 
-/** A jump to a page, like [OutlineJump] is for an outline. Identity, not equality: two jumps to
- *  the same page are two jumps, so each scrolls. */
-internal class PdfPageJump(val page: Int)
+/**
+ * A jump to a page of the PDF, like [OutlineJump] is for a document's outline. Identity, not
+ * equality: two jumps to the same page are still two jumps, so each one scrolls. A link only
+ * reveals the page ([toTop] false: nothing moves if it is already on screen); the outline and go to
+ * page mean "take me there", so the page's top meets the top of the viewport.
+ */
+internal class PdfPageJump(val page: Int, val toTop: Boolean = false)
 
 /** Zoom feeds the cached render width; back is handled here. */
 @Composable
@@ -142,8 +146,9 @@ internal fun PdfViewer(
 
     // A link that points at another page of this document: the same reveal a find step uses.
     LaunchedEffect(pageJump) {
-        pageJump?.takeIf { it.page in 0 until source.pageCount }
-            ?.let { listState.scrollToItemUnlessVisible(it.page) }
+        pageJump?.takeIf { it.page in 0 until source.pageCount }?.let {
+            if (it.toTop) listState.scrollToItem(it.page) else listState.scrollToItemUnlessVisible(it.page)
+        }
     }
 
     // Each anchor reads the content under the pinch at the commit, while the layout is still the one
