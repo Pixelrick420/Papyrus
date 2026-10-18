@@ -39,10 +39,14 @@ import com.papyrus.app.viewer.PdfPageLink
 import com.papyrus.app.viewer.PdfPageTextSource
 import com.papyrus.app.viewer.PdfPasswordException
 import com.papyrus.app.viewer.PdfTextExtractor
+import com.papyrus.app.viewer.PrettyPrint
+import com.papyrus.app.viewer.PrettyKind
 import com.papyrus.app.viewer.SyntaxHighlighter
+import com.papyrus.app.viewer.TextChunks
 import com.papyrus.app.viewer.TextEncoding
 import com.papyrus.app.viewer.TextEncodings
 import com.papyrus.app.viewer.TextSniffer
+import com.papyrus.app.viewer.chunkText
 import com.papyrus.app.viewer.readTextChunks
 import com.papyrus.app.viewer.readTextString
 import com.papyrus.app.ui.viewer.clampScale
@@ -62,6 +66,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.isActive
@@ -204,8 +211,8 @@ class ViewerViewModel(
     /** Cancelled per query; racing searches would let the older overwrite the newer. */
     private var findJob: Job? = null
 
-    /** Cancelled per pick, so two quick choices in the encoding dialog leave the later one on screen. */
-    private var encodingJob: Job? = null
+    /** Cancelled per reload, so a quick encoding pick and a settings toggle leave the later one on screen. */
+    private var reloadJob: Job? = null
 
     /** One page at a time; keyed by URI so a re-grant never reads the dead one. */
     private var pageTextSource: PdfPageTextSource? = null
@@ -245,6 +252,15 @@ class ViewerViewModel(
             }
         }
         viewModelScope.launch { load() }
+        // A pretty-print toggle re-reads a formattable plain-text document, like an encoding
+        // change; the initial value is what the first load already applied, so it is skipped.
+        viewModelScope.launch {
+            app.settings.settings
+                .map { it.prettyPrint }
+                .distinctUntilChanged()
+                .drop(1)
+                .collect { reloadPrettyPrintedContent() }
+        }
     }
 
     private suspend fun load() {
@@ -407,18 +423,18 @@ class ViewerViewModel(
             }
             // CODE renders through the same surface as TEXT: monospace, chunked, selectable.
             DocumentFormat.TEXT, DocumentFormat.CODE -> {
-                val read = openStream(uri).use { readTextChunks(it, MAX_TEXT_BYTES, forcedCharset(), StatisticalCharsetGuesser) }
-                // By name, and only for source: a .log or .txt that happens to look like code stays plain.
-                val language = CodeLanguages.forFileName(doc.title).takeIf { format == DocumentFormat.CODE }
-                ViewerContent.PlainText(
-                    chunks = read.chunks,
-                    encoding = read.encoding,
-                    language = language,
-                    lexStates = language?.let { SyntaxHighlighter.chunkStartStates(it, read.chunks) },
-                    lineCount = read.lineCount,
-                    maxLineColumns = read.maxLineColumns,
-                    truncated = read.truncated,
-                )
+                val prettyKind = if (app.settings.current.prettyPrint) PrettyPrint.kindFor(doc.title) else null
+                if (prettyKind == null) {
+                    val read = openStream(uri).use { readTextChunks(it, MAX_TEXT_BYTES, forcedCharset(), StatisticalCharsetGuesser) }
+                    plainText(doc, read, codeOnly = format == DocumentFormat.CODE)
+                } else {
+                    val read = openStream(uri).use { readTextString(it, MAX_TEXT_BYTES, forcedCharset(), StatisticalCharsetGuesser) }
+                    val formatted = PrettyPrint.format(prettyKind, read.text)
+                    // Structural failure: the exact stored text always opens, with one snackbar.
+                    if (formatted == null) _messages.value = UiText(R.string.viewer_pretty_failed)
+                    val chunks = chunkText(formatted ?: read.text, read.encoding, read.truncated)
+                    plainText(doc, chunks, codeOnly = format == DocumentFormat.CODE)
+                }
             }
             DocumentFormat.DOCX, DocumentFormat.ODT -> when (OfficeEncryption.status({ openStream(uri) })) {
                 OfficeEncryption.Party.NOT_ENCRYPTED -> {
@@ -441,6 +457,21 @@ class ViewerViewModel(
 
     private fun extractOffice(uri: Uri, format: DocumentFormat): List<OfficeBlock> =
         OfficeTextExtractor(mediaDir = mediaDir).extract({ openStream(uri) }, format)
+
+    /** Plain text from either read path. By name, and only for source: a .log or .txt that
+     * happens to look like code stays plain. */
+    private fun plainText(doc: DocumentEntity, read: TextChunks, codeOnly: Boolean): ViewerContent.PlainText {
+        val language = CodeLanguages.forFileName(doc.title).takeIf { codeOnly }
+        return ViewerContent.PlainText(
+            chunks = read.chunks,
+            encoding = read.encoding,
+            language = language,
+            lexStates = language?.let { SyntaxHighlighter.chunkStartStates(it, read.chunks) },
+            lineCount = read.lineCount,
+            maxLineColumns = read.maxLineColumns,
+            truncated = read.truncated,
+        )
+    }
 
     /** A wrong [password] returns [ViewerContent.NeedsPassword] for an in-place retry rather than throwing. */
     private suspend fun unlock(doc: DocumentEntity, password: String): ViewerContent =
@@ -585,11 +616,26 @@ class ViewerViewModel(
         encodingName = charsetName
         savedState[KEY_ENCODING] = charsetName
         _state.update { it.copy(encodingOverride = charsetName) }
-        encodingJob?.cancel()
-        encodingJob = viewModelScope.launch {
+        reloadContent()
+    }
+
+    /** The pretty-print toggle changed: re-read a plain-text document the formatter applies to;
+     * anything else (a name that never formats, PDF, Office, Markdown) is left as it is. */
+    private fun reloadPrettyPrintedContent() {
+        val doc = _state.value.document ?: return
+        if (_state.value.content !is ViewerContent.PlainText) return
+        if (PrettyPrint.kindFor(doc.title) == null) return
+        reloadContent()
+    }
+
+    /** One reload at a time from the current URI; the old content stays until the new arrives.
+     * The text changes under any search in progress, so its hits are recomputed. */
+    private fun reloadContent() {
+        val doc = _state.value.document ?: return
+        reloadJob?.cancel()
+        reloadJob = viewModelScope.launch {
             val reloaded = loadContentSafely(doc)
             _state.update { it.copy(content = reloaded) }
-            // The text changed under any search in progress, so its hits now point at the wrong characters.
             val query = _state.value.find.query
             if (query.isNotBlank()) updateFindQuery(query)
         }

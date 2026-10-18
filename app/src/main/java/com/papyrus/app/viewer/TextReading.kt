@@ -36,20 +36,58 @@ fun readTextChunks(
     linesPerChunk: Int = TEXT_LINES_PER_CHUNK,
 ): TextChunks {
     val opened = openText(input, maxBytes, forced, guesser)
+    val assembler = LineAssembler(linesPerChunk)
     val buffer = CharArray(READ_BUFFER_CHARS)
-    val chunks = ArrayList<String>()
-    val chunk = StringBuilder()
-    var linesInChunk = 0
-    var lineCount = 1
-    var column = 0
-    var maxColumns = 0
-    var afterCarriageReturn = false
-
     while (true) {
         val read = opened.reader.read(buffer)
         if (read < 0) break
-        for (i in 0 until read) {
-            val c = buffer[i]
+        assembler.append(buffer, read)
+    }
+    return assembler.finish(opened.encoding, opened.truncated)
+}
+
+/**
+ * The same chunking [readTextChunks] applies, over an already-decoded string — the pretty-printed
+ * path, which holds the whole file as text first. Feeds [LineAssembler] in buffer-sized blocks, so
+ * no second whole-file copy is made.
+ */
+fun chunkText(
+    text: String,
+    encoding: TextEncoding,
+    truncated: Boolean,
+    linesPerChunk: Int = TEXT_LINES_PER_CHUNK,
+): TextChunks {
+    val assembler = LineAssembler(linesPerChunk)
+    val buffer = CharArray(READ_BUFFER_CHARS)
+    var at = 0
+    while (at < text.length) {
+        val length = minOf(buffer.size, text.length - at)
+        text.toCharArray(buffer, 0, at, at + length)
+        assembler.append(buffer, length)
+        at += length
+    }
+    return assembler.finish(encoding, truncated)
+}
+
+/**
+ * The viewer's line rules, in one place for both read paths: lines end at `\n`, `\r\n` or a lone
+ * `\r` (`\r\n` counted once, even across a buffer edge); 40 lines to a chunk, each terminated by
+ * `\n`; a chunk is only full when its last line ends it; [lineCount] counts a trailing empty line;
+ * [maxLineColumns] is the widest line in monospace columns.
+ */
+internal class LineAssembler(private val linesPerChunk: Int) {
+
+    private val chunks = ArrayList<String>()
+    private val chunk = StringBuilder()
+    private var linesInChunk = 0
+    private var lineCount = 1
+    private var column = 0
+    private var maxColumns = 0
+    private var afterCarriageReturn = false
+
+    fun append(chars: CharArray, length: Int) {
+        for (i in 0 until length) {
+            val c = chars[i]
             // The \n of a \r\n pair was already counted when its \r came through, possibly in the last buffer.
             if (c == '\n' && afterCarriageReturn) {
                 afterCarriageReturn = false
@@ -73,11 +111,14 @@ fun readTextChunks(
             }
         }
     }
-    if (column > maxColumns) maxColumns = column
-    if (opened.truncated) chunk.dropCutCharacter()
-    // Last chunk, unless the text ended on a chunk's final newline, which would add an empty one.
-    if (chunk.isNotEmpty() || chunks.isEmpty()) chunks += chunk.toString()
-    return TextChunks(chunks, lineCount, maxColumns, opened.encoding, opened.truncated)
+
+    fun finish(encoding: TextEncoding, truncated: Boolean): TextChunks {
+        if (column > maxColumns) maxColumns = column
+        if (truncated) chunk.dropCutCharacter()
+        // Last chunk, unless the text ended on a chunk's final newline, which would add an empty one.
+        if (chunk.isNotEmpty() || chunks.isEmpty()) chunks += chunk.toString()
+        return TextChunks(chunks, lineCount, maxColumns, encoding, truncated)
+    }
 }
 
 /** The whole file as one string, for Markdown, which Markwon takes whole. */
