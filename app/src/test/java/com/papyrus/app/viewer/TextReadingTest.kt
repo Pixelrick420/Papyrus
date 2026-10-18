@@ -205,4 +205,46 @@ class TextReadingTest {
 
         assertEquals("こんにちは\n世界", result.chunks.single())
     }
+
+    /** The whole-string path must chunk, count lines and measure columns exactly like the
+     * streaming path, so the pretty-printed and raw views of a file cannot drift apart. */
+    private fun assertChunkingParity(text: String, perChunk: Int = TEXT_LINES_PER_CHUNK) {
+        val streamed = readTextChunks(ByteArrayInputStream(text.toByteArray()), Int.MAX_VALUE, linesPerChunk = perChunk)
+        val decoded = readTextString(ByteArrayInputStream(text.toByteArray()), Int.MAX_VALUE)
+        val fromString = chunkText(decoded.text, decoded.encoding, decoded.truncated, perChunk)
+
+        assertEquals("chunks for ${text.take(20)}", streamed.chunks, fromString.chunks)
+        assertEquals(streamed.lineCount, fromString.lineCount)
+        assertEquals(streamed.maxLineColumns, fromString.maxLineColumns)
+    }
+
+    @Test
+    fun `chunkText agrees on exactly forty lines`() = assertChunkingParity(lines(40))
+
+    @Test
+    fun `chunkText agrees on forty-one lines`() = assertChunkingParity(lines(41))
+
+    @Test
+    fun `chunkText agrees on a trailing newline at a chunk boundary`() = assertChunkingParity(lines(40) + "\n")
+
+    @Test
+    fun `chunkText agrees carriage-return pairs are counted once`() =
+        assertChunkingParity("a\r\nb\rc\nd\r\n\r\ne")
+
+    @Test
+    fun `chunkText agrees on the empty string`() = assertChunkingParity("")
+
+    @Test
+    fun `chunkText agrees on tabs and wide characters`() = assertChunkingParity("ab\n日本語\n\tx")
+
+    @Test
+    fun `chunkText chunks a whole string on its own`() {
+        val result = chunkText(lines(100), TextEncoding(Charsets.UTF_8, 0, EncodingSource.UTF8), truncated = false)
+
+        assertEquals(3, result.chunks.size)
+        assertEquals(40, result.chunks[0].lines().size)
+        assertEquals(20, result.chunks[2].lines().size)
+        assertEquals(100, result.lineCount)
+        assertEquals(lines(100), result.chunks.joinToString("\n"))
+    }
 }

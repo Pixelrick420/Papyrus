@@ -77,6 +77,8 @@ class SettingsViewModel(private val repository: SettingsRepository) : ViewModel(
     fun setShowLineNumbers(enabled: Boolean) = repository.setShowLineNumbers(enabled)
 
     fun setWrapLines(enabled: Boolean) = repository.setWrapLines(enabled)
+
+    fun setPrettyPrint(enabled: Boolean) = repository.setPrettyPrint(enabled)
 }
 
 /** Same inset as Home and the viewer, so cards line up with the Home list. */
@@ -168,6 +170,13 @@ fun SettingsScreen(
                         description = stringResource(R.string.settings_wrap_lines_desc),
                         checked = settings.wrapLines,
                         onCheckedChange = viewModel::setWrapLines,
+                    )
+                    CardDivider()
+                    SwitchRow(
+                        title = stringResource(R.string.settings_pretty_print),
+                        description = stringResource(R.string.settings_pretty_print_desc),
+                        checked = settings.prettyPrint,
+                        onCheckedChange = viewModel::setPrettyPrint,
                     )
                 }
 
