@@ -94,6 +94,21 @@ never written with `OnConflictStrategy.REPLACE`: a replace is a delete plus an i
     default.
   - *About*: version, source link and license.
 - **Search** filters the library by title, in memory, over the list the screen already holds.
+- **Sort** is the icon beside the search pill: *Last opened* (the default), *Name, A to Z*, *Name, Z to A*, *Date added*
+  and *Size, largest first*; the menu marks the current one and the button's description names it. The choice is kept
+  in settings. Names compare the way a person reads them: case is ignored, `file2` comes before `file10`, digits come
+  before letters, and letters follow the device language's alphabet (a Swedish reader finds Å after Z). Documents that
+  tie always come most recently opened first and then by id, so the order never depends on the database and rows only
+  glide when something about them changed. Sorting and filtering are pure functions over the one list query
+  (`LibraryView.kt`), so there is no index and no second query.
+- **Filter chips** sit under the search pill: one per format group the library actually has (PDF, Word for DOC and DOCX,
+  ODT, Markdown, Text, Code), plus **Favourites**. Several format chips show their union; Favourites narrows that to the
+  favourites. Chips compose with the title search, with a row hidden by Remove's undo window, and with sorting; the
+  selection survives rotation. When filters hide everything Home says so, with a **Clear filters** button, which is a
+  different screen from the first-run one. *Select all* still means every row currently shown.
+- **Favourites** are set from a row's menu (*Add to favourites* / *Remove from favourites*) and show as a small star.
+  The flag is the `documents.isFavourite` column. Opening a document again, re-granting access and saving a handed-over
+  copy never reset it, because the update copies the stored row and replaces only what the provider reports anew.
 - **Share** sends the document's own SAF URI through `ACTION_SEND` with `FLAG_GRANT_READ_URI_PERMISSION`, so no target
   can write, rename or delete the file. The grant is probed first: a dead one raises a message instead of a chooser
   that opens and then fails inside someone else's app.

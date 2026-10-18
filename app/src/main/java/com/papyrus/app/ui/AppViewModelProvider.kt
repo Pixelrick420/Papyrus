@@ -13,7 +13,7 @@ import com.papyrus.app.ui.screens.ViewerViewModel
 
 object AppViewModelProvider {
     val Factory: ViewModelProvider.Factory = viewModelFactory {
-        initializer { HomeViewModel(app().repository, app().thumbnailLoader, app().applicationScope) }
+        initializer { HomeViewModel(app().repository, app().thumbnailLoader, app().applicationScope, app().settings) }
         initializer { ViewerViewModel(app(), createSavedStateHandle()) }
         initializer { SettingsViewModel(app().settings) }
     }
