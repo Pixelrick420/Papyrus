@@ -9,7 +9,7 @@ on-device. The manifest declares no permissions: no network or storage access
 
 | Format | Rendered as |
 | --- | --- |
-| PDF | `PdfRenderer` pages; zoom re-rasterises at the target resolution. Tappable links: a web link opens, an in-document jump scrolls to its page. A PDF with bookmarks gets an **Outline** in the viewer menu. Password-protected files prompt for the password |
+| PDF | `PdfRenderer` pages; zoom re-rasterises at the target resolution. Tappable links: a web link opens, an in-document jump scrolls to its page. A PDF with bookmarks gets an **Outline** in the viewer menu, and every PDF a **Go to page**. Password-protected files prompt for the password |
 | Markdown | Markwon to `Spanned` in a native `TextView`, with strikethrough and tables, links open on tap |
 | Plain text (`.txt`, `.log`, ...) | chunked 40 lines at a time, selectable monospace Compose `Text`. Decoded straight into the chunks, so a file costs about its own size in memory. Read up to 32 MB (Markdown: 4 MB). Optional line-number gutter and no-wrap mode with sideways scrolling |
 | Source and config (`.kt`, `.py`, `.json`, ...) | as plain text, labelled `CODE` in the list, with syntax colour for the languages the app defines (below) |
@@ -107,7 +107,7 @@ never written with `OnConflictStrategy.REPLACE`: a replace is a delete plus an i
 - **Find in file**, also on Ctrl+F, works on every format. PDF, text and Office step through matches one at a time:
   the current one is orange and the rest yellow. Markdown is a single `Spanned`, so it lights every match at once and
   its counter shows the total.
-- **PDF outline.** A PDF's bookmarks are read once, off the main thread and after the first page is
+- **PDF outline and go to page.** A PDF's bookmarks are read once, off the main thread and after the first page is
   showing, so a large outline never delays it; the viewer menu offers **Outline** only once a non-empty one is ready. It
   is a nested tree with indentation and a fold control per parent (a long outline starts folded to its top level), and a
   bookmark jumps to its page, taken from its own destination, a GoTo action, a page number, or a named destination
@@ -116,7 +116,9 @@ never written with `OnConflictStrategy.REPLACE`: a replace is a delete plus an i
   out and its children keep their place. The outline is author-supplied, so the reader assumes nothing: each bookmark
   is visited once (a loop ends), at most 5000 are read and 32 levels descended, and a bookmark PdfBox cannot read costs
   only itself. Every page is indexed once rather than searched for per bookmark. A PDF over 64 MB gets no outline,
-  because PdfBox would hold a second copy of it in memory next to the renderer's.
+  because PdfBox would hold a second copy of it in memory next to the renderer's. **Go to page** (viewer menu or
+  Ctrl+G) asks for a number from 1 to the page count, shows "of N" beside the field, flags anything else inline, and
+  Go on the keyboard confirms. Both jump with the page's top at the top of the screen.
 - **Reading position** reopens a library document where the reader stopped, at the zoom they had. The place is an
   anchor that does not depend on the viewport width, the zoom or the text size, so it survives a rotation, a pinch, an
   encoding change and a re-wrap: a PDF page plus the fraction down it, a 40-line text chunk plus a fraction, an Office

@@ -86,6 +86,7 @@ import com.papyrus.app.ui.components.ControlHeight
 import com.papyrus.app.ui.viewer.EncodingDialog
 import com.papyrus.app.ui.viewer.FileInfoSheet
 import com.papyrus.app.ui.viewer.FindInFileBar
+import com.papyrus.app.ui.viewer.GoToDialog
 import com.papyrus.app.ui.viewer.LocalLinkOpener
 import com.papyrus.app.ui.viewer.MarkdownViewer
 import com.papyrus.app.ui.viewer.OfficeViewer
@@ -165,6 +166,7 @@ fun ViewerScreen(
     var infoOpen by remember { mutableStateOf(false) }
     var encodingOpen by remember { mutableStateOf(false) }
     var outlineOpen by remember { mutableStateOf(false) }
+    var goToOpen by remember { mutableStateOf(false) }
     // The heading the outline last chose; the Office viewer scrolls to it.
     var outlineJump by remember { mutableStateOf<OutlineJump?>(null) }
 
@@ -174,6 +176,9 @@ fun ViewerScreen(
     val officeEntries = remember(officeBlocks) { officeBlocks?.let { officeOutline(it) }.orEmpty() }
     val isPdf = state.content is ViewerContent.Pdf
     val outline = if (isPdf) state.pdfOutline else officeEntries
+    // Go to page needs pages; the menu item and Ctrl+G both ask this.
+    val pageCount = (state.content as? ViewerContent.Pdf)?.source?.pageCount ?: 0
+    val goToAvailable = pageCount > 0
 
     // Held here (not in [PdfViewer]) so the header's Copy can reach it; keyed on the source.
     val selectionState = remember((state.content as? ViewerContent.Pdf)?.source) {
@@ -241,6 +246,9 @@ fun ViewerScreen(
                     if (event.key == Key.F && event.isCtrlPressed && findAvailable) {
                         viewModel.openFind()
                         true
+                    } else if (event.key == Key.G && event.isCtrlPressed && goToAvailable) {
+                        goToOpen = true
+                        true
                     } else {
                         false
                     }
@@ -250,6 +258,7 @@ fun ViewerScreen(
                 title = state.document?.title.orEmpty(),
                 findAvailable = findAvailable,
                 outlineAvailable = outline.isNotEmpty(),
+                goToAvailable = goToAvailable,
                 encodingAvailable = encodingAvailable,
                 menuOpen = menuOpen,
                 selectionActive = selectionState.hasSelection,
@@ -261,6 +270,7 @@ fun ViewerScreen(
                 onBack = onBack,
                 onFind = viewModel::openFind,
                 onOutline = { outlineOpen = true },
+                onGoTo = { goToOpen = true },
                 onEncoding = { encodingOpen = true },
                 onInfo = { infoOpen = true },
                 onShare = shareDocument,
@@ -441,10 +451,25 @@ fun ViewerScreen(
             collapsible = isPdf,
             onSelect = { entry ->
                 // The one jump mechanism of each viewer: a PDF scrolls to the page, an Office document to the block.
-                if (isPdf) pageJump = PdfPageJump(entry.index) else outlineJump = OutlineJump(entry.index)
+                if (isPdf) pageJump = PdfPageJump(entry.index, toTop = true) else outlineJump = OutlineJump(entry.index)
                 outlineOpen = false
             },
             onDismiss = { outlineOpen = false },
+        )
+    }
+
+    if (goToOpen && goToAvailable) {
+        GoToDialog(
+            title = stringResource(R.string.viewer_goto_page_title),
+            label = stringResource(R.string.viewer_goto_page_label),
+            error = stringResource(R.string.viewer_goto_page_error, pageCount),
+            max = pageCount,
+            onGo = { page ->
+                // The reader counts from 1; the viewer from 0.
+                pageJump = PdfPageJump(page - 1, toTop = true)
+                goToOpen = false
+            },
+            onDismiss = { goToOpen = false },
         )
     }
 }
@@ -457,6 +482,7 @@ private fun ViewerHeader(
     title: String,
     findAvailable: Boolean,
     outlineAvailable: Boolean,
+    goToAvailable: Boolean,
     encodingAvailable: Boolean,
     menuOpen: Boolean,
     selectionActive: Boolean,
@@ -468,6 +494,7 @@ private fun ViewerHeader(
     onBack: () -> Unit,
     onFind: () -> Unit,
     onOutline: () -> Unit,
+    onGoTo: () -> Unit,
     onEncoding: () -> Unit,
     onInfo: () -> Unit,
     onShare: () -> Unit,
@@ -542,6 +569,13 @@ private fun ViewerHeader(
                         DropdownMenuItem(
                             text = { Text(stringResource(R.string.viewer_outline_title)) },
                             onClick = { onMenuOpenChange(false); onOutline() },
+                        )
+                    }
+                    // Only for a document with pages to number: a PDF.
+                    if (goToAvailable) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.viewer_goto_page_title)) },
+                            onClick = { onMenuOpenChange(false); onGoTo() },
                         )
                     }
                     DropdownMenuItem(
