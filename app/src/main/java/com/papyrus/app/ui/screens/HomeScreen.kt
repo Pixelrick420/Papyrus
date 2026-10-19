@@ -110,6 +110,7 @@ import com.papyrus.app.ui.components.DocumentThumbnail
 import com.papyrus.app.ui.components.SearchPill
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -117,6 +118,8 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -137,6 +140,38 @@ data class HomeUiState(
     /** The removal waiting out its undo window, or null; [HomeViewModel.undoRemove] takes it back. */
     val pendingRemovalToken: Long? = null,
 )
+
+/**
+ * What the list shows for one set of inputs. Pure and independent of the flows it reads from, so
+ * [HomeViewModel.uiState] can run it off the main thread.
+ */
+internal fun buildHomeUiState(
+    all: List<DocumentEntity>,
+    query: String,
+    selection: SelectionState,
+    pendingRemovalToken: Long?,
+    hidden: Set<Long>,
+): HomeUiState {
+    val needle = query.trim()
+    // Hiding first keeps `libraryEmpty` and the results agreeing with what the screen actually shows.
+    val documents = if (hidden.isEmpty()) all else all.filterNot { it.id in hidden }
+    return HomeUiState(
+        loaded = true,
+        libraryEmpty = documents.isEmpty(),
+        query = needle,
+        documents = documents,
+        results = documents.matches(needle),
+        selection = selection,
+        pendingRemovalToken = pendingRemovalToken,
+    )
+}
+
+/** The query as a filter: a case-insensitive title substring; a blank one keeps everything. */
+private fun List<DocumentEntity>.matches(text: String): List<DocumentEntity> {
+    val needle = text.trim()
+    if (needle.isEmpty()) return this
+    return filter { it.title.contains(needle, ignoreCase = true) }
+}
 
 class HomeViewModel(
     private val repository: DocumentRepository,
@@ -173,28 +208,31 @@ class HomeViewModel(
      */
     private val hiddenIds = MutableStateFlow<Set<Long>>(emptySet())
 
+    init {
+        // A hidden id is dropped only after the list it filters has stopped containing it. Read here,
+        // beside the transform rather than inside it, so filtering stays a pure function of its inputs.
+        viewModelScope.launch {
+            repository.documents.collect { all ->
+                val present = all.mapTo(HashSet()) { it.id }
+                hiddenIds.update { it - present }
+            }
+        }
+    }
+
     /**
      * Filtered in memory; starts "not loaded" so a populated library cannot flash its empty state.
      * Hidden rows are left out of documents and libraryEmpty too, so bulk actions agree with the screen.
+     * The filter runs on [Dispatchers.Default] so typing never waits on a large library, and
+     * [distinctUntilChanged] drops the second, identical state the prune above would otherwise publish.
      */
     val uiState: StateFlow<HomeUiState> = combine(
         repository.documents, _query, _selection, pendingRemoval.pending, hiddenIds,
     ) { all, q, selection, pending, hidden ->
-        val needle = q.trim()
-        // A hidden id is dropped only after the list it filters has stopped containing it.
-        val gone = hidden.filterTo(HashSet()) { id -> all.none { it.id == id } }
-        if (gone.isNotEmpty()) hiddenIds.update { it - gone }
-        val docs = if (hidden.isEmpty()) all else all.filterNot { it.id in hidden }
-        HomeUiState(
-            loaded = true,
-            libraryEmpty = docs.isEmpty(),
-            query = needle,
-            documents = docs,
-            results = docs.matches(needle),
-            selection = selection,
-            pendingRemovalToken = pending?.token,
-        )
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeUiState())
+        buildHomeUiState(all, q, selection, pending?.token, hidden)
+    }
+        .distinctUntilChanged()
+        .flowOn(Dispatchers.Default)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeUiState())
 
     fun onQueryChange(value: String) {
         _query.value = value
@@ -220,12 +258,6 @@ class HomeViewModel(
     private fun selectedDocuments(): List<DocumentEntity> {
         val ids = uiState.value.selection.ids
         return uiState.value.documents.filter { it.id in ids }
-    }
-
-    private fun List<DocumentEntity>.matches(text: String): List<DocumentEntity> {
-        val needle = text.trim()
-        if (needle.isEmpty()) return this
-        return filter { it.title.contains(needle, ignoreCase = true) }
     }
 
     private val _messages = Channel<UiText>(Channel.BUFFERED)
