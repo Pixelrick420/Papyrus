@@ -6,15 +6,12 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 // Core icons, not the extended set: this project depends on material-icons-core only.
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -23,11 +20,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.papyrus.app.R
 import com.papyrus.app.ui.components.SearchPill
@@ -107,7 +102,7 @@ fun FindInFileBar(
             },
         )
 
-        FindIconButton(
+        ViewerBarIconButton(
             icon = Icons.Default.KeyboardArrowUp,
             contentDescription = stringResource(R.string.viewer_find_previous),
             onClick = {
@@ -116,7 +111,7 @@ fun FindInFileBar(
             },
             enabled = stepEnabled,
         )
-        FindIconButton(
+        ViewerBarIconButton(
             icon = Icons.Default.KeyboardArrowDown,
             contentDescription = stringResource(R.string.viewer_find_next),
             onClick = {
@@ -125,7 +120,7 @@ fun FindInFileBar(
             },
             enabled = stepEnabled,
         )
-        FindIconButton(
+        ViewerBarIconButton(
             icon = Icons.Default.Close,
             contentDescription = stringResource(R.string.viewer_find_close),
             onClick = {
@@ -137,29 +132,3 @@ fun FindInFileBar(
         )
     }
 }
-
-/** Tinted like the Home pill's clear button; a disabled step button dims rather than vanishes. */
-@Composable
-private fun FindIconButton(
-    icon: ImageVector,
-    contentDescription: String,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    enabled: Boolean = true,
-    iconSize: Dp = 24.dp,
-) {
-    IconButton(onClick = onClick, enabled = enabled, modifier = modifier) {
-        Icon(
-            imageVector = icon,
-            contentDescription = contentDescription,
-            tint = if (enabled) {
-                MaterialTheme.colorScheme.onSurfaceVariant
-            } else {
-                MaterialTheme.colorScheme.onSurface.copy(alpha = DISABLED_ALPHA)
-            },
-            modifier = Modifier.size(iconSize),
-        )
-    }
-}
-
-private const val DISABLED_ALPHA = 0.38f

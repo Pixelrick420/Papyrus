@@ -101,6 +101,7 @@ import com.papyrus.app.ui.viewer.PlainTextViewer
 import com.papyrus.app.ui.viewer.PositionHooks
 import com.papyrus.app.ui.viewer.REST_SCALE
 import com.papyrus.app.ui.viewer.ReadoutBadge
+import com.papyrus.app.ui.viewer.TtsControls
 import com.papyrus.app.ui.viewer.ZoomState
 import com.papyrus.app.ui.viewer.copyToClipboard
 import com.papyrus.app.ui.viewer.openLink
@@ -125,6 +126,7 @@ fun ViewerScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val message by viewModel.messages.collectAsStateWithLifecycle()
+    val tts by viewModel.tts.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
     // A fresh composition (a rotation, say) starts at the zoom the viewer last had, not at 1x.
@@ -200,6 +202,18 @@ fun ViewerScreen(
         else -> false
     }
 
+    // Read aloud is offered whenever find is (the same speakable formats), and the bar shows only
+    // while *this* document is the one being read. An engine failure counts, so the reason stays on
+    // screen and the bar's close button can clear it.
+    val readAloudAvailable = findAvailable
+    val ttsDocumentId = state.document?.id?.toString().orEmpty()
+    val ttsActive = tts.documentId == ttsDocumentId && ttsDocumentId.isNotEmpty() &&
+        (tts.isPlaying || tts.isPaused || tts.hasError)
+    // PDF follow-along reuses the page-jump machinery: each new spoken page reveals like a link would.
+    LaunchedEffect(tts.anchor, ttsActive, isPdf) {
+        if (ttsActive && isPdf && tts.anchor >= 0) pageJump = PdfPageJump(tts.anchor)
+    }
+
     // The charset applies only to text decoded from bytes: plain text, code and Markdown.
     // PDF and Office files have none.
     val encodingAvailable = state.content is ViewerContent.PlainText || state.content is ViewerContent.Markdown
@@ -266,6 +280,8 @@ fun ViewerScreen(
                 showSaveToLibrary = state.canSaveToLibrary,
                 savingToLibrary = state.savingToLibrary,
                 savedToLibrary = state.savedToLibrary,
+                readAloudAvailable = readAloudAvailable,
+                readAloudActive = ttsActive,
                 onMenuOpenChange = { menuOpen = it },
                 onBack = onBack,
                 onFind = viewModel::openFind,
@@ -275,6 +291,7 @@ fun ViewerScreen(
                 onInfo = { infoOpen = true },
                 onShare = shareDocument,
                 onSaveToLibrary = viewModel::saveToLibrary,
+                onReadAloud = { if (ttsActive) viewModel.stopReadAloud() else viewModel.startReadAloud() },
                 onCopySelection = {
                     selectionScope.launch {
                         selectionState.selectedText()?.let { copyToClipboard(context, it) }
@@ -302,6 +319,21 @@ fun ViewerScreen(
                     onClose = closeFind,
                     dismissKeyboardOnStep = dismissKeyboardOnStep,
                     // End inset smaller: the close button's own padding brings its glyph to 16dp.
+                    modifier = Modifier.padding(start = ScreenPadding, end = 4.dp, bottom = 8.dp),
+                )
+            }
+
+            // In the flow like find, so opening it pushes the document down rather than covering it.
+            if (ttsActive) {
+                TtsControls(
+                    state = tts,
+                    onPlayPause = viewModel::ttsPlayPause,
+                    onSkipBack = viewModel::ttsSkipBack,
+                    onSkipForward = viewModel::ttsSkipForward,
+                    onClose = viewModel::stopReadAloud,
+                    onSpeedChange = viewModel::ttsSetSpeed,
+                    // Same insets as the find bar, so the two stack as one column: the close button's
+                    // own padding brings its glyph to 16dp, matching find's close.
                     modifier = Modifier.padding(start = ScreenPadding, end = 4.dp, bottom = 8.dp),
                 )
             }
@@ -339,6 +371,7 @@ fun ViewerScreen(
                             findQuery = find.query,
                             zoom = zoom,
                             position = position,
+                            ttsOffset = tts.anchor.takeIf { ttsActive && it >= 0 },
                         )
                         is ViewerContent.PlainText -> {
                             // Keyed on the fields, not the content: comparing two contents would walk every chunk.
@@ -364,6 +397,7 @@ fun ViewerScreen(
                                 zoom = zoom,
                                 options = options,
                                 position = position,
+                                ttsChunk = tts.anchor.takeIf { ttsActive && it >= 0 },
                             )
                         }
                         is ViewerContent.Office -> OfficeViewer(
@@ -374,6 +408,7 @@ fun ViewerScreen(
                             zoom = zoom,
                             jumpTo = outlineJump,
                             position = position,
+                            ttsBlock = tts.anchor.takeIf { ttsActive && it >= 0 },
                         )
                         // The dialog covers the page; only an in-flight retry is worth showing behind it.
                         is ViewerContent.NeedsPassword ->
@@ -493,6 +528,8 @@ private fun ViewerHeader(
     showSaveToLibrary: Boolean,
     savingToLibrary: Boolean,
     savedToLibrary: Boolean,
+    readAloudAvailable: Boolean,
+    readAloudActive: Boolean,
     onMenuOpenChange: (Boolean) -> Unit,
     onBack: () -> Unit,
     onFind: () -> Unit,
@@ -502,6 +539,7 @@ private fun ViewerHeader(
     onInfo: () -> Unit,
     onShare: () -> Unit,
     onSaveToLibrary: () -> Unit,
+    onReadAloud: () -> Unit,
     onCopySelection: () -> Unit,
     onClearSelection: () -> Unit,
     modifier: Modifier = Modifier,
@@ -567,6 +605,18 @@ private fun ViewerHeader(
                         text = { Text(stringResource(R.string.viewer_find_title)) },
                         enabled = findAvailable,
                         onClick = { onMenuOpenChange(false); onFind() },
+                    )
+                    // Read aloud needs the same speakable formats find does; active always shows the stop label.
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                stringResource(
+                                    if (readAloudActive) R.string.viewer_read_aloud_stop else R.string.viewer_read_aloud,
+                                ),
+                            )
+                        },
+                        enabled = readAloudAvailable || readAloudActive,
+                        onClick = { onMenuOpenChange(false); onReadAloud() },
                     )
                     if (outlineAvailable) {
                         DropdownMenuItem(
