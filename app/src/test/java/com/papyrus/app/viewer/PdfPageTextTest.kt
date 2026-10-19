@@ -6,6 +6,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.util.BitSet
+import kotlin.math.sqrt
 
 /**
  * Match-to-rectangle mapping (which characters a match covers, where it splits) and selection (where a point lands).
@@ -435,6 +436,117 @@ class PdfPageTextTest {
         val copied = wrapped(text, wrapAt).textBetween(text.indexOf("of"), text.length)
 
         assertEquals("of a\nlong paragraph", copied)
+    }
+
+    // Equivalence: the line index in front of nearestChar is an optimisation, so it must answer
+    // exactly what the brute-force full scan answers — same index, same distance — on every shape
+    // of page, ties included. The reference works off the same synthetic boxes the page was built
+    // from, since the page's own arrays are private.
+
+    /** The pre-index algorithm, verbatim: every character, strict-less-than keeps the first hit. */
+    private fun referenceNearestChar(boxes: List<FloatArray>, x: Float, y: Float, aspect: Float = 1f): CharHit? {
+        val sideways = if (aspect > 0f) 1f / aspect else 1f
+        var best = -1
+        var bestSquared = Float.MAX_VALUE
+        for (i in boxes.indices) {
+            val box = boxes[i]
+            if (box[0].isNaN()) continue
+            val dx = spanDistance(x, box[0], box[2]) * sideways
+            val dy = spanDistance(y, box[1], box[3])
+            val squared = dx * dx + dy * dy
+            if (squared < bestSquared) {
+                best = i
+                bestSquared = squared
+            }
+        }
+        return if (best < 0) null else CharHit(best, sqrt(bestSquared))
+    }
+
+    private fun spanDistance(v: Float, low: Float, high: Float): Float =
+        if (v < low) low - v else if (v > high) v - high else 0f
+
+    @Test
+    fun `the line index agrees with a full scan on every point of a synthetic multi-line page`() {
+        val text = "alpha beta\ngamma delta\n\nepsilon zeta eta theta iota\nkappa"
+        val wrap1 = text.indexOf('\n')
+        val wrap2 = text.indexOf('\n', wrap1 + 1)
+        val wrap3 = text.indexOf('\n', wrap2 + 1)
+        val boxes = text.mapIndexed { i, ch ->
+            val lineTop = when {
+                i <= wrap1 -> 0.10f
+                i <= wrap2 -> 0.30f
+                i <= wrap3 -> 0.50f
+                else -> 0.80f
+            }
+            val col = i % 17
+            if (ch == ' ' || ch == '\n' || i in 8..9) floatArrayOf(Float.NaN, Float.NaN, Float.NaN, Float.NaN)
+            else floatArrayOf(col * 0.04f, lineTop, col * 0.04f + 0.03f, lineTop + 0.08f)
+        }
+        val page = page(text, boxes, setOf(wrap1, wrap2, wrap3))
+
+        val probes = listOf(
+            // inside glyphs, between glyphs, between lines, off every edge
+            0.02f to 0.14f, 0.05f to 0.14f, 0.07f to 0.20f, 0.02f to 0.34f,
+            0.31f to 0.54f, 0.05f to 0.84f, -0.4f to 0.14f, 0.9f to 0.14f,
+            0.5f to -0.3f, 0.5f to 1.4f, 0.0f to 0.0f, 1.0f to 1.0f,
+            0.15f to 0.25f, 0.15f to 0.45f, 0.68f to 0.54f, 0.68f to 0.9f,
+        )
+        for (aspect in listOf(1f, 2f, 0.5f, 0f, -1f)) {
+            for ((x, y) in probes) {
+                assertEquals(
+                    "x=$x y=$y aspect=$aspect",
+                    referenceNearestChar(boxes, x, y, aspect),
+                    page.nearestChar(x, y, aspect),
+                )
+            }
+        }
+    }
+
+    @Test
+    fun `the line index agrees with a full scan on lines with missing and partial boxes`() {
+        // A line whose boxes are all NaN must never be a candidate; a line that is half NaN must
+        // still offer its real boxes. Both shapes appear on real pages (spaces, over-budget glyphs).
+        val text = "ab cd ef gh"
+        val boxes = text.mapIndexed { i, _ ->
+            when (i) {
+                0 -> floatArrayOf(0.00f, 0.10f, 0.03f, 0.15f)
+                1 -> floatArrayOf(0.04f, 0.10f, 0.07f, 0.15f)
+                6 -> floatArrayOf(0.10f, 0.30f, 0.13f, 0.35f)
+                else -> floatArrayOf(Float.NaN, Float.NaN, Float.NaN, Float.NaN)
+            }
+        }
+        val page = page(text, boxes, setOf(2, 5))
+
+        for (y in listOf(0.12f, 0.22f, 0.32f, 0.42f)) {
+            for (x in listOf(-0.2f, 0.015f, 0.055f, 0.115f, 0.5f)) {
+                assertEquals(
+                    "x=$x y=$y",
+                    referenceNearestChar(boxes, x, y),
+                    page.nearestChar(x, y),
+                )
+            }
+        }
+    }
+
+    @Test
+    fun `the line index agrees with a full scan on equidistant ties, same line and across lines`() {
+        // Two identical glyphs with a point exactly between them: the earlier index must win.
+        val tieBoxes = listOf(
+            floatArrayOf(0.10f, 0.10f, 0.20f, 0.20f),
+            floatArrayOf(0.30f, 0.10f, 0.40f, 0.20f),
+        )
+        val tie = page("ab", tieBoxes)
+        assertEquals(0, tie.nearestChar(0.25f, 0.15f)?.index)
+        assertEquals(referenceNearestChar(tieBoxes, 0.25f, 0.15f), tie.nearestChar(0.25f, 0.15f))
+
+        // The same glyph shape on two lines, point equidistant between the bands: earlier line wins.
+        val acrossBoxes = listOf(
+            floatArrayOf(0.10f, 0.10f, 0.20f, 0.20f),
+            floatArrayOf(0.10f, 0.30f, 0.20f, 0.40f),
+        )
+        val across = page("ab", acrossBoxes)
+        assertEquals(0, across.nearestChar(0.15f, 0.25f)?.index)
+        assertEquals(referenceNearestChar(acrossBoxes, 0.15f, 0.25f), across.nearestChar(0.15f, 0.25f))
     }
 
     @Test

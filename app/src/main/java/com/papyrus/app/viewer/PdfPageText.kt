@@ -86,16 +86,25 @@ class PdfPageText(
         val sideways = if (aspect > 0f) 1f / aspect else 1f
         var best = -1
         var bestSquared = Float.MAX_VALUE
-        for (i in text.indices) {
-            val o = i * 4
-            val left = boxes[o]
-            if (left.isNaN()) continue
-            val dx = distanceToSpan(x, left, boxes[o + 2]) * sideways
-            val dy = distanceToSpan(y, boxes[o + 1], boxes[o + 3])
-            val squared = dx * dx + dy * dy
-            if (squared < bestSquared) {
-                best = i
-                bestSquared = squared
+        for (line in lines) {
+            if (best >= 0 && line.skippable) {
+                // A char in the line sits at least as far in y as the line's band does, so once
+                // the band is no closer than the best hit so far, no char in the line can beat it —
+                // or tie it: lines are scanned in order and the tie always belongs to the earlier index.
+                val dy = distanceToSpan(y, line.top, line.bottom)
+                if (dy * dy >= bestSquared) continue
+            }
+            for (i in line.start until line.end) {
+                val o = i * 4
+                val left = boxes[o]
+                if (left.isNaN()) continue
+                val dx = distanceToSpan(x, left, boxes[o + 2]) * sideways
+                val dy = distanceToSpan(y, boxes[o + 1], boxes[o + 3])
+                val squared = dx * dx + dy * dy
+                if (squared < bestSquared) {
+                    best = i
+                    bestSquared = squared
+                }
             }
         }
         return if (best < 0) null else CharHit(best, sqrt(bestSquared))
@@ -181,6 +190,49 @@ class PdfPageText(
 
     private fun distanceToSpan(v: Float, low: Float, high: Float): Float =
         if (v < low) low - v else if (v > high) v - high else 0f
+
+    /** One line of the page: a character range plus the vertical band its boxes span. */
+    private class LineBand(val start: Int, val end: Int, val top: Float, val bottom: Float, val skippable: Boolean)
+
+    /**
+     * Lines split at the recorded breaks, built once — the class is immutable, so the index is
+     * safe to hold. A line's band only vouches for chars whose box has a usable y span, so a line
+     * holding a box without one is marked unskippable and always scanned in full.
+     */
+    private val lines: List<LineBand> by lazy { buildLineBands() }
+
+    private fun buildLineBands(): List<LineBand> {
+        val bands = ArrayList<LineBand>()
+        var start = 0
+        var top = 0f
+        var bottom = 0f
+        var open = false
+        var skippable = true
+        for (i in text.indices) {
+            val o = i * 4
+            val boxed = !boxes[o].isNaN()
+            val measurable = boxed && !boxes[o + 1].isNaN() && !boxes[o + 3].isNaN()
+            if (lineBreaks[i]) {
+                // A break closes the line above it and belongs to no line itself, though the scan
+                // has always seen it — a boxed one becomes a line of its own, so it still answers.
+                if (start < i) bands += LineBand(start, i, top, bottom, skippable)
+                if (boxed) bands += LineBand(i, i + 1, boxes[o + 1], boxes[o + 3], measurable)
+                start = i + 1
+                top = 0f
+                bottom = 0f
+                open = false
+                skippable = true
+            } else if (measurable) {
+                top = if (open) min(top, boxes[o + 1]) else boxes[o + 1]
+                bottom = if (open) max(bottom, boxes[o + 3]) else boxes[o + 3]
+                open = true
+            } else if (boxed) {
+                skippable = false
+            }
+        }
+        if (start < text.length) bands += LineBand(start, text.length, top, bottom, skippable)
+        return bands
+    }
 
     companion object {
         const val MAX_RECTS_PER_PAGE = 2000
