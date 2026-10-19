@@ -182,8 +182,9 @@ fun ViewerScreen(
 
     // Only a document with an outline has the menu item: an Office document that used heading styles, or a
     // PDF whose bookmarks have been read (off the main thread, so they arrive after the first page).
-    val officeBlocks = (state.content as? ViewerContent.Office)?.blocks
-    val officeEntries = remember(officeBlocks) { officeBlocks?.let { officeOutline(it) }.orEmpty() }
+    val office = state.content as? ViewerContent.Office
+    // A document's own table of contents (an EPUB's) wins; otherwise the outline is its headings.
+    val officeEntries = remember(office) { office?.let { it.outline ?: officeOutline(it.blocks) }.orEmpty() }
     val isPdf = state.content is ViewerContent.Pdf
     val outline = if (isPdf) state.pdfOutline else officeEntries
     // Go to page needs enough pages to be worth numbering; the menu item and Ctrl+G both ask this.
@@ -221,9 +222,11 @@ fun ViewerScreen(
     val ttsDocumentId = state.document?.id?.toString().orEmpty()
     val ttsActive = tts.documentId == ttsDocumentId && ttsDocumentId.isNotEmpty() &&
         (tts.isPlaying || tts.isPaused || tts.hasError)
-    // PDF follow-along reuses the page-jump machinery: each new spoken page reveals like a link would.
+    // PDF follow-along reveals each new spoken page like a link would.
     LaunchedEffect(tts.anchor, ttsActive, isPdf) {
-        if (ttsActive && isPdf && tts.anchor >= 0) pageJump = PdfPageJump(tts.anchor)
+        if (ttsActive && isPdf && tts.anchor >= 0) {
+            jump = ViewerJump(ReadingLocation(LocationKind.PAGE, tts.anchor), revealOnly = true)
+        }
     }
 
     // The charset applies only to text decoded from bytes: plain text, code and Markdown.
@@ -453,6 +456,7 @@ fun ViewerScreen(
                             zoom = zoom,
                             position = position,
                             ttsBlock = tts.anchor.takeIf { ttsActive && it >= 0 },
+                            incomplete = content.incomplete,
                         )
                         // The dialog covers the page; only an in-flight retry is worth showing behind it.
                         is ViewerContent.NeedsPassword ->

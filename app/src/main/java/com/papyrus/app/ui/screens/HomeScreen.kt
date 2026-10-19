@@ -988,6 +988,7 @@ private fun FormatGroup.labelRes(): Int = when (this) {
     FormatGroup.PDF -> R.string.home_filter_pdf
     FormatGroup.WORD -> R.string.home_filter_word
     FormatGroup.ODT -> R.string.home_filter_odt
+    FormatGroup.EPUB -> R.string.home_filter_epub
     FormatGroup.MARKDOWN -> R.string.home_filter_markdown
     FormatGroup.TEXT -> R.string.home_filter_text
     FormatGroup.CODE -> R.string.home_filter_code

@@ -15,6 +15,7 @@ on-device. The manifest declares no network or storage permissions; the only two
 | Plain text (`.txt`, `.log`, ...) | chunked 40 lines at a time, selectable monospace Compose `Text`. Decoded straight into the chunks, so a file costs about its own size in memory. Read up to 32 MB (Markdown: 4 MB). Optional line-number gutter and no-wrap mode with sideways scrolling |
 | Source and config (`.kt`, `.py`, `.json`, ...) | as plain text, labelled `CODE` in the list, with syntax colour for the languages the app defines (below) |
 | DOCX / ODT | headings, paragraphs, bold / italic / underline / strikethrough / super- and subscript, text and highlight colours, links, bulleted and numbered lists (nested, with Word's and LibreOffice's numbering schemes), alignment, indentation, footnotes and endnotes, reviewer comments (marked in the text and listed after the body with author and date), equations (DOCX; written out as text such as `(a+b)/c`, `x²`, `√(x+1)`, not typeset), tables (with merged cells, shading and cell formatting) and images (at their stated size, with alt text), read straight from the archive. Macro-enabled files and templates (`.docm`, `.dotx`, `.dotm`, `.ott`) open like their plain counterparts; no macro is ever run. Documents with headings get an **Outline** in the viewer menu that jumps to a heading. Password-protected files prompt for the password |
+| EPUB | reflowed text through the same Office pipeline, so find, outline, zoom, reading position and bookmarks all work as for Word files and no dependency is added. The container names the package, its spine gives the reading order (auxiliary `linear="no"` items follow the main flow instead of being lost) and each XHTML chapter becomes headings, paragraphs, nested bulleted and numbered lists, block quotes, preformatted text, rules, tables (with `colspan` / `rowspan`), inline bold / italic / underline / strikethrough / super- and subscript / monospace / highlight, safe links and images (including a picture wrapped in SVG). The book's own table of contents (the EPUB 3 navigation document, else the EPUB 2 NCX) is the **Outline**; a book with neither gets one from its headings. The cover image, when the package names one, is the thumbnail. A book protected by DRM is refused with a message instead of shown as garbage; fonts obfuscated with the IDPF or Adobe algorithm are not DRM and do not matter to reading. Limitations: fixed-layout books reflow as plain text, there is no EPUB-specific typography, right-to-left layout is not handled, and links between chapters stay plain text |
 | DOC (Word 97-2003) | paragraphs and tables, read from the OLE2 piece table. No images; headings come out as plain paragraphs. Encrypted and Word 6/95 files are rejected |
 
 Format resolves from the file extension first and the MIME type second, because SAF providers routinely report a `.md`
@@ -102,13 +103,14 @@ never written with `OnConflictStrategy.REPLACE`: a replace is a delete plus an i
   glide when something about them changed. Sorting and filtering are pure functions over the one list query
   (`LibraryView.kt`), so there is no index and no second query.
 - **Filter chips** sit under the search pill: one per format group the library actually has (PDF, Word for DOC and DOCX,
-  ODT, Markdown, Text, Code), plus **Favourites**. Several format chips show their union; Favourites narrows that to the
+  ODT, EPUB, Markdown, Text, Code), plus **Favourites**. Several format chips show their union; Favourites narrows that to the
   favourites. Chips compose with the title search, with a row hidden by Remove's undo window, and with sorting; the
   selection survives rotation. When filters hide everything Home says so, with a **Clear filters** button, which is a
   different screen from the first-run one. *Select all* still means every row currently shown.
 - **Favourites** are set from a row's menu (*Add to favourites* / *Remove from favourites*) and show as a small star.
-  The flag is the `documents.isFavourite` column. Opening a document again, re-granting access and saving a handed-over
-  copy never reset it, because the update copies the stored row and replaces only what the provider reports anew.
+  The flag is the `documents.isFavourite` column. Opening a document again or re-granting access never resets it: the
+  first copies the stored row and replaces only what the provider reports anew (`DocumentEntity.reopenedWith`, covered
+  by a unit test), the second rewrites the URI column alone.
 - **Share** sends the document's own SAF URI through `ACTION_SEND` with `FLAG_GRANT_READ_URI_PERMISSION`, so no target
   can write, rename or delete the file. The grant is probed first: a dead one raises a message instead of a chooser
   that opens and then fails inside someone else's app.
@@ -138,7 +140,7 @@ never written with `OnConflictStrategy.REPLACE`: a replace is a delete plus an i
 - **Reading position** reopens a library document where the reader stopped, at the zoom they had. The place is an
   anchor that does not depend on the viewport width, the zoom or the text size, so it survives a rotation, a pinch, an
   encoding change and a re-wrap: a PDF page plus the fraction down it, a 40-line text chunk plus a fraction, an Office
-  block (DOCX, ODT, DOC) plus a fraction, and for Markdown a character offset into the rendered text. A stored place is
+  block (DOCX, ODT, DOC, EPUB) plus a fraction, and for Markdown a character offset into the rendered text. A stored place is
   clamped against what actually loaded, because a file can change between opens, so a bad one can only land on the
   nearest real place.
   - It is stored in its own `reading_progress` table, as numbers only: the anchor, the committed zoom, the derived
@@ -177,9 +179,19 @@ never written with `OnConflictStrategy.REPLACE`: a replace is a delete plus an i
     Bookmarks work whether or not *Remember reading position* is on.
   - Outline entries, links, go to page and bookmarks all scroll through one jump, so they land the same way in every
     format.
+- **EPUB safety.** A book is a ZIP written by someone else, so it is read with hard limits and never extracted
+  to disk beyond its images (`EpubLimits`): an entry whose name is absolute or contains `..` (zip-slip) fails the
+  book; so do more than 10,000 entries, an entry over 64 MB or all entries over 512 MB once inflated, and an entry that
+  inflates more than 100 times its compressed size past 1 MB (a bomb). Sizes are counted as bytes come out, not as
+  declared. A chapter nested more than 200 elements deep is skipped (the parser keeps its own stacks, so depth costs
+  memory, never the call stack). HTML's named entities (`&nbsp;`, `&mdash;`, ...) are defined to the parser one by one,
+  and the chapter's DOCTYPE is never processed or fetched, so a book reads offline and the same under kxml2 in tests
+  as under the platform parser. A chapter that cannot be read is skipped and the book goes on; skipped chapters,
+  dropped images and any limit reached end the document with a notice that part of it was not shown. `encryption.xml`
+  that names anything but IDPF or Adobe font obfuscation, or a `rights.xml`, means DRM.
 - **Zoom** is a pinch or a double-tap, 0.5x to 3x, the double-tap toggling between 1x and 2.5x. Text surfaces scale the
   type size, so content re-wraps and the scroll bounds stay correct.
-- **Links** open on tap with no confirmation, in PDF and Markdown text and in DOCX / ODT — a PDF's in-document
+- **Links** open on tap with no confirmation, in PDF and Markdown text and in DOCX / ODT / EPUB — a PDF's in-document
   destination scrolls to that page instead of leaving the app. Only `http`, `https`, `mailto` and `tel` are followed;
   any other scheme is refused, and a link with nothing to open it raises a short toast, leaving the page as it was.
 - **Lost access** keeps what is on screen and offers a re-pick. The pick must have exactly the stored file name and the
@@ -212,7 +224,7 @@ compliance is enforced rather than documented.
 | `./gradlew check` | unit tests, lint and detekt |
 | `./gradlew testDebugUnitTest` | unit tests alone |
 
-The DOCX/ODT and DOC extractors run against archives the tests build in memory (kxml2 stands in for the platform's
+The DOCX/ODT, EPUB and DOC extractors run against archives the tests build in memory (kxml2 stands in for the platform's
 `XmlPullParser`, and the `.doc` fixtures assemble the OLE2 container and piece table from scratch). detekt is scoped to
 dead code and correctness, with the deliberate broad catches baselined so they stay visible. CI runs only the tests and
 `assembleRelease`, so lint and detekt are local gates.

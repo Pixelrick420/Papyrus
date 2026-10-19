@@ -37,7 +37,7 @@ object TtsDocumentSource {
         DocumentFormat.PDF -> unitsFromPdfPages(pdfPages.orEmpty())
         DocumentFormat.TEXT, DocumentFormat.CODE -> unitsFromPlainText(plainTextChunks.orEmpty())
         DocumentFormat.MARKDOWN -> unitsFromMarkdown(markdownText.orEmpty())
-        DocumentFormat.DOC, DocumentFormat.DOCX, DocumentFormat.ODT -> unitsFromOffice(officeBlocks.orEmpty())
+        DocumentFormat.DOC, DocumentFormat.DOCX, DocumentFormat.ODT, DocumentFormat.EPUB -> unitsFromOffice(officeBlocks.orEmpty())
         DocumentFormat.UNKNOWN -> emptyList()
     }
 

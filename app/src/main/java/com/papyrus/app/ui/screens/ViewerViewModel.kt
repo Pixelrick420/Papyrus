@@ -36,6 +36,8 @@ import com.papyrus.app.viewer.CodeLanguage
 import com.papyrus.app.viewer.CodeLanguages
 import com.papyrus.app.viewer.DocTextExtractor
 import com.papyrus.app.viewer.DocumentPasswordException
+import com.papyrus.app.viewer.EpubExtractor
+import com.papyrus.app.viewer.EpubProtectedException
 import com.papyrus.app.viewer.OutlineEntry
 import com.papyrus.app.viewer.StatisticalCharsetGuesser
 import com.papyrus.app.viewer.LexStates
@@ -115,7 +117,15 @@ sealed interface ViewerContent {
         val maxLineColumns: Int = 0,
         val truncated: Boolean = false,
     ) : ViewerContent
-    data class Office(val blocks: List<OfficeBlock>) : ViewerContent
+    /**
+     * [outline] is a document's own table of contents (an EPUB's), or null to derive one from the headings;
+     * [incomplete] says something was left out and the viewer should end with a notice.
+     */
+    data class Office(
+        val blocks: List<OfficeBlock>,
+        val outline: List<OutlineEntry>? = null,
+        val incomplete: Boolean = false,
+    ) : ViewerContent
     /** A document waiting on its password; [incorrect] flags a rejected attempt, [checking] one in flight. */
     data class NeedsPassword(val incorrect: Boolean = false, val checking: Boolean = false) : ViewerContent
     data class Failed(val message: UiText) : ViewerContent
@@ -590,6 +600,16 @@ class ViewerViewModel(
                 }
                 OfficeEncryption.Party.PASSWORD -> ViewerContent.NeedsPassword()
                 OfficeEncryption.Party.UNSUPPORTED -> ViewerContent.Failed(UiText(R.string.viewer_error_password))
+            }
+            DocumentFormat.EPUB -> try {
+                val book = EpubExtractor(mediaDir = mediaDir).extract({ openStream(uri) })
+                if (book.blocks.isEmpty()) {
+                    ViewerContent.Failed(UiText(R.string.viewer_error_empty))
+                } else {
+                    ViewerContent.Office(book.blocks, book.outline, book.incomplete)
+                }
+            } catch (expected: EpubProtectedException) {
+                ViewerContent.Failed(UiText(R.string.viewer_error_epub_protected))
             }
             DocumentFormat.DOC -> when (OfficeEncryption.status({ openStream(uri) })) {
                 OfficeEncryption.Party.NOT_ENCRYPTED -> {

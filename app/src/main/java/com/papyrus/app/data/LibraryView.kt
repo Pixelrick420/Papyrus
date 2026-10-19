@@ -25,6 +25,7 @@ enum class FormatGroup {
     PDF,
     WORD,
     ODT,
+    EPUB,
     MARKDOWN,
     TEXT,
     CODE,
@@ -35,6 +36,7 @@ enum class FormatGroup {
             DocumentFormat.PDF -> PDF
             DocumentFormat.DOC, DocumentFormat.DOCX -> WORD
             DocumentFormat.ODT -> ODT
+            DocumentFormat.EPUB -> EPUB
             DocumentFormat.MARKDOWN -> MARKDOWN
             DocumentFormat.TEXT -> TEXT
             DocumentFormat.CODE -> CODE

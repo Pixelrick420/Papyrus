@@ -2,8 +2,10 @@ package com.papyrus.app.data
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.Typeface
 import android.net.Uri
@@ -12,6 +14,7 @@ import androidx.core.graphics.createBitmap
 import androidx.core.graphics.scale
 import androidx.core.net.toUri
 import com.papyrus.app.viewer.DocTextExtractor
+import com.papyrus.app.viewer.EpubExtractor
 import com.papyrus.app.viewer.OfficeBlock
 import com.papyrus.app.viewer.OfficeTextExtractor
 import com.papyrus.app.viewer.PdfPageSource
@@ -83,6 +86,7 @@ class ThumbnailLoader(private val context: Context) {
         DocumentFormat.PDF -> renderPdf(document.uri.toUri())
         DocumentFormat.MARKDOWN, DocumentFormat.TEXT, DocumentFormat.CODE -> renderText(document.uri.toUri())
         DocumentFormat.DOCX, DocumentFormat.ODT, DocumentFormat.DOC -> renderOffice(document)
+        DocumentFormat.EPUB -> renderEpub(document.uri.toUri())
         DocumentFormat.UNKNOWN -> null
     }
 
@@ -112,18 +116,58 @@ class ThumbnailLoader(private val context: Context) {
             OfficeTextExtractor(mediaDir = null)
                 .extract({ openStream(uri)!! }, document.format, THUMBNAIL_BLOCK_BUDGET)
         }
-        val lines = blocks.asSequence()
-            .mapNotNull { block ->
-                when (block) {
-                    is OfficeBlock.Heading -> block.text
-                    is OfficeBlock.Paragraph -> block.text
-                    is OfficeBlock.ListItem -> block.text
-                    is OfficeBlock.Table, is OfficeBlock.Image, is OfficeBlock.Note, is OfficeBlock.Divider -> null
-                }
+        return drawTextTile(previewLines(blocks))
+    }
+
+    private fun previewLines(blocks: List<OfficeBlock>): List<String> = blocks.asSequence()
+        .mapNotNull { block ->
+            when (block) {
+                is OfficeBlock.Heading -> block.text
+                is OfficeBlock.Paragraph -> block.text
+                is OfficeBlock.ListItem -> block.text
+                is OfficeBlock.Table, is OfficeBlock.Image, is OfficeBlock.Note, is OfficeBlock.Divider -> null
             }
-            .take(4)
-            .toList()
-        return drawTextTile(lines)
+        }
+        .take(4)
+        .toList()
+
+    /**
+     * The cover when the package names one, read as that one entry and nothing else; otherwise the same text
+     * tile as any other document, from the first chapters only. Nothing is written to disk.
+     */
+    private fun renderEpub(uri: Uri): Bitmap? {
+        val open = { openStream(uri) ?: throw FileNotFoundException(uri.toString()) }
+        val extractor = EpubExtractor(mediaDir = null, blockBudget = THUMBNAIL_BLOCK_BUDGET)
+        extractor.readCover(open)?.let { bytes -> decodeCover(bytes)?.let { return it } }
+        return drawTextTile(previewLines(extractor.extract(open, previewChapters = EPUB_PREVIEW_CHAPTERS).blocks))
+    }
+
+    /**
+     * Decodes a cover without ever holding it at full size: the dimensions first (a picture that claims more
+     * than [MAX_COVER_PIXELS] is refused), then a power-of-two subsample down to about twice the tile, then a
+     * fill of the tile, anchored at the top so a tall cover keeps its title.
+     */
+    private fun decodeCover(bytes: ByteArray): Bitmap? {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+        val width = bounds.outWidth
+        val height = bounds.outHeight
+        if (width <= 0 || height <= 0 || width.toLong() * height > MAX_COVER_PIXELS) return null
+        var sample = 1
+        while (width / (sample * 2) >= THUMBNAIL_WIDTH_PX * 2 && height / (sample * 2) >= THUMBNAIL_HEIGHT_PX * 2) sample *= 2
+        val decoded = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = sample })
+            ?: return null
+        val tile = createBitmap(THUMBNAIL_WIDTH_PX, THUMBNAIL_HEIGHT_PX)
+        val canvas = Canvas(tile)
+        canvas.drawColor(Color.WHITE)
+        val fill = maxOf(THUMBNAIL_WIDTH_PX.toFloat() / decoded.width, THUMBNAIL_HEIGHT_PX.toFloat() / decoded.height)
+        val matrix = Matrix().apply {
+            postScale(fill, fill)
+            postTranslate((THUMBNAIL_WIDTH_PX - decoded.width * fill) / 2f, 0f)
+        }
+        canvas.drawBitmap(decoded, matrix, Paint(Paint.FILTER_BITMAP_FLAG))
+        decoded.recycle()
+        return tile
     }
 
     private fun openStream(uri: Uri): InputStream? = try {
@@ -180,6 +224,10 @@ class ThumbnailLoader(private val context: Context) {
         private const val MAX_THUMBNAIL_LINES = 8
         private const val MAX_THUMBNAIL_CHARS = 20
         private const val MAX_THUMBNAIL_SOURCE_BYTES = 16 * 1024
+        private const val EPUB_PREVIEW_CHAPTERS = 3
+
+        /** Pixels a cover may claim before it is not worth decoding for a 132 by 176 tile. */
+        private const val MAX_COVER_PIXELS = 40L * 1000 * 1000
 
         private fun cacheBytes(): Int =
             (Runtime.getRuntime().maxMemory() / 16).toInt().coerceIn(4 shl 20, 32 shl 20)

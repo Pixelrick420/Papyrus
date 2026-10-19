@@ -137,4 +137,20 @@ class DocumentFormatTest {
         // UNKNOWN contributes no mime types, so an entry for it would be a filter no provider has.
         assertFalse(types.contains("application/x-unknown"))
     }
+
+    @Test
+    fun `an epub is found by its extension or its mime type`() {
+        assertEquals(DocumentFormat.EPUB, DocumentFormat.detect("novel.epub", "application/octet-stream"))
+        assertEquals(DocumentFormat.EPUB, DocumentFormat.detect("Novel.EPUB", null))
+        assertEquals(DocumentFormat.EPUB, DocumentFormat.detect("blob", "application/epub+zip"))
+        // An epub is a zip, but a plain zip is not an epub, and neither is read as text.
+        assertEquals(DocumentFormat.UNKNOWN, DocumentFormat.detect("archive.zip", "application/zip"))
+    }
+
+    @Test
+    fun `the picker offers epub files and sharing names their type`() {
+        assertTrue(DocumentFormat.pickerMimeTypes.contains("application/epub+zip"))
+        assertEquals("application/epub+zip", DocumentFormat.EPUB.mimeTypes.first())
+        assertEquals("EPUB", DocumentFormat.EPUB.label)
+    }
 }

@@ -619,6 +619,8 @@ fun OfficeViewer(
     modifier: Modifier = Modifier,
     position: PositionHooks = PositionHooks.None,
     ttsBlock: Int? = null,
+    /** Something was left out (a chapter that could not be read, a limit reached): end with a notice saying so. */
+    incomplete: Boolean = false,
 ) {
     val units = remember(blocks) { officeUnits(blocks) }
     // One sideways scroll per table, shared by every band of it, so dragging any band moves the
@@ -703,6 +705,16 @@ fun OfficeViewer(
                                 Modifier.fillMaxWidth(),
                                 highlight = highlight,
                                 reveal = reveal.takeIf { isActive },
+                            )
+                        }
+                    }
+                    if (incomplete) {
+                        item(key = INCOMPLETE_ITEM_KEY) {
+                            Text(
+                                text = stringResource(R.string.viewer_incomplete),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(top = 12.dp),
                             )
                         }
                     }
@@ -815,6 +827,7 @@ private const val COLUMN_PROBE = "0000000000"
 private const val GUTTER_ALPHA = 0.7f
 private const val NUMBER_LAYOUT_CACHE = 64
 private const val TRUNCATED_ITEM_KEY = "truncated"
+private const val INCOMPLETE_ITEM_KEY = "incomplete"
 private const val SIDEWAYS_SETTLE_FRAMES = 3
 
 /** Under the ~2^16 a layout dimension reaches once the other is tall; lines past it clip. */
