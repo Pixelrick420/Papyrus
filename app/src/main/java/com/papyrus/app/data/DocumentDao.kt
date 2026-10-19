@@ -20,6 +20,10 @@ interface DocumentDao {
     @Query("SELECT * FROM documents WHERE uri = :uri LIMIT 1")
     suspend fun getByUri(uri: String): DocumentEntity?
 
+    /** The duplicate check reads only rows that could match, so title is a query, not a scan. */
+    @Query("SELECT * FROM documents WHERE title = :title")
+    suspend fun getByTitle(title: String): List<DocumentEntity>
+
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertIgnore(document: DocumentEntity): Long
 

@@ -40,11 +40,15 @@ object LibraryImport {
         file.canonicalFile.parentFile == dir.canonicalFile
     }.getOrDefault(false)
 
-    /** True when both files hold the same bytes; unequal sizes answer without reading either. */
-    internal fun sameContent(a: File, b: File): Boolean {
-        if (a.length() != b.length()) return false
+    /**
+     * True when [candidate] holds the same bytes the stream from [openSource] yields. A known size
+     * mismatch (0 reads as unknown) answers without opening the source; a failed read answers false
+     * so the caller falls through to its own copy.
+     */
+    internal fun sameContent(candidate: File, sourceSize: Long, openSource: () -> InputStream): Boolean {
+        if (sourceSize > 0 && candidate.length() != sourceSize) return false
         return runCatching {
-            a.inputStream().use { x -> b.inputStream().use { y -> streamsEqual(x, y) } }
+            candidate.inputStream().use { x -> openSource().use { y -> streamsEqual(x, y) } }
         }.getOrDefault(false)
     }
 

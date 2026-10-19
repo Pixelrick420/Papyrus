@@ -139,6 +139,46 @@ class LibraryImportTest {
         assertFalse(LibraryImport.isInside(dir, file))
     }
 
+    @Test
+    fun `a candidate with the source's bytes answers true`() {
+        val candidate = candidate("hello papyrus".toByteArray())
+        val bytes = "hello papyrus".toByteArray()
+
+        assertTrue(LibraryImport.sameContent(candidate, bytes.size.toLong()) { ByteArrayInputStream(bytes) })
+    }
+
+    @Test
+    fun `a candidate with different bytes of the same size answers false`() {
+        val candidate = candidate("hello papyrus".toByteArray())
+        val other = "hello papirus".toByteArray()
+
+        assertFalse(LibraryImport.sameContent(candidate, other.size.toLong()) { ByteArrayInputStream(other) })
+    }
+
+    @Test
+    fun `a size mismatch answers false without opening the source`() {
+        val candidate = candidate(ByteArray(10))
+        var opened = false
+
+        val matches = LibraryImport.sameContent(candidate, 4L) {
+            opened = true
+            ByteArrayInputStream(ByteArray(4))
+        }
+
+        assertFalse(matches)
+        assertFalse(opened)
+    }
+
+    @Test
+    fun `an unreadable source answers false so the save falls through to the copy`() {
+        val candidate = candidate("hello papyrus".toByteArray())
+
+        assertFalse(LibraryImport.sameContent(candidate, candidate.length()) { throw IOException("boom") })
+    }
+
+    private fun candidate(bytes: ByteArray): File =
+        File(temp.newFolder("imports"), "doc.pdf").apply { writeBytes(bytes) }
+
     /** One byte, then failure, so the partial write path is exercised rather than a clean open. */
     private fun oneByteThenFails(): InputStream = object : InputStream() {
         private var reads = 0

@@ -99,14 +99,13 @@ class DocumentRepository(
     // Copies into filesDir/imports then indexes it; a failed insert deletes the copy again.
     // An encrypted PDF is copied as-is; the password is never read or kept here.
     suspend fun saveToLibrary(source: DocumentEntity): Long = withContext(Dispatchers.IO) {
-        val file = LibraryImport.copyToImports(context, source.uri.toUri())
         val now = System.currentTimeMillis()
-        // Autosave re-saves the same file on each open, so an identical copy is reused rather than added.
-        findSavedDuplicate(source.title, file)?.let { existing ->
-            file.delete()
+        // Autosave re-saves the same file on each open, so the duplicate check runs before copying.
+        findSavedDuplicate(source)?.let { existing ->
             dao.touch(existing.id, now)
             return@withContext existing.id
         }
+        val file = LibraryImport.copyToImports(context, source.uri.toUri())
         val row = source.copy(
             id = 0,
             uri = file.toUri().toString(),
@@ -122,15 +121,29 @@ class DocumentRepository(
         }
     }
 
-    /** Library row whose app-owned copy matches [title] and the exact bytes of [copy]. */
-    private suspend fun findSavedDuplicate(title: String, copy: File): DocumentEntity? {
-        val candidates = LibraryImport.importsDir(context).listFiles().orEmpty()
-        for (candidate in candidates) {
-            if (candidate == copy || !candidate.isFile || !LibraryImport.sameContent(candidate, copy)) continue
-            val row = dao.getByUri(candidate.toUri().toString()) ?: continue
-            if (row.title == title) return row
+    /**
+     * The library row already holding the document behind [source]: a row on the source URI itself,
+     * else a same-title row whose app-owned copy holds the same bytes. Null when nothing matches or
+     * the source cannot be read, so the save falls through to copy-and-insert.
+     */
+    private suspend fun findSavedDuplicate(source: DocumentEntity): DocumentEntity? {
+        val sourceUri = source.uri.toUri()
+        for (row in dao.getByTitle(source.title)) {
+            if (row.uri == source.uri) return row
+            val candidate = ownedCopy(row.uri) ?: continue
+            if (LibraryImport.sameContent(candidate, source.sizeBytes) { openStream(sourceUri) }) return row
         }
         return null
+    }
+
+    /** The app-owned file behind [uri], or null for SAF and foreign URIs and missing files. */
+    private fun ownedCopy(uri: String): File? {
+        val parsed = uri.toUri()
+        if (parsed.scheme != "file") return null
+        val path = parsed.path ?: return null
+        val file = File(path)
+        if (!file.isFile) return null
+        return file.takeIf { LibraryImport.isInside(LibraryImport.importsDir(context), it) }
     }
 
     /** Removes the index entry only, never the user's file; an app-owned copy goes with its row. */
