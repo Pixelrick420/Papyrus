@@ -3,6 +3,7 @@ package com.papyrus.app.ui.viewer
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
@@ -76,7 +77,15 @@ internal fun OfficeBlockView(
         is OfficeBlock.ListItem -> OfficeListItemView(block, modifier, highlight, reveal)
         is OfficeBlock.Note -> OfficeNoteView(block, modifier, highlight, reveal)
         is OfficeBlock.Divider -> HorizontalDivider(modifier.padding(vertical = 12.dp))
-        is OfficeBlock.Table -> OfficeTableView(block, modifier.padding(vertical = 8.dp), highlight, reveal)
+        is OfficeBlock.Table -> OfficeTableView(
+            block,
+            firstRow = 0,
+            rowCount = block.rows.size,
+            hScroll = rememberScrollState(),
+            modifier = modifier.padding(vertical = 8.dp),
+            highlight = highlight,
+            reveal = reveal,
+        )
         is OfficeBlock.Image -> OfficeImageView(block, modifier.padding(vertical = 8.dp))
     }
 }
@@ -163,17 +172,24 @@ private fun headingStyle(level: Int) = when (level.coerceIn(1, 6)) {
 /**
  * Column widths come from the cells' own content and every cell is drawn as tall as its row, so a
  * short cell's border reaches the bottom. Row spans need a layout that sees every row: [TableGrid].
+ *
+ * Draws [rowCount] rows from [firstRow] — one band of a table split for virtualization. The counting
+ * stays whole-table, so a band's match numbering and coverage are exactly what the same rows show in
+ * an unsplit table: indices address the table globally, the band's grid locally. [hScroll] is shared
+ * by every band of the table, so they move sideways as one.
  */
 @Composable
-private fun OfficeTableView(
+internal fun OfficeTableView(
     table: OfficeBlock.Table,
+    firstRow: Int,
+    rowCount: Int,
+    hScroll: ScrollState,
     modifier: Modifier = Modifier,
     highlight: FindHighlight? = null,
     reveal: RevealTicket? = null,
 ) {
     val columnCount = remember(table) { table.rows.maxOfOrNull { row -> row.maxOf { it.lastColumn } + 1 } ?: 0 }
     if (columnCount == 0) return
-    val hScroll = rememberScrollState()
     // The table's current match is numbered across the whole table, in reading order. Each cell needs
     // to know how many matches came before it to tell which, if any, is its own.
     val matchesBefore = remember(table, highlight?.query) {
@@ -208,15 +224,18 @@ private fun OfficeTableView(
     // The viewport width is what a table that is too wide has to fit, so it is read here rather than
     // inside the scroller, which is offered unbounded width.
     BoxWithConstraints(modifier.fillMaxWidth()) {
+        // Every band fits the same viewport against the same whole-table metrics, so the columns agree.
         val columnWidths = remember(metrics, maxWidth) { fitColumns(metrics, maxWidth.value) }
         Box(Modifier.horizontalScroll(hScroll)) {
-            TableGrid(columnWidthsDp = columnWidths, rowCount = table.rows.size) {
-                table.rows.forEachIndexed { rowIndex, row ->
-                    row.forEachIndexed { cellIndex, cell ->
+            TableGrid(columnWidthsDp = columnWidths, rowCount = rowCount) {
+                for (row in 0 until rowCount) {
+                    val rowIndex = firstRow + row
+                    val cells = table.rows[rowIndex]
+                    cells.forEachIndexed { cellIndex, cell ->
                         CellBox(
                             cell = cell,
                             style = cellStyle,
-                            modifier = Modifier.gridCell(rowIndex, cell.column, cell.colspan, cell.rowspan),
+                            modifier = Modifier.gridCell(row, cell.column, cell.colspan, cell.rowspan),
                             highlight = highlight?.skipping(matchesBefore[rowIndex][cellIndex]),
                             reveal = reveal,
                         )
@@ -224,12 +243,12 @@ private fun OfficeTableView(
                     // A column no cell owns and no rowspan covers still gets a box, so a short row does
                     // not end in blank space; a covered column gets none, so a merge has no inner border.
                     repeat(columnCount) { column ->
-                        val owned = row.any { column in it.column..it.lastColumn }
+                        val owned = cells.any { column in it.column..it.lastColumn }
                         if (!owned && (rowIndex to column) !in covered) {
                             CellBox(
                                 cell = null,
                                 style = cellStyle,
-                                modifier = Modifier.gridCell(rowIndex, column),
+                                modifier = Modifier.gridCell(row, column),
                                 highlight = null,
                                 reveal = null,
                             )

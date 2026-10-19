@@ -172,6 +172,41 @@ private fun advanceEm(ch: Char): Float = TRACKING_EM + when {
     else -> 0.58f
 }
 
+/** Rows per table band, the role TEXT_LINES_PER_CHUNK plays for text. */
+internal const val TABLE_BAND_ROWS = 30
+
+/**
+ * Row indices in bands of at most [maxRows], so a huge table composes a slice at a time. Extended
+ * so no rowspan crosses a boundary: a band holding a cell starting near its tail grows to the
+ * span's last row, which keeps each band's own layout identical to the same rows in a whole-table
+ * layout. A span taller than [maxRows] makes one band of the whole table. The last band is short;
+ * an empty table has no bands.
+ */
+internal fun bandBoundaries(rows: List<List<OfficeCell>>, maxRows: Int): List<IntRange> {
+    val count = rows.size
+    if (count == 0) return emptyList()
+    val width = maxRows.coerceAtLeast(1)
+    val bands = ArrayList<IntRange>()
+    var start = 0
+    var end = width.coerceAtMost(count)
+    var reach = 0
+    for (rowIndex in 0 until count) {
+        for (cell in rows[rowIndex]) {
+            reach = max(reach, (rowIndex + cell.rowspan.coerceAtLeast(1)).coerceAtMost(count))
+        }
+        if (rowIndex + 1 >= end) {
+            end = max(end, reach)
+            if (rowIndex + 1 >= end) {
+                bands += start until end
+                start = end
+                end = min(start + width, count)
+                reach = 0
+            }
+        }
+    }
+    return bands
+}
+
 /** A column never narrower than this: enough for a serial number or short code. */
 private const val MIN_TEXT_EM = 3f
 
