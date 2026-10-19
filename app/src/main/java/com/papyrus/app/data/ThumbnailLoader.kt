@@ -106,9 +106,11 @@ class ThumbnailLoader(private val context: Context) {
         // mediaDir = null: thumbnails are text only, and writing media would double the cacheDir cost.
         val uri = document.uri.toUri()
         val blocks = if (document.format == DocumentFormat.DOC) {
-            DocTextExtractor.extract { openStream(uri) ?: throw FileNotFoundException(uri.toString()) }
+            val source = { openStream(uri) ?: throw FileNotFoundException(uri.toString()) }
+            DocTextExtractor.extract(source, THUMBNAIL_BLOCK_BUDGET)
         } else {
-            OfficeTextExtractor(mediaDir = null).extract({ openStream(uri)!! }, document.format)
+            OfficeTextExtractor(mediaDir = null)
+                .extract({ openStream(uri)!! }, document.format, THUMBNAIL_BLOCK_BUDGET)
         }
         val lines = blocks.asSequence()
             .mapNotNull { block ->
@@ -168,6 +170,10 @@ class ThumbnailLoader(private val context: Context) {
     companion object {
         const val THUMBNAIL_WIDTH_PX = 132
         const val THUMBNAIL_HEIGHT_PX = 176
+
+        /** A tile draws 4 lines, so 32 blocks covers documents that open with tables or images. */
+        const val THUMBNAIL_BLOCK_BUDGET = 32
+
         private const val THUMBNAIL_PDF_WIDTH_PX = 256
         private const val THUMBNAIL_TEXT_PX = 18f
         private const val PADDING_PX = 8f

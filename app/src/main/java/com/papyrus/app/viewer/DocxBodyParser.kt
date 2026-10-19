@@ -31,7 +31,8 @@ private fun XmlPullParser.intAttr(name: String): Int? = getAttributeValue(null, 
 
 /**
  * Reads one WordprocessingML part (`document.xml`, or `footnotes.xml` / `endnotes.xml` / `comments.xml`) into
- * [blocks], walking the XML once as a state machine. Not safe to reuse: one instance, one part.
+ * [blocks], walking the XML once as a state machine. Stops at [blockBudget] blocks, which the thumbnail path
+ * spends cheaply. Not safe to reuse: one instance, one part.
  */
 internal class DocxBodyParser(
     private val newParser: ParserFactory,
@@ -39,6 +40,7 @@ internal class DocxBodyParser(
     private val counters: ListCounters,
     private val rels: DocxRels,
     private val pending: MutableList<PendingImage>,
+    private val blockBudget: Int,
 ) {
     val blocks = mutableListOf<OfficeBlock>()
 
@@ -130,7 +132,7 @@ internal class DocxBodyParser(
     fun parse(body: ByteArray) {
         val p = newParser(body.inputStream())
         var event = p.eventType
-        while (event != XmlPullParser.END_DOCUMENT && blocks.size < OfficeTextExtractor.MAX_BLOCKS) {
+        while (event != XmlPullParser.END_DOCUMENT && blocks.size < blockBudget) {
             val isFallbackTag = (event == XmlPullParser.START_TAG || event == XmlPullParser.END_TAG) &&
                 p.name == "mc:Fallback"
             if (isFallbackTag) {
@@ -449,7 +451,7 @@ internal class DocxBodyParser(
 
     private fun emitParagraph() {
         // A blank list paragraph is not numbered: the counter advances for what is shown.
-        if (!paragraph.isBlank() && blocks.size < OfficeTextExtractor.MAX_BLOCKS) {
+        if (!paragraph.isBlank() && blocks.size < blockBudget) {
             val resolved = styles.paragraph(para.styleId)
             val level = styles.headingLevel(para.styleId, para.outline)
             val align = para.align ?: resolved.align ?: BlockAlign.START

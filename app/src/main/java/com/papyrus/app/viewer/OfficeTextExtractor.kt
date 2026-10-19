@@ -22,8 +22,13 @@ class OfficeTextExtractor(
 ) {
 
     /** [openStream] must return a fresh stream on every call, once for the body and once for the
-     * media. The caller closes it. */
-    fun extract(openStream: () -> InputStream, format: DocumentFormat): List<OfficeBlock> {
+     * media. The caller closes it. [blockBudget] bounds the body parse: the viewer keeps the full
+     * [MAX_BLOCKS], while a thumbnail needs only its first few lines. */
+    fun extract(
+        openStream: () -> InputStream,
+        format: DocumentFormat,
+        blockBudget: Int = MAX_BLOCKS,
+    ): List<OfficeBlock> {
         val bodyEntry = when (format) {
             DocumentFormat.DOCX -> DOCX_BODY
             DocumentFormat.ODT -> ODT_BODY
@@ -47,7 +52,11 @@ class OfficeTextExtractor(
         val body = found[bodyEntry] ?: throw IOException("$bodyEntry not found: not a valid document")
 
         val pending = mutableListOf<PendingImage>()
-        val blocks = if (format == DocumentFormat.DOCX) parseDocx(body, found, pending) else parseOdt(body, found, pending)
+        val blocks = if (format == DocumentFormat.DOCX) {
+            parseDocx(body, found, pending, blockBudget)
+        } else {
+            parseOdt(body, found, pending, blockBudget)
+        }
 
         if (pending.isNotEmpty() && mediaDir != null) {
             val wanted = pending.mapTo(HashSet()) { it.zipName }
@@ -64,7 +73,7 @@ class OfficeTextExtractor(
             pending.forEach { image ->
                 // A dangling relationship or a budget rejection lands here as null; the text still renders.
                 val file = written[image.zipName] ?: return@forEach
-                if (blocks.size >= MAX_BLOCKS) return@forEach
+                if (blocks.size >= blockBudget) return@forEach
                 // `index` was recorded before any image went in, so each image already inserted pushed
                 // it down by one; without the offset, images drifted up and clustered near the first.
                 val block = OfficeBlock.Image(file, mimeByName(image.zipName), image.widthDp, image.altText)
@@ -241,13 +250,14 @@ class OfficeTextExtractor(
         body: ByteArray,
         parts: Map<String, ByteArray>,
         pending: MutableList<PendingImage>,
+        blockBudget: Int,
     ): MutableList<OfficeBlock> {
         val factory: ParserFactory = { newParser(it) }
         val rels = parseRels(parts[DOCX_RELS])
         val styles = optionalPart(DocxStyles.empty()) { readDocxStyles(parts[DOCX_STYLES], factory) }
         val numbering = optionalPart(DocxNumbering.EMPTY) { readDocxNumbering(parts[DOCX_NUMBERING], factory) }
 
-        val main = DocxBodyParser(factory, styles, ListCounters(numbering), rels, pending)
+        val main = DocxBodyParser(factory, styles, ListCounters(numbering), rels, pending, blockBudget)
         main.parse(body)
         val blocks = main.blocks
         if (main.noteRefs.isEmpty() && main.commentRefs.isEmpty()) return blocks
@@ -257,7 +267,8 @@ class OfficeTextExtractor(
         fun readPart(entry: String): DocxBodyParser? {
             val bytes = parts[entry] ?: return null
             return optionalPart<DocxBodyParser?>(null) {
-                DocxBodyParser(factory, styles, ListCounters(numbering), rels, mutableListOf()).also { it.parse(bytes) }
+                DocxBodyParser(factory, styles, ListCounters(numbering), rels, mutableListOf(), blockBudget)
+                    .also { it.parse(bytes) }
             }
         }
         val hasNotes = main.noteRefs.isNotEmpty()
@@ -271,7 +282,7 @@ class OfficeTextExtractor(
                 items += OfficeBlock.Note(ref.label, note.text, note.spans)
             }
         }
-        appendSection(blocks, items)
+        appendSection(blocks, items, blockBudget)
 
         val commentsPart = if (main.commentRefs.isEmpty()) null else readPart(DOCX_COMMENTS)
         val comments = ArrayList<OfficeBlock>()
@@ -279,13 +290,13 @@ class OfficeTextExtractor(
             val comment = commentsPart?.notes?.get(ref.id) ?: continue
             comments += OfficeBlock.Note(ref.label, comment.text, comment.spans, commentsPart.noteBylines[ref.id])
         }
-        appendSection(blocks, comments)
+        appendSection(blocks, comments, blockBudget)
         return blocks
     }
 
     /** A rule, then [items]: notes and comments each sit under their own, after the body. */
-    private fun appendSection(blocks: MutableList<OfficeBlock>, items: List<OfficeBlock>) {
-        if (items.isEmpty() || blocks.size >= MAX_BLOCKS) return
+    private fun appendSection(blocks: MutableList<OfficeBlock>, items: List<OfficeBlock>, blockBudget: Int) {
+        if (items.isEmpty() || blocks.size >= blockBudget) return
         blocks += OfficeBlock.Divider
         blocks.addAll(items)
     }
@@ -294,13 +305,14 @@ class OfficeTextExtractor(
         body: ByteArray,
         parts: Map<String, ByteArray>,
         pending: MutableList<PendingImage>,
+        blockBudget: Int,
     ): MutableList<OfficeBlock> {
         val factory: ParserFactory = { newParser(it) }
         val sheet = OdfStyles()
         // Named styles first, so an automatic style in content.xml can override one of the same name.
         parts[ODT_STYLES]?.let { bytes -> optionalPart(Unit) { readOdfStyles(bytes, sheet, factory) } }
         optionalPart(Unit) { readOdfStyles(body, sheet, factory) }
-        return OdtBodyParser(factory, sheet, pending).parse(body)
+        return OdtBodyParser(factory, sheet, pending, blockBudget).parse(body)
     }
 
     companion object {

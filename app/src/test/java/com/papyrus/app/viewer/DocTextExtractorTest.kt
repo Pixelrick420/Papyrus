@@ -175,6 +175,22 @@ class DocTextExtractorTest {
         assertEquals(DocTextExtractor.MAX_BLOCKS, extract(bytes).size)
     }
 
+    @Test
+    fun `maxBlocks stops the piece loop at the budget`() {
+        val bytes = DocFixtures.doc("one\rtwo\rthree\r")
+
+        val blocks = DocTextExtractor.extract(DocFixtures.streamFactory(bytes), maxBlocks = 2)
+
+        assertEquals(paragraphs("one", "two"), blocks)
+    }
+
+    @Test
+    fun `the default maxBlocks reads every piece`() {
+        val bytes = DocFixtures.doc("one\rtwo\rthree\r")
+
+        assertEquals(paragraphs("one", "two", "three"), extract(bytes))
+    }
+
     // --- Container selection ---
 
     @Test

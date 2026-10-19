@@ -19,14 +19,15 @@ object DocTextExtractor {
      * and truncation beats an out-of-memory crash. */
     const val MAX_TOTAL_CHARS = 16_000_000
 
-    /** [openStream] must return a fresh stream on every call; the caller closes it. */
-    fun extract(openStream: () -> InputStream): List<OfficeBlock> {
+    /** [openStream] must return a fresh stream on every call; the caller closes it. [maxBlocks]
+     * bounds the piece loop: the viewer keeps the full [MAX_BLOCKS], a thumbnail only its first lines. */
+    fun extract(openStream: () -> InputStream, maxBlocks: Int = MAX_BLOCKS): List<OfficeBlock> {
         val fileLength = probeLength(openStream)
         val cfb = CompoundFile(openStream, fileLength)
         val fib = readFib(cfb)
         if (fib.ccpText == 0) return emptyList()
         val clx = readClx(cfb, fib)
-        val builder = BlockBuilder()
+        val builder = BlockBuilder(maxBlocks)
         decodePieces(cfb, fib, clx, builder)
         return builder.finish()
     }
@@ -144,7 +145,7 @@ object DocTextExtractor {
      * Text → blocks. A cell ends with a cell mark (0x07) and the row's TTP follows the last cell's
      * mark, so `cell\x07cell\x07\x07` is one row; nested tables arrive as plain paragraph marks.
      */
-    private class BlockBuilder {
+    private class BlockBuilder(private val maxBlocks: Int) {
         private enum class State { PARA, ROW, BETWEEN }
 
         private val blocks = mutableListOf<OfficeBlock>()
@@ -157,13 +158,13 @@ object DocTextExtractor {
         private var state = State.PARA
         private var tableUsable = true
 
-        /** Set once [MAX_BLOCKS] is reached, so the piece loop stops instead of feeding a dead builder. */
+        /** Set once the block budget is reached, so the piece loop stops instead of feeding a dead builder. */
         var full = false
             private set
 
         fun feed(text: String) {
             for (ch in text) {
-                if (blocks.size >= MAX_BLOCKS) {
+                if (blocks.size >= maxBlocks) {
                     full = true
                     return
                 }
@@ -254,7 +255,7 @@ object DocTextExtractor {
         }
 
         private fun flushTable() {
-            if (rows.isNotEmpty() && tableUsable && blocks.size < MAX_BLOCKS) {
+            if (rows.isNotEmpty() && tableUsable && blocks.size < maxBlocks) {
                 blocks += OfficeBlock.Table(rows.map { r -> r.mapIndexed { i, text -> OfficeCell(text, column = i) } })
             }
             rows.clear()
@@ -263,7 +264,7 @@ object DocTextExtractor {
 
         private fun flushParagraph() {
             val text = paragraph.toString()
-            if (text.isNotBlank() && blocks.size < MAX_BLOCKS) blocks += OfficeBlock.Paragraph(text)
+            if (text.isNotBlank() && blocks.size < maxBlocks) blocks += OfficeBlock.Paragraph(text)
             paragraph.setLength(0)
         }
     }
