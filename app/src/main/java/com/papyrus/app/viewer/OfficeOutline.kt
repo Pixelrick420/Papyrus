@@ -34,7 +34,23 @@ fun officeOutline(blocks: List<OfficeBlock>): List<OutlineEntry> {
         val title = cleanOutlineTitle(heading.text)
         if (title.isEmpty()) null else OutlineEntry(index, heading.level, title)
     }
-    // A document that opens at Heading 2 is not indented for a level above that it never uses.
+    return withRelativeDepth(found)
+}
+
+/**
+ * An outline a document wrote itself, as an EPUB's table of contents does: entries that already know their
+ * block, in the order given. Titles are cleaned like a heading's, an entry with no words is left out, and
+ * depth is made relative, so the same sheet shows both kinds. [officeOutline] is the other way to get one.
+ */
+fun explicitOutline(entries: List<OutlineEntry>): List<OutlineEntry> = withRelativeDepth(
+    entries.mapNotNull { entry ->
+        val title = cleanOutlineTitle(entry.title)
+        if (title.isEmpty()) null else entry.copy(title = title)
+    },
+)
+
+/** A document that opens at Heading 2 is not indented for a level above that it never uses. */
+private fun withRelativeDepth(found: List<OutlineEntry>): List<OutlineEntry> {
     val shallowest = found.minOfOrNull { it.depth } ?: return found
     return found.map { it.copy(depth = (it.depth - shallowest).coerceIn(0, MAX_OUTLINE_DEPTH)) }
 }
