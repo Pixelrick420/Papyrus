@@ -49,17 +49,31 @@ internal fun rememberRestoredTarget(kind: LocationKind, unitCount: Int, position
 /**
  * The top of a lazy list as a location: the first visible item and how far into it the viewport is.
  * Null while nothing is laid out. Reads snapshot state only, so it is safe inside `snapshotFlow`.
+ *
+ * [blockOfUnit] maps (item, fraction) back to what a location stores, for lists where one stored
+ * unit spans several items — a table's bands. Without it, the item *is* the unit, unchanged.
  */
-internal fun LazyListState.positionSample(kind: LocationKind, unitCount: Int, scale: Float): PositionSample? {
+internal fun LazyListState.positionSample(
+    kind: LocationKind,
+    unitCount: Int,
+    scale: Float,
+    blockOfUnit: ((unit: Int, fraction: Float) -> Pair<Int, Float>)? = null,
+): PositionSample? {
     val index = firstVisibleItemIndex
     val item = layoutInfo.visibleItemsInfo.firstOrNull { it.index == index } ?: return null
-    val location = ReadingLocation(kind, index, fractionWithin(firstVisibleItemScrollOffset, item.size))
-    return PositionSample(location, unitCount, atEnd = !canScrollForward, zoom = scale)
+    val within = fractionWithin(firstVisibleItemScrollOffset, item.size)
+    val (unit, fraction) = blockOfUnit?.invoke(index, within) ?: (index to within)
+    return PositionSample(ReadingLocation(kind, unit, fraction), unitCount, atEnd = !canScrollForward, zoom = scale)
 }
 
 /**
  * Restores [target] in a lazy list, then reports every position the list shows. The list is created
  * already at the target item, so no top-of-document flash; the in-item offset needs the measured size.
+ *
+ * [unitOfBlock] and [blockOfUnit] are the two halves of one mapping between a stored location and
+ * the list's items, for lists where one stored unit spans several items (a table's bands): restore
+ * splits the stored (unit, fraction) across the items, sampling folds the visible item back. Both
+ * default to null — the identity mapping — which is every other viewer.
  */
 @Composable
 internal fun LazyPositionEffects(
@@ -69,26 +83,31 @@ internal fun LazyPositionEffects(
     zoom: ZoomState,
     position: PositionHooks,
     target: ReadingLocation?,
+    unitOfBlock: ((block: Int, fraction: Float) -> Pair<Int, Float>)? = null,
+    blockOfUnit: ((unit: Int, fraction: Float) -> Pair<Int, Float>)? = null,
 ) {
     val hooks by rememberUpdatedState(position)
+    val restore by rememberUpdatedState(unitOfBlock)
+    val sample by rememberUpdatedState(blockOfUnit)
 
     LaunchedEffect(listState, target) {
         if (target == null) return@LaunchedEffect
-        listState.scrollToItem(target.unit)
-        if (target.fraction > 0f) {
+        val (unit, fraction) = restore?.invoke(target.unit, target.fraction) ?: (target.unit to target.fraction)
+        listState.scrollToItem(unit)
+        if (fraction > 0f) {
             val size = snapshotFlow {
-                listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == target.unit }?.size ?: 0
+                listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == unit }?.size ?: 0
             }.first { it > 0 }
-            listState.scrollToItem(target.unit, offsetWithin(target.fraction, size))
+            listState.scrollToItem(unit, offsetWithin(fraction, size))
         }
         withFrameNanos { }
-        val applied = listState.positionSample(kind, unitCount, zoom.committedScale)
+        val applied = listState.positionSample(kind, unitCount, zoom.committedScale, sample)
             ?: PositionSample(target, unitCount, atEnd = false, zoom = zoom.committedScale)
         hooks.onRestored(applied)
     }
 
     LaunchedEffect(listState, kind, unitCount) {
-        snapshotFlow { listState.positionSample(kind, unitCount, zoom.committedScale) }
+        snapshotFlow { listState.positionSample(kind, unitCount, zoom.committedScale, sample) }
             .filterNotNull()
             .collect { hooks.onPosition(it) }
     }

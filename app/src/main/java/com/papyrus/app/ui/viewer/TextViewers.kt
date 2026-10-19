@@ -32,6 +32,7 @@ import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
@@ -60,6 +61,7 @@ import com.papyrus.app.data.LocationKind
 import com.papyrus.app.viewer.CodeLanguage
 import com.papyrus.app.viewer.LexStates
 import com.papyrus.app.viewer.OfficeBlock
+import com.papyrus.app.viewer.OfficeCell
 import com.papyrus.app.viewer.SyntaxHighlighter
 import com.papyrus.app.viewer.TEXT_LINES_PER_CHUNK
 import io.noties.markwon.Markwon
@@ -472,13 +474,31 @@ private fun TextChunk(
         if (gutter == null) NO_LINES else lineStartOffsets(text, dropEmptyTail = isLast)
     }
     val firstLine = index * TEXT_LINES_PER_CHUNK + 1
+    // Measured once per layout, not per frame: which row each line starts on and what its number
+    // measures to, keyed on exactly what already drives lineStarts (plus the layout itself, which
+    // arrives after). Drawing then only reads the marks and paints them.
+    val marks = remember(layout, lineStarts, firstLine, gutter) {
+        val laidOut = layout
+        if (laidOut == null || gutter == null) {
+            emptyList<GutterMark>()
+        } else {
+            val textLength = laidOut.layoutInput.text.length
+            lineStarts.indices.map { k ->
+                GutterMark(
+                    laidOut.getLineForOffset(lineStarts[k].coerceAtMost(textLength)),
+                    gutter.measurer.measure((firstLine + k).toString(), gutter.style),
+                )
+            }
+        }
+    }
 
     val drawGutterBehind = if (gutter == null) {
         Modifier
     } else {
         Modifier.drawBehind {
-            val laidOut = layout ?: return@drawBehind
-            drawGutter(laidOut, lineStarts, firstLine, gutter)
+            // Nothing until the layout arrives — same frame the gutter used to start measuring on.
+            val laidOut = layout
+            if (laidOut != null && marks.isNotEmpty()) drawGutter(marks, laidOut, gutter)
         }
     }
     Box((if (width != null) Modifier.width(width) else Modifier.fillMaxWidth()).then(drawGutterBehind)) {
@@ -507,15 +527,16 @@ private class Gutter(
     val dividerColor: Color,
 )
 
-private fun DrawScope.drawGutter(layout: TextLayoutResult, lineStarts: IntArray, firstLine: Int, gutter: Gutter) {
+/** One line's number, measured when the chunk is laid out: the row it labels and the text itself. */
+private class GutterMark(val row: Int, val number: TextLayoutResult)
+
+/** Paints [marks] and the divider — no measuring, no lookups; that work happened once, in TextChunk. */
+private fun DrawScope.drawGutter(marks: List<GutterMark>, layout: TextLayoutResult, gutter: Gutter) {
     val top = ChunkVerticalPadding.toPx()
-    val textLength = layout.layoutInput.text.length
-    for (k in lineStarts.indices) {
-        val row = layout.getLineForOffset(lineStarts[k].coerceAtMost(textLength))
-        val number = gutter.measurer.measure((firstLine + k).toString(), gutter.style)
+    for (mark in marks) {
         drawText(
-            number,
-            topLeft = Offset(gutter.widthPx - gutter.gapPx - number.size.width, top + layout.getLineTop(row)),
+            mark.number,
+            topLeft = Offset(gutter.widthPx - gutter.gapPx - mark.number.size.width, top + layout.getLineTop(mark.row)),
         )
     }
     val dividerX = gutter.widthPx - gutter.gapPx / 2
@@ -578,22 +599,48 @@ fun OfficeViewer(
     jumpTo: OutlineJump? = null,
     position: PositionHooks = PositionHooks.None,
 ) {
-    val restoreTarget = rememberRestoredTarget(LocationKind.BLOCK, blocks.size, position)
-    val listState = rememberLazyListState(initialFirstVisibleItemIndex = restoreTarget?.unit ?: 0)
-    val geometry = rememberLazyScrollGeometry(listState)
-    LazyPositionEffects(listState, LocationKind.BLOCK, blocks.size, zoom, position, restoreTarget)
-
-    // The outline names a heading by its block index, which is its row, so a jump is a plain scroll.
-    LaunchedEffect(jumpTo) {
-        val target = jumpTo?.index ?: return@LaunchedEffect
-        if (target in blocks.indices) listState.scrollToItem(target)
+    val units = remember(blocks) { officeUnits(blocks) }
+    // One sideways scroll per table, shared by every band of it, so dragging any band moves the
+    // whole table; saved per block index, what the single per-item scroll was before the split.
+    val tableScrolls = List(blocks.size) { index ->
+        if (blocks[index] is OfficeBlock.Table) {
+            rememberSaveable(index, saver = ScrollState.Saver) { ScrollState(0) }
+        } else {
+            null
+        }
     }
 
-    // Block indices equal LazyColumn indices, so a hit scrolls to its own item; a long paragraph or
-    // table holds several matches, so the block's text then scrolls to the current one.
+    val restoreTarget = rememberRestoredTarget(LocationKind.BLOCK, blocks.size, position)
+    val listState = rememberLazyListState(
+        initialFirstVisibleItemIndex = restoreTarget?.takeIf { blocks.isNotEmpty() }?.let { units.firstUnitOfBlock[it.unit] }
+            ?: 0,
+    )
+    val geometry = rememberLazyScrollGeometry(listState)
+    // A stored location names a block; a table is several band units, so restore splits one stored
+    // fraction across the bands and sampling folds the visible band back. Identity for every other
+    // block, so the mapping round-trips exactly and plain viewers pass no hooks at all.
+    LazyPositionEffects(
+        listState,
+        LocationKind.BLOCK,
+        blocks.size,
+        zoom,
+        position,
+        restoreTarget,
+        unitOfBlock = units::splitAcrossBands,
+        blockOfUnit = units::joinBands,
+    )
+
+    // The outline names a heading by its block index, so the jump lands on the block's first unit.
+    LaunchedEffect(jumpTo) {
+        val target = jumpTo?.index ?: return@LaunchedEffect
+        if (target in blocks.indices) listState.scrollToItem(units.firstUnitOfBlock[target])
+    }
+
+    // A hit names its block; a table is several units now, so it scrolls to the band holding the
+    // active occurrence. The band's own text then scrolls to the occurrence, as every block did.
     val reveal = remember(activeHit, activeOccurrence, findQuery) { RevealTicket() }
     LaunchedEffect(reveal) {
-        activeHit?.let { listState.scrollToItemUnlessVisible(it) }
+        activeHit?.let { listState.scrollToItemUnlessVisible(units.unitOfMatch(blocks, it, findQuery, activeOccurrence)) }
     }
 
     val anchor = remember(listState) { LazyZoomAnchor(listState) }
@@ -613,19 +660,125 @@ fun OfficeViewer(
                     userScrollEnabled = !zoom.isScrollLocked,
                     contentPadding = PaddingValues(start = 16.dp, end = 20.dp, top = 16.dp, bottom = 16.dp),
                 ) {
-                    items(blocks.size, key = { it }) { index ->
-                        val isActive = index == activeHit
-                        OfficeBlockView(
-                            blocks[index],
-                            Modifier.fillMaxWidth(),
-                            highlight = findHighlightFor(findQuery, activeOccurrence = activeOccurrence.takeIf { isActive }),
-                            reveal = reveal.takeIf { isActive },
-                        )
+                    items(units.size, key = { it }) { unitIndex ->
+                        val unit = units[unitIndex]
+                        val block = blocks[unit.block]
+                        val isActive = unit.block == activeHit
+                        val highlight = findHighlightFor(findQuery, activeOccurrence = activeOccurrence.takeIf { isActive })
+                        val band = unit.rows
+                        if (band != null && block is OfficeBlock.Table) {
+                            OfficeTableView(
+                                block,
+                                firstRow = band.first,
+                                rowCount = band.last - band.first + 1,
+                                hScroll = tableScrolls[unit.block] ?: rememberScrollState(),
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                                highlight = highlight,
+                                reveal = reveal.takeIf { isActive },
+                            )
+                        } else {
+                            OfficeBlockView(
+                                block,
+                                Modifier.fillMaxWidth(),
+                                highlight = highlight,
+                                reveal = reveal.takeIf { isActive },
+                            )
+                        }
                     }
                 }
             }
         }
     }
+}
+
+/** One lazy item: the block it draws, or a table band — the rows of its slice. */
+private class OfficeUnit(val block: Int, val rows: IntRange?)
+
+/**
+ * The items OfficeViewer lays out, plus the maps every block-index consumer jumps through: the
+ * outline, a restored position and the find reveal all name blocks, and one table is several units.
+ */
+private class OfficeUnits(
+    val units: List<OfficeUnit>,
+    /** First unit of each block, so a jump to a block lands on the band that starts it. */
+    val firstUnitOfBlock: IntArray,
+    val blockOfUnit: IntArray,
+    /** Units per block — more than one only for a table tall enough to split. */
+    val bandCounts: IntArray,
+) {
+    val size: Int get() = units.size
+
+    operator fun get(index: Int): OfficeUnit = units[index]
+
+    /** A stored (block, fraction) as the unit to scroll to and the fraction within that unit. */
+    fun splitAcrossBands(block: Int, fraction: Float): Pair<Int, Float> {
+        val first = firstUnitOfBlock.getOrNull(block) ?: return 0 to fraction
+        val bands = bandCounts[block]
+        if (bands <= 1) return first to fraction
+        // The fraction rides the band index, so a save inside band b restores inside band b —
+        // exact for any band sizes, because the divide-back undoes the multiply-forward.
+        val position = fraction.coerceIn(0f, 1f) * bands
+        val band = position.toInt().coerceAtMost(bands - 1)
+        return (first + band) to (position - band)
+    }
+
+    /** The inverse of [splitAcrossBands], so a save names the place a restore returns to. */
+    fun joinBands(unit: Int, within: Float): Pair<Int, Float> {
+        val block = blockOfUnit.getOrNull(unit) ?: return unit to within
+        val bands = bandCounts[block]
+        if (bands <= 1) return block to within
+        return block to (unit - firstUnitOfBlock[block] + within) / bands
+    }
+
+    /** The unit a find hit lives in: its block's first unit, or a table's band of the occurrence. */
+    fun unitOfMatch(blocks: List<OfficeBlock>, block: Int, query: String, occurrence: Int?): Int {
+        val first = firstUnitOfBlock.getOrNull(block) ?: return 0
+        val table = blocks.getOrNull(block) as? OfficeBlock.Table
+        if (table == null || occurrence == null) return first
+        val row = rowOfOccurrence(table.rows, occurrence, query) ?: return first
+        val band = bandBoundaries(table.rows, TABLE_BAND_ROWS).indexOfFirst { row in it }
+        return first + band.coerceAtLeast(0)
+    }
+}
+
+/** A table splits into band units; every other block is one unit, exactly as it was. */
+private fun officeUnits(blocks: List<OfficeBlock>): OfficeUnits {
+    val units = ArrayList<OfficeUnit>()
+    val firstUnit = IntArray(blocks.size)
+    val bandCounts = IntArray(blocks.size)
+    blocks.forEachIndexed { blockIndex, block ->
+        firstUnit[blockIndex] = units.size
+        if (block is OfficeBlock.Table) {
+            val bands = bandBoundaries(block.rows, TABLE_BAND_ROWS)
+            bandCounts[blockIndex] = bands.size.coerceAtLeast(1)
+            // An empty table draws nothing but still owns a unit, so every map stays total.
+            if (bands.isEmpty()) {
+                units += OfficeUnit(blockIndex, IntRange.EMPTY)
+            } else {
+                bands.forEach { units += OfficeUnit(blockIndex, it) }
+            }
+        } else {
+            bandCounts[blockIndex] = 1
+            units += OfficeUnit(blockIndex, null)
+        }
+    }
+    return OfficeUnits(units, firstUnit, IntArray(units.size) { units[it].block }, bandCounts)
+}
+
+/**
+ * The row of a table's [occurrence]-th match (0-based, reading order), counted the way the cells
+ * number their matches for the highlight, or null past the last one.
+ */
+private fun rowOfOccurrence(rows: List<List<OfficeCell>>, occurrence: Int, query: String): Int? {
+    var seen = 0
+    rows.forEachIndexed { rowIndex, row ->
+        for (cell in row) {
+            val hits = countOccurrences(cell, query)
+            if (occurrence < seen + hits) return rowIndex
+            seen += hits
+        }
+    }
+    return null
 }
 
 /** Scroll speed (dp/s) revealing the knob on text surfaces; the PDF viewer keeps its 880 default. */

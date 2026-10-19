@@ -270,4 +270,69 @@ class TableSizingTest {
 
         assertEquals(listOf(100, 100), heights.toList())
     }
+
+    // --- band boundaries ---
+
+    @Test
+    fun `bands cut a plain table at the cap with a short one at the end`() {
+        val bands = bandBoundaries(List(100) { row("x") }, maxRows = 30)
+
+        assertEquals(listOf(0 until 30, 30 until 60, 60 until 90, 90 until 100), bands)
+    }
+
+    @Test
+    fun `every row appears exactly once, in order`() {
+        val bands = bandBoundaries(List(64) { row("x") }, maxRows = 10)
+
+        assertEquals(64, bands.sumOf { it.count() })
+        assertEquals(0, bands.first().first)
+        assertEquals(63, bands.last().last)
+        bands.zipWithNext().forEach { (before, after) -> assertEquals(before.last + 1, after.first) }
+        bands.forEach { band -> assertTrue(band.count() <= 10) }
+    }
+
+    @Test
+    fun `a rowspan at a band's tail grows the band rather than split the span`() {
+        val rows = List(40) { row("x") }.toMutableList()
+        rows[28] = row("x").map { it.copy(rowspan = 5) } // spans rows 28..32, across the 30 boundary
+
+        assertEquals(listOf(0 until 33, 33 until 40), bandBoundaries(rows, maxRows = 30))
+    }
+
+    @Test
+    fun `a rowspan taller than the cap makes one band of the whole table`() {
+        val rows = List(40) { row("x") }.toMutableList()
+        rows[0] = row("x").map { it.copy(rowspan = 40) }
+
+        assertEquals(listOf(0 until 40), bandBoundaries(rows, maxRows = 30))
+    }
+
+    @Test
+    fun `a small table is one band covering all of it`() {
+        assertEquals(listOf(0 until 7), bandBoundaries(List(7) { row("x") }, maxRows = 30))
+    }
+
+    @Test
+    fun `an empty table has no bands at all`() {
+        assertTrue(bandBoundaries(emptyList(), maxRows = 30).isEmpty())
+    }
+
+    @Test
+    fun `every span of a tall grown table still sits inside one band`() {
+        val rows = List(100) { row("x") }.toMutableList()
+        rows[5] = row("x").map { it.copy(rowspan = 3) }   // rows 5..7
+        rows[40] = row("x").map { it.copy(rowspan = 25) } // rows 40..64, across the 60 boundary
+
+        val bands = bandBoundaries(rows, maxRows = 30)
+
+        listOf(5 to 3, 40 to 25).forEach { (start, span) ->
+            val end = start + span - 1
+            assertTrue(bands.any { start in it && end in it })
+        }
+        // Growing bands must not skip or repeat a row on either side of them.
+        assertEquals(100, bands.sumOf { it.count() })
+        assertEquals(0, bands.first().first)
+        assertEquals(99, bands.last().last)
+        bands.zipWithNext().forEach { (before, after) -> assertEquals(before.last + 1, after.first) }
+    }
 }
