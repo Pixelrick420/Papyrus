@@ -14,9 +14,15 @@ import com.papyrus.app.data.DocumentEntity
 import com.papyrus.app.data.DocumentFormat
 import com.papyrus.app.data.PositionSample
 import com.papyrus.app.data.PositionTracker
+import com.papyrus.app.data.ReadingLocation
+import com.papyrus.app.data.LocationKind
 import com.papyrus.app.data.RestoreRequest
 import com.papyrus.app.data.SafAccess
 import com.papyrus.app.data.shareIntent
+import com.papyrus.app.tts.TtsDocumentSource
+import com.papyrus.app.tts.TtsPlaybackService
+import com.papyrus.app.tts.TtsSession
+import com.papyrus.app.tts.TtsUnit
 import com.papyrus.app.ui.UiText
 import com.papyrus.app.ui.navigation.Routes
 import com.papyrus.app.viewer.CodeLanguage
@@ -329,6 +335,79 @@ class ViewerViewModel(
      */
     fun restoreTarget(): RestoreRequest? =
         tracker.latest?.let { RestoreRequest(it.location, clampScale(it.zoom)) } ?: _state.value.restore
+
+    /** App-scoped read-aloud session: the viewer collects its state and drives the in-flow control bar. */
+    val tts: TtsSession = app.ttsSession
+
+    /** The library id the viewer's document is read aloud under; empty until the document is known. */
+    fun ttsDocumentId(): String = _state.value.document?.id?.toString().orEmpty()
+
+    /**
+     * Read the open document aloud, starting at the current reading position. Every format reuses the
+     * text path the viewer already loaded: a PDF reads its pages one at a time (never `allPages()`),
+     * plain text and code use their chunks, Markdown its rendered text, Office its blocks. A document
+     * with nothing speakable reports the same "no text" message the viewer uses.
+     */
+    fun startReadAloud() {
+        val document = _state.value.document ?: return
+        val content = _state.value.content
+        viewModelScope.launch {
+            val units = when (content) {
+                is ViewerContent.Pdf -> pdfTtsUnits(content.source.pageCount)
+                is ViewerContent.PlainText -> TtsDocumentSource.unitsFromPlainText(content.chunks)
+                is ViewerContent.Markdown -> TtsDocumentSource.unitsFromMarkdown(content.text.toString())
+                is ViewerContent.Office -> TtsDocumentSource.unitsFromOffice(content.blocks)
+                else -> emptyList()
+            }
+            if (units.isEmpty()) {
+                _messages.value = UiText(R.string.viewer_pdf_no_text)
+                return@launch
+            }
+            val kind = LocationKind.forFormat(document.format) ?: LocationKind.CHUNK
+            val location = restoreTarget()?.location?.takeIf { it.kind == kind }
+                ?: ReadingLocation(kind, 0)
+            tts.prepare(
+                documentId = document.id.toString(),
+                title = document.title,
+                format = document.format,
+                units = units,
+                startIndex = TtsDocumentSource.startIndexFor(units, location),
+                speed = tts.state.value.speed.takeIf { it > 0f } ?: 1.0f,
+            )
+            TtsPlaybackService.start(app)
+        }
+    }
+
+    /** Stop reading aloud and clear the session, hiding the control bar. */
+    fun stopReadAloud() = tts.stop()
+
+    fun ttsPlayPause() {
+        when {
+            tts.state.value.isPlaying -> tts.pause()
+            // A failure let the service go, so it took the controller with it: nothing is listening
+            // for play(), and the queue is gone. Rebuild it from where the reader now is.
+            tts.state.value.hasError -> {
+                stopReadAloud()
+                startReadAloud()
+            }
+            else -> tts.play()
+        }
+    }
+
+    fun ttsSkipBack() = tts.skipBack()
+
+    fun ttsSkipForward() = tts.skipForward()
+
+    fun ttsSetSpeed(rate: Float) = tts.setSpeed(rate)
+
+    /** One page at a time, through the same one-page reader find uses; a blank page speaks nothing. */
+    private suspend fun pdfTtsUnits(pageCount: Int): List<TtsUnit> {
+        val pages = ArrayList<String>(pageCount)
+        for (index in 0 until pageCount) {
+            pages.add(pageText(index)?.text.orEmpty())
+        }
+        return TtsDocumentSource.unitsFromPdfPages(pages)
+    }
 
     /** The viewer placed the document at [applied], read back after scrolling; opens the save gate. */
     fun onRestored(applied: PositionSample) = tracker.restoreApplied(applied)
@@ -800,6 +879,10 @@ class ViewerViewModel(
     private fun forcedCharset(): Charset? = encodingName?.let(TextEncodings::charsetOrNull)
 
     override fun onCleared() {
+        // Leaving the viewer page ends read-aloud: the page is gone, so the voice goes with it. This runs
+        // when the nav entry is destroyed (back, or the app finishing), not when the app is merely
+        // backgrounded — the entry stays then, and the foreground service keeps playing.
+        tts.stopFor(ttsDocumentId())
         // viewModelScope is already cancelled here; the outbox writer is not, and drains this last position.
         commitPosition(force = true)
         outbox.close()

@@ -6,6 +6,7 @@ import com.papyrus.app.data.AppDatabase
 import com.papyrus.app.data.DocumentRepository
 import com.papyrus.app.data.SettingsRepository
 import com.papyrus.app.data.ThumbnailLoader
+import com.papyrus.app.tts.TtsSession
 import com.papyrus.app.viewer.OFFICE_UNLOCK_DIR
 import com.papyrus.app.viewer.PDF_UNLOCK_DIR
 import kotlinx.coroutines.CoroutineScope
@@ -32,6 +33,9 @@ class MainApplication : Application() {
 
     /** Application-scoped so the bitmap cache survives navigation and rotation. */
     val thumbnailLoader: ThumbnailLoader by lazy { ThumbnailLoader(this) }
+
+    /** Application-scoped TTS session for background playback. */
+    val ttsSession: TtsSession by lazy { TtsSession() }
 
     override fun attachBaseContext(base: Context) {
         super.attachBaseContext(base)

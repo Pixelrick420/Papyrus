@@ -135,4 +135,16 @@ access</string>
     <string name="settings_about_license_value">Apache License 2.0</string>
     <string name="settings_about_privacy">Privacy policy</string>
     <string name="settings_about_privacy_value">Papyrus does not collect any user data</string>
+
+    <string name="viewer_read_aloud">Read aloud</string>
+    <string name="viewer_read_aloud_stop">Stop read aloud</string>
+    <string name="tts_play">Play</string>
+    <string name="tts_pause">Pause</string>
+    <string name="tts_skip_back">Skip back</string>
+    <string name="tts_skip_forward">Skip forward</string>
+    <string name="tts_speed">Speed</string>
+    <string name="tts_speed_value">%1$s×</string>
+    <string name="tts_notification_channel">Read aloud</string>
+    <string name="tts_error_engine">No speech engine is available on this device</string>
+    <string name="tts_error_speech">Speech stopped unexpectedly</string>
 </resources>

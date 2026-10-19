@@ -32,6 +32,7 @@ import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
@@ -66,6 +67,7 @@ import com.papyrus.app.viewer.SyntaxHighlighter
 import com.papyrus.app.viewer.TEXT_LINES_PER_CHUNK
 import io.noties.markwon.Markwon
 import io.noties.markwon.ext.tables.TableRowSpan
+import kotlinx.coroutines.flow.first
 import kotlin.math.roundToInt
 
 /** Zoom and scrollbar are overlays, so showing them never re-measures the scrollable. */
@@ -124,6 +126,7 @@ fun MarkdownViewer(
     zoom: ZoomState,
     modifier: Modifier = Modifier,
     position: PositionHooks = PositionHooks.None,
+    ttsOffset: Int? = null,
 ) {
     val scroll = rememberScrollState()
     val geometry = rememberScrollGeometry(scroll)
@@ -147,6 +150,15 @@ fun MarkdownViewer(
         target = rememberRestoredTarget(LocationKind.CHAR, text.length, position),
         contentTopPx = contentTopPx,
     )
+    // Follow-along scroll: bring the spoken paragraph's first line to the top, waiting out the first
+    // measure exactly as the restore path does.
+    LaunchedEffect(ttsOffset) {
+        if (ttsOffset == null) return@LaunchedEffect
+        snapshotFlow { scroll.maxValue }.first { it != Int.MAX_VALUE }
+        val layout = textState.view?.layout ?: return@LaunchedEffect
+        val line = layout.getLineForOffset(ttsOffset.coerceIn(0, layout.text.length))
+        scroll.scrollTo((layout.getLineTop(line) + contentTopPx).roundToInt())
+    }
     // Markwon leaves the TextView without a movement method, so its links do nothing; this one routes the
     // tap through the viewer's own opener instead of the resolver that turns a `file://` link into a crash.
     val opener = LocalLinkOpener.current
@@ -298,6 +310,7 @@ fun PlainTextViewer(
     modifier: Modifier = Modifier,
     options: PlainTextOptions = PlainTextOptions(),
     position: PositionHooks = PositionHooks.None,
+    ttsChunk: Int? = null,
 ) {
     val restoreTarget = rememberRestoredTarget(LocationKind.CHUNK, chunks.size, position)
     val listState = rememberLazyListState(initialFirstVisibleItemIndex = restoreTarget?.unit ?: 0)
@@ -309,6 +322,11 @@ fun PlainTextViewer(
     val reveal = remember(activeHit, activeOccurrence, findQuery) { RevealTicket() }
     LaunchedEffect(reveal) {
         activeHit?.let { listState.scrollToItemUnlessVisible(it) }
+    }
+
+    // Follow-along: the chunk being read is revealed the way a find result is, and tinted below.
+    LaunchedEffect(ttsChunk) {
+        ttsChunk?.let { listState.scrollToItemUnlessVisible(it) }
     }
 
     val anchor = remember(listState) { LazyZoomAnchor(listState) }
@@ -501,7 +519,10 @@ private fun TextChunk(
             if (laidOut != null && marks.isNotEmpty()) drawGutter(marks, laidOut, gutter)
         }
     }
-    Box((if (width != null) Modifier.width(width) else Modifier.fillMaxWidth()).then(drawGutterBehind)) {
+    Box(
+        (if (width != null) Modifier.width(width) else Modifier.fillMaxWidth())
+            .then(drawGutterBehind),
+    ) {
         FindText(
             text = text,
             highlight = highlight,
@@ -598,6 +619,7 @@ fun OfficeViewer(
     modifier: Modifier = Modifier,
     jumpTo: OutlineJump? = null,
     position: PositionHooks = PositionHooks.None,
+    ttsBlock: Int? = null,
 ) {
     val units = remember(blocks) { officeUnits(blocks) }
     // One sideways scroll per table, shared by every band of it, so dragging any band moves the
@@ -634,6 +656,12 @@ fun OfficeViewer(
     LaunchedEffect(jumpTo) {
         val target = jumpTo?.index ?: return@LaunchedEffect
         if (target in blocks.indices) listState.scrollToItem(units.firstUnitOfBlock[target])
+    }
+
+    // Follow-along: the block being read is revealed the same way, unless it is already on screen.
+    LaunchedEffect(ttsBlock) {
+        val target = ttsBlock ?: return@LaunchedEffect
+        if (target in blocks.indices) listState.scrollToItemUnlessVisible(units.firstUnitOfBlock[target])
     }
 
     // A hit names its block; a table is several units now, so it scrolls to the band holding the
