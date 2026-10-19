@@ -191,6 +191,12 @@ class BookmarkRulesTest {
     }
 
     @Test
+    fun `epub bookmarks are block places like Word's`() {
+        val rows = listOf(row(1, block(40, 0.5f)), row(2, block(3)))
+        assertEquals(listOf(2L, 1L), rows.forFormat(DocumentFormat.EPUB).map { it.id })
+    }
+
+    @Test
     fun `a format with no viewer has no bookmarks`() {
         assertEquals(emptyList<Bookmark>(), listOf(row(1, page(1))).forFormat(DocumentFormat.UNKNOWN))
     }

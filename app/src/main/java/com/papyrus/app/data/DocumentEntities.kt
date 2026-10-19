@@ -34,6 +34,9 @@ enum class DocumentFormat(
         setOf("application/vnd.oasis.opendocument.text", "application/vnd.oasis.opendocument.text-template"),
     ),
 
+    /** Read as reflowed text through the Office pipeline; see `EpubExtractor`. A ZIP, so never sniffed as text. */
+    EPUB("EPUB", setOf("epub"), setOf("application/epub+zip")),
+
     /** Split from TEXT only so the home list labels a .py file CODE; it renders identically. */
     CODE(
         "CODE",

@@ -29,7 +29,7 @@ class ReadingLocationTest {
         assertEquals(LocationKind.CHAR, LocationKind.forFormat(DocumentFormat.MARKDOWN))
         assertEquals(LocationKind.CHUNK, LocationKind.forFormat(DocumentFormat.TEXT))
         assertEquals(LocationKind.CHUNK, LocationKind.forFormat(DocumentFormat.CODE))
-        for (format in listOf(DocumentFormat.DOC, DocumentFormat.DOCX, DocumentFormat.ODT)) {
+        for (format in listOf(DocumentFormat.DOC, DocumentFormat.DOCX, DocumentFormat.ODT, DocumentFormat.EPUB)) {
             assertEquals(LocationKind.BLOCK, LocationKind.forFormat(format))
         }
     }

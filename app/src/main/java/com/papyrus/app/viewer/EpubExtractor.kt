@@ -25,6 +25,7 @@ class EpubExtractor(
     private val mimeByName: (String) -> String = { OfficeTextExtractor.guessMimeType(it) },
     private val newParserFactory: () -> XmlPullParser = { Xml.newPullParser() },
     private val limits: EpubLimits = EpubLimits(),
+    private val blockBudget: Int = OfficeTextExtractor.MAX_BLOCKS,
 ) {
 
     /**
@@ -97,7 +98,7 @@ class EpubExtractor(
         }
 
         val media = if (previewChapters == null) {
-            OfficeMedia(mediaDir, mimeByName).insertImages(openStream, pending, blocks)
+            OfficeMedia(mediaDir, mimeByName).insertImages(openStream, pending, blocks, blockBudget)
         } else {
             OfficeMedia.Result(emptyList(), 0)
         }

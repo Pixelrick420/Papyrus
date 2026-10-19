@@ -181,6 +181,18 @@ class LibraryViewTest {
     }
 
     @Test
+    fun `epub is its own chip, placed after odt`() {
+        val docs = listOf(
+            doc(1, format = DocumentFormat.MARKDOWN),
+            doc(2, format = DocumentFormat.EPUB),
+            doc(3, format = DocumentFormat.ODT),
+        )
+        assertEquals(listOf(FormatGroup.ODT, FormatGroup.EPUB, FormatGroup.MARKDOWN), availableGroups(docs))
+        val filter = LibraryFilter().toggled(FormatGroup.EPUB)
+        assertEquals(listOf(2L), ids(view(docs, LibrarySort.LAST_OPENED, filter = filter)))
+    }
+
+    @Test
     fun `every format with a viewer has a group and unknown has none`() {
         for (format in DocumentFormat.entries) {
             if (format == DocumentFormat.UNKNOWN) {

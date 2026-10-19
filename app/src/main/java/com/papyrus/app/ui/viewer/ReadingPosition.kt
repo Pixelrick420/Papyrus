@@ -75,7 +75,10 @@ internal fun LazyListState.positionSample(
     val item = layoutInfo.visibleItemsInfo.firstOrNull { it.index == index } ?: return null
     val within = fractionWithin(firstVisibleItemScrollOffset, item.size)
     val (unit, fraction) = blockOfUnit?.invoke(index, within) ?: (index to within)
-    return PositionSample(ReadingLocation(kind, unit, fraction), unitCount, atEnd = !canScrollForward, zoom = scale)
+    // A row after the last unit (the "truncated" or "incomplete" notice) is not a place in the document; it
+    // reads as the end of the last unit rather than as a location that does not exist.
+    val location = ReadingLocation(kind, unit, fraction).clampedTo(unitCount)
+    return PositionSample(location, unitCount, atEnd = !canScrollForward, zoom = scale)
 }
 
 /**
