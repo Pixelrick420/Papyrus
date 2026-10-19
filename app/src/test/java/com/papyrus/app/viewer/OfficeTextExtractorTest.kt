@@ -1,6 +1,7 @@
 package com.papyrus.app.viewer
 
 import com.papyrus.app.data.DocumentFormat
+import com.papyrus.app.data.ThumbnailLoader
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
@@ -18,11 +19,17 @@ class OfficeTextExtractorTest {
     private fun extractor(mediaDir: File? = null) =
         OfficeTextExtractor(mediaDir = mediaDir, newParserFactory = OfficeFixtures::parser)
 
-    private fun extractDocx(bytes: ByteArray, mediaDir: File? = null) =
-        extractor(mediaDir).extract(OfficeFixtures.streamFactory(bytes), DocumentFormat.DOCX)
+    private fun extractDocx(
+        bytes: ByteArray,
+        mediaDir: File? = null,
+        blockBudget: Int = OfficeTextExtractor.MAX_BLOCKS,
+    ) = extractor(mediaDir).extract(OfficeFixtures.streamFactory(bytes), DocumentFormat.DOCX, blockBudget)
 
-    private fun extractOdt(bytes: ByteArray, mediaDir: File? = null) =
-        extractor(mediaDir).extract(OfficeFixtures.streamFactory(bytes), DocumentFormat.ODT)
+    private fun extractOdt(
+        bytes: ByteArray,
+        mediaDir: File? = null,
+        blockBudget: Int = OfficeTextExtractor.MAX_BLOCKS,
+    ) = extractor(mediaDir).extract(OfficeFixtures.streamFactory(bytes), DocumentFormat.ODT, blockBudget)
 
     private fun OfficeBlock.Table.rowCells(row: Int) = rows[row]
 
@@ -449,6 +456,63 @@ class OfficeTextExtractorTest {
 
         // A half-rendered table reads as data loss, so the whole table is dropped.
         assertTrue(blocks.none { it is OfficeBlock.Table })
+    }
+
+    // --- Block budget ---
+
+    @Test
+    fun `a block budget keeps only the leading docx blocks, in order`() {
+        val bytes = OfficeFixtures.docx(
+            OfficeFixtures.docxBody(
+                """
+                <w:tbl><w:tr><w:tc><w:p><w:r><w:t>cell</w:t></w:r></w:p></w:tc></w:tr></w:tbl>
+                <w:p><w:r><w:t>one</w:t></w:r></w:p>
+                <w:p><w:r><w:t>two</w:t></w:r></w:p>
+                <w:p><w:r><w:t>three</w:t></w:r></w:p>
+                """.trimIndent(),
+            ),
+        )
+
+        // The budgeted parse has to agree with the full one about the part it read.
+        assertEquals(extractDocx(bytes).take(2), extractDocx(bytes, blockBudget = 2))
+    }
+
+    @Test
+    fun `a block budget keeps only the leading odt blocks, in order`() {
+        val bytes = OfficeFixtures.odt(
+            OfficeFixtures.odtContent(
+                """
+                <text:p>one</text:p>
+                <text:p>two</text:p>
+                <text:p>three</text:p>
+                """.trimIndent(),
+            ),
+        )
+
+        assertEquals(extractOdt(bytes).take(2), extractOdt(bytes, blockBudget = 2))
+    }
+
+    @Test
+    fun `the default budget reads the whole body`() {
+        // One block longer than the thumbnail's budget, so a default wired to that number fails here.
+        val count = ThumbnailLoader.THUMBNAIL_BLOCK_BUDGET + 8
+        val body = (1..count).joinToString("") { "<w:p><w:r><w:t>p$it</w:t></w:r></w:p>" }
+        val bytes = OfficeFixtures.docx(OfficeFixtures.docxBody(body))
+
+        assertEquals(count, extractDocx(bytes).size)
+    }
+
+    @Test
+    fun `a table at the top does not spend the thumbnail budget`() {
+        // A table is one block however many rows it holds, so text below it is still reached.
+        val rows = (1..40).joinToString("") { "<w:tr><w:tc><w:p><w:r><w:t>r$it</w:t></w:r></w:p></w:tc></w:tr>" }
+        val bytes = OfficeFixtures.docx(
+            OfficeFixtures.docxBody("<w:tbl>$rows</w:tbl><w:p><w:r><w:t>after</w:t></w:r></w:p>"),
+        )
+
+        val blocks = extractDocx(bytes, blockBudget = ThumbnailLoader.THUMBNAIL_BLOCK_BUDGET)
+
+        assertEquals(listOf("after"), blocks.mapNotNull { (it as? OfficeBlock.Paragraph)?.text })
     }
 
     @Test

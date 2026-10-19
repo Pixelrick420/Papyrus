@@ -447,7 +447,7 @@ class ViewerViewModel(
             }
             DocumentFormat.DOC -> when (OfficeEncryption.status({ openStream(uri) })) {
                 OfficeEncryption.Party.NOT_ENCRYPTED -> {
-                    val blocks = DocTextExtractor.extract { openStream(uri) }
+                    val blocks = DocTextExtractor.extract({ openStream(uri) })
                     if (blocks.isEmpty()) ViewerContent.Failed(UiText(R.string.viewer_error_empty)) else ViewerContent.Office(blocks)
                 }
                 else -> ViewerContent.Failed(UiText(R.string.viewer_error_password))

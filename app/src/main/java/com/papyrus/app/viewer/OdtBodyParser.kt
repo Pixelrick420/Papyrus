@@ -22,12 +22,14 @@ private fun XmlPullParser.outlineLevel(): Int =
 
 /**
  * Reads an ODF `content.xml` body into [blocks] in a single pass, as a state machine like [DocxBodyParser].
+ * Stops at [blockBudget] blocks, which the thumbnail path spends cheaply.
  * One instance parses one document, so it is not reusable.
  */
 internal class OdtBodyParser(
     private val newParser: ParserFactory,
     private val styles: OdfStyles,
     private val pending: MutableList<PendingImage>,
+    private val blockBudget: Int,
 ) {
     val blocks = mutableListOf<OfficeBlock>()
     private val footnotes = ArrayList<OfficeBlock.Note>()
@@ -142,7 +144,7 @@ internal class OdtBodyParser(
     fun parse(body: ByteArray): MutableList<OfficeBlock> {
         val p = newParser(body.inputStream())
         var event = p.eventType
-        while (event != XmlPullParser.END_DOCUMENT && blocks.size < OfficeTextExtractor.MAX_BLOCKS) {
+        while (event != XmlPullParser.END_DOCUMENT && blocks.size < blockBudget) {
             val skippedTag = (event == XmlPullParser.START_TAG || event == XmlPullParser.END_TAG) &&
                 p.name in ODT_SKIPPED
             if (skippedTag) {
@@ -421,7 +423,7 @@ internal class OdtBodyParser(
     }
 
     private fun emitParagraph() {
-        if (!paragraph.isBlank() && blocks.size < OfficeTextExtractor.MAX_BLOCKS) {
+        if (!paragraph.isBlank() && blocks.size < blockBudget) {
             val snapshot = paragraph.snapshot()
             val align = styles.paragraphAlign(info.styleName) ?: BlockAlign.START
             val marker = info.listMarker
@@ -533,7 +535,7 @@ internal class OdtBodyParser(
         }
         appendText(label, format.copy(script = ScriptShift.SUPER))
         val snapshot = frame.body.snapshot { it.isWhitespace() }
-        if (snapshot.text.isNotBlank() && blocks.size + footnotes.size + endnotes.size < OfficeTextExtractor.MAX_BLOCKS) {
+        if (snapshot.text.isNotBlank() && blocks.size + footnotes.size + endnotes.size < blockBudget) {
             val item = OfficeBlock.Note(label, snapshot.text, snapshot.spans)
             if (frame.endnote) endnotes += item else footnotes += item
         }
@@ -559,7 +561,7 @@ internal class OdtBodyParser(
         link = frame.savedLink
         recomputeFormat()
         val snapshot = frame.body.snapshot { it.isWhitespace() }
-        val room = blocks.size + footnotes.size + endnotes.size + comments.size < OfficeTextExtractor.MAX_BLOCKS
+        val room = blocks.size + footnotes.size + endnotes.size + comments.size < blockBudget
         // A comment with no words has nothing to show, so it leaves no marker pointing at nothing.
         if (snapshot.text.isBlank() || !room) return
         val label = "C${++commentCount}"
@@ -587,7 +589,7 @@ internal class OdtBodyParser(
     }
 
     private fun appendSection(items: List<OfficeBlock>) {
-        if (items.isEmpty() || blocks.size >= OfficeTextExtractor.MAX_BLOCKS) return
+        if (items.isEmpty() || blocks.size >= blockBudget) return
         blocks += OfficeBlock.Divider
         blocks.addAll(items)
     }
