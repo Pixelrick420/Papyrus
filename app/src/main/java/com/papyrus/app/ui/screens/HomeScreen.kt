@@ -100,6 +100,7 @@ import com.papyrus.app.data.SafAccess
 import com.papyrus.app.data.ThumbnailLoader
 import com.papyrus.app.data.shareIntent
 import com.papyrus.app.data.shareIntentMultiple
+import com.papyrus.app.data.shareMimeType
 import com.papyrus.app.data.sharedMimeType
 import com.papyrus.app.ui.AppViewModelProvider
 import com.papyrus.app.ui.UiText
@@ -111,8 +112,11 @@ import com.papyrus.app.ui.components.SearchPill
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -124,6 +128,8 @@ import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 
 /**
  * Everything the list needs in one value, so loading, empty and no-match states never disagree.
@@ -171,6 +177,30 @@ private fun List<DocumentEntity>.matches(text: String): List<DocumentEntity> {
     val needle = text.trim()
     if (needle.isEmpty()) return this
     return filter { it.title.contains(needle, ignoreCase = true) }
+}
+
+/** How many share probes run at once: enough to hide a slow provider, few enough to stay polite. */
+private const val SHARE_PROBE_PARALLELISM = 4
+
+/**
+ * The share pre-flight for several files, concurrently but at most [limit] at a time: each document
+ * is probed once, and only a readable one is also asked its type. The result keeps [selected]'s
+ * order and holds the readable documents paired with the type they reported.
+ */
+internal suspend fun <T> probeShareable(
+    selected: List<T>,
+    limit: Int = SHARE_PROBE_PARALLELISM,
+    probe: suspend (T) -> SafAccess,
+    type: suspend (T) -> String?,
+): List<Pair<T, String?>> = coroutineScope {
+    val gate = Semaphore(limit)
+    selected.map { document ->
+        async(Dispatchers.IO) {
+            gate.withPermit {
+                if (probe(document) == SafAccess.Readable) document to type(document) else null
+            }
+        }
+    }.awaitAll().filterNotNull()
 }
 
 class HomeViewModel(
@@ -374,13 +404,17 @@ class HomeViewModel(
         val selected = selectedDocuments()
         if (selected.isEmpty()) return
         viewModelScope.launch {
-            val readable = selected.filter { repository.probeShare(it) == SafAccess.Readable }
+            val readable = probeShareable(
+                selected,
+                probe = { repository.probeShare(it) },
+                type = { repository.mimeTypeOf(it) },
+            )
             if (readable.isEmpty()) {
                 _messages.send(UiText(R.string.home_share_none))
                 return@launch
             }
-            val uris = readable.map { repository.resolveShareUri(it.uri.toUri()) }
-            val types = readable.map { repository.shareTypeFor(it) }
+            val uris = readable.map { (document, _) -> repository.resolveShareUri(document.uri.toUri()) }
+            val types = readable.map { (document, reported) -> shareMimeType(document.format, reported) }
             onShare(shareIntentMultiple(uris, sharedMimeType(types)))
             val skipped = selected.size - readable.size
             if (skipped > 0) _messages.send(UiText(R.string.home_share_skipped, readable.size, skipped))
