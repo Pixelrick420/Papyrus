@@ -701,24 +701,16 @@ private fun ViewerHeader(
                             onClick = { onMenuOpenChange(false); onGoTo() },
                         )
                     }
-                    if (bookmarkableContent) {
-                        if (bookmarksAvailable) {
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.bookmark_add)) },
-                                onClick = { onMenuOpenChange(false); onAddBookmark() },
-                            )
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.bookmarks_title)) },
-                                onClick = { onMenuOpenChange(false); onBookmarks() },
-                            )
-                        } else {
-                            // A handed-over document has no library row to hang a bookmark from: say so, do not hide it.
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.bookmarks_unavailable)) },
-                                enabled = false,
-                                onClick = {},
-                            )
-                        }
+                    // A handed-over document gets no bookmark rows at all: no library row to hang one from.
+                    if (bookmarkableContent && bookmarksAvailable) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.bookmark_add)) },
+                            onClick = { onMenuOpenChange(false); onAddBookmark() },
+                        )
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.bookmarks_title)) },
+                            onClick = { onMenuOpenChange(false); onBookmarks() },
+                        )
                     }
                     DropdownMenuItem(
                         text = { Text(stringResource(R.string.viewer_info_title)) },
