@@ -11,7 +11,16 @@ import com.papyrus.app.viewer.OfficeBlock
  * or code, a block index for an Office document, a character offset into the rendered text for
  * Markdown.
  */
-data class TtsUnit(val text: String, val anchor: Int)
+data class TtsUnit(
+    val text: String,
+    val anchor: Int,
+    /**
+     * Where [text] begins in the text the anchor names (the chunk, the page, the rendered Markdown, the
+     * block), so the viewer can find the words being spoken again in what it shows. [text] is that
+     * text with its whitespace collapsed, which is why it is a start and not a copy.
+     */
+    val start: Int = 0,
+)
 
 /** A paragraph of a rendered/flat document: where it starts and ends, and the text to speak. */
 data class TtsParagraph(val start: Int, val end: Int, val text: String)
@@ -44,18 +53,18 @@ object TtsDocumentSource {
     /** PDF: one unit per paragraph; the anchor is the page the paragraph came from. */
     fun unitsFromPdfPages(pages: List<String>): List<TtsUnit> =
         pages.flatMapIndexed { index, page ->
-            paragraphs(page).map { TtsUnit(it.text, index) }
+            paragraphs(page).map { TtsUnit(it.text, index, it.start) }
         }
 
     /** Plain text or code: each 40-line chunk split into its paragraphs; the anchor is the chunk. */
     fun unitsFromPlainText(chunks: List<String>): List<TtsUnit> =
         chunks.flatMapIndexed { index, chunk ->
-            paragraphs(chunk).map { TtsUnit(it.text, index) }
+            paragraphs(chunk).map { TtsUnit(it.text, index, it.start) }
         }
 
     /** Markdown: paragraph start offsets into the rendered text become the anchors. */
     fun unitsFromMarkdown(text: String): List<TtsUnit> =
-        paragraphs(text).map { TtsUnit(it.text, it.start) }
+        paragraphs(text).map { TtsUnit(it.text, it.start, it.start) }
 
     /** Office: one unit per block; tables read row-wise, notes gain their byline, images only if named. */
     fun unitsFromOffice(blocks: List<OfficeBlock>): List<TtsUnit> {

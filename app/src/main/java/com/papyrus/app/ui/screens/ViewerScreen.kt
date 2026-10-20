@@ -105,6 +105,7 @@ import com.papyrus.app.ui.viewer.PositionHooks
 import com.papyrus.app.ui.viewer.REST_SCALE
 import com.papyrus.app.ui.viewer.ReadoutBadge
 import com.papyrus.app.ui.viewer.TtsControls
+import com.papyrus.app.ui.viewer.TtsHighlight
 import com.papyrus.app.ui.viewer.ViewerJump
 import com.papyrus.app.ui.viewer.ZoomState
 import com.papyrus.app.ui.viewer.copyToClipboard
@@ -168,7 +169,10 @@ fun ViewerScreen(
         { target ->
             when (target) {
                 is PdfLinkTarget.External -> followLink(target.url)
-                is PdfLinkTarget.Internal -> jump = ViewerJump(ReadingLocation(LocationKind.PAGE, target.page), revealOnly = true)
+                is PdfLinkTarget.Internal -> {
+                    viewModel.ttsReleaseScroll()
+                    jump = ViewerJump(ReadingLocation(LocationKind.PAGE, target.page), revealOnly = true)
+                }
             }
         }
     }
@@ -222,11 +226,18 @@ fun ViewerScreen(
     val ttsDocumentId = state.document?.id?.toString().orEmpty()
     val ttsActive = tts.documentId == ttsDocumentId && ttsDocumentId.isNotEmpty() &&
         (tts.isPlaying || tts.isPaused || tts.hasError)
-    // PDF follow-along reveals each new spoken page like a link would.
-    LaunchedEffect(tts.anchor, ttsActive, isPdf) {
-        if (ttsActive && isPdf && tts.anchor >= 0) {
-            jump = ViewerJump(ReadingLocation(LocationKind.PAGE, tts.anchor), revealOnly = true)
-        }
+    // What the viewers mark: the sentence and word being spoken, whether or not the page is locked to
+    // them. Found again only when the voice moves, not on every recomposition.
+    val spoken = remember(ttsActive, tts.anchor, tts.progress) {
+        if (ttsActive && tts.anchor >= 0) TtsHighlight(tts.anchor, tts.progress) else null
+    }
+    // Locked, the page follows the voice and cannot be scrolled. A failed read holds nothing.
+    val voiceLocksScroll = ttsActive && tts.followsVoice
+    // Opening find is the reader going looking, so the voice stops holding the page; the same goes for
+    // the outline, go to, bookmarks and links, which release it before they jump.
+    val openFind: () -> Unit = {
+        viewModel.ttsReleaseScroll()
+        viewModel.openFind()
     }
 
     // The charset applies only to text decoded from bytes: plain text, code and Markdown.
@@ -300,7 +311,7 @@ fun ViewerScreen(
                     if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                     // Ctrl only: no connected Android keyboard emits Meta, so it is untestable.
                     if (event.key == Key.F && event.isCtrlPressed && findAvailable) {
-                        viewModel.openFind()
+                        openFind()
                         true
                     } else if (event.key == Key.G && event.isCtrlPressed && goToAvailable) {
                         goToOpen = true
@@ -331,7 +342,7 @@ fun ViewerScreen(
                 readAloudActive = ttsActive,
                 onMenuOpenChange = { menuOpen = it },
                 onBack = onBack,
-                onFind = viewModel::openFind,
+                onFind = openFind,
                 onOutline = { outlineOpen = true },
                 onGoTo = { goToOpen = true },
                 onAddBookmark = viewModel::addBookmark,
@@ -381,6 +392,7 @@ fun ViewerScreen(
                     onSkipForward = viewModel::ttsSkipForward,
                     onClose = viewModel::stopReadAloud,
                     onSpeedChange = viewModel::ttsSetSpeed,
+                    onToggleScrollLock = viewModel::ttsToggleScrollLock,
                     // Same insets as the find bar, so the two stack as one column: the close button's
                     // own padding brings its glyph to 16dp, matching find's close.
                     modifier = Modifier.padding(start = ScreenPadding, end = 4.dp, bottom = 8.dp),
@@ -411,6 +423,8 @@ fun ViewerScreen(
                             loadLinks = viewModel::pageLinks,
                             onLinkTarget = followPdfLink,
                             position = position,
+                            speaking = spoken,
+                            ttsLocked = voiceLocksScroll,
                         )
                         is ViewerContent.Markdown -> MarkdownViewer(
                             markwon = content.markwon,
@@ -419,7 +433,8 @@ fun ViewerScreen(
                             findQuery = find.query,
                             zoom = zoom,
                             position = position,
-                            ttsOffset = tts.anchor.takeIf { ttsActive && it >= 0 },
+                            speaking = spoken,
+                            ttsLocked = voiceLocksScroll,
                         )
                         is ViewerContent.PlainText -> {
                             // Keyed on the fields, not the content: comparing two contents would walk every chunk.
@@ -445,7 +460,8 @@ fun ViewerScreen(
                                 zoom = zoom,
                                 options = options,
                                 position = position,
-                                ttsChunk = tts.anchor.takeIf { ttsActive && it >= 0 },
+                                speaking = spoken,
+                                ttsLocked = voiceLocksScroll,
                             )
                         }
                         is ViewerContent.Office -> OfficeViewer(
@@ -455,7 +471,8 @@ fun ViewerScreen(
                             activeOccurrence = find.activeOccurrence,
                             zoom = zoom,
                             position = position,
-                            ttsBlock = tts.anchor.takeIf { ttsActive && it >= 0 },
+                            speaking = spoken,
+                            ttsLocked = voiceLocksScroll,
                             incomplete = content.incomplete,
                         )
                         // The dialog covers the page; only an in-flight retry is worth showing behind it.
@@ -536,6 +553,7 @@ fun ViewerScreen(
                 // An outline entry is a page of a PDF and a block of an Office document: the same jump, in the
                 // location kind of the format.
                 val kind = if (isPdf) LocationKind.PAGE else LocationKind.BLOCK
+                viewModel.ttsReleaseScroll()
                 jump = ViewerJump(ReadingLocation(kind, entry.index))
                 outlineOpen = false
             },
@@ -551,6 +569,7 @@ fun ViewerScreen(
             max = pageCount,
             onGo = { page ->
                 // The reader counts from 1; the viewer from 0.
+                viewModel.ttsReleaseScroll()
                 jump = ViewerJump(ReadingLocation(LocationKind.PAGE, page - 1))
                 goToOpen = false
             },
@@ -564,6 +583,7 @@ fun ViewerScreen(
             unitCount = state.content.unitCount(),
             onJump = { bookmark ->
                 // The same jump as the outline's; a bookmark whose place has gone is clamped by the viewer.
+                viewModel.ttsReleaseScroll()
                 jump = ViewerJump(bookmark.location)
                 bookmarksOpen = false
             },

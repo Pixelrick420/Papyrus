@@ -110,11 +110,11 @@ class TtsPlaybackService : Service(), TextToSpeech.OnInitListener {
             }
 
             /**
-             * The word the engine is about to speak. A speed change uses it to re-queue only the rest
-             * of the unit instead of waiting for the whole paragraph to finish.
+             * The word the engine is about to speak. The viewer marks it, and a speed change uses it
+             * to re-queue only the rest of the unit instead of waiting for the whole paragraph.
              */
             override fun onRangeStart(utteranceId: String, start: Int, end: Int, frame: Int) {
-                scope.launch { controller?.onRangeStart(utteranceId, start) }
+                scope.launch { controller?.onRangeStart(utteranceId, start, end) }
             }
 
             @Deprecated("Kept for engines that report the legacy callback.")
@@ -127,9 +127,13 @@ class TtsPlaybackService : Service(), TextToSpeech.OnInitListener {
             }
         })
         scope.launch {
+            var published: TtsPlayback? = null
             control.playback.collectLatest { playback ->
                 session.syncPlayback(playback)
-                publish(playback)
+                // The word moves several times a second; the notification and the media session only
+                // change with the transport, and the system throttles an app that re-posts faster.
+                if (published?.sameTransportAs(playback) != true) publish(playback)
+                published = playback
             }
         }
     }

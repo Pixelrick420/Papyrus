@@ -16,4 +16,4 @@
 *.jks
 *.keystore
 key/
-test.patch
+*.patch

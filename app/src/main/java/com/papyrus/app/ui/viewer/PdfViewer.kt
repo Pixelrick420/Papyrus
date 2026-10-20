@@ -91,6 +91,8 @@ internal fun PdfViewer(
     loadLinks: suspend (Int) -> List<PdfPageLink>? = { null },
     onLinkTarget: (PdfLinkTarget) -> Unit = {},
     position: PositionHooks = PositionHooks.None,
+    speaking: TtsHighlight? = null,
+    ttsLocked: Boolean = false,
 ) {
     val restoreTarget = rememberRestoredTarget(LocationKind.PAGE, source.pageCount, position)
     val listState = rememberLazyListState(initialFirstVisibleItemIndex = restoreTarget?.unit ?: 0)
@@ -134,6 +136,17 @@ internal fun PdfViewer(
         activePage?.takeIf { it >= 0 && it < source.pageCount }
             ?.let { listState.scrollToItemUnlessVisible(it) }
     }
+
+    // Read aloud, lock on: the page being read is brought in, and the page then scrolls to its own
+    // line. Unlocked, the reader is left wherever they are.
+    val spokenPage = speaking?.anchor
+    LaunchedEffect(spokenPage, ttsLocked) {
+        if (ttsLocked && spokenPage != null && spokenPage in 0 until source.pageCount) {
+            listState.scrollToItemUnlessVisible(spokenPage)
+        }
+    }
+    // Read when the line being read is placed, not while composing: the list's layout changes every frame.
+    val viewportHeight = remember(listState) { { listState.layoutInfo.viewportSize.height } }
 
     // Each anchor reads the content under the pinch at the commit, while the layout is still the one
     // previewed; the list moves in that frame, and the rounding trim runs once per gesture.
@@ -179,12 +192,14 @@ internal fun PdfViewer(
         Box(Modifier.fillMaxSize().clipToBounds()) {
             LazyColumn(
                 state = listState,
-                // Both axes locked until every finger lifts, so a lingering finger cannot scroll.
+                // Both axes locked until every finger lifts, so a lingering finger cannot scroll. Sideways
+                // stays free while the voice holds the page: it moves nothing the follow depends on.
                 modifier = Modifier.fillMaxSize()
                     .horizontalScroll(hScroll, enabled = !zoom.isScrollLocked)
                     .zoomable(zoom)
                     .anchorBridge(hAnchor),
-                userScrollEnabled = !zoom.isScrollLocked,
+                // Locked to the voice, the reader cannot scroll; the list still moves for the follow.
+                userScrollEnabled = !zoom.isScrollLocked && !ttsLocked,
                 // Trailing padding clears the scrollbar; the bottom clears the page indicator.
                 contentPadding = PaddingValues(start = 0.dp, top = pageGap, end = 20.dp, bottom = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(pageGap),
@@ -206,6 +221,9 @@ internal fun PdfViewer(
                             pageGeometry = pageGeometry,
                             loadLinks = loadLinks,
                             onLinkTarget = onLinkTarget,
+                            speaking = speaking?.takeIf { it.anchor == index },
+                            followVoice = ttsLocked,
+                            viewportHeight = viewportHeight,
                         )
                     }
                 }
@@ -222,7 +240,7 @@ internal fun PdfViewer(
                         topClearance = ZoomBadgeTopClearance,
                         bottomClearance = PAGE_INDICATOR_CLEARANCE,
                         zoom = zoom,
-                        onScrollBy = { delta -> listState.scrollBy(delta) },
+                        onScrollBy = { delta -> if (!ttsLocked) listState.scrollBy(delta) },
                     ),
             )
 
@@ -261,6 +279,9 @@ private fun PdfPage(
     pageGeometry: State<PdfPageGeometry>,
     loadLinks: suspend (Int) -> List<PdfPageLink>?,
     onLinkTarget: (PdfLinkTarget) -> Unit,
+    speaking: TtsHighlight?,
+    followVoice: Boolean,
+    viewportHeight: () -> Int,
 ) {
     // Keyed on page identity only; keying on widthPx blanked the page on every quantisation step.
     var bitmap by remember(source, index) { mutableStateOf<Bitmap?>(source.cached(index, widthPx)) }
@@ -315,6 +336,29 @@ private fun PdfPage(
         if (span != null && pageText != null) pageText.selectionRects(span.from, span.to) else emptyList()
     }
 
+    // Read aloud: the voice read this page's own text, so its glyph boxes place the sentence and word.
+    // The text is read once for the page being read, through the same cache selection uses.
+    LaunchedEffect(selectionState, index, speaking != null) {
+        if (speaking != null) selectionState.ensureText(index)
+    }
+    val spokenRange = rememberSpokenRange(speaking, pageText?.text, followVoice, viewportHeight)
+    val spokenRects = remember(spokenRange, pageText) {
+        if (spokenRange != null && pageText != null) spokenRange.rectsOn(pageText) else null
+    }
+    // The line is followed when the voice reaches a new one, keyed on the line's top and not the word,
+    // so a word that stays on its line never interrupts the scroll already under way. Until the page's
+    // text arrives the page's top stands in for the line.
+    val spokenLine = spokenRects?.let { it.word.firstOrNull() ?: it.sentence.firstOrNull() }
+    val followMargin = with(LocalDensity.current) { FollowTopMargin.toPx() }
+    LaunchedEffect(followVoice && speaking != null, spokenLine?.top) {
+        if (!followVoice || speaking == null) return@LaunchedEffect
+        val size = snapshotFlow { pageSize }.first { it != IntSize.Zero }
+        val top = (spokenLine?.top ?: 0f) * size.height
+        val bottom = (spokenLine?.bottom ?: 0f) * size.height
+        val window = followWindow(bottom - top, viewportHeight().toFloat(), followMargin)
+        requester.bringIntoView(Rect(0f, top - window.above, size.width.toFloat(), top + window.below))
+    }
+
     // Links are per page and read only once it has settled, so a fling pays for none of them.
     var links by remember(source, index) { mutableStateOf<List<PdfPageLink>>(emptyList()) }
     LaunchedEffect(source, index, scrolling) {
@@ -367,6 +411,16 @@ private fun PdfPage(
             // Under the matches and the selection, so a link never hides a find highlight.
             val linkColor = MaterialTheme.colorScheme.primary
             Canvas(Modifier.fillMaxSize()) { drawLinks(linkRects, linkColor) }
+        }
+        if (spokenRects != null) {
+            // Under the matches and the selection, so neither is hidden by the voice passing over it.
+            val sentenceColor = spokenSentenceColor()
+            val wordColor = spokenWordColor()
+            val corner = with(LocalDensity.current) { 2.dp.toPx() }
+            Canvas(Modifier.fillMaxSize()) {
+                drawSpokenRects(spokenRects.sentence, sentenceColor, corner)
+                drawSpokenRects(spokenRects.word, wordColor, corner)
+            }
         }
         if (matches.isNotEmpty()) {
             // Matched words in page-relative units, so they stay put at any width. Translucent.

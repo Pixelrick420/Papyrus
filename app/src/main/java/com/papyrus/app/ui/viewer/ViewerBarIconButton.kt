@@ -6,7 +6,10 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
@@ -23,12 +26,36 @@ internal fun ViewerBarIconButton(
     enabled: Boolean = true,
     iconSize: Dp = 24.dp,
 ) {
+    ViewerBarIconButton(
+        painter = rememberVectorPainter(icon),
+        contentDescription = contentDescription,
+        onClick = onClick,
+        modifier = modifier,
+        enabled = enabled,
+        iconSize = iconSize,
+    )
+}
+
+/**
+ * The same button for an icon that is a drawable resource. [activeTint] is for a toggle that is on,
+ * so its state shows in the colour as well as the glyph; a disabled button ignores it and dims.
+ */
+@Composable
+internal fun ViewerBarIconButton(
+    painter: Painter,
+    contentDescription: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    iconSize: Dp = 24.dp,
+    activeTint: Color? = null,
+) {
     IconButton(onClick = onClick, enabled = enabled, modifier = modifier) {
         Icon(
-            imageVector = icon,
+            painter = painter,
             contentDescription = contentDescription,
             tint = if (enabled) {
-                MaterialTheme.colorScheme.onSurfaceVariant
+                activeTint ?: MaterialTheme.colorScheme.onSurfaceVariant
             } else {
                 MaterialTheme.colorScheme.onSurface.copy(alpha = DISABLED_ALPHA)
             },
