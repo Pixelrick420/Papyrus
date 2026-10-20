@@ -84,6 +84,20 @@ class TtsDocumentSourceTest {
     }
 
     @Test
+    fun `a unit remembers where it begins in the text it came from`() {
+        val chunks = listOf("intro\n\n   indented body\nmore")
+        val units = TtsDocumentSource.unitsFromPlainText(chunks)
+        assertEquals(listOf(0, 7), units.map { it.start })
+
+        val pages = TtsDocumentSource.unitsFromPdfPages(listOf("only page text"))
+        assertEquals(0, pages.single().start)
+
+        val markdown = "alpha\n\nbeta"
+        val paragraphs = TtsDocumentSource.unitsFromMarkdown(markdown)
+        assertEquals(paragraphs.map { it.anchor }, paragraphs.map { it.start })
+    }
+
+    @Test
     fun `office blocks read in order with the block index as the anchor`() {
         val blocks = listOf(
             OfficeBlock.Heading("Title", level = 1),

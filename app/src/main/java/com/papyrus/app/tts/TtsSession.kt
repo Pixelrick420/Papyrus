@@ -22,7 +22,21 @@ data class TtsState(
     val unitIndex: Int = -1,
     val anchor: Int = -1,
     val speed: Float = 1.0f,
-)
+    /** The sentence and word being read inside [unitIndex], for the viewer to mark. */
+    val progress: TtsProgress = TtsProgress(),
+    /**
+     * Whether the page is held on the line being read: the reader cannot scroll, and the view follows
+     * the voice. Every read starts locked; the reader unlocks it to look around, and locking again
+     * brings them back to the line.
+     */
+    val scrollLocked: Boolean = true,
+) {
+    /**
+     * Whether the page is held on the voice right now: locked, and with a voice to hold it. A failed
+     * read has nothing to follow and must never leave the reader unable to scroll.
+     */
+    val followsVoice: Boolean get() = scrollLocked && !hasError
+}
 
 /**
  * App-scoped read-aloud holder (lazy in [com.papyrus.app.MainApplication]). It survives ViewModel
@@ -115,6 +129,14 @@ class TtsSession {
         controller?.setSpeed(rate)
     }
 
+    fun setScrollLocked(locked: Boolean) {
+        _state.update { if (it.scrollLocked == locked) it else it.copy(scrollLocked = locked) }
+    }
+
+    fun toggleScrollLock() {
+        _state.update { it.copy(scrollLocked = !it.scrollLocked) }
+    }
+
     /** Merge the controller's playback into the published state, keeping the document identity. */
     fun syncPlayback(playback: TtsPlayback) {
         _state.update {
@@ -126,6 +148,7 @@ class TtsSession {
                 unitIndex = playback.unitIndex,
                 anchor = playback.anchor,
                 speed = playback.speed,
+                progress = playback.progress,
             )
         }
     }

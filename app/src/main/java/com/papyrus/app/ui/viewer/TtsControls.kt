@@ -20,6 +20,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
@@ -34,9 +35,9 @@ import com.papyrus.app.ui.icons.SkipNext
 import com.papyrus.app.ui.icons.SkipPrevious
 
 /**
- * The in-flow read-aloud bar: play/pause, skip a paragraph either way, cycle the speed, close. Shown
- * while a document is being spoken and while it is paused, and — after an engine failure — kept up to
- * show the reason without losing the reading position.
+ * The in-flow read-aloud bar: play/pause, skip a paragraph either way, lock the page to the line being
+ * read, cycle the speed, close. Shown while a document is being spoken and while it is paused, and —
+ * after an engine failure — kept up to show the reason without losing the reading position.
  *
  * Drawn as the find bar's sibling: the transport sits in an outlined pill with the same height, corner
  * radius and outline as the search pill, and the close button sits outside it on the trailing edge, the
@@ -50,6 +51,7 @@ fun TtsControls(
     onSkipForward: () -> Unit,
     onClose: () -> Unit,
     onSpeedChange: (Float) -> Unit,
+    onToggleScrollLock: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     if (!state.isPlaying && !state.isPaused && !state.hasError) return
@@ -58,6 +60,10 @@ fun TtsControls(
     val engineGone = state.hasError && !state.isPlaying && !state.isPaused
     val speedValue = stringResource(R.string.tts_speed_value, formatSpeed(state.speed))
     val speedLabel = stringResource(R.string.tts_speed) + " " + speedValue
+    // Shown as the page really is: a failed read cannot hold it, whatever was chosen before.
+    val locked = state.followsVoice
+    // Labelled with what pressing does, as play/pause is.
+    val lockLabel = stringResource(if (locked) R.string.tts_scroll_unlock else R.string.tts_scroll_lock)
     val playPauseIcon = if (state.isPlaying) Pause else Icons.Default.PlayArrow
     val playPauseLabel = if (state.isPlaying) {
         stringResource(R.string.tts_pause)
@@ -113,6 +119,15 @@ fun TtsControls(
                         enabled = !engineGone,
                     )
                     Spacer(Modifier.weight(1f))
+                    // Locked, the page follows the voice and cannot be scrolled; unlocked, the reader is
+                    // free, and locking again returns to the line being read. The accent marks it engaged.
+                    ViewerBarIconButton(
+                        painter = painterResource(if (locked) R.drawable.ic_lock else R.drawable.ic_lock_open),
+                        contentDescription = lockLabel,
+                        onClick = onToggleScrollLock,
+                        enabled = !engineGone,
+                        activeTint = if (locked) MaterialTheme.colorScheme.primary else null,
+                    )
                     // "1×" on its own means nothing spoken, so the button reads as a speed control.
                     // Tinted like the transport glyphs rather than accented, so the bar stays quiet.
                     TextButton(

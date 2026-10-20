@@ -473,6 +473,16 @@ class ViewerViewModel(
 
     fun ttsSetSpeed(rate: Float) = tts.setSpeed(rate)
 
+    fun ttsToggleScrollLock() = tts.toggleScrollLock()
+
+    /**
+     * The reader went somewhere on purpose (a link, the outline, a bookmark, find): the voice must not
+     * drag them straight back, so the lock is let go. Locking again returns them to the line being read.
+     */
+    fun ttsReleaseScroll() {
+        if (tts.state.value.documentId == ttsDocumentId()) tts.setScrollLocked(false)
+    }
+
     /** One page at a time, through the same one-page reader find uses; a blank page speaks nothing. */
     private suspend fun pdfTtsUnits(pageCount: Int): List<TtsUnit> {
         val pages = ArrayList<String>(pageCount)

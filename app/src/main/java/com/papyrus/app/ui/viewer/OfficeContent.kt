@@ -56,6 +56,7 @@ internal fun OfficeBlockView(
     modifier: Modifier = Modifier,
     highlight: FindHighlight? = null,
     reveal: RevealTicket? = null,
+    speaking: SpokenRange? = null,
 ) {
     when (block) {
         is OfficeBlock.Heading -> FindText(
@@ -65,6 +66,7 @@ internal fun OfficeBlockView(
             modifier = modifier.padding(top = 16.dp, bottom = 4.dp),
             reveal = reveal,
             spans = block.spans,
+            speaking = speaking,
         )
         is OfficeBlock.Paragraph -> FindText(
             text = block.text,
@@ -73,9 +75,10 @@ internal fun OfficeBlockView(
             modifier = modifier.padding(start = INDENT_STEP * block.indent, top = 4.dp, bottom = 4.dp),
             reveal = reveal,
             spans = block.spans,
+            speaking = speaking,
         )
-        is OfficeBlock.ListItem -> OfficeListItemView(block, modifier, highlight, reveal)
-        is OfficeBlock.Note -> OfficeNoteView(block, modifier, highlight, reveal)
+        is OfficeBlock.ListItem -> OfficeListItemView(block, modifier, highlight, reveal, speaking)
+        is OfficeBlock.Note -> OfficeNoteView(block, modifier, highlight, reveal, speaking)
         is OfficeBlock.Divider -> HorizontalDivider(modifier.padding(vertical = 12.dp))
         is OfficeBlock.Table -> OfficeTableView(
             block,
@@ -88,6 +91,18 @@ internal fun OfficeBlockView(
         )
         is OfficeBlock.Image -> OfficeImageView(block, modifier.padding(vertical = 8.dp))
     }
+}
+
+/**
+ * The text of this block as the viewer draws it, which is what a spoken word is found again in; null for
+ * a block with no single text (a table is several cells, an image has none).
+ */
+internal fun OfficeBlock.spokenSource(): String? = when (this) {
+    is OfficeBlock.Heading -> text
+    is OfficeBlock.Paragraph -> text
+    is OfficeBlock.ListItem -> text
+    is OfficeBlock.Note -> text
+    else -> null
 }
 
 /** One step of paragraph indentation, as extracted: a quarter inch of the page. */
@@ -106,6 +121,7 @@ private fun OfficeListItemView(
     modifier: Modifier,
     highlight: FindHighlight?,
     reveal: RevealTicket?,
+    speaking: SpokenRange?,
 ) {
     Row(modifier.padding(start = LIST_INDENT * block.level, top = 2.dp, bottom = 2.dp)) {
         Text(
@@ -120,6 +136,7 @@ private fun OfficeListItemView(
             modifier = Modifier.weight(1f),
             reveal = reveal,
             spans = block.spans,
+            speaking = speaking,
         )
     }
 }
@@ -130,6 +147,7 @@ private fun OfficeNoteView(
     modifier: Modifier,
     highlight: FindHighlight?,
     reveal: RevealTicket?,
+    speaking: SpokenRange?,
 ) {
     Row(modifier.padding(vertical = 2.dp)) {
         Text(
@@ -154,6 +172,7 @@ private fun OfficeNoteView(
                 modifier = Modifier.fillMaxWidth(),
                 reveal = reveal,
                 spans = note.spans,
+                speaking = speaking,
             )
         }
     }

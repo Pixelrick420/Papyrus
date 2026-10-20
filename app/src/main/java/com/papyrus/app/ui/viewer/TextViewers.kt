@@ -1,11 +1,17 @@
 package com.papyrus.app.ui.viewer
 
+import android.text.Spannable
 import android.text.Spanned
 import android.text.SpannableString
+import android.text.TextPaint
 import android.text.style.BackgroundColorSpan
+import android.text.style.CharacterStyle
 import android.text.style.ForegroundColorSpan
+import android.text.style.UpdateAppearance
 import android.util.TypedValue
 import android.widget.TextView
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Box
@@ -32,6 +38,7 @@ import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -68,6 +75,7 @@ import com.papyrus.app.viewer.TEXT_LINES_PER_CHUNK
 import io.noties.markwon.Markwon
 import io.noties.markwon.ext.tables.TableRowSpan
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 /** Zoom and scrollbar are overlays, so showing them never re-measures the scrollable. */
@@ -126,7 +134,8 @@ fun MarkdownViewer(
     zoom: ZoomState,
     modifier: Modifier = Modifier,
     position: PositionHooks = PositionHooks.None,
-    ttsOffset: Int? = null,
+    speaking: TtsHighlight? = null,
+    ttsLocked: Boolean = false,
 ) {
     val scroll = rememberScrollState()
     val geometry = rememberScrollGeometry(scroll)
@@ -150,14 +159,37 @@ fun MarkdownViewer(
         target = rememberRestoredTarget(LocationKind.CHAR, text.length, position),
         contentTopPx = contentTopPx,
     )
-    // Follow-along scroll: bring the spoken paragraph's first line to the top, waiting out the first
-    // measure exactly as the restore path does.
-    LaunchedEffect(ttsOffset) {
-        if (ttsOffset == null) return@LaunchedEffect
+    // Read aloud: the sentence and word being spoken, in the rendered text's own offsets.
+    val spoken = rememberSpokenRange(speaking, text, ttsLocked) { scroll.viewportSize }
+    val spokenSpans = remember { SpokenSpans() }
+    val sentenceColor = spokenSentenceColor().toArgb()
+    val wordColor = spokenWordColor().toArgb()
+    // With the lock on, scroll to keep the spoken line on screen, waiting out the first measure exactly
+    // as the restore path does. The scroll runs in its own scope and only when the voice reaches a new
+    // line: a word that stays on its line must not cancel the scroll already under way.
+    val followScope = rememberCoroutineScope()
+    val followMemo = remember { MarkdownFollowMemo() }
+    val followMarginPx = with(LocalDensity.current) { FollowTopMargin.toPx() }
+    val spokenOffset = spoken?.let { it.word?.first ?: it.sentence?.first }
+    LaunchedEffect(spokenOffset, ttsLocked) {
+        if (spokenOffset == null || !ttsLocked) {
+            // Unlocked, or nothing is being read: locking again starts from nothing and follows at once.
+            followMemo.line = -1
+            return@LaunchedEffect
+        }
         snapshotFlow { scroll.maxValue }.first { it != Int.MAX_VALUE }
         val layout = textState.view?.layout ?: return@LaunchedEffect
-        val line = layout.getLineForOffset(ttsOffset.coerceIn(0, layout.text.length))
-        scroll.scrollTo((layout.getLineTop(line) + contentTopPx).roundToInt())
+        val line = layout.getLineForOffset(spokenOffset.coerceIn(0, layout.text.length))
+        if (line == followMemo.line) return@LaunchedEffect
+        followMemo.line = line
+        val lineTop = layout.getLineTop(line)
+        val viewport = scroll.viewportSize.toFloat()
+        val window = followWindow((layout.getLineBottom(line) - lineTop).toFloat(), viewport, followMarginPx)
+        val delta = followScrollDelta(contentTopPx + lineTop - scroll.value, window, viewport)
+        if (delta != 0f) {
+            val target = (scroll.value + delta).roundToInt().coerceIn(0, scroll.maxValue)
+            followScope.launch { scroll.animateScrollTo(target, spring(stiffness = Spring.StiffnessMediumLow)) }
+        }
     }
     // Markwon leaves the TextView without a movement method, so its links do nothing; this one routes the
     // tap through the viewer's own opener instead of the resolver that turns a `file://` link into a crash.
@@ -172,12 +204,12 @@ fun MarkdownViewer(
         zoom.lastCommit?.let { anchor.settle(zoom) }
     }
 
-    ZoomableScrollArea(geometry, { scroll.scrollBy(it) }, zoom, modifier) { scrollModifier ->
+    ZoomableScrollArea(geometry, { if (!ttsLocked) scroll.scrollBy(it) }, zoom, modifier) { scrollModifier ->
         ScaledTypography(zoom.committedScale) {
             SelectionContainer {
                 Column(
                     scrollModifier
-                        .verticalScroll(scroll, enabled = !zoom.isScrollLocked)
+                        .verticalScroll(scroll, enabled = !zoom.isScrollLocked && !ttsLocked)
                         .anchorBridge(anchor)
                         .padding(16.dp),
                 ) {
@@ -207,6 +239,8 @@ fun MarkdownViewer(
                                 textState.text = highlighted
                                 markwon.setParsedMarkdown(view, highlighted)
                             }
+                            // After any re-set of the text, which drops every span it had.
+                            spokenSpans.show(view, spoken, sentenceColor, wordColor)
                         },
                     )
                 }
@@ -222,6 +256,53 @@ fun MarkdownViewer(
 private class MarkdownTextState {
     var view: TextView? = null
     var text: Spanned? = null
+}
+
+/** The line the follow scroll last went to, so a word that stays on its line scrolls nothing. */
+private class MarkdownFollowMemo {
+    var line = -1
+}
+
+/**
+ * The two spans that shade what is being read inside the TextView's own text. They are moved in place,
+ * so a new word costs a repaint and not the re-setting of the whole document that find's highlight
+ * needs, which would also drop a selection in progress.
+ */
+private class SpokenSpans {
+    private val sentence = SpokenSpan()
+    private val word = SpokenSpan()
+    private var shown = false
+
+    fun show(view: TextView, range: SpokenRange?, sentenceColor: Int, wordColor: Int) {
+        // Nothing read now and nothing drawn before: the common case costs nothing.
+        if (range == null && !shown) return
+        shown = range != null
+        val text = view.text as? Spannable ?: return
+        sentence.color = sentenceColor
+        word.color = wordColor
+        // Taken off and put back sentence first, so the word is always the span drawn on top.
+        text.removeSpan(sentence)
+        text.removeSpan(word)
+        attach(text, sentence, range?.sentence)
+        attach(text, word, range?.word)
+        view.invalidate()
+    }
+
+    private fun attach(text: Spannable, span: SpokenSpan, range: IntRange?) {
+        if (range == null) return
+        val from = range.first.coerceIn(0, text.length)
+        val to = (range.last + 1).coerceIn(from, text.length)
+        if (to > from) text.setSpan(span, from, to, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+    }
+}
+
+/** A background that can change colour with the theme, which a [BackgroundColorSpan] cannot. */
+private class SpokenSpan : CharacterStyle(), UpdateAppearance {
+    var color = 0
+
+    override fun updateDrawState(ds: TextPaint) {
+        ds.bgColor = color
+    }
 }
 
 // Table row spans freeze the paint at first draw, so a document with tables gets a fresh `Spanned`
@@ -310,7 +391,8 @@ fun PlainTextViewer(
     modifier: Modifier = Modifier,
     options: PlainTextOptions = PlainTextOptions(),
     position: PositionHooks = PositionHooks.None,
-    ttsChunk: Int? = null,
+    speaking: TtsHighlight? = null,
+    ttsLocked: Boolean = false,
 ) {
     val restoreTarget = rememberRestoredTarget(LocationKind.CHUNK, chunks.size, position)
     val listState = rememberLazyListState(initialFirstVisibleItemIndex = restoreTarget?.unit ?: 0)
@@ -324,9 +406,13 @@ fun PlainTextViewer(
         activeHit?.let { listState.scrollToItemUnlessVisible(it) }
     }
 
-    // Follow-along: the chunk being read is revealed the way a find result is, and tinted below.
-    LaunchedEffect(ttsChunk) {
-        ttsChunk?.let { listState.scrollToItemUnlessVisible(it) }
+    // Read aloud, lock on: the chunk being read is brought in the way a find result is, and its own
+    // text then scrolls to the line. Unlocked, the reader is left wherever they are.
+    val spokenChunk = speaking?.anchor
+    LaunchedEffect(spokenChunk, ttsLocked) {
+        if (ttsLocked && spokenChunk != null && spokenChunk in chunks.indices) {
+            listState.scrollToItemUnlessVisible(spokenChunk)
+        }
     }
 
     val anchor = remember(listState) { LazyZoomAnchor(listState) }
@@ -344,7 +430,7 @@ fun PlainTextViewer(
         zoom.lastCommit?.let { sidewaysAnchor.settle(zoom) }
     }
 
-    ZoomableScrollArea(geometry, { listState.scrollBy(it) }, zoom, modifier) { scrollModifier ->
+    ZoomableScrollArea(geometry, { if (!ttsLocked) listState.scrollBy(it) }, zoom, modifier) { scrollModifier ->
         ScaledTypography(zoom.committedScale) {
             PlainTextList(
                 chunks = chunks,
@@ -356,6 +442,8 @@ fun PlainTextViewer(
                 sideways = sideways,
                 reveal = reveal,
                 zoom = zoom,
+                speaking = speaking,
+                ttsLocked = ttsLocked,
                 modifier = scrollModifier,
             )
         }
@@ -374,6 +462,8 @@ private fun PlainTextList(
     sideways: ScrollState,
     reveal: RevealTicket,
     zoom: ZoomState,
+    speaking: TtsHighlight?,
+    ttsLocked: Boolean,
     modifier: Modifier,
 ) {
     val colors = MaterialTheme.colorScheme
@@ -414,6 +504,8 @@ private fun PlainTextList(
     }
 
     val syntaxPalette = SyntaxPalette.forSurface(colors.surface)
+    // Read when the line being read is placed, not while composing: the list's layout changes every frame.
+    val viewportHeight = remember(listState) { { listState.layoutInfo.viewportSize.height } }
 
     SelectionContainer {
         LazyColumn(
@@ -421,7 +513,8 @@ private fun PlainTextList(
             // The state the scrollbar, zoom anchor and find all read; without it the list
             // scrolls its own private state and they see an empty one.
             state = listState,
-            userScrollEnabled = !zoom.isScrollLocked,
+            // Locked to the voice, the reader cannot scroll; the list still moves for the follow.
+            userScrollEnabled = !zoom.isScrollLocked && !ttsLocked,
             // Trailing pad clears the scrollbar overlay.
             contentPadding = PaddingValues(start = 16.dp, end = 20.dp, top = 16.dp, bottom = 16.dp),
         ) {
@@ -441,6 +534,9 @@ private fun PlainTextList(
                     gutter = gutter,
                     gutterWidth = gutterWidth,
                     width = unwrappedWidth,
+                    speaking = speaking?.takeIf { it.anchor == index },
+                    followVoice = ttsLocked,
+                    viewportHeight = viewportHeight,
                 )
             }
             if (options.truncated) {
@@ -474,6 +570,9 @@ private fun TextChunk(
     gutter: Gutter?,
     gutterWidth: Dp,
     width: Dp?,
+    speaking: TtsHighlight?,
+    followVoice: Boolean,
+    viewportHeight: () -> Int,
 ) {
     val language = options.language
     val startState = options.lexStates?.get(index) ?: 0
@@ -534,6 +633,8 @@ private fun TextChunk(
             syntax = syntax,
             softWrap = options.wrapLines,
             onLayout = if (gutter != null) ({ layout = it }) else null,
+            // Only the chunk being read is handed the voice, so the others recompose for nothing.
+            speaking = rememberSpokenRange(speaking, text, followVoice, viewportHeight),
         )
     }
 }
@@ -618,7 +719,8 @@ fun OfficeViewer(
     zoom: ZoomState,
     modifier: Modifier = Modifier,
     position: PositionHooks = PositionHooks.None,
-    ttsBlock: Int? = null,
+    speaking: TtsHighlight? = null,
+    ttsLocked: Boolean = false,
     /** Something was left out (a chapter that could not be read, a limit reached): end with a notice saying so. */
     incomplete: Boolean = false,
 ) {
@@ -653,11 +755,16 @@ fun OfficeViewer(
         blockOfUnit = units::joinBands,
     )
 
-    // Follow-along: the block being read is revealed the same way, unless it is already on screen.
-    LaunchedEffect(ttsBlock) {
-        val target = ttsBlock ?: return@LaunchedEffect
-        if (target in blocks.indices) listState.scrollToItemUnlessVisible(units.firstUnitOfBlock[target])
+    // Read aloud, lock on: the block being read is brought in the same way, unless it is already on
+    // screen, and its own text then scrolls to the line. Unlocked, the reader is left where they are.
+    val spokenBlock = speaking?.anchor
+    LaunchedEffect(spokenBlock, ttsLocked) {
+        if (ttsLocked && spokenBlock != null && spokenBlock in blocks.indices) {
+            listState.scrollToItemUnlessVisible(units.firstUnitOfBlock[spokenBlock])
+        }
     }
+    // Read when the line being read is placed, not while composing: the list's layout changes every frame.
+    val viewportHeight = remember(listState) { { listState.layoutInfo.viewportSize.height } }
 
     // A hit names its block; a table is several units now, so it scrolls to the band holding the
     // active occurrence. The band's own text then scrolls to the occurrence, as every block did.
@@ -672,7 +779,7 @@ fun OfficeViewer(
         zoom.lastCommit?.let { anchor.settle(zoom) }
     }
 
-    ZoomableScrollArea(geometry, { listState.scrollBy(it) }, zoom, modifier) { scrollModifier ->
+    ZoomableScrollArea(geometry, { if (!ttsLocked) listState.scrollBy(it) }, zoom, modifier) { scrollModifier ->
         ScaledTypography(zoom.committedScale) {
             SelectionContainer {
                 LazyColumn(
@@ -680,7 +787,8 @@ fun OfficeViewer(
                     // The state the scrollbar, zoom anchor and find all read; without it the list
                     // scrolls its own private state and they see an empty one.
                     state = listState,
-                    userScrollEnabled = !zoom.isScrollLocked,
+                    // Locked to the voice, the reader cannot scroll; the list still moves for the follow.
+                    userScrollEnabled = !zoom.isScrollLocked && !ttsLocked,
                     contentPadding = PaddingValues(start = 16.dp, end = 20.dp, top = 16.dp, bottom = 16.dp),
                 ) {
                     items(units.size, key = { it }) { unitIndex ->
@@ -689,22 +797,50 @@ fun OfficeViewer(
                         val isActive = unit.block == activeHit
                         val highlight = findHighlightFor(findQuery, activeOccurrence = activeOccurrence.takeIf { isActive })
                         val band = unit.rows
+                        // The voice is in this block; a table's bands all belong to it, but only the first is followed.
+                        val spokenHere = speaking?.takeIf { it.anchor == unit.block }
                         if (band != null && block is OfficeBlock.Table) {
-                            OfficeTableView(
-                                block,
-                                firstRow = band.first,
-                                rowCount = band.last - band.first + 1,
-                                hScroll = tableScrolls[unit.block] ?: rememberScrollState(),
-                                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-                                highlight = highlight,
-                                reveal = reveal.takeIf { isActive },
-                            )
+                            SpokenBlock(
+                                active = spokenHere != null,
+                                follow = ttsLocked && unitIndex == units.firstUnitOfBlock[unit.block],
+                                viewportHeight = viewportHeight,
+                            ) {
+                                OfficeTableView(
+                                    block,
+                                    firstRow = band.first,
+                                    rowCount = band.last - band.first + 1,
+                                    hScroll = tableScrolls[unit.block] ?: rememberScrollState(),
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                                    highlight = highlight,
+                                    reveal = reveal.takeIf { isActive },
+                                )
+                            }
+                        } else if (block is OfficeBlock.Image) {
+                            SpokenBlock(
+                                active = spokenHere != null,
+                                follow = ttsLocked,
+                                viewportHeight = viewportHeight,
+                            ) {
+                                OfficeBlockView(
+                                    block,
+                                    Modifier.fillMaxWidth(),
+                                    highlight = highlight,
+                                    reveal = reveal.takeIf { isActive },
+                                )
+                            }
                         } else {
+                            val spokenText = rememberSpokenRange(
+                                spokenHere,
+                                block.spokenSource(),
+                                ttsLocked,
+                                viewportHeight,
+                            )
                             OfficeBlockView(
                                 block,
                                 Modifier.fillMaxWidth(),
                                 highlight = highlight,
                                 reveal = reveal.takeIf { isActive },
+                                speaking = spokenText,
                             )
                         }
                     }

@@ -185,6 +185,8 @@ access</string>
     <string name="tts_pause">Pause</string>
     <string name="tts_skip_back">Skip back</string>
     <string name="tts_skip_forward">Skip forward</string>
+    <string name="tts_scroll_lock">Lock scrolling to the line being read</string>
+    <string name="tts_scroll_unlock">Unlock scrolling</string>
     <string name="tts_speed">Speed</string>
     <string name="tts_speed_value">%1$s×</string>
     <string name="tts_notification_channel">Read aloud</string>

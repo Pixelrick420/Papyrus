@@ -157,8 +157,13 @@ never written with `OnConflictStrategy.REPLACE`: a replace is a delete plus an i
     was stored stays and applies again when the switch is turned back on.
 - **Read aloud** speaks the open document through the platform speech engine, in the format's own reading units: a
   PDF page, a 40-line text chunk, an Office block, or a Markdown paragraph. It starts at the current reading position,
-  scrolls each spoken unit into view and tints it, and offers a bar over the text with play/pause, a skip back and
-  forward of one unit, a speed of 0.5x, 1x, 1.5x or 2x, and close. Pausing and resuming re-speaks the current unit
+  shades the sentence being read and, on engines that report timing, the word inside it (a unit alone when the engine
+  does not), and offers a bar over the text with play/pause, a skip back and forward of one unit, a lock, a speed of
+  0.5x, 1x, 1.5x or 2x, and close. Every read starts locked: the page scrolls by itself to keep the line being read
+  in view, one small step per line, and cannot be scrolled by hand. Unlocking leaves the reader free to scroll
+  anywhere (the shading keeps following the voice, the page does not), and locking again returns to the line being
+  read. Opening find, the outline, go to, a bookmark or a PDF link unlocks first, so the voice never drags the reader
+  back from where they went. Pausing and resuming re-speaks the current unit
   rather than skipping it; a speech-engine failure stops and reports the reason while keeping the place. Playback
   continues with the screen off, from a media-playback foreground service whose notification offers play/pause and
   stop, and a platform `MediaSession` forwards headset and Bluetooth keys. No audio is written to disk and no text

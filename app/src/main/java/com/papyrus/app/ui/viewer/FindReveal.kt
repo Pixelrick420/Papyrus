@@ -14,6 +14,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
@@ -36,7 +37,8 @@ internal val RevealMargin = 48.dp
 
 /**
  * Text with find highlights; [reveal] goes only to the container holding the current match, and
- * [syntax] colours source code under the highlights.
+ * [syntax] colours source code under the highlights. [speaking] is the part being read aloud: shaded
+ * behind the text, and kept on screen while it says to follow.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -51,6 +53,7 @@ internal fun FindText(
     syntax: SyntaxStyling? = null,
     softWrap: Boolean = true,
     onLayout: ((TextLayoutResult) -> Unit)? = null,
+    speaking: SpokenRange? = null,
 ) {
     val scheme = MaterialTheme.colorScheme
     val surface = background ?: scheme.surface
@@ -80,10 +83,50 @@ internal fun FindText(
         requester.bringIntoView(Rect(box.left - margin, box.top - margin, box.right + margin, box.bottom + margin))
     }
 
+    // Follow the voice: the line it is on is brought into view when it moves to a new one, and again
+    // when the lock is pressed back on. Keyed on the line, not the word, so a word that stays on its
+    // line never interrupts the scroll already under way.
+    val spokenOffset = speaking?.let { it.word?.first ?: it.sentence?.first }
+    val spokenLine = layout?.let { laidOut ->
+        spokenOffset?.let { laidOut.getLineForOffset(it.coerceIn(0, laidOut.layoutInput.text.length)) }
+    }
+    val following = speaking?.follow == true
+    val followMargin = with(LocalDensity.current) { FollowTopMargin.toPx() }
+    LaunchedEffect(following, spokenLine) {
+        val spoken = speaking
+        val laidOut = layout
+        if (!following || spoken == null || laidOut == null || spokenLine == null) return@LaunchedEffect
+        val top = laidOut.getLineTop(spokenLine)
+        val bottom = laidOut.getLineBottom(spokenLine)
+        val window = followWindow(bottom - top, spoken.viewportHeight().toFloat(), followMargin)
+        requester.bringIntoView(Rect(0f, top - window.above, laidOut.size.width.toFloat(), top + window.below))
+    }
+
+    // Drawn behind the text from its own layout, so a new word repaints and nothing more: no new
+    // string, no new measure.
+    val sentenceColor = spokenSentenceColor()
+    val wordColor = spokenWordColor()
+    val shade = if (speaking == null) {
+        Modifier
+    } else {
+        Modifier.drawBehind {
+            val laidOut = layout ?: return@drawBehind
+            val limit = laidOut.layoutInput.text.length
+            speaking.sentence?.let {
+                val path = laidOut.getPathForRange(it.first.coerceIn(0, limit), (it.last + 1).coerceIn(0, limit))
+                drawPath(path, sentenceColor)
+            }
+            speaking.word?.let {
+                val path = laidOut.getPathForRange(it.first.coerceIn(0, limit), (it.last + 1).coerceIn(0, limit))
+                drawPath(path, wordColor)
+            }
+        }
+    }
+
     Text(
         annotated,
         style = style,
-        modifier = modifier.bringIntoViewRequester(requester),
+        modifier = modifier.bringIntoViewRequester(requester).then(shade),
         softWrap = softWrap,
         onTextLayout = {
             layout = it
