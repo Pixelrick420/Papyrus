@@ -47,7 +47,8 @@ object TtsDocumentSource {
         DocumentFormat.TEXT, DocumentFormat.CODE -> unitsFromPlainText(plainTextChunks.orEmpty())
         DocumentFormat.MARKDOWN -> unitsFromMarkdown(markdownText.orEmpty())
         DocumentFormat.DOC, DocumentFormat.DOCX, DocumentFormat.ODT, DocumentFormat.EPUB -> unitsFromOffice(officeBlocks.orEmpty())
-        DocumentFormat.UNKNOWN -> emptyList()
+        // A table has no reading order worth speaking, and it would be one unit of every cell.
+        DocumentFormat.CSV, DocumentFormat.UNKNOWN -> emptyList()
     }
 
     /** PDF: one unit per paragraph; the anchor is the page the paragraph came from. */

@@ -153,4 +153,35 @@ class DocumentFormatTest {
         assertEquals("application/epub+zip", DocumentFormat.EPUB.mimeTypes.first())
         assertEquals("EPUB", DocumentFormat.EPUB.label)
     }
+
+    @Test
+    fun `csv and tsv are one format, found by extension or mime type`() {
+        assertEquals(DocumentFormat.CSV, DocumentFormat.detect("sales.csv", null))
+        assertEquals(DocumentFormat.CSV, DocumentFormat.detect("SALES.CSV", null))
+        assertEquals(DocumentFormat.CSV, DocumentFormat.detect("genes.tsv", "application/octet-stream"))
+        assertEquals(DocumentFormat.CSV, DocumentFormat.detect("export", "text/csv"))
+        assertEquals(DocumentFormat.CSV, DocumentFormat.detect("export", "text/comma-separated-values"))
+        assertEquals(DocumentFormat.CSV, DocumentFormat.detect("export", "text/tab-separated-values"))
+    }
+
+    @Test
+    fun `a providers text-plain label does not turn a csv into text`() {
+        // Providers report a .csv as text/plain as often as text/csv; the extension decides.
+        assertEquals(DocumentFormat.CSV, DocumentFormat.detect("sales.csv", "text/plain"))
+        assertEquals(DocumentFormat.TEXT, DocumentFormat.detect("sales.txt", "text/csv"))
+    }
+
+    @Test
+    fun `the picker offers csv and tsv files and sharing names their type`() {
+        assertTrue(DocumentFormat.pickerMimeTypes.contains("text/csv"))
+        assertTrue(DocumentFormat.pickerMimeTypes.contains("text/tab-separated-values"))
+        assertEquals("text/csv", DocumentFormat.CSV.mimeTypes.first())
+        assertEquals("CSV", DocumentFormat.CSV.label)
+    }
+
+    @Test
+    fun `names that merely contain csv are not tables`() {
+        assertEquals(DocumentFormat.UNKNOWN, DocumentFormat.detect("notes.csv.bak", null))
+        assertEquals(DocumentFormat.TEXT, DocumentFormat.detect("csv.txt", null))
+    }
 }

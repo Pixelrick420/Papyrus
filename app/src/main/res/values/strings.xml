@@ -47,6 +47,7 @@ access</string>
     <string name="home_filter_epub">EPUB</string>
     <string name="home_filter_markdown">Markdown</string>
     <string name="home_filter_text">Text</string>
+    <string name="home_filter_csv">CSV / TSV</string>
     <string name="home_filter_code">Code</string>
     <string name="home_filter_favourites">Favourites</string>
     <string name="home_filter_none">No files match these filters</string>
@@ -163,6 +164,8 @@ access</string>
     <string name="settings_wrap_lines_desc">Turn off to keep each line on one row and scroll sideways. Applies to plain text, logs and code.</string>
     <string name="settings_pretty_print">Pretty print structured files</string>
     <string name="settings_pretty_print_desc">Indent JSON, XML, HTML and SVG files as they open. The stored file is never changed.</string>
+    <string name="settings_tab_size">Tab size</string>
+    <string name="settings_tab_size_value">%1$d spaces</string>
     <string name="settings_section_library">Library</string>
     <string name="settings_autosave_external">Autosave external docs</string>
     <string name="settings_autosave_external_desc">Add documents opened from other apps to your library automatically.</string>

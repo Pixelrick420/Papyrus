@@ -29,7 +29,7 @@ enum class LocationKind(val code: Int) {
             DocumentFormat.PDF -> PAGE
             DocumentFormat.MARKDOWN -> CHAR
             DocumentFormat.TEXT, DocumentFormat.CODE -> CHUNK
-            DocumentFormat.DOC, DocumentFormat.DOCX, DocumentFormat.ODT, DocumentFormat.EPUB -> BLOCK
+            DocumentFormat.DOC, DocumentFormat.DOCX, DocumentFormat.ODT, DocumentFormat.EPUB, DocumentFormat.CSV -> BLOCK
             DocumentFormat.UNKNOWN -> null
         }
     }

@@ -198,4 +198,9 @@ class ReadingLocationTest {
         assertNull(row(77).toRestoreRequest(DocumentFormat.PDF))
         assertNull(row(LocationKind.PAGE.code).toRestoreRequest(DocumentFormat.UNKNOWN))
     }
+
+    @Test
+    fun `a table is read by block, like the other Office formats`() {
+        assertEquals(LocationKind.BLOCK, LocationKind.forFormat(DocumentFormat.CSV))
+    }
 }
