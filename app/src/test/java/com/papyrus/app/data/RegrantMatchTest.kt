@@ -75,4 +75,18 @@ class RegrantMatchTest {
         assertFalse(matches("deploy", DocumentFormat.UNKNOWN, "deploy", DocumentFormat.PDF))
         assertFalse(matches("deploy", DocumentFormat.TEXT, "deploy", DocumentFormat.CODE))
     }
+
+    @Test
+    fun `a csv stored as code before it had a format of its own matches the same file now`() {
+        assertTrue(matches("sales.csv", DocumentFormat.CODE, "sales.csv", DocumentFormat.CSV))
+        assertTrue(matches("sales.csv", DocumentFormat.CSV, "sales.csv", DocumentFormat.CSV))
+    }
+
+    @Test
+    fun `a csv still needs the same name, and is not any other format`() {
+        assertFalse(matches("sales.csv", DocumentFormat.CODE, "other.csv", DocumentFormat.CSV))
+        assertFalse(matches("sales.csv", DocumentFormat.CSV, "sales.csv", DocumentFormat.TEXT))
+        assertFalse(matches("sales.csv", DocumentFormat.TEXT, "sales.csv", DocumentFormat.CSV))
+        assertFalse(matches("sales.csv", DocumentFormat.PDF, "sales.csv", DocumentFormat.CSV))
+    }
 }

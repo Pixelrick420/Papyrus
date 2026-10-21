@@ -56,6 +56,7 @@ import com.papyrus.app.data.SettingsRepository
 import com.papyrus.app.data.ThemeMode
 import com.papyrus.app.ui.AppViewModelProvider
 import com.papyrus.app.ui.viewer.openLink
+import com.papyrus.app.viewer.PrettyPrint
 import kotlinx.coroutines.flow.StateFlow
 
 class SettingsViewModel(private val repository: SettingsRepository) : ViewModel() {
@@ -79,6 +80,8 @@ class SettingsViewModel(private val repository: SettingsRepository) : ViewModel(
     fun setWrapLines(enabled: Boolean) = repository.setWrapLines(enabled)
 
     fun setPrettyPrint(enabled: Boolean) = repository.setPrettyPrint(enabled)
+
+    fun setTabSize(spaces: Int) = repository.setTabSize(spaces)
 }
 
 /** Same inset as Home and the viewer, so cards line up with the Home list. */
@@ -111,6 +114,7 @@ fun SettingsScreen(
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var themeDialogOpen by remember { mutableStateOf(false) }
+    var tabSizeDialogOpen by remember { mutableStateOf(false) }
 
     // Opened in the person's browser; Papyrus itself still never touches the network. The viewer's
     // opener is reused so every link opens the same way and refuses any scheme but http(s), mailto, tel.
@@ -178,6 +182,12 @@ fun SettingsScreen(
                         checked = settings.prettyPrint,
                         onCheckedChange = viewModel::setPrettyPrint,
                     )
+                    CardDivider()
+                    SettingsRow(
+                        title = stringResource(R.string.settings_tab_size),
+                        value = stringResource(R.string.settings_tab_size_value, settings.tabSize),
+                        modifier = Modifier.clickable(role = Role.Button) { tabSizeDialogOpen = true },
+                    )
                 }
 
                 SectionLabel(stringResource(R.string.settings_section_library))
@@ -242,6 +252,17 @@ fun SettingsScreen(
                 themeDialogOpen = false
             },
             onDismiss = { themeDialogOpen = false },
+        )
+    }
+
+    if (tabSizeDialogOpen) {
+        TabSizeDialog(
+            selected = settings.tabSize,
+            onSelect = { spaces ->
+                viewModel.setTabSize(spaces)
+                tabSizeDialogOpen = false
+            },
+            onDismiss = { tabSizeDialogOpen = false },
         )
     }
 }
@@ -377,6 +398,46 @@ private fun ThemeDialog(
                         RadioButton(selected = mode == selected, onClick = null)
                         Spacer(Modifier.width(16.dp))
                         Text(stringResource(mode.label()), style = MaterialTheme.typography.bodyLarge)
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) }
+        },
+    )
+}
+
+/** The indent each nesting level gets in pretty-printed JSON, XML, HTML and SVG. */
+@Composable
+private fun TabSizeDialog(
+    selected: Int,
+    onSelect: (Int) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.settings_tab_size)) },
+        text = {
+            Column(Modifier.selectableGroup()) {
+                PrettyPrint.INDENT_CHOICES.forEach { spaces ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 48.dp)
+                            .selectable(
+                                selected = spaces == selected,
+                                onClick = { onSelect(spaces) },
+                                role = Role.RadioButton,
+                            ),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RadioButton(selected = spaces == selected, onClick = null)
+                        Spacer(Modifier.width(16.dp))
+                        Text(
+                            stringResource(R.string.settings_tab_size_value, spaces),
+                            style = MaterialTheme.typography.bodyLarge,
+                        )
                     }
                 }
             }

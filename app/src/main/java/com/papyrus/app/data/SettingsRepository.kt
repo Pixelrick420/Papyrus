@@ -2,6 +2,7 @@ package com.papyrus.app.data
 
 import android.content.Context
 import androidx.core.content.edit
+import com.papyrus.app.viewer.PrettyPrint
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -35,6 +36,8 @@ data class AppSettings(
     val syntaxHighlighting: Boolean = true,
     /** JSON, XML, HTML and SVG files are indented as they open; off, they show exactly as stored. */
     val prettyPrint: Boolean = true,
+    /** Spaces per nesting level in pretty-printed files; always one of [PrettyPrint.INDENT_CHOICES]. */
+    val tabSize: Int = PrettyPrint.DEFAULT_INDENT,
     val colorblindMode: Boolean = false,
     /** How Home orders the library. */
     val librarySort: LibrarySort = LibrarySort.LAST_OPENED,
@@ -92,6 +95,12 @@ class SettingsRepository(context: Context) {
         _settings.update { it.copy(prettyPrint = enabled) }
     }
 
+    fun setTabSize(spaces: Int) {
+        val size = PrettyPrint.indentOrDefault(spaces)
+        prefs.edit { putInt(KEY_TAB_SIZE, size) }
+        _settings.update { it.copy(tabSize = size) }
+    }
+
     fun setColorblindMode(enabled: Boolean) {
         prefs.edit { putBoolean(KEY_COLORBLIND_MODE, enabled) }
         _settings.update { it.copy(colorblindMode = enabled) }
@@ -116,6 +125,7 @@ class SettingsRepository(context: Context) {
             showLineNumbers = prefs.getBoolean(KEY_LINE_NUMBERS, defaults.showLineNumbers),
             syntaxHighlighting = prefs.getBoolean(KEY_SYNTAX_HIGHLIGHTING, defaults.syntaxHighlighting),
             prettyPrint = prefs.getBoolean(KEY_PRETTY_PRINT, defaults.prettyPrint),
+            tabSize = PrettyPrint.indentOrDefault(prefs.getInt(KEY_TAB_SIZE, defaults.tabSize)),
             colorblindMode = prefs.getBoolean(KEY_COLORBLIND_MODE, defaults.colorblindMode),
             librarySort = LibrarySort.entries.firstOrNull { it.name == storedSort } ?: defaults.librarySort,
         )
@@ -131,6 +141,7 @@ class SettingsRepository(context: Context) {
         const val KEY_LINE_NUMBERS = "line_numbers"
         const val KEY_SYNTAX_HIGHLIGHTING = "syntax_highlighting"
         const val KEY_PRETTY_PRINT = "pretty_print"
+        const val KEY_TAB_SIZE = "tab_size"
         const val KEY_COLORBLIND_MODE = "colorblind_mode"
         const val KEY_LIBRARY_SORT = "library_sort"
     }

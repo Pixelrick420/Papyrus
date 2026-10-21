@@ -308,4 +308,17 @@ class LibraryViewTest {
         val after = before.map { if (it.id == 2L) it.copy(isFavourite = true) else it }
         assertEquals(listOf(2L), ids(view(after, LibrarySort.LAST_OPENED, filter = filter)))
     }
+
+    @Test
+    fun `csv and tsv share one chip, placed between text and code`() {
+        val docs = listOf(
+            doc(1, format = DocumentFormat.CODE),
+            doc(2, format = DocumentFormat.CSV),
+            doc(3, format = DocumentFormat.TEXT),
+        )
+        assertEquals(FormatGroup.CSV, FormatGroup.of(DocumentFormat.CSV))
+        assertEquals(listOf(FormatGroup.TEXT, FormatGroup.CSV, FormatGroup.CODE), availableGroups(docs))
+        val filter = LibraryFilter().toggled(FormatGroup.CSV)
+        assertEquals(listOf(2L), ids(view(docs, LibrarySort.LAST_OPENED, filter = filter)))
+    }
 }

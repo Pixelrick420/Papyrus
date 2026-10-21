@@ -12,6 +12,15 @@ enum class PrettyKind { JSON, XML, HTML }
  */
 object PrettyPrint {
 
+    /** Spaces per nesting level until the reader picks another in Settings. */
+    const val DEFAULT_INDENT = 2
+
+    /** The widths Settings offers, narrowest first. */
+    val INDENT_CHOICES = listOf(2, 3, 4, 8)
+
+    /** [spaces] if it is one of [INDENT_CHOICES], else [DEFAULT_INDENT]: a stored value is never trusted. */
+    fun indentOrDefault(spaces: Int): Int = if (spaces in INDENT_CHOICES) spaces else DEFAULT_INDENT
+
     /** Null: the name is not a formattable format — the caller must not take the string path. */
     fun kindFor(displayName: String?): PrettyKind? {
         val name = displayName?.lowercase().orEmpty()
@@ -25,15 +34,19 @@ object PrettyPrint {
         }
     }
 
-    /** The formatted text, or null on structural failure (the caller shows raw + one snackbar). */
-    fun format(kind: PrettyKind, text: String): String? = when (kind) {
-        PrettyKind.JSON -> formatJson(text)
-        PrettyKind.XML -> formatMarkup(strict = true, text)
-        PrettyKind.HTML -> formatMarkup(strict = false, text)
+    /**
+     * The formatted text, or null on structural failure (the caller shows raw + one snackbar). Each
+     * nesting level is [indent] spaces, [DEFAULT_INDENT] when that is not a width Settings offers.
+     */
+    fun format(kind: PrettyKind, text: String, indent: Int = DEFAULT_INDENT): String? {
+        val step = " ".repeat(indentOrDefault(indent))
+        return when (kind) {
+            PrettyKind.JSON -> formatJson(text, step)
+            PrettyKind.XML -> formatMarkup(strict = true, text, step)
+            PrettyKind.HTML -> formatMarkup(strict = false, text, step)
+        }
     }
 }
-
-private const val INDENT = "  "
 
 // --- JSON --------------------------------------------------------------------
 
@@ -47,10 +60,10 @@ private const val INDENT = "  "
  * Null on structural failure: an unterminated string or block comment at EOF (the truncated-file
  * case), or a bracket left open, closed by the wrong bracket, or closed with none open.
  */
-private fun formatJson(text: String): String? {
+private fun formatJson(text: String, step: String): String? {
     // Nothing to format; the stored bytes pass through, no toast.
     if (text.isBlank()) return text
-    val layout = JsonLayout()
+    val layout = JsonLayout(step)
     val out = layout.out
     var i = 0
     while (i < text.length) {
@@ -114,7 +127,7 @@ private fun formatJson(text: String): String? {
     return out.toString()
 }
 
-private class JsonLayout {
+private class JsonLayout(private val step: String) {
     val out = StringBuilder()
     var indent = 0
 
@@ -134,7 +147,7 @@ private class JsonLayout {
             return
         }
         if (out.isNotEmpty() && out.last() != '\n') out.append('\n')
-        repeat(indent) { out.append(INDENT) }
+        repeat(indent) { out.append(step) }
         pendingBreak = false
     }
 
@@ -206,7 +219,7 @@ private fun String.nextIs(at: Int, c: Char) = at + 1 < length && this[at + 1] ==
  * copies `<script>` / `<style>` bodies raw, where `<` and `>` are code, not markup. Both fail on
  * an unterminated tag, comment, CDATA or PI at EOF — the truncated-file case.
  */
-private fun formatMarkup(strict: Boolean, text: String): String? {
+private fun formatMarkup(strict: Boolean, text: String, step: String): String? {
     // Nothing to format; the stored bytes pass through, no toast.
     if (text.isBlank()) return text
     val out = StringBuilder(text.length + text.length / 8)
@@ -235,29 +248,29 @@ private fun formatMarkup(strict: Boolean, text: String): String? {
         when {
             text.startsWith("<!--", i) -> {
                 val end = delimitedEnd(text, i, "-->", 4) ?: return null
-                i = emit(out, stack.size, inline, text, i, end)
+                i = emit(out, stack.size, inline, text, i, end, step)
                 inline = false
             }
             text.startsWith("<![CDATA[", i) -> {
                 val end = delimitedEnd(text, i, "]]>", 9) ?: return null
-                i = emit(out, stack.size, inline, text, i, end)
+                i = emit(out, stack.size, inline, text, i, end, step)
                 inline = false
             }
             text.startsWith("<?", i) -> {
                 val end = delimitedEnd(text, i, "?>", 2) ?: return null
-                i = emit(out, stack.size, inline, text, i, end)
+                i = emit(out, stack.size, inline, text, i, end, step)
                 inline = false
             }
             text.startsWith("<!", i) -> {
                 val end = doctypeEnd(text, i) ?: return null
-                i = emit(out, stack.size, inline, text, i, end)
+                i = emit(out, stack.size, inline, text, i, end, step)
                 inline = false
             }
             else -> {
                 val construct = tagConstruct(text, i) ?: return null
                 // A close tag is indented at its own level, which is one above its content.
                 val depth = if (construct.closing) (stack.size - 1).coerceAtLeast(0) else stack.size
-                i = emit(out, depth, inline, text, i, construct.end)
+                i = emit(out, depth, inline, text, i, construct.end, step)
                 if (!applyToStack(stack, construct, strict)) return null
                 inline = false
                 if (!strict && !construct.closing && !construct.selfClosing &&
@@ -278,10 +291,18 @@ private fun formatMarkup(strict: Boolean, text: String): String? {
 }
 
 /** Breaks the line for a construct unless it directly follows text, then copies it verbatim. */
-private fun emit(out: StringBuilder, depth: Int, inline: Boolean, text: String, from: Int, to: Int): Int {
+private fun emit(
+    out: StringBuilder,
+    depth: Int,
+    inline: Boolean,
+    text: String,
+    from: Int,
+    to: Int,
+    step: String,
+): Int {
     if (!inline) {
         if (out.isNotEmpty()) out.append('\n')
-        repeat(depth) { out.append(INDENT) }
+        repeat(depth) { out.append(step) }
     }
     out.append(text, from, to)
     return to

@@ -75,4 +75,11 @@ class DocumentShareTest {
     fun `an empty multi-share declares the wildcard`() {
         assertEquals("*/*", sharedMimeType(emptyList()))
     }
+
+    @Test
+    fun `a csv shares as csv unless the provider says something more specific`() {
+        assertEquals("text/csv", shareMimeType(DocumentFormat.CSV, "text/plain"))
+        assertEquals("text/csv", shareMimeType(DocumentFormat.CSV, null))
+        assertEquals("text/tab-separated-values", shareMimeType(DocumentFormat.CSV, "text/tab-separated-values"))
+    }
 }

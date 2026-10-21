@@ -28,6 +28,7 @@ enum class FormatGroup {
     EPUB,
     MARKDOWN,
     TEXT,
+    CSV,
     CODE,
     ;
 
@@ -39,6 +40,7 @@ enum class FormatGroup {
             DocumentFormat.EPUB -> EPUB
             DocumentFormat.MARKDOWN -> MARKDOWN
             DocumentFormat.TEXT -> TEXT
+            DocumentFormat.CSV -> CSV
             DocumentFormat.CODE -> CODE
             DocumentFormat.UNKNOWN -> null
         }

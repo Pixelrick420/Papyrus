@@ -219,10 +219,11 @@ fun ViewerScreen(
     val bookmarkableContent = findAvailable
     val bookmarksAvailable = bookmarkableContent && state.bookmarksAvailable
 
-    // Read aloud is offered whenever find is (the same speakable formats), and the bar shows only
-    // while *this* document is the one being read. An engine failure counts, so the reason stays on
-    // screen and the bar's close button can clear it.
-    val readAloudAvailable = findAvailable
+    // Read aloud is offered whenever find is (the same speakable formats), except for a table, which
+    // has no reading order to speak; and the bar shows only while *this* document is the one being
+    // read. An engine failure counts, so the reason stays on screen and the bar's close button can
+    // clear it.
+    val readAloudAvailable = findAvailable && state.document?.format != DocumentFormat.CSV
     val ttsDocumentId = state.document?.id?.toString().orEmpty()
     val ttsActive = tts.documentId == ttsDocumentId && ttsDocumentId.isNotEmpty() &&
         (tts.isPlaying || tts.isPaused || tts.hasError)
@@ -240,9 +241,9 @@ fun ViewerScreen(
         viewModel.openFind()
     }
 
-    // The charset applies only to text decoded from bytes: plain text, code and Markdown.
-    // PDF and Office files have none.
-    val encodingAvailable = state.content is ViewerContent.PlainText || state.content is ViewerContent.Markdown
+    // The charset applies only to text decoded from bytes: plain text, code, Markdown and CSV.
+    // PDF and the other Office files have none.
+    val encodingAvailable = state.content.hasEncoding
 
     val closeFind: () -> Unit = {
         focusManager.clearFocus()

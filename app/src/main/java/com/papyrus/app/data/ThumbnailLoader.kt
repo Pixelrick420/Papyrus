@@ -84,7 +84,7 @@ class ThumbnailLoader(private val context: Context) {
 
     private suspend fun render(document: DocumentEntity): Bitmap? = when (document.format) {
         DocumentFormat.PDF -> renderPdf(document.uri.toUri())
-        DocumentFormat.MARKDOWN, DocumentFormat.TEXT, DocumentFormat.CODE -> renderText(document.uri.toUri())
+        DocumentFormat.MARKDOWN, DocumentFormat.TEXT, DocumentFormat.CODE, DocumentFormat.CSV -> renderText(document.uri.toUri())
         DocumentFormat.DOCX, DocumentFormat.ODT, DocumentFormat.DOC -> renderOffice(document)
         DocumentFormat.EPUB -> renderEpub(document.uri.toUri())
         DocumentFormat.UNKNOWN -> null

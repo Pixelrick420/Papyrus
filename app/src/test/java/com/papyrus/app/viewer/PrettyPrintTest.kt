@@ -2,6 +2,7 @@ package com.papyrus.app.viewer
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PrettyPrintTest {
@@ -194,5 +195,91 @@ class PrettyPrintTest {
     fun `an unterminated tag fails for html too`() {
         assertNull(html("<div"))
         assertNull(html("<div><script>if (a<b)"))
+    }
+
+    @Test
+    fun `the default indent is two spaces`() {
+        assertEquals(2, PrettyPrint.DEFAULT_INDENT)
+        assertEquals(PrettyPrint.format(PrettyKind.JSON, "{\"a\":[1]}"), PrettyPrint.format(PrettyKind.JSON, "{\"a\":[1]}", 2))
+    }
+
+    @Test
+    fun `json indents by the width asked for`() {
+        val source = """{"a":[1,{"b":2}],"c":{}}"""
+
+        assertEquals(
+            "{\n    \"a\": [\n        1,\n        {\n            \"b\": 2\n        }\n    ],\n    \"c\": {}\n}",
+            PrettyPrint.format(PrettyKind.JSON, source, 4),
+        )
+        assertEquals("{\n" + " ".repeat(8) + "\"a\": 1\n}", PrettyPrint.format(PrettyKind.JSON, """{"a":1}""", 8))
+        assertEquals("{\n   \"a\": 1\n}", PrettyPrint.format(PrettyKind.JSON, """{"a":1}""", 3))
+    }
+
+    @Test
+    fun `xml and html indent by the width asked for`() {
+        assertEquals("<a>\n    <b>\n        <c/>\n    </b>\n</a>", PrettyPrint.format(PrettyKind.XML, "<a><b><c/></b></a>", 4))
+        assertEquals(
+            "<div>\n   <p>x</p>\n   <ul>\n      <li>y</li>\n   </ul>\n</div>",
+            PrettyPrint.format(PrettyKind.HTML, "<div><p>x</p><ul><li>y</li></ul></div>", 3),
+        )
+    }
+
+    @Test
+    fun `only the leading whitespace changes with the width`() {
+        val source = """{"s":"a  b","n":[1.50,2E+3],"t":{"k":"<x>"}}"""
+        val two = PrettyPrint.format(PrettyKind.JSON, source, 2)!!
+        val eight = PrettyPrint.format(PrettyKind.JSON, source, 8)!!
+
+        assertEquals(two.lines().map { it.trimStart() }, eight.lines().map { it.trimStart() })
+    }
+
+    @Test
+    fun `formatting formatted text at the same width changes nothing, at any width`() {
+        val json = """{"a":1,"b":[true,null,{"c":"d"}]}"""
+        val html = "<div><p>a <b>b</b> c</p><ul><li>x</li></ul></div>"
+        for (width in PrettyPrint.INDENT_CHOICES) {
+            val formattedJson = PrettyPrint.format(PrettyKind.JSON, json, width)!!
+            assertEquals("json at $width", formattedJson, PrettyPrint.format(PrettyKind.JSON, formattedJson, width))
+            val formattedHtml = PrettyPrint.format(PrettyKind.HTML, html, width)!!
+            assertEquals("html at $width", formattedHtml, PrettyPrint.format(PrettyKind.HTML, formattedHtml, width))
+        }
+    }
+
+    @Test
+    fun `text formatted at one width reflows to another`() {
+        val narrow = PrettyPrint.format(PrettyKind.JSON, """{"a":{"b":1}}""", 2)!!
+
+        assertEquals(
+            PrettyPrint.format(PrettyKind.JSON, """{"a":{"b":1}}""", 4),
+            PrettyPrint.format(PrettyKind.JSON, narrow, 4),
+        )
+    }
+
+    @Test
+    fun `a width Settings does not offer falls back to the default`() {
+        val expected = PrettyPrint.format(PrettyKind.JSON, """{"a":1}""")
+
+        assertEquals(expected, PrettyPrint.format(PrettyKind.JSON, """{"a":1}""", 0))
+        assertEquals(expected, PrettyPrint.format(PrettyKind.JSON, """{"a":1}""", -3))
+        assertEquals(expected, PrettyPrint.format(PrettyKind.JSON, """{"a":1}""", 7))
+        assertEquals(expected, PrettyPrint.format(PrettyKind.JSON, """{"a":1}""", Int.MAX_VALUE))
+    }
+
+    @Test
+    fun `a stored width is kept when it is a choice and repaired when it is not`() {
+        PrettyPrint.INDENT_CHOICES.forEach { assertEquals(it, PrettyPrint.indentOrDefault(it)) }
+        assertEquals(PrettyPrint.DEFAULT_INDENT, PrettyPrint.indentOrDefault(0))
+        assertEquals(PrettyPrint.DEFAULT_INDENT, PrettyPrint.indentOrDefault(5))
+        assertEquals(PrettyPrint.DEFAULT_INDENT, PrettyPrint.indentOrDefault(-1))
+        assertTrue(PrettyPrint.DEFAULT_INDENT in PrettyPrint.INDENT_CHOICES)
+    }
+
+    @Test
+    fun `failures stay failures at every width`() {
+        for (width in PrettyPrint.INDENT_CHOICES) {
+            assertNull(PrettyPrint.format(PrettyKind.JSON, "{\"a\":", width))
+            assertNull(PrettyPrint.format(PrettyKind.XML, "<a><b></a>", width))
+            assertNull(PrettyPrint.format(PrettyKind.HTML, "<div", width))
+        }
     }
 }

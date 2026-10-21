@@ -13,6 +13,12 @@ enum class DocumentFormat(
     PDF("PDF", setOf("pdf"), setOf("application/pdf")),
     MARKDOWN("MD", setOf("md", "markdown", "mdown"), setOf("text/markdown", "text/x-markdown")),
     TEXT("TXT", setOf("txt", "text", "log"), setOf("text/plain")),
+
+    /**
+     * Comma-, semicolon-, tab- and pipe-separated text, drawn as a table through the Office pipeline; see
+     * `DelimitedFile`. One format for both extensions: the delimiter is read from the file, not the format.
+     */
+    CSV("CSV", setOf("csv", "tsv"), setOf("text/csv", "text/comma-separated-values", "text/tab-separated-values")),
     DOC("DOC", setOf("doc"), setOf("application/msword")),
     // Macro-enabled files and templates share the .docx layout (`word/document.xml`); nothing runs a macro here.
     // `.dot` is out: it is also Graphviz's extension, so a text file is not read as a Word 97 template.

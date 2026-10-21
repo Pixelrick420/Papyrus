@@ -169,5 +169,14 @@ class TtsDocumentSourceTest {
         assertEquals(0, TtsDocumentSource.startIndexFor(emptyList(), ReadingLocation(LocationKind.PAGE, 4)))
     }
 
+    @Test
+    fun `a table is not read aloud`() {
+        val table = OfficeBlock.Table(listOf(listOf(cell("a"), cell("b"))))
+
+        assertTrue(TtsDocumentSource.units(DocumentFormat.CSV, officeBlocks = listOf(table)).isEmpty())
+        // The same blocks in a format that is read aloud are speech.
+        assertEquals(listOf("a b"), TtsDocumentSource.units(DocumentFormat.DOCX, officeBlocks = listOf(table)).map { it.text })
+    }
+
     private fun cell(text: String) = com.papyrus.app.viewer.OfficeCell(text)
 }

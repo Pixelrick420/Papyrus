@@ -34,6 +34,7 @@ import com.papyrus.app.ui.UiText
 import com.papyrus.app.ui.navigation.Routes
 import com.papyrus.app.viewer.CodeLanguage
 import com.papyrus.app.viewer.CodeLanguages
+import com.papyrus.app.viewer.DelimitedFile
 import com.papyrus.app.viewer.DocTextExtractor
 import com.papyrus.app.viewer.DocumentPasswordException
 import com.papyrus.app.viewer.EpubExtractor
@@ -119,17 +120,27 @@ sealed interface ViewerContent {
     ) : ViewerContent
     /**
      * [outline] is a document's own table of contents (an EPUB's), or null to derive one from the headings;
-     * [incomplete] says something was left out and the viewer should end with a notice.
+     * [incomplete] says something was left out and the viewer should end with a notice; [encoding] is what a
+     * CSV or TSV was decoded as, null for the formats that are not text.
      */
     data class Office(
         val blocks: List<OfficeBlock>,
         val outline: List<OutlineEntry>? = null,
         val incomplete: Boolean = false,
+        val encoding: TextEncoding? = null,
     ) : ViewerContent
     /** A document waiting on its password; [incorrect] flags a rejected attempt, [checking] one in flight. */
     data class NeedsPassword(val incorrect: Boolean = false, val checking: Boolean = false) : ViewerContent
     data class Failed(val message: UiText) : ViewerContent
 }
+
+/** Decoded from bytes the reader can re-read as another charset: plain text, Markdown and CSV. */
+val ViewerContent.hasEncoding: Boolean
+    get() = when (this) {
+        is ViewerContent.PlainText, is ViewerContent.Markdown -> true
+        is ViewerContent.Office -> encoding != null
+        else -> false
+    }
 
 /** Find-in-file state, owned by the ViewModel so the query survives a configuration change. */
 data class FindState(
@@ -330,11 +341,12 @@ class ViewerViewModel(
             }
         }
         viewModelScope.launch { load() }
-        // A pretty-print toggle re-reads a formattable plain-text document, like an encoding
-        // change; the initial value is what the first load already applied, so it is skipped.
+        // A pretty-print toggle or a new tab size re-reads a formattable plain-text document, like an
+        // encoding change; the initial value is what the first load already applied, so it is
+        // skipped. Off is 0: the tab size changes nothing on screen while nothing is formatted.
         viewModelScope.launch {
             app.settings.settings
-                .map { it.prettyPrint }
+                .map { if (it.prettyPrint) it.tabSize else 0 }
                 .distinctUntilChanged()
                 .drop(1)
                 .collect { reloadPrettyPrintedContent() }
@@ -352,7 +364,7 @@ class ViewerViewModel(
         unlockedFile?.delete()
         unlockedFile = null
         unlockedUri = null
-        val doc = repository.getById(documentId)
+        val doc = repository.getById(documentId)?.let { withCurrentFormat(it) }
         if (doc == null) {
             _state.value = ViewerUiState(content = ViewerContent.Failed(UiText(R.string.viewer_error_not_found)))
             return
@@ -429,7 +441,7 @@ class ViewerViewModel(
                 is ViewerContent.Pdf -> pdfTtsUnits(content.source.pageCount)
                 is ViewerContent.PlainText -> TtsDocumentSource.unitsFromPlainText(content.chunks)
                 is ViewerContent.Markdown -> TtsDocumentSource.unitsFromMarkdown(content.text.toString())
-                is ViewerContent.Office -> TtsDocumentSource.unitsFromOffice(content.blocks)
+                is ViewerContent.Office -> TtsDocumentSource.units(document.format, officeBlocks = content.blocks)
                 else -> emptyList()
             }
             if (units.isEmpty()) {
@@ -561,6 +573,16 @@ class ViewerViewModel(
         if (wanted) saveToLibrary(notify = false)
     }
 
+    /**
+     * A .csv or .tsv added before it had a format of its own was sniffed to CODE and stored so. Done before
+     * anything reads the format, as the kind a position and a bookmark are stored in comes from it.
+     */
+    private suspend fun withCurrentFormat(doc: DocumentEntity): DocumentEntity {
+        if (doc.format != DocumentFormat.CODE || DocumentFormat.detect(doc.title, null) != DocumentFormat.CSV) return doc
+        repository.updateFormat(doc.id, DocumentFormat.CSV)
+        return doc.copy(format = DocumentFormat.CSV)
+    }
+
     private suspend fun loadContent(doc: DocumentEntity): ViewerContent {
         val uri = doc.uri.toUri()
         // Rows indexed before format sniffing may say UNKNOWN; a re-check beats a backfill.
@@ -590,17 +612,29 @@ class ViewerViewModel(
             }
             // CODE renders through the same surface as TEXT: monospace, chunked, selectable.
             DocumentFormat.TEXT, DocumentFormat.CODE -> {
-                val prettyKind = if (app.settings.current.prettyPrint) PrettyPrint.kindFor(doc.title) else null
+                val settings = app.settings.current
+                val prettyKind = if (settings.prettyPrint) PrettyPrint.kindFor(doc.title) else null
                 if (prettyKind == null) {
                     val read = openStream(uri).use { readTextChunks(it, MAX_TEXT_BYTES, forcedCharset(), StatisticalCharsetGuesser) }
                     plainText(doc, read, codeOnly = format == DocumentFormat.CODE)
                 } else {
                     val read = openStream(uri).use { readTextString(it, MAX_TEXT_BYTES, forcedCharset(), StatisticalCharsetGuesser) }
-                    val formatted = PrettyPrint.format(prettyKind, read.text)
+                    val formatted = PrettyPrint.format(prettyKind, read.text, settings.tabSize)
                     // Structural failure: the exact stored text always opens, with one snackbar.
                     if (formatted == null) _messages.value = UiText(R.string.viewer_pretty_failed)
                     val chunks = chunkText(formatted ?: read.text, read.encoding, read.truncated)
                     plainText(doc, chunks, codeOnly = format == DocumentFormat.CODE)
+                }
+            }
+            // A table is held whole, so it reads far less than plain text; a file past that is cut and noted.
+            DocumentFormat.CSV -> {
+                val read = openStream(uri).use { readTextString(it, MAX_DELIMITED_BYTES, forcedCharset(), StatisticalCharsetGuesser) }
+                val parsed = DelimitedFile.parse(read.text, DelimitedFile.delimiterFor(doc.title, read.text), cut = read.truncated)
+                val blocks = DelimitedFile.toBlocks(parsed.rows)
+                if (blocks.isEmpty()) {
+                    ViewerContent.Failed(UiText(R.string.viewer_error_empty))
+                } else {
+                    ViewerContent.Office(blocks, incomplete = parsed.truncated, encoding = read.encoding)
                 }
             }
             DocumentFormat.DOCX, DocumentFormat.ODT -> when (OfficeEncryption.status({ openStream(uri) })) {
@@ -867,12 +901,11 @@ class ViewerViewModel(
         _state.update { it.copy(content = ViewerContent.Failed(UiText(R.string.viewer_password_cancelled))) }
     }
 
-    /** Re-reads a text or Markdown file as [charsetName], or by detection again when null. The old
+    /** Re-reads a text, Markdown or CSV file as [charsetName], or by detection again when null. The old
      * content stays until the new arrives, so the page does not flash and the scroll holds. */
     fun setEncoding(charsetName: String?) {
         val doc = _state.value.document ?: return
-        val content = _state.value.content
-        if (content !is ViewerContent.PlainText && content !is ViewerContent.Markdown) return
+        if (!_state.value.content.hasEncoding) return
         if (charsetName == encodingName) return
         encodingName = charsetName
         savedState[KEY_ENCODING] = charsetName
@@ -880,7 +913,7 @@ class ViewerViewModel(
         reloadContent()
     }
 
-    /** The pretty-print toggle changed: re-read a plain-text document the formatter applies to;
+    /** The pretty-print toggle or tab size changed: re-read a plain-text document the formatter applies to;
      * anything else (a name that never formats, PDF, Office, Markdown) is left as it is. */
     private fun reloadPrettyPrintedContent() {
         val doc = _state.value.document ?: return
@@ -1080,6 +1113,9 @@ class ViewerViewModel(
 
         // Markdown is one Spanned in one TextView, which is far heavier per byte than a chunk of text.
         const val MAX_MARKDOWN_BYTES = 4 * 1024 * 1024
+
+        // The cell limit (see `DelimitedFile`) is reached long before this in any file but one of very wide cells.
+        const val MAX_DELIMITED_BYTES = 8 * 1024 * 1024
 
         // A hit is a boxed index; past this a counter says nothing more and the list only costs heap.
         const val MAX_TEXT_FIND_HITS = 100_000
