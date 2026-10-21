@@ -119,17 +119,14 @@ fun TtsControls(
                         enabled = !engineGone,
                     )
                     Spacer(Modifier.weight(1f))
-                    // Locked, the page follows the voice and cannot be scrolled; unlocked, the reader is
-                    // free, and locking again returns to the line being read. The accent marks it engaged.
                     ViewerBarIconButton(
                         painter = painterResource(if (locked) R.drawable.ic_lock else R.drawable.ic_lock_open),
                         contentDescription = lockLabel,
                         onClick = onToggleScrollLock,
                         enabled = !engineGone,
-                        activeTint = if (locked) MaterialTheme.colorScheme.primary else null,
+                        activeTint = if (locked) MaterialTheme.colorScheme.onPrimaryContainer else null,
                     )
                     // "1×" on its own means nothing spoken, so the button reads as a speed control.
-                    // Tinted like the transport glyphs rather than accented, so the bar stays quiet.
                     TextButton(
                         onClick = { onSpeedChange(TtsController.nextSpeed(state.speed)) },
                         enabled = !engineGone,
