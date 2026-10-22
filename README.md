@@ -1,4 +1,69 @@
-# Papyrus
+<p align="center">
+  <img src="fastlane/metadata/android/en-US/images/icon.png" width="192" alt="Papyrus app icon">
+</p>
+
+<h1 align="center">Papyrus</h1>
+
+<p align="center">
+  <em>Offline document viewer for Android: PDF, Word, OpenDocument, EPUB, Markdown, text and code.</em><br>
+  <sub>No internet permission. No ads, no accounts, no analytics.</sub>
+</p>
+
+<p align="center">
+  <a href="https://github.com/Pixelrick420/Papyrus/actions/workflows/build.yml"><img src="https://github.com/Pixelrick420/Papyrus/actions/workflows/build.yml/badge.svg?branch=main" alt="Build status"></a>
+  <a href="https://github.com/Pixelrick420/Papyrus/blob/main/LICENSE"><img src="https://img.shields.io/github/license/Pixelrick420/Papyrus?color=blue" alt="Apache-2.0"></a>
+  <a href="https://github.com/Pixelrick420/Papyrus/releases"><img src="https://img.shields.io/github/v/release/Pixelrick420/Papyrus?sort=semver" alt="Latest release"></a>
+  <img src="https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white" alt="Android 8.0+">
+</p>
+
+<p align="center">
+  <a href="#screenshots">Screenshots</a> ·
+  <a href="#formats">Formats</a> ·
+  <a href="#features">Features</a> ·
+  <a href="#install">Install</a> ·
+  <a href="#build">Build</a> ·
+  <a href="#architecture">Architecture</a> ·
+  <a href="#license">License</a>
+</p>
+
+## Screenshots
+
+<table>
+  <tr>
+    <td align="center" valign="top">
+      <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/home.png" width="190" alt="The Papyrus library screen"><br>
+      <sub><b>Library</b><br>search, sort &amp; filter, starred files</sub>
+    </td>
+    <td align="center" valign="top">
+      <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/filter.png" width="190" alt="The sort and filter sheet"><br>
+      <sub><b>Sort &amp; filter</b><br>one sheet, a live match count</sub>
+    </td>
+    <td align="center" valign="top">
+      <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/pdf.png" width="190" alt="A PDF open in the viewer"><br>
+      <sub><b>PDF</b><br>zoom, links, outline, go to page</sub>
+    </td>
+    <td align="center" valign="top">
+      <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/md.png" width="190" alt="A Markdown document open in the viewer"><br>
+      <sub><b>Markdown</b><br>tables, task lists, maths, code</sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" valign="top">
+      <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/find.png" width="190" loading="lazy" alt="Find in file"><br>
+      <sub><b>Find in file</b><br>every format, Ctrl+F</sub>
+    </td>
+    <td align="center" valign="top">
+      <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/tts.png" width="190" loading="lazy" alt="Read aloud"><br>
+      <sub><b>Read aloud</b><br>sentence and word highlighting</sub>
+    </td>
+    <td align="center" valign="top">
+      <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/info.png" width="190" loading="lazy" alt="The file info sheet"><br>
+      <sub><b>File info</b><br>name, format, size, URI</sub>
+    </td>
+  </tr>
+</table>
+
+## Why Papyrus
 
 Offline document viewer for Android built with Kotlin, Jetpack Compose and Room.
 
@@ -8,221 +73,94 @@ on-device. The manifest declares no network or storage permissions; the only two
 
 ## Formats
 
-| Format | Rendered as |
+| Format | What you get |
 | --- | --- |
-| PDF | `PdfRenderer` pages; zoom re-rasterises at the target resolution. Tappable links: a web link opens, an in-document jump scrolls to its page. A PDF with bookmarks gets an **Outline** in the viewer menu, and every PDF a **Go to page**. Password-protected files prompt for the password |
-| Markdown | Markwon to `Spanned` in a native `TextView`, with strikethrough, tables, task lists (`- [ ]`, `- [x]`), bare `http(s)://`, `www.` and e-mail addresses made into links, and links open on tap. Fenced code blocks are coloured by the same tokenizer as source files (below). Images show only when the document carries them as `data:` URIs; any other image shows its alt text, since the app never touches the network. `$$...$$` is typeset as maths, inline or as a block between two `$$` lines (a single `$` is never maths, so prices stay text); a formula keeps the size it is typeset at when the text is zoomed. Read up to 6 MB |
-| Plain text (`.txt`, `.log`, ...) | chunked 40 lines at a time, selectable monospace Compose `Text`. Decoded straight into the chunks, so a file costs about its own size in memory. Read up to 32 MB (Markdown: 6 MB). Optional line-number gutter and no-wrap mode with sideways scrolling |
-| Source and config (`.kt`, `.py`, `.json`, ...) | as plain text, labelled `CODE` in the list, with syntax colour for the languages the app defines (below) |
-| CSV / TSV | a table through the Office pipeline, so find, zoom, reading position and bookmarks work as for Word files: the first row is the header (bold), long cells wrap and a wide table scrolls sideways. The delimiter comes from the file: `.tsv` is tab-separated, a `.csv` is sniffed among comma, semicolon, tab and pipe, which finds the semicolon files Excel writes in many locales. Quoting follows RFC 4180 (quoted delimiters, doubled quotes, line breaks inside a cell) and forgives a malformed file instead of refusing it. The encoding is detected as for plain text and can be picked from the menu. A table is held whole, one object per cell, so a file is read up to 8 MB and cut at 200,000 cells, 1,024 columns a row and 10,000 characters a cell, with the viewer's incomplete-document notice at the end. Not read aloud. A `.csv` added before this format existed is stored as `CODE` and is re-labelled the first time it opens |
-| DOCX / ODT | headings, paragraphs, bold / italic / underline / strikethrough / super- and subscript, text and highlight colours, links, bulleted and numbered lists (nested, with Word's and LibreOffice's numbering schemes), alignment, indentation, footnotes and endnotes, reviewer comments (marked in the text and listed after the body with author and date), equations (DOCX; written out as text such as `(a+b)/c`, `x²`, `√(x+1)`, not typeset), tables (with merged cells, shading and cell formatting) and images (at their stated size, with alt text), read straight from the archive. Macro-enabled files and templates (`.docm`, `.dotx`, `.dotm`, `.ott`) open like their plain counterparts; no macro is ever run. Documents with headings get an **Outline** in the viewer menu that jumps to a heading. Password-protected files prompt for the password |
-| EPUB | reflowed text through the same Office pipeline, so find, outline, zoom, reading position and bookmarks all work as for Word files and no dependency is added. The container names the package, its spine gives the reading order (auxiliary `linear="no"` items follow the main flow instead of being lost) and each XHTML chapter becomes headings, paragraphs, nested bulleted and numbered lists, block quotes, preformatted text, rules, tables (with `colspan` / `rowspan`), inline bold / italic / underline / strikethrough / super- and subscript / monospace / highlight, safe links and images (including a picture wrapped in SVG). The book's own table of contents (the EPUB 3 navigation document, else the EPUB 2 NCX) is the **Outline**; a book with neither gets one from its headings. The cover image, when the package names one, is the thumbnail. A book protected by DRM is refused with a message instead of shown as garbage; fonts obfuscated with the IDPF or Adobe algorithm are not DRM and do not matter to reading. Limitations: fixed-layout books reflow as plain text, there is no EPUB-specific typography, right-to-left layout is not handled, and links between chapters stay plain text |
-| DOC (Word 97-2003) | paragraphs and tables, read from the OLE2 piece table. No images; headings come out as plain paragraphs. Encrypted and Word 6/95 files are rejected |
+| **PDF** | Zoom, tappable links, PDF bookmarks as an **Outline**, **Go to page**, password unlock |
+| **DOCX / ODT** | Headings, lists, tables, images, footnotes, reviewer comments, DOCX equations as text |
+| **DOC** (Word 97-2003) | Paragraphs and tables |
+| **EPUB** | A reflowed book, its own table of contents as the **Outline**, its cover as the thumbnail |
+| **Markdown** | Tables, task lists, maths, autolinks, coloured code fences, `data:` URI images |
+| **Plain text / logs** | 40-line chunks, selectable text, optional line numbers, no-wrap mode |
+| **Source & config** | The same text pipeline, with syntax colour for 30+ languages |
+| **CSV / TSV** | A header row in bold, wrapping cells, sideways scroll for wide tables |
 
-Format resolves from the file extension first and the MIME type second, because SAF providers routinely report a `.md`
-as `application/octet-stream` and a `.pdf` as `text/plain`. Extension-less names (`Makefile`, `Dockerfile`,
-`.gitignore`) resolve too. Anything left over is sniffed from its first 8 KB: no known container magic, no NUL byte
-(unless a UTF-16 or UTF-32 byte-order mark vouches for it), and overwhelmingly printable means text, in UTF-8 or any
-legacy 8-bit encoding. A Windows-1252 `.csv` from Excel is the case that matters.
-
-### Text encodings
-
-The encoding of a text, code or Markdown file is chosen from a 64 KB sample, in this order: a byte-order mark (UTF-8,
-UTF-16, UTF-32), UTF-16 without one (zero bytes piling up on one side of the byte pairs), strict UTF-8, the app's own
-statistical detector for anything that is not UTF-8 (Shift_JIS, KOI8-R, Windows-1251 and so on; it scores each
-candidate charset by how much its reading looks like prose, and only overrides the default when a non-Latin
-reading clearly wins), and finally Windows-1252, which decodes every byte. A Latin-1 guess becomes Windows-1252, its
-superset. The viewer menu's *Text encoding* re-reads the file with a charset picked by hand, or goes back to
-auto-detect; the pick is kept for the life of the viewer, including across process death, and is not stored with the
-document.
-
-### Syntax highlighting
-
-The tokenizer is the app's own, with no dependency: one scanner driven by per-language data (`CodeLanguages.kt`) for
-Kotlin, Java, C and C++, C#, JavaScript, TypeScript, Python, Ruby, Go, Rust, Swift, Dart, PHP, Lua, Groovy and Gradle,
-Scala, shell, PowerShell, SQL, GraphQL, R, JSON, YAML, TOML, INI and `.properties`, HTML, XML and SVG, CSS, SCSS and
-Less, Dockerfile, make and CMake. The language comes from the file name only. It is a colourer, not a parser: comments,
-strings, numbers, keywords, types, calls, annotations and variables, and no more. Chunks are coloured on demand as they
-scroll into view, and a single pass over the file on load records where each 40-line chunk begins (inside a block
-comment or a triple-quoted string, say), so a construct that crosses a chunk boundary still colours as one. A chunk
-over 20,000 characters is shown plain.
-
-A fenced code block in Markdown is coloured by the same tokenizer and palette, so it matches the same code in a source
-file. The language comes from the fence's tag instead of a file name: the first word of the info string, so `kotlin`,
-`kt`, `kotlin title="A.kt"`, `{.kotlin}` and `language-kotlin` are all Kotlin, as `c++`, `c#`, `shell`, `console`,
-`pwsh` and `docker` are what they say. A block with no tag, a tag the app does not define, or `text`, stays plain.
-Every coloured token is a span in the one `Spanned`, so a document colours at most 256 KB of fenced code and the rest
-stays plain. Colours are applied when the text draws, so a theme change shows without parsing the document again.
+The format comes from the file extension first, then the MIME type, then an 8 KB sniff. Text encodings are detected
+automatically and can be changed from the viewer menu.
 
 ## Features
 
-The index is one Room row per document: URI, title, format, size, and the added and last-opened timestamps. Page count
-and MIME type are read live from the provider and the open PDF instead of being stored. Schema version 4 is the oldest
-supported one: earlier versions were test-only and are not migrated. The number was not reset, because installed
-databases are already at 4 and Room refuses a downgrade. Later versions add a `Migration` in `data/Migrations.kt`
-and are never replaced by a destructive fallback, since a row owns a file under `filesDir/imports` that wiping it
-would orphan. Room exports each version's schema to `app/schemas/`, which is committed, and a unit test fails if the
-current version's schema is missing or the migrations leave a gap.
+### Library
 
-The current version is 5. Its one additive step from 4 is plain SQL, not an `AutoMigration`, because the version-4
-schema file was never exported and an `AutoMigration` cannot be generated without it. It adds a `reading_progress`
-table (one row per document), a `bookmarks` table and a `documents.isFavourite` column defaulting to 0. Both new tables
-reference `documents(id)` with `ON DELETE CASCADE`, so removing a document removes what hangs off it. `documents` is
-never written with `OnConflictStrategy.REPLACE`: a replace is a delete plus an insert and would cascade that away.
+- **Search** filters the list by title as you type.
+- **Sort & filter** is the slider icon beside the search pill. One sheet holds every sort order, every file-type
+  filter and the starred filter, with a badge counting what is on and a live count of matching files.
+- **Sort** by last opened, name (A to Z or Z to A), date added or size. Names sort the way a person reads them, so
+  `file2` comes before `file10`, and the choice is remembered.
+- **File-type filters** for PDF, Word, ODT, EPUB, Markdown, text, CSV, TSV and code, plus starred files. They combine
+  with search and sorting, survive rotation, and a **Clear filters** button appears when nothing matches.
+- **Star** a file from its row menu. Reopening it or re-granting access keeps the star.
+- **Thumbnails** for every document, with the format label until one is ready.
+- **Bulk select** on a long-press, then share the whole selection or remove it after a confirmation.
+- **Share** sends a read-only grant, so the receiving app cannot write, rename or delete the file.
+- **Remove** with a six-second **Undo**. Your own file on disk is never touched.
+- **File info**: name, format, size, provider type, page count for PDFs, both timestamps and the content URI.
 
-- **Open with** takes an `ACTION_VIEW` content URI from another app and shows it without indexing it. It opens in its
-  own window rather than the caller's, so the other app stays usable behind it; back returns to that app and drops the
-  document from Recents. The document lives in memory for the life of the process, since the read grant that arrived
-  with the intent does.
-- **Save to library** copies such a document into app-private storage and indexes the copy, so it outlives the grant.
-  Owned copies share out through a FileProvider instead of a bare `file://` URI. Saving the same file again reuses the
-  existing copy when the name and bytes match, instead of adding another.
-- **Password-protected documents** prompt for the password, then decrypt a copy into the cache and render that. Word
-  (`.docx`, ECMA-376 Agile encryption) and OpenDocument (`.odt`, ODF 1.2 AES-256-CBC) files are supported; newer ODF
-  1.3 packages (AES-GCM with Argon2id) and the legacy binary schemes are reported as protected but not opened. A wrong
-  password retries in place; the decrypted copy is deleted when the viewer closes and swept on the next start. By
-  default the file is not indexed or listed on Home, and the password is never stored or logged. Save to library in the
-  viewer menu, or the autosave switch below, keeps the still-encrypted file; opening it from Home asks for the password
-  again.
-  A PDF is first scanned byte-for-byte for the `/Encrypt` key, so an ordinary PDF is recognised as unprotected without
-  the whole-file parse that only a protected one needs. The scan covers the whole file because the key can sit near the
-  start (linearized PDFs) or inside the cross-reference stream's dictionary (PDF 1.5) as well as at the end. If the
-  renderer still asks for a password after the scan found none, the full check runs and the usual prompt appears.
-- **Settings** is the gear on Home's title bar:
-  - *Theme*: system default, light or dark. It applies to the whole app, status and navigation bar icons included.
-  - *Syntax highlighting*, *Line numbers* and *Wrap long lines*: how plain text, logs and code are shown. Highlighting
-    and wrapping are on by default, line numbers off. With wrapping off each line stays on one row and the whole list
-    scrolls sideways together; its width is the file's widest line, capped at 60,000 px, past which a line is clipped.
-    Line numbers are drawn beside the text from its layout, so a wrapped line still has one number and the numbers are
-    never selected or copied.
-  - *Pretty print* and *Tab size*: JSON, XML, HTML and SVG files are indented as they open, in memory only, so the
-    stored file is never changed. Tab size is the number of spaces per nesting level (2, 3, 4 or 8; 2 by default).
-    Changing either re-reads a document that is open. A file that cannot be formatted, a truncated one or one whose tags
-    do not match, opens as stored with a message.
-  - *Autosave external documents*: a document opened from another app is saved to the library as soon as it has
-    opened. Off by default.
-  - *Autosave encrypted documents*: the same for password-protected documents, saved once they unlock, including ones
-    picked from Home. Off by default; while it is off the viewer menu offers Save to library for them instead.
-  - *Remember reading position*: library documents reopen where you stopped. On by
-    default.
-  - *About*: version, source link and license.
-- **Search** filters the library by title, in memory, over the list the screen already holds.
-- **Sort & filter** is the slider icon beside the search pill. It opens a sheet that holds the sort order, every
-  file-type filter and the starred filter in one place, and it carries a badge counting the filters that are on. The
-  sheet shows how many files match right now, so a filter never hides rows without saying so.
-- **Sort** is the sheet's first section: *Last opened* (the default), *Name, A to Z*, *Name, Z to A*, *Date added*
-  and *Size, largest first*; the selected one is highlighted. The choice is kept
-  in settings. Names compare the way a person reads them: case is ignored, `file2` comes before `file10`, digits come
-  before letters, and letters follow the device language's alphabet (a Swedish reader finds Å after Z). Documents that
-  tie always come most recently opened first and then by id, so the order never depends on the database and rows only
-  glide when something about them changed. Sorting and filtering are pure functions over the one list query
-  (`LibraryView.kt`), so there is no index and no second query.
-- **File-type filters** are the sheet's second section: one per format group the library actually has (PDF, Word for
-  DOC and DOCX, ODT, EPUB, MD, Text, CSV, TSV, Code), plus **Starred**. Several format groups show their union; Starred
-  narrows that to the starred files. CSV and TSV are one format to the reader but two groups here, split by the file
-  name's extension. Filters compose with the title search, with a row hidden by Remove's undo window, and with sorting;
-  the selection survives rotation. When filters hide everything Home says so, with a **Clear filters** button, which is a
-  different screen from the first-run one. *Select all* still means every row currently shown.
-- **Starred** files are set from a row's menu (*Star* / *Unstar*) and show as a small star.
-  The flag is the `documents.isFavourite` column. Opening a document again or re-granting access never resets it: the
-  first copies the stored row and replaces only what the provider reports anew (`DocumentEntity.reopenedWith`, covered
-  by a unit test), the second rewrites the URI column alone.
-- **Share** sends the document's own SAF URI through `ACTION_SEND` with `FLAG_GRANT_READ_URI_PERMISSION`, so no target
-  can write, rename or delete the file. The grant is probed first: a dead one raises a message instead of a chooser
-  that opens and then fails inside someone else's app.
-- **Remove** deletes the row and releases the persisted SAF grant. An app-owned copy goes with its row; your own file
-  on disk is untouched. A single row's Remove first only hides it and shows an **Undo** snackbar; the grant, the row and
-  the owned copy are touched when that window ends (six seconds), when another removal replaces it, or when Home is
-  closed. Undo puts the row back exactly as it was. If the app is killed inside the window the document is simply still
-  in the library.
-- **Bulk select** starts on a long-press. The header shows the picked count and a select-all toggle, and the bottom bar
-  shares the whole selection in one `ACTION_SEND_MULTIPLE` chooser or removes it after a confirmation, immediately
-  and without an undo.
-- **Find in file**, also on Ctrl+F, works on every format. PDF, text and Office step through matches one at a time:
-  the current one is orange and the rest yellow. Markdown is a single `Spanned`, so it lights every match at once and
-  its counter shows the total.
-- **PDF outline and go to page.** A PDF's bookmarks are read once, off the main thread and after the first page is
-  showing, so a large outline never delays it; the viewer menu offers **Outline** only once a non-empty one is ready. It
-  is a nested tree with indentation and a fold control per parent (a long outline starts folded to its top level), and a
-  bookmark jumps to its page, taken from its own destination, a GoTo action, a page number, or a named destination
-  (the catalog's name tree and its older `/Dests` dictionary). A bookmark that goes to no page is left out unless
-  something under it does, in which case it stays as a heading that cannot be chosen; one with a blank title is left
-  out and its children keep their place. The outline is author-supplied, so the reader assumes nothing: each bookmark
-  is visited once (a loop ends), at most 5000 are read and 32 levels descended, and a bookmark PdfBox cannot read costs
-  only itself. Every page is indexed once rather than searched for per bookmark. A PDF over 64 MB gets no outline,
-  because PdfBox would hold a second copy of it in memory next to the renderer's. **Go to page** (viewer menu or
-  Ctrl+G) asks for a number from 1 to the page count, shows "of N" beside the field, flags anything else inline, and
-  Go on the keyboard confirms. Both jump with the page's top at the top of the screen.
-- **Reading position** reopens a library document where the reader stopped, at the zoom they had. The place is an
-  anchor that does not depend on the viewport width, the zoom or the text size, so it survives a rotation, a pinch, an
-  encoding change and a re-wrap: a PDF page plus the fraction down it, a 40-line text chunk plus a fraction, an Office
-  block (DOCX, ODT, DOC, EPUB) plus a fraction, and for Markdown a character offset into the rendered text. A stored place is
-  clamped against what actually loaded, because a file can change between opens, so a bad one can only land on the
-  nearest real place.
-  - It is stored in its own `reading_progress` table, as numbers only: the anchor, the committed zoom, the derived
-    progress (0 to 1) and a timestamp. A save never touches `documents`, so Home's order (`lastOpenedAt`) and its list
-    do not change, and an unlocked password-protected document leaves no readable fragment in the database.
-  - Nothing is saved before the restore has been applied, and the first position seen afterwards is a starting point,
-    not a save: opening a document and leaving without scrolling keeps the previous position. After that a position is
-    written once the reader has been still for about a second and a half, when the app goes to the background, and when
-    the viewer closes. Writes are ordered and never on the main thread.
-  - A document handed over by another app is not in the library, so nothing is stored for it. If it is saved to the
-    library, its position is kept under the new row from then on.
-  - *Remember reading position* in Settings (on by default) turns all of this off: nothing is read or written. What
-    was stored stays and applies again when the switch is turned back on.
-    was stored stays and applies again when the switch is turned back on.
-- **Read aloud** speaks the open document through the platform speech engine, in the format's own reading units: a
-  PDF page, a 40-line text chunk, an Office block, or a Markdown paragraph. It starts at the current reading position,
-  shades the sentence being read and, on engines that report timing, the word inside it (a unit alone when the engine
-  does not), and offers a bar over the text with play/pause, a skip back and forward of one unit, a lock, a speed of
-  0.5x, 1x, 1.5x or 2x, and close. Every read starts locked: the page scrolls by itself to keep the line being read
-  in view, one small step per line, and cannot be scrolled by hand. Unlocking leaves the reader free to scroll
-  anywhere (the shading keeps following the voice, the page does not), and locking again returns to the line being
-  read. Opening find, the outline, go to, a bookmark or a PDF link unlocks first, so the voice never drags the reader
-  back from where they went. Pausing and resuming re-speaks the current unit
-  rather than skipping it; a speech-engine failure stops and reports the reason while keeping the place. Playback
-  continues with the screen off, from a media-playback foreground service whose notification offers play/pause and
-  stop, and a platform `MediaSession` forwards headset and Bluetooth keys. No audio is written to disk and no text
-  leaves the device; the speed is held for the session only.
-- **Bookmarks** work in every format. **Add bookmark** (viewer menu, or Ctrl+D) marks the top of the viewport and
-  offers Undo; **Bookmarks** opens a sheet listing the document's bookmarks in document order, each with its name, where
-  it is (`Page 12`, `Line 340` or `45%`) and the day it was made. Tapping one jumps there and closes the sheet; each row
-  has rename and delete, and a delete offers Undo from the sheet itself. A bookmark is a place in the same terms as the
-  reading position (a PDF page plus a fraction, a 40-line chunk, an Office block, a Markdown character offset), so it
-  survives a rotation, a pinch and a re-wrap, and one whose page or chunk has since gone (the file changed) is clamped
-  to the nearest real place instead of failing. Adding at a spot that already has one says *Already bookmarked*: the
-  same PDF page, within about two lines of text, a tenth of an Office block, or a couple of rows of Markdown. A document
-  holds at most 200.
-  - Names are positional (`Page 12`) unless the reader types one: a bookmark never stores an excerpt or a heading, so
-    an unlocked password-protected document leaves no readable fragment behind. Emptying a name restores the position.
-  - They live in the `bookmarks` table, removed with the document by `ON DELETE CASCADE`. A document handed over by
-    another app has no row, so the menu says to save it first; once saved, bookmarks are kept under the new row.
-    Bookmarks work whether or not *Remember reading position* is on.
-  - Outline entries, links, go to page and bookmarks all scroll through one jump, so they land the same way in every
-    format.
-- **EPUB safety.** A book is a ZIP written by someone else, so it is read with hard limits and never extracted
-  to disk beyond its images (`EpubLimits`): an entry whose name is absolute or contains `..` (zip-slip) fails the
-  book; so do more than 10,000 entries, an entry over 64 MB or all entries over 512 MB once inflated, and an entry that
-  inflates more than 100 times its compressed size past 1 MB (a bomb). Sizes are counted as bytes come out, not as
-  declared. A chapter nested more than 200 elements deep is skipped (the parser keeps its own stacks, so depth costs
-  memory, never the call stack). HTML's named entities (`&nbsp;`, `&mdash;`, ...) are defined to the parser one by one,
-  and the chapter's DOCTYPE is never processed or fetched, so a book reads offline and the same under kxml2 in tests
-  as under the platform parser. A chapter that cannot be read is skipped and the book goes on; skipped chapters,
-  dropped images and any limit reached end the document with a notice that part of it was not shown. `encryption.xml`
-  that names anything but IDPF or Adobe font obfuscation, or a `rights.xml`, means DRM.
-- **Zoom** is a pinch or a double-tap, 0.5x to 3x, the double-tap toggling between 1x and 2.5x. Text surfaces scale the
-  type size, so content re-wraps and the scroll bounds stay correct.
-- **Links** open on tap with no confirmation, in PDF and Markdown text and in DOCX / ODT / EPUB — a PDF's in-document
-  destination scrolls to that page instead of leaving the app. Only `http`, `https`, `mailto` and `tel` are followed;
-  any other scheme is refused, and a link with nothing to open it raises a short toast, leaving the page as it was.
-- **Lost access** keeps what is on screen and offers a re-pick. The pick must have exactly the stored file name and the
-  same format; size is not compared, so a file edited since it was added is still accepted, and a file whose name only
-  starts the same is not.
-- **File info** is a bottom sheet: name, format, size, the provider's type, page count for PDFs, both timestamps and
-  the content URI.
-- **Thumbnails** are one bitmap per document in an in-memory `LruCache`. A tile shows the format label until its
-  bitmap arrives, and `No access` once the grant is gone.
-- **Crash reports** are JSON files in `filesDir/crash-reports/`, written by ACRA. Nothing leaves the device.
+### Reading
+
+- **Find in file** (Ctrl+F) in every format, with the current match highlighted.
+- **PDF outline and go to page** (Ctrl+G). The PDF's own bookmarks become a foldable **Outline**, and a long one starts
+  folded.
+- **Bookmarks** (Ctrl+D) in every format: named or positional, rename and delete with Undo, at most 200 per document.
+- **Reading position** reopens a document where you stopped, at the same zoom, even after a rotation. A switch in
+  Settings turns it off.
+- **Read aloud** speaks the page, chunk, block or paragraph, shades the sentence being read (and the word, where the
+  engine reports timing), and keeps going with the screen off. Play/pause, skip, lock, speed and close are on the bar.
+- **Zoom** with a pinch or a double-tap, from 0.5x to 3x.
+- **Links** open on tap for `http`, `https`, `mailto` and `tel`. A PDF's internal link scrolls to its page.
+
+### Opening documents
+
+- **Open with** shows a document from another app without adding it to the library.
+- **Save to library** keeps a copy, so it outlives the other app's grant.
+- **Password-protected documents** unlock locally: Word, OpenDocument and PDF. The password is never stored or logged,
+  and the temporary copy of a Word or OpenDocument file is deleted when you close it.
+- **Lost access** keeps the page on screen and offers to re-pick the file, matching on name and format.
+
+### Settings
+
+- **Theme** follows the system, or stays light or dark. It is applied before the first frame, so the app opens in the
+  right scheme instead of flashing the other one.
+- **Colorblind mode** swaps the theme colours for a colour-blind safe palette of blue, orange and teal.
+- **Night mode** inverts PDF pages, so white paper reads black.
+- **Syntax highlighting** colours comments, strings, keywords and numbers in source and config files.
+- **Line numbers** adds a gutter beside plain text, logs and code.
+- **Wrap long lines** wraps at the screen edge. Off, each line stays on one row and the view scrolls sideways.
+- **Pretty print structured files** indents JSON, XML, HTML and SVG as they open, at the chosen tab size. The stored
+  file is never changed.
+- **Tab size** sets the indent for pretty printing: 2, 3, 4 or 8 spaces.
+- **Autosave external docs** adds a document another app hands over to the library as it opens. Off, the viewer's
+  **Save to library** keeps a copy instead.
+- **Autosave encrypted docs** does the same for password-protected PDF, Word and OpenDocument files. They stay
+  encrypted and the password is never stored.
+- **Remember reading position** reopens a library document where you stopped and shows progress on Home. Off, no
+  position is read or written, and the stored ones apply again when it goes back on.
+- **About** shows the version and links to release notes, source code, the Apache 2.0 license and the privacy policy.
+
+### Privacy & safety
+
+- **EPUB safety.** A book is a ZIP from someone else, so it is read with hard limits and never extracted to disk beyond
+  its images. A zip-slip entry, an oversized archive or a decompression bomb fails the book, not the app, and DRM is
+  refused.
+- **Crash reports** are JSON files in app storage, written by ACRA. Nothing leaves the device.
+
+## Install
+
+1. Download the signed APK from the [latest release](https://github.com/Pixelrick420/Papyrus/releases/latest).
+2. Install it; Android may ask you to allow installs from your browser or file manager.
+3. Open a document from Papyrus, or tap one in another app and choose Papyrus.
+
+Needs Android 8.0 (API 26) or newer. No Play Services, no network permission, no account. To build it yourself, see
+[Build](#build).
 
 ## Build
 
@@ -249,6 +187,98 @@ The DOCX/ODT, EPUB and DOC extractors run against archives the tests build in me
 `XmlPullParser`, and the `.doc` fixtures assemble the OLE2 container and piece table from scratch). detekt is scoped to
 dead code and correctness, with the deliberate broad catches baselined so they stay visible. CI runs only the tests and
 `assembleRelease`, so lint and detekt are local gates.
+
+## Architecture
+
+Papyrus gets a document one of two ways: you pick it in the system file picker, or another app hands one over. Either
+way it works out the format and opens the viewer for it. A picked file also joins the library, with its reading
+position and bookmarks. A document handed over by another app is not added to the library and lives only while Papyrus
+runs. Read aloud uses the text the viewer already extracted.
+
+```mermaid
+flowchart LR
+  A["Another app<br/>hands over a document"] --> C{"Which format?<br/>extension, MIME type, then the first 8 KB"}
+  B["File picker"] --> C
+  C --> D["Library index<br/>one row per document, plus positions and bookmarks"]
+  D --> E["Viewer"]
+  E --> F["PDF"]
+  E --> G["Markdown"]
+  E --> H["Office<br/>DOCX, ODT, DOC, EPUB, CSV"]
+  E --> I["Text and code<br/>40 lines at a time"]
+  E --> J["Read aloud<br/>system speech engine"]
+```
+
+### Data and schema
+
+The index is one Room row per document: URI, title, format, size, and the added and last-opened timestamps. Page count
+and MIME type are read live, so they are not stored.
+
+The current schema is 5. Version 4 is the oldest supported one, since earlier versions were test-only. Version 5 adds a
+`reading_progress` table with one row per document, a `bookmarks` table, and `documents.isFavourite`. Both new tables
+reference `documents(id)` with `ON DELETE CASCADE`, so deleting a document removes them. Rows are never written with
+`OnConflictStrategy.REPLACE`, because that deletes and reinserts, which would cascade the children away. Migrations are
+plain SQL in `data/Migrations.kt`, and every version's schema is exported to `app/schemas/` with a test that fails if
+one is missing.
+
+```mermaid
+%%{init: {"htmlLabels": false, "themeVariables": {"edgeLabelBackground": "Canvas"}}}%%
+erDiagram
+    DOCUMENTS ||--o| READING_PROGRESS : "keeps one position"
+    DOCUMENTS ||--o{ BOOKMARKS : "holds"
+
+    DOCUMENTS {
+        INTEGER id PK
+        TEXT uri UK
+        TEXT title
+        TEXT format
+        INTEGER sizeBytes
+        INTEGER createdAt
+        INTEGER lastOpenedAt
+        INTEGER isFavourite
+    }
+
+    READING_PROGRESS {
+        INTEGER documentId PK, FK
+        INTEGER locationKind
+        INTEGER locationUnit
+        REAL locationFraction
+        INTEGER unitCount
+        REAL zoomScale
+        REAL progress
+        INTEGER updatedAt
+    }
+
+    BOOKMARKS {
+        INTEGER id PK
+        INTEGER documentId FK
+        INTEGER locationKind
+        INTEGER locationUnit
+        REAL locationFraction
+        TEXT label
+        INTEGER createdAt
+    }
+```
+
+## Known limitations
+
+- DOC files carry paragraphs and tables only: no images, and headings arrive as plain paragraphs. Encrypted and Word
+  6/95 files are rejected.
+- Fixed-layout EPUB books reflow as plain text; there is no EPUB-specific typography, right-to-left layout is not
+  handled, and links between chapters stay plain text.
+- Password-protected documents open when they are a PDF, a `.docx` (ECMA-376 Agile) or an `.odt` (ODF 1.2
+  AES-256-CBC). Newer ODF 1.3 packages and the legacy binary schemes are reported as protected but not opened.
+- A PDF over 64 MB gets no outline, because PdfBox would hold a second copy of it in memory next to the renderer's.
+- Markdown shows an image only when the document carries it as a `data:` URI; the app never touches the network, so
+  every other image falls back to its alt text.
+- CSV and TSV tables are not read aloud.
+- Size and shape caps: Markdown up to 6 MB, plain text up to 32 MB, a table up to 8 MB and 200,000 cells. A table that
+  hits a cap ends with the viewer's incomplete-document notice instead of failing.
+
+## Contributing
+
+Issues and pull requests are welcome. Run `./gradlew check` before sending one: it runs the unit tests, lint and
+detekt, and lint and detekt are not part of CI. The screenshots this README shows live in
+`fastlane/metadata/android/en-US/images/`, so the store listing and the README stay in step when you update them.
 
 ## Releases
 
