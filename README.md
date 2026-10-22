@@ -73,16 +73,16 @@ on-device. The manifest declares no network or storage permissions; the only two
 
 ## Formats
 
-| Format | What you get |
-| --- | --- |
-| **PDF** | Zoom, tappable links, PDF bookmarks as an **Outline**, **Go to page**, password unlock |
-| **DOCX / ODT** | Headings, lists, tables, images, footnotes, reviewer comments, DOCX equations as text |
-| **DOC** (Word 97-2003) | Paragraphs and tables |
-| **EPUB** | A reflowed book, its own table of contents as the **Outline**, its cover as the thumbnail |
-| **Markdown** | Tables, task lists, maths, autolinks, coloured code fences, `data:` URI images |
-| **Plain text / logs** | 40-line chunks, selectable text, optional line numbers, no-wrap mode |
-| **Source & config** | The same text pipeline, with syntax colour for 30+ languages |
-| **CSV / TSV** | A header row in bold, wrapping cells, sideways scroll for wide tables |
+| Format                | What you get                                                                              |
+| --------------------- | ----------------------------------------------------------------------------------------- |
+| **PDF**               | Zoom, tappable links, PDF bookmarks as an **Outline**, **Go to page**, password unlock    |
+| **DOCX / ODT**        | Headings, lists, tables, images, footnotes, reviewer comments, DOCX equations as text     |
+| **DOC**               | Paragraphs and tables                                                                     |
+| **EPUB**              | A reflowed book, its own table of contents as the **Outline**, its cover as the thumbnail |
+| **Markdown**          | Tables, task lists, maths, autolinks, coloured code fences, `data:` URI images            |
+| **Text / Logs**       | 40-line chunks, selectable text, optional line numbers, no-wrap mode                      |
+| **Code / Config**     | The same text pipeline, with syntax colour for 30+ languages                              |
+| **CSV  / TSV**        | A header row in bold, wrapping cells, sideways scroll for wide tables                     |
 
 The format comes from the file extension first, then the MIME type, then an 8 KB sniff. Text encodings are detected
 automatically and can be changed from the viewer menu.
@@ -166,10 +166,10 @@ Needs Android 8.0 (API 26) or newer. No Play Services, no network permission, no
 
 Needs JDK 17, the Android SDK, and Android 8.0 (API 26) or up.
 
-| Task | What it does |
-| --- | --- |
-| `./gradlew assembleDebug` | build the debug APK |
-| `./gradlew installLocalDebug` | build and install on the connected device |
+| Task                            | What it does                                     |
+| ------------------------------- | ------------------------------------------------ |
+| `./gradlew assembleDebug`       | build the debug APK                              |
+| `./gradlew installLocalDebug`   | build and install on the connected device        |
 | `./gradlew installLocalRelease` | minified release build, signed for local install |
 
 `installLocalRelease` signs a throwaway copy with the local debug keystore, because the `release` build type carries no
@@ -178,10 +178,10 @@ compliance is enforced rather than documented.
 
 ## Test
 
-| Task | What it runs |
-| --- | --- |
-| `./gradlew check` | unit tests, lint and detekt |
-| `./gradlew testDebugUnitTest` | unit tests alone |
+| Task                          | What it runs                |
+| ----------------------------- | --------------------------- |
+| `./gradlew check`             | unit tests, lint and detekt |
+| `./gradlew testDebugUnitTest` | unit tests alone            |
 
 The DOCX/ODT, EPUB and DOC extractors run against archives the tests build in memory (kxml2 stands in for the platform's
 `XmlPullParser`, and the `.doc` fixtures assemble the OLE2 container and piece table from scratch). detekt is scoped to
