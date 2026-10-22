@@ -75,6 +75,8 @@ class SettingsViewModel(private val repository: SettingsRepository) : ViewModel(
 
     fun setColorblindMode(enabled: Boolean) = repository.setColorblindMode(enabled)
 
+    fun setNightMode(enabled: Boolean) = repository.setNightMode(enabled)
+
     fun setShowLineNumbers(enabled: Boolean) = repository.setShowLineNumbers(enabled)
 
     fun setWrapLines(enabled: Boolean) = repository.setWrapLines(enabled)
@@ -150,6 +152,13 @@ fun SettingsScreen(
                         description = stringResource(R.string.settings_colorblind_desc),
                         checked = settings.colorblindMode,
                         onCheckedChange = viewModel::setColorblindMode,
+                    )
+                    CardDivider()
+                    SwitchRow(
+                        title = stringResource(R.string.settings_night_mode),
+                        description = stringResource(R.string.settings_night_mode_desc),
+                        checked = settings.nightMode,
+                        onCheckedChange = viewModel::setNightMode,
                     )
                 }
 

@@ -84,6 +84,7 @@ internal fun PdfViewer(
     zoom: ZoomState,
     selectionState: PdfSelectionState,
     modifier: Modifier = Modifier,
+    nightMode: Boolean = false,
     pageHits: List<Int> = emptyList(),
     pageMatches: Map<Int, List<List<NormRect>>> = emptyMap(),
     activePage: Int? = null,
@@ -213,6 +214,7 @@ internal fun PdfViewer(
                             aspect = aspectRatios.getOrElse(index) { DEFAULT_ASPECT },
                             scrolling = scrolling,
                             isHit = index in hitPages,
+                            nightMode = nightMode,
                             // Only the active page knows which of its matches is current.
                             activeMatch = activeOccurrence.takeIf { index == activePage },
                             matches = pageMatches[index].orEmpty(),
@@ -272,6 +274,7 @@ private fun PdfPage(
     aspect: Float,
     scrolling: Boolean,
     isHit: Boolean,
+    nightMode: Boolean,
     activeMatch: Int?,
     matches: List<List<NormRect>>,
     reveal: RevealTicket?,
@@ -382,7 +385,8 @@ private fun PdfPage(
             // The exact render width, not a fraction of the slot, which would clamp if they differ.
             .width(with(density) { widthPx.toDp() })
             .aspectRatio(1f / aspect)
-            .background(Color.White)
+            // The paper follows the page: night mode inverts the page, so the paper is black too.
+            .background(if (nightMode) Color.Black else Color.White)
             .onSizeChanged { pageSize = it }
             .bringIntoViewRequester(requester)
             .pdfSelectionGestures(
@@ -404,6 +408,8 @@ private fun PdfPage(
                 bitmap = remember(bmp) { bmp.asImageBitmap() },
                 contentDescription = stringResource(R.string.cd_pdf_page, index + 1),
                 contentScale = ContentScale.FillBounds,
+                // Filtered as it is drawn, so the page is not re-rendered.
+                colorFilter = if (nightMode) PdfNightMode.Invert else null,
                 modifier = Modifier.fillMaxSize(),
             )
         }

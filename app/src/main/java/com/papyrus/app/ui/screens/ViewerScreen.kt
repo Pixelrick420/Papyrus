@@ -417,6 +417,7 @@ fun ViewerScreen(
                             aspectRatios = content.aspectRatios,
                             zoom = zoom,
                             selectionState = selectionState,
+                            nightMode = settings.nightMode,
                             pageHits = find.hits,
                             pageMatches = find.pageMatches,
                             activePage = find.activeIndex,
