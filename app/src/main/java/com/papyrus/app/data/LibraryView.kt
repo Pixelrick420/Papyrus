@@ -29,18 +29,22 @@ enum class FormatGroup {
     MARKDOWN,
     TEXT,
     CSV,
+
+    /** The tab-separated half of [DocumentFormat.CSV]; the group follows the file name, not the format. */
+    TSV,
     CODE,
     ;
 
     companion object {
-        fun of(format: DocumentFormat): FormatGroup? = when (format) {
+        fun of(document: DocumentEntity): FormatGroup? = when (document.format) {
             DocumentFormat.PDF -> PDF
             DocumentFormat.DOC, DocumentFormat.DOCX -> WORD
             DocumentFormat.ODT -> ODT
             DocumentFormat.EPUB -> EPUB
             DocumentFormat.MARKDOWN -> MARKDOWN
             DocumentFormat.TEXT -> TEXT
-            DocumentFormat.CSV -> CSV
+            // One format covers both extensions, so only the name can tell a tab-separated file apart.
+            DocumentFormat.CSV -> if (extensionOf(document.title) == "tsv") TSV else CSV
             DocumentFormat.CODE -> CODE
             DocumentFormat.UNKNOWN -> null
         }
@@ -48,31 +52,42 @@ enum class FormatGroup {
 }
 
 /**
- * The chips Home has selected. Format chips widen (PDF and Word shows both); Favourites narrows (only the
- * favourites among them), since it is a property of a document, not one more format.
+ * The name's extension, lower-cased after the last dot, or empty if there is none.
+ */
+private fun extensionOf(title: String): String {
+    val name = title.lowercase()
+    return if (name.contains('.')) name.substringAfterLast('.') else ""
+}
+
+/**
+ * The filters Home has selected. Format groups widen (PDF and Word); Starred narrows to starred
+ * documents only.
  */
 data class LibraryFilter(
     val groups: Set<FormatGroup> = emptySet(),
-    val favouritesOnly: Boolean = false,
+    val starredOnly: Boolean = false,
 ) {
-    val isActive: Boolean get() = groups.isNotEmpty() || favouritesOnly
+    /** How many filters are on, so the badge and the "is anything filtered?" flag cannot disagree. */
+    val activeCount: Int get() = groups.size + if (starredOnly) 1 else 0
+
+    val isActive: Boolean get() = activeCount > 0
 
     fun toggled(group: FormatGroup): LibraryFilter =
         copy(groups = if (group in groups) groups - group else groups + group)
 
-    fun withFavouritesOnly(value: Boolean): LibraryFilter = copy(favouritesOnly = value)
+    fun withStarredOnly(value: Boolean): LibraryFilter = copy(starredOnly = value)
 
     fun matches(document: DocumentEntity): Boolean {
-        if (favouritesOnly && !document.isFavourite) return false
+        if (starredOnly && !document.isStarred) return false
         if (groups.isEmpty()) return true
-        val group = FormatGroup.of(document.format) ?: return false
+        val group = FormatGroup.of(document) ?: return false
         return group in groups
     }
 }
 
 /** The groups the library actually has, in chip order, so a chip never leads to an empty list. */
 fun availableGroups(documents: List<DocumentEntity>): List<FormatGroup> {
-    val present = documents.mapNotNullTo(HashSet()) { FormatGroup.of(it.format) }
+    val present = documents.mapNotNullTo(HashSet()) { FormatGroup.of(it) }
     return FormatGroup.entries.filter { it in present }
 }
 

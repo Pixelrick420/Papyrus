@@ -108,12 +108,12 @@ class DocumentRepository(
     suspend fun markOpened(id: Long) = dao.touch(id, System.currentTimeMillis())
     suspend fun updateFormat(id: Long, format: DocumentFormat) = dao.updateFormat(id, format)
 
-    /** Pins or unpins library documents. Only that one column is written: a favourite never touches the order, progress or bookmarks. */
-    suspend fun setFavourite(ids: List<Long>, favourite: Boolean) {
+    /** Stars or unstars library documents. Only that one column is written: a star never touches the order, progress or bookmarks. */
+    suspend fun setStarred(ids: List<Long>, starred: Boolean) {
         val library = ids.filter { it > 0 }
         if (library.isEmpty()) return
         // Older SQLite builds cap a statement at 999 variables, so a very large selection goes in slices.
-        withContext(Dispatchers.IO) { library.chunked(MAX_IDS_PER_STATEMENT).forEach { dao.setFavourite(it, favourite) } }
+        withContext(Dispatchers.IO) { library.chunked(MAX_IDS_PER_STATEMENT).forEach { dao.setStarred(it, starred) } }
     }
 
     suspend fun register(uri: Uri): Long = withContext(Dispatchers.IO) {

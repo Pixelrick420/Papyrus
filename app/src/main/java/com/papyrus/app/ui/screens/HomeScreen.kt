@@ -4,7 +4,6 @@ import android.content.Intent
 import android.net.Uri
 import android.text.format.DateUtils
 import android.text.format.Formatter
-import androidx.annotation.StringRes
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.animation.AnimatedVisibility
@@ -33,13 +32,11 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.ui.graphics.Color
@@ -52,7 +49,6 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -86,7 +82,6 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
-import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -160,9 +155,9 @@ data class HomeUiState(
     val pendingRemovalToken: Long? = null,
     val filter: LibraryFilter = LibraryFilter(),
     val sort: LibrarySort = LibrarySort.LAST_OPENED,
-    /** The format chips: what the library has plus what is selected, so a selected chip can always be unselected. */
+    /** The file-type groups the sheet lists: what the library has plus what is selected, so a selected group can always be unselected. */
     val groups: List<FormatGroup> = emptyList(),
-    val hasFavourites: Boolean = false,
+    val hasStarred: Boolean = false,
 )
 
 /**
@@ -190,7 +185,7 @@ internal fun buildHomeUiState(
         filter = params.filter,
         sort = params.sort,
         groups = (availableGroups(documents) + params.filter.groups).distinct().sortedBy { it.ordinal },
-        hasFavourites = documents.any { it.isFavourite },
+        hasStarred = documents.any { it.isStarred },
     )
 }
 
@@ -320,7 +315,7 @@ class HomeViewModel(
 
     fun toggleGroup(group: FormatGroup) = _filter.update { it.toggled(group) }
 
-    fun toggleFavouritesFilter() = _filter.update { it.withFavouritesOnly(!it.favouritesOnly) }
+    fun toggleStarredFilter() = _filter.update { it.withStarredOnly(!it.starredOnly) }
 
     fun clearFilters() {
         _filter.value = LibraryFilter()
@@ -328,14 +323,14 @@ class HomeViewModel(
 
     fun setSort(sort: LibrarySort) = settings.setLibrarySort(sort)
 
-    fun toggleFavourite(document: DocumentEntity) {
+    fun toggleStarred(document: DocumentEntity) {
         viewModelScope.launch {
             try {
-                repository.setFavourite(listOf(document.id), !document.isFavourite)
+                repository.setStarred(listOf(document.id), !document.isStarred)
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) {
-                _messages.send(UiText(R.string.home_favourite_failed))
+                _messages.send(UiText(R.string.home_star_failed))
             }
         }
     }
@@ -521,6 +516,9 @@ fun HomeScreen(
     // Which row has its menu open, not a bare flag: one flag would open every row's menu at once.
     var menuFor by remember { mutableStateOf<Long?>(null) }
 
+    // The sort and filter sheet, which holds the sort order and every filter in one place.
+    var sheetOpen by remember { mutableStateOf(false) }
+
     // Bulk remove confirms because it cannot be undone; the ⋮ menu's Remove can be.
     var confirmRemove by remember { mutableStateOf(false) }
 
@@ -652,8 +650,8 @@ fun HomeScreen(
                     modifier = Modifier.padding(horizontal = ScreenPadding),
                 )
             } else {
-                // The sort button's glyph lands on the old right edge (4dp + its 12dp inset = ScreenPadding), so the
-                // pill only gives up the room the button itself takes.
+                // The sort and filter button's glyph lands on the old right edge (4dp + its 12dp inset =
+                // ScreenPadding), so the pill only gives up the room the button itself takes.
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(start = TitleInset, end = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -684,26 +682,12 @@ fun HomeScreen(
                             )
                         },
                     )
-                    SortButton(
-                        current = state.sort,
-                        onSelect = { sort ->
-                            viewModel.setSort(sort)
-                            if (listState.canScrollBackward) scope.launch { listState.scrollToItem(0) }
-                        },
-                    )
-                }
-                if (!state.libraryEmpty && (state.groups.size > 1 || state.hasFavourites || state.filter.isActive)) {
-                    FilterChipsRow(
-                        groups = state.groups,
-                        filter = state.filter,
-                        showFavourites = state.hasFavourites || state.filter.favouritesOnly,
-                        onToggleGroup = { group ->
-                            viewModel.toggleGroup(group)
-                            if (listState.canScrollBackward) scope.launch { listState.scrollToItem(0) }
-                        },
-                        onToggleFavourites = {
-                            viewModel.toggleFavouritesFilter()
-                            if (listState.canScrollBackward) scope.launch { listState.scrollToItem(0) }
+                    SortFilterButton(
+                        sort = state.sort,
+                        activeCount = state.filter.activeCount,
+                        onClick = {
+                            dismissKeyboard()
+                            sheetOpen = true
                         },
                     )
                 }
@@ -752,7 +736,7 @@ fun HomeScreen(
                                 viewModel.remove(doc)
                             },
                             onShare = { shareDocument(doc) },
-                            onToggleFavourite = { viewModel.toggleFavourite(doc) },
+                            onToggleStarred = { viewModel.toggleStarred(doc) },
                             // Filtering, removing and re-sorting glide instead of snapping.
                             modifier = Modifier.animateItem(),
                         )
@@ -798,6 +782,32 @@ fun HomeScreen(
                     Text(stringResource(R.string.action_cancel))
                 }
             },
+        )
+    }
+
+    if (sheetOpen) {
+        // The sheet holds sort order and every filter.
+        FilterSortSheet(
+            sort = state.sort,
+            filter = state.filter,
+            groups = state.groups,
+            // The starred chip stays once it is on, so it can be switched off again.
+            showStarred = state.hasStarred || state.filter.starredOnly,
+            matchCount = state.results.size,
+            onSort = { sort ->
+                viewModel.setSort(sort)
+                if (listState.canScrollBackward) scope.launch { listState.scrollToItem(0) }
+            },
+            onToggleGroup = { group ->
+                viewModel.toggleGroup(group)
+                if (listState.canScrollBackward) scope.launch { listState.scrollToItem(0) }
+            },
+            onToggleStarred = {
+                viewModel.toggleStarredFilter()
+                if (listState.canScrollBackward) scope.launch { listState.scrollToItem(0) }
+            },
+            onClearFilters = viewModel::clearFilters,
+            onDismiss = { sheetOpen = false },
         )
     }
 }
@@ -885,116 +895,6 @@ private fun EmptyStateOverlay(
     }
 }
 
-/** An icon beside the search pill that opens the sort menu; the current order is marked and spoken. */
-@Composable
-private fun SortButton(
-    current: LibrarySort,
-    onSelect: (LibrarySort) -> Unit,
-) {
-    var open by remember { mutableStateOf(false) }
-    val currentLabel = stringResource(current.labelRes())
-    Box {
-        IconButton(onClick = { open = true }) {
-            Icon(
-                painter = painterResource(R.drawable.ic_sort),
-                contentDescription = stringResource(R.string.home_sort_cd, currentLabel),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-            for (sort in LibrarySort.entries) {
-                val isCurrent = sort == current
-                DropdownMenuItem(
-                    text = { Text(stringResource(sort.labelRes())) },
-                    // The mark holds its place on every row, so the labels line up.
-                    leadingIcon = {
-                        if (isCurrent) {
-                            Icon(Icons.Default.Check, contentDescription = null)
-                        } else {
-                            Spacer(Modifier.size(24.dp))
-                        }
-                    },
-                    onClick = {
-                        open = false
-                        onSelect(sort)
-                    },
-                    modifier = Modifier.semantics { selected = isCurrent },
-                )
-            }
-        }
-    }
-}
-
-/** Format chips from what the library has, then Favourites; the row scrolls sideways on a narrow screen. */
-@Composable
-private fun FilterChipsRow(
-    groups: List<FormatGroup>,
-    filter: LibraryFilter,
-    showFavourites: Boolean,
-    onToggleGroup: (FormatGroup) -> Unit,
-    onToggleFavourites: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    LazyRow(
-        modifier = modifier.fillMaxWidth().padding(top = 4.dp),
-        contentPadding = PaddingValues(start = TitleInset, end = ScreenPadding),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        if (showFavourites) {
-            item(key = "favourites") {
-                FilterChoiceChip(
-                    label = stringResource(R.string.home_filter_favourites),
-                    selected = filter.favouritesOnly,
-                    onClick = onToggleFavourites,
-                )
-            }
-        }
-        items(groups, key = { it.name }) { group ->
-            FilterChoiceChip(
-                label = stringResource(group.labelRes()),
-                selected = group in filter.groups,
-                onClick = { onToggleGroup(group) },
-            )
-        }
-    }
-}
-
-/** Selected state shows as a check as well as the fill, so it never rests on colour alone. */
-@Composable
-private fun FilterChoiceChip(label: String, selected: Boolean, onClick: () -> Unit) {
-    FilterChip(
-        selected = selected,
-        onClick = onClick,
-        label = { Text(label) },
-        leadingIcon = if (selected) {
-            { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp)) }
-        } else {
-            null
-        },
-    )
-}
-
-@StringRes
-private fun LibrarySort.labelRes(): Int = when (this) {
-    LibrarySort.LAST_OPENED -> R.string.home_sort_last_opened
-    LibrarySort.NAME_ASC -> R.string.home_sort_name_asc
-    LibrarySort.NAME_DESC -> R.string.home_sort_name_desc
-    LibrarySort.DATE_ADDED -> R.string.home_sort_date_added
-    LibrarySort.SIZE -> R.string.home_sort_size
-}
-
-@StringRes
-private fun FormatGroup.labelRes(): Int = when (this) {
-    FormatGroup.PDF -> R.string.home_filter_pdf
-    FormatGroup.WORD -> R.string.home_filter_word
-    FormatGroup.ODT -> R.string.home_filter_odt
-    FormatGroup.EPUB -> R.string.home_filter_epub
-    FormatGroup.MARKDOWN -> R.string.home_filter_markdown
-    FormatGroup.TEXT -> R.string.home_filter_text
-    FormatGroup.CSV -> R.string.home_filter_csv
-    FormatGroup.CODE -> R.string.home_filter_code
-}
-
 /**
  * Clear button that fades in and out inside a constant-size slot; extracted because
  * AnimatedVisibility needs a Column/Row receiver, as in [EmptyStateOverlay].
@@ -1079,7 +979,7 @@ private fun DocumentRow(
     onLongPress: () -> Unit,
     onRemove: () -> Unit,
     onShare: () -> Unit,
-    onToggleFavourite: () -> Unit,
+    onToggleStarred: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -1135,10 +1035,10 @@ private fun DocumentRow(
             }
             // Its own slot, left of the ⋮: inside the title's row the star sat at the end of a
             // short name and at the far right of a long one, so it moved with the length of the name.
-            if (doc.isFavourite) {
+            if (doc.isStarred) {
                 Icon(
                     painter = painterResource(R.drawable.ic_star),
-                    contentDescription = stringResource(R.string.home_favourite_marker),
+                    contentDescription = stringResource(R.string.home_star_marker),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(end = 4.dp).size(14.dp),
                 )
@@ -1166,11 +1066,11 @@ private fun DocumentRow(
                             text = {
                                 Text(
                                     stringResource(
-                                        if (doc.isFavourite) R.string.home_favourite_remove else R.string.home_favourite_add,
+                                        if (doc.isStarred) R.string.home_star_remove else R.string.home_star_add,
                                     ),
                                 )
                             },
-                            onClick = { onMenuOpenChange(false); onToggleFavourite() },
+                            onClick = { onMenuOpenChange(false); onToggleStarred() },
                         )
                         DropdownMenuItem(
                             text = { Text(stringResource(R.string.action_remove)) },

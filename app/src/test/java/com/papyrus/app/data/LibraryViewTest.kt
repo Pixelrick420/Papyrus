@@ -15,7 +15,7 @@ class LibraryViewTest {
         size: Long = 1_000,
         created: Long = id,
         opened: Long = id,
-        favourite: Boolean = false,
+        starred: Boolean = false,
     ) = DocumentEntity(
         id = id,
         uri = "content://x/$id",
@@ -24,7 +24,7 @@ class LibraryViewTest {
         sizeBytes = size,
         createdAt = created,
         lastOpenedAt = opened,
-        isFavourite = favourite,
+        isStarred = starred,
     )
 
     private fun ids(list: List<DocumentEntity>) = list.map { it.id }
@@ -176,8 +176,8 @@ class LibraryViewTest {
 
     @Test
     fun `old and new Word files are one group`() {
-        assertEquals(FormatGroup.WORD, FormatGroup.of(DocumentFormat.DOC))
-        assertEquals(FormatGroup.WORD, FormatGroup.of(DocumentFormat.DOCX))
+        assertEquals(FormatGroup.WORD, FormatGroup.of(doc(1, format = DocumentFormat.DOC)))
+        assertEquals(FormatGroup.WORD, FormatGroup.of(doc(2, format = DocumentFormat.DOCX)))
     }
 
     @Test
@@ -196,9 +196,9 @@ class LibraryViewTest {
     fun `every format with a viewer has a group and unknown has none`() {
         for (format in DocumentFormat.entries) {
             if (format == DocumentFormat.UNKNOWN) {
-                assertEquals(null, FormatGroup.of(format))
+                assertEquals(null, FormatGroup.of(doc(1, format = format)))
             } else {
-                assertTrue("$format", FormatGroup.of(format) != null)
+                assertTrue("$format", FormatGroup.of(doc(1, format = format)) != null)
             }
         }
     }
@@ -219,11 +219,11 @@ class LibraryViewTest {
     // --- filter and search ----------------------------------------------------------------------
 
     private val library = listOf(
-        doc(1, "Annual report.pdf", DocumentFormat.PDF, favourite = true),
+        doc(1, "Annual report.pdf", DocumentFormat.PDF, starred = true),
         doc(2, "Report draft.docx", DocumentFormat.DOCX),
-        doc(3, "Old report.doc", DocumentFormat.DOC, favourite = true),
+        doc(3, "Old report.doc", DocumentFormat.DOC, starred = true),
         doc(4, "notes.md", DocumentFormat.MARKDOWN),
-        doc(5, "report.py", DocumentFormat.CODE, favourite = true),
+        doc(5, "report.py", DocumentFormat.CODE, starred = true),
         doc(6, "mystery", DocumentFormat.UNKNOWN),
     )
 
@@ -251,11 +251,11 @@ class LibraryViewTest {
     }
 
     @Test
-    fun `favourites narrow what the formats let through`() {
-        val onlyFavourites = LibraryFilter().withFavouritesOnly(true)
-        assertEquals(setOf(1L, 3L, 5L), view(library, LibrarySort.LAST_OPENED, filter = onlyFavourites).map { it.id }.toSet())
-        val favouriteWord = onlyFavourites.toggled(FormatGroup.WORD)
-        assertEquals(setOf(3L), view(library, LibrarySort.LAST_OPENED, filter = favouriteWord).map { it.id }.toSet())
+    fun `the starred filter narrows what the formats let through`() {
+        val onlyStarred = LibraryFilter().withStarredOnly(true)
+        assertEquals(setOf(1L, 3L, 5L), view(library, LibrarySort.LAST_OPENED, filter = onlyStarred).map { it.id }.toSet())
+        val starredWord = onlyStarred.toggled(FormatGroup.WORD)
+        assertEquals(setOf(3L), view(library, LibrarySort.LAST_OPENED, filter = starredWord).map { it.id }.toSet())
     }
 
     @Test
@@ -279,46 +279,102 @@ class LibraryViewTest {
         val on = filter.toggled(FormatGroup.ODT)
         assertTrue(on.isActive)
         assertEquals(filter, on.toggled(FormatGroup.ODT))
-        assertTrue(filter.withFavouritesOnly(true).isActive)
-        assertFalse(filter.withFavouritesOnly(true).withFavouritesOnly(false).isActive)
+        assertTrue(filter.withStarredOnly(true).isActive)
+        assertFalse(filter.withStarredOnly(true).withStarredOnly(false).isActive)
     }
 
-    // --- favourites ----------------------------------------------------------------------------
+    @Test
+    fun `the active count is the format groups plus the starred filter`() {
+        val filter = LibraryFilter()
+        assertEquals(0, filter.activeCount)
+        assertFalse(filter.isActive)
+        val oneGroup = filter.toggled(FormatGroup.PDF)
+        assertEquals(1, oneGroup.activeCount)
+        assertTrue(oneGroup.isActive)
+        val twoGroups = oneGroup.toggled(FormatGroup.CSV)
+        assertEquals(2, twoGroups.activeCount)
+        val withStarred = twoGroups.withStarredOnly(true)
+        assertEquals(3, withStarred.activeCount)
+        assertTrue(withStarred.isActive)
+        // The count and the flag cannot disagree.
+        assertEquals(withStarred.activeCount > 0, withStarred.isActive)
+    }
+
+    // --- starred --------------------------------------------------------------------------------
 
     @Test
     fun `opening a document again keeps what the reader owns`() {
-        val stored = doc(7, "old name.pdf", size = 10, created = 111, opened = 222, favourite = true)
-        val fresh = doc(0, "new name.pdf", DocumentFormat.PDF, size = 99, created = 999, opened = 333, favourite = false)
+        val stored = doc(7, "old name.pdf", size = 10, created = 111, opened = 222, starred = true)
+        val fresh = doc(0, "new name.pdf", DocumentFormat.PDF, size = 99, created = 999, opened = 333, starred = false)
             .copy(uri = "content://elsewhere")
         val after = stored.reopenedWith(fresh)
         assertEquals(7L, after.id)
         assertEquals("content://x/7", after.uri)
         assertEquals(111L, after.createdAt)
-        assertTrue(after.isFavourite)
+        assertTrue(after.isStarred)
         assertEquals("new name.pdf", after.title)
         assertEquals(99L, after.sizeBytes)
         assertEquals(333L, after.lastOpenedAt)
     }
 
     @Test
-    fun `a favourite flag set on a row shows up in the favourites filter`() {
+    fun `a star set on a row shows up in the starred filter`() {
         val before = listOf(doc(1), doc(2))
-        val filter = LibraryFilter().withFavouritesOnly(true)
+        val filter = LibraryFilter().withStarredOnly(true)
         assertEquals(emptyList<Long>(), ids(view(before, LibrarySort.LAST_OPENED, filter = filter)))
-        val after = before.map { if (it.id == 2L) it.copy(isFavourite = true) else it }
+        val after = before.map { if (it.id == 2L) it.copy(isStarred = true) else it }
         assertEquals(listOf(2L), ids(view(after, LibrarySort.LAST_OPENED, filter = filter)))
     }
 
+    // --- csv and tsv ----------------------------------------------------------------------------
+
     @Test
-    fun `csv and tsv share one chip, placed between text and code`() {
+    fun `csv and tsv are two groups, csv first and both between text and code`() {
         val docs = listOf(
-            doc(1, format = DocumentFormat.CODE),
-            doc(2, format = DocumentFormat.CSV),
-            doc(3, format = DocumentFormat.TEXT),
+            doc(1, "script.py", DocumentFormat.CODE),
+            doc(2, "table.csv", DocumentFormat.CSV),
+            doc(3, "notes.txt", DocumentFormat.TEXT),
+            doc(4, "table.tsv", DocumentFormat.CSV),
         )
-        assertEquals(FormatGroup.CSV, FormatGroup.of(DocumentFormat.CSV))
-        assertEquals(listOf(FormatGroup.TEXT, FormatGroup.CSV, FormatGroup.CODE), availableGroups(docs))
+        assertEquals(FormatGroup.CSV, FormatGroup.of(docs[1]))
+        assertEquals(FormatGroup.TSV, FormatGroup.of(docs[3]))
+        assertEquals(
+            listOf(FormatGroup.TEXT, FormatGroup.CSV, FormatGroup.TSV, FormatGroup.CODE),
+            availableGroups(docs),
+        )
+    }
+
+    @Test
+    fun `the csv filter keeps the csv file and leaves the tsv one out`() {
+        val docs = listOf(doc(1, "table.csv", DocumentFormat.CSV), doc(2, "table.tsv", DocumentFormat.CSV))
         val filter = LibraryFilter().toggled(FormatGroup.CSV)
+        assertEquals(listOf(1L), ids(view(docs, LibrarySort.LAST_OPENED, filter = filter)))
+    }
+
+    @Test
+    fun `the tsv filter keeps the tsv file and leaves the csv one out`() {
+        val docs = listOf(doc(1, "table.csv", DocumentFormat.CSV), doc(2, "table.tsv", DocumentFormat.CSV))
+        val filter = LibraryFilter().toggled(FormatGroup.TSV)
         assertEquals(listOf(2L), ids(view(docs, LibrarySort.LAST_OPENED, filter = filter)))
+    }
+
+    @Test
+    fun `both delimited filters together keep both files`() {
+        val docs = listOf(doc(1, "table.csv", DocumentFormat.CSV), doc(2, "table.tsv", DocumentFormat.CSV))
+        val filter = LibraryFilter().toggled(FormatGroup.CSV).toggled(FormatGroup.TSV)
+        assertEquals(setOf(1L, 2L), view(docs, LibrarySort.LAST_OPENED, filter = filter).map { it.id }.toSet())
+    }
+
+    @Test
+    fun `the group follows the name, so another extension stays csv`() {
+        assertEquals(FormatGroup.CSV, FormatGroup.of(doc(1, "data.txt", DocumentFormat.CSV)))
+        // A name with no dot at all has no extension to read, so it lands in CSV as well.
+        assertEquals(FormatGroup.CSV, FormatGroup.of(doc(2, "mystery", DocumentFormat.CSV)))
+    }
+
+    @Test
+    fun `the tsv extension is read in lower case and after the last dot`() {
+        assertEquals(FormatGroup.TSV, FormatGroup.of(doc(1, "TABLE.TSV", DocumentFormat.CSV)))
+        assertEquals(FormatGroup.TSV, FormatGroup.of(doc(2, "report.data.tsv", DocumentFormat.CSV)))
     }
 }

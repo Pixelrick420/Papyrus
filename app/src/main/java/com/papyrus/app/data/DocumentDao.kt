@@ -42,8 +42,8 @@ interface DocumentDao {
     suspend fun updateFormat(id: Long, format: DocumentFormat)
 
     /** One statement for any number of rows; an id that is gone is simply not updated. */
-    @Query("UPDATE documents SET isFavourite = :favourite WHERE id IN (:ids)")
-    suspend fun setFavourite(ids: List<Long>, favourite: Boolean)
+    @Query("UPDATE documents SET isFavourite = :starred WHERE id IN (:ids)")
+    suspend fun setStarred(ids: List<Long>, starred: Boolean)
 
     @Query("DELETE FROM documents WHERE id = :id")
     suspend fun deleteById(id: Long)

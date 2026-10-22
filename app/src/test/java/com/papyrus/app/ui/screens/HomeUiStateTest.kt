@@ -2,6 +2,7 @@ package com.papyrus.app.ui.screens
 
 import com.papyrus.app.data.DocumentEntity
 import com.papyrus.app.data.DocumentFormat
+import com.papyrus.app.data.FormatGroup
 import com.papyrus.app.data.LibraryFilter
 import com.papyrus.app.data.LibrarySort
 import org.junit.Assert.assertEquals
@@ -13,11 +14,11 @@ import org.junit.Test
 /** The list's states: what the query hides, what removal hides, and what the empty text refers to. */
 class HomeUiStateTest {
 
-    private fun doc(id: Long, title: String) = DocumentEntity(
+    private fun doc(id: Long, title: String, format: DocumentFormat = DocumentFormat.PDF) = DocumentEntity(
         id = id,
         uri = "content://test/$id",
         title = title,
-        format = DocumentFormat.PDF,
+        format = format,
         sizeBytes = 0,
         createdAt = 0,
         lastOpenedAt = 0,
@@ -31,10 +32,11 @@ class HomeUiStateTest {
     private fun homeState(
         all: List<DocumentEntity> = library,
         query: String = "",
+        filter: LibraryFilter = LibraryFilter(),
         selection: SelectionState = SelectionState(),
         pendingRemovalToken: Long? = null,
         hidden: Set<Long> = emptySet(),
-    ) = buildHomeUiState(all, ViewParams(query, LibraryFilter(), LibrarySort.LAST_OPENED), selection, pendingRemovalToken, hidden)
+    ) = buildHomeUiState(all, ViewParams(query, filter, LibrarySort.LAST_OPENED), selection, pendingRemovalToken, hidden)
 
     @Test
     fun `a blank query keeps the whole library`() {
@@ -110,5 +112,25 @@ class HomeUiStateTest {
     @Test
     fun `no pending removal leaves the token null`() {
         assertNull(homeState().pendingRemovalToken)
+    }
+
+    @Test
+    fun `csv and tsv are two groups in the sheet`() {
+        val state = homeState(
+            all = listOf(
+                doc(1, "Report.pdf"),
+                doc(2, "table.csv", DocumentFormat.CSV),
+                doc(3, "table.tsv", DocumentFormat.CSV),
+            ),
+        )
+
+        assertEquals(listOf(FormatGroup.PDF, FormatGroup.CSV, FormatGroup.TSV), state.groups)
+    }
+
+    @Test
+    fun `a selected group stays in the list so it can be switched off again`() {
+        val state = homeState(filter = LibraryFilter().toggled(FormatGroup.EPUB))
+
+        assertEquals(listOf(FormatGroup.PDF, FormatGroup.EPUB), state.groups)
     }
 }
