@@ -28,6 +28,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.papyrus.app.R
@@ -69,7 +71,10 @@ internal fun OutlineSheet(
         Text(
             stringResource(R.string.viewer_outline_title),
             style = MaterialTheme.typography.titleLarge,
-            modifier = Modifier.padding(horizontal = 24.dp).padding(bottom = 8.dp),
+            modifier = Modifier
+                .padding(horizontal = 24.dp)
+                .padding(bottom = 8.dp)
+                .semantics { heading() },
         )
         LazyColumn(Modifier.navigationBarsPadding()) {
             // The position is the key: several bookmarks may point at the same page, so the target is not unique.

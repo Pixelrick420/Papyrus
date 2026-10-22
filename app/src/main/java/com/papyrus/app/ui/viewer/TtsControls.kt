@@ -133,11 +133,11 @@ fun TtsControls(
                         colors = ButtonDefaults.textButtonColors(
                             contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                         ),
-                        modifier = Modifier.clearAndSetSemantics { contentDescription = speedLabel },
                     ) {
                         Text(
                             text = speedValue,
                             style = MaterialTheme.typography.labelMedium,
+                            modifier = Modifier.clearAndSetSemantics { contentDescription = speedLabel },
                         )
                     }
                 }

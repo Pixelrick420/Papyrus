@@ -37,6 +37,9 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -64,7 +67,6 @@ fun SearchPill(
     hint: String,
     onSearch: () -> Unit,
     modifier: Modifier = Modifier,
-    iconContentDescription: String? = null,
     focusRequester: FocusRequester = remember { FocusRequester() },
     trailing: @Composable RowScope.() -> Unit = { Spacer(Modifier.width(16.dp)) },
 ) {
@@ -116,7 +118,7 @@ fun SearchPill(
         ) {
             Icon(
                 painter = painterResource(R.drawable.ic_search),
-                contentDescription = iconContentDescription,
+                contentDescription = null,
                 tint = iconColor,
             )
             Spacer(Modifier.width(12.dp))
@@ -126,7 +128,8 @@ fun SearchPill(
                 onValueChange = onTextChange,
                 modifier = Modifier
                     .weight(1f)
-                    .focusRequester(focusRequester),
+                    .focusRequester(focusRequester)
+                    .semantics { contentDescription = hint },
                 singleLine = true,
                 textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
                 cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
@@ -142,6 +145,7 @@ fun SearchPill(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.clearAndSetSemantics {},
                             )
                         }
                         innerTextField()

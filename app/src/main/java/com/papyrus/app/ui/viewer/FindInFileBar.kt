@@ -22,6 +22,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.papyrus.app.R
@@ -94,7 +97,9 @@ fun FindInFileBar(
                             maxLines = 1,
                             softWrap = false,
                             overflow = TextOverflow.Clip,
-                            modifier = Modifier.padding(start = 8.dp),
+                            modifier = Modifier
+                                .padding(start = 8.dp)
+                                .semantics { liveRegion = LiveRegionMode.Polite },
                         )
                     }
                 }
