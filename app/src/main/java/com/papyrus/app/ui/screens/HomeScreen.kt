@@ -668,7 +668,6 @@ fun HomeScreen(
                         hint = stringResource(R.string.home_search_hint),
                         // Search keeps the filter and just puts the keyboard away.
                         onSearch = dismissKeyboard,
-                        iconContentDescription = stringResource(R.string.cd_search),
                         modifier = Modifier.weight(1f),
                         trailing = {
                             // The slot is always reserved: only the icon fades, so the text never shifts sideways
@@ -824,6 +823,7 @@ private fun SelectionHeader(
     modifier: Modifier = Modifier,
 ) {
     val hasSelection = count > 0
+    val selectAllLabel = stringResource(R.string.home_select_all)
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -859,7 +859,11 @@ private fun SelectionHeader(
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        Checkbox(checked = allSelected, onCheckedChange = { onToggleAll() })
+        Checkbox(
+            checked = allSelected,
+            onCheckedChange = { onToggleAll() },
+            modifier = Modifier.semantics { contentDescription = selectAllLabel },
+        )
     }
 }
 
@@ -1000,7 +1004,18 @@ private fun DocumentRow(
         modifier = modifier
             .fillMaxWidth()
             .clip(shape)
-            .combinedClickable(onClick = onClick, onLongClick = onLongPress),
+            .combinedClickable(
+                onClickLabel = stringResource(
+                    when {
+                        !selecting -> R.string.home_row_open
+                        selected -> R.string.home_row_deselect
+                        else -> R.string.home_row_select
+                    },
+                ),
+                onLongClickLabel = if (selecting) null else stringResource(R.string.home_row_select),
+                onClick = onClick,
+                onLongClick = onLongPress,
+            ),
         shape = shape,
         color = if (selected) {
             MaterialTheme.colorScheme.surfaceContainerHighest
@@ -1045,7 +1060,7 @@ private fun DocumentRow(
             }
             // The checkbox takes the ⋮'s exact slot, so the row's contents hold still between modes.
             if (selecting) {
-                Checkbox(checked = selected, onCheckedChange = { onClick() })
+                Checkbox(checked = selected, onCheckedChange = null)
             } else {
                 Box {
                     IconButton(onClick = { onMenuOpenChange(true) }) {

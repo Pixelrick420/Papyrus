@@ -43,6 +43,8 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -94,7 +96,10 @@ internal fun BookmarksSheet(
         Text(
             stringResource(R.string.bookmarks_title),
             style = MaterialTheme.typography.titleLarge,
-            modifier = Modifier.padding(horizontal = 24.dp).padding(bottom = 8.dp),
+            modifier = Modifier
+                .padding(horizontal = 24.dp)
+                .padding(bottom = 8.dp)
+                .semantics { heading() },
         )
         Box(Modifier.fillMaxWidth()) {
             if (bookmarks.isEmpty()) {

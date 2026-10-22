@@ -17,6 +17,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.papyrus.app.R
@@ -27,7 +29,12 @@ import java.util.Date
 
 @Composable
 private fun InfoRow(label: String, value: String, selectable: Boolean = false) {
-    Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp)
+            .semantics(mergeDescendants = true) {},
+    ) {
         Text(
             label,
             style = MaterialTheme.typography.labelMedium,
@@ -65,6 +72,7 @@ fun FileInfoSheet(
             Text(
                 stringResource(R.string.viewer_info_title),
                 style = MaterialTheme.typography.titleLarge,
+                modifier = Modifier.semantics { heading() },
             )
             Text(
                 document.title,

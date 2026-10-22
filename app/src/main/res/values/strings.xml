@@ -12,6 +12,10 @@
     <string name="action_cancel">Cancel</string>
     <string name="action_save">Save</string>
     <string name="home_selected_count">%1$d selected</string>
+    <string name="home_select_all">Select all</string>
+    <string name="home_row_open">Open</string>
+    <string name="home_row_select">Select</string>
+    <string name="home_row_deselect">Deselect</string>
     <string name="home_removed_count">Removed %1$d files</string>
     <string name="home_remove_confirm_title">Remove from list?</string>
     <plurals name="home_remove_confirm_body">
@@ -36,6 +40,7 @@ access</string>
     <string name="home_search_hint">Search files</string>
     <string name="home_search_none">No files match “%1$s”</string>
     <string name="home_sort_cd">Sort: %1$s</string>
+    <string name="home_sort_cd_with_filters">Sort: %1$s, %2$s</string>
     <string name="home_sort_section">Sort</string>
     <string name="home_sort_filter_title">Sort &amp; filter</string>
     <string name="home_sort_last_opened">Last opened</string>
@@ -68,7 +73,6 @@ access</string>
     <string name="home_star_remove">Unstar</string>
     <string name="home_star_marker">Star</string>
     <string name="home_star_failed">Couldn\'t star</string>
-    <string name="cd_search">Search files</string>
     <string name="cd_clear_search">Clear search</string>
 
     <string name="viewer_error_not_found">This document is no longer in your list.</string>

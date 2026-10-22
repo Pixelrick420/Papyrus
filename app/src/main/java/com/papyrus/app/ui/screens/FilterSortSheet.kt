@@ -33,6 +33,7 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.papyrus.app.R
@@ -74,6 +75,7 @@ fun FilterSortSheet(
             Text(
                 text = stringResource(R.string.home_sort_filter_title),
                 style = MaterialTheme.typography.titleLarge,
+                modifier = Modifier.semantics { heading() },
             )
             Text(
                 text = if (matchCount == 0) {
@@ -155,21 +157,27 @@ fun SortFilterButton(
     } else {
         null
     }
+    val description = if (badgeLabel != null) {
+        stringResource(R.string.home_sort_cd_with_filters, orderLabel, badgeLabel)
+    } else {
+        stringResource(R.string.home_sort_cd, orderLabel)
+    }
     BadgedBox(
-        // Merged, so the order and the filter count are read together instead of as two separate things.
-        modifier = Modifier.semantics(mergeDescendants = true) {},
         badge = {
             if (badgeLabel != null) {
-                Badge(modifier = Modifier.clearAndSetSemantics { contentDescription = badgeLabel }) {
+                Badge(modifier = Modifier.clearAndSetSemantics {}) {
                     Text(activeCount.toString())
                 }
             }
         },
     ) {
-        IconButton(onClick = onClick) {
+        IconButton(
+            onClick = onClick,
+            modifier = Modifier.semantics { contentDescription = description },
+        ) {
             Icon(
                 painter = painterResource(R.drawable.ic_sort),
-                contentDescription = stringResource(R.string.home_sort_cd, orderLabel),
+                contentDescription = null,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
