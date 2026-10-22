@@ -23,8 +23,12 @@ with the script at the end.
 ./gradlew connectedDebugAndroidTest
 ```
 
-This needs a connected device or a running emulator. `.github/workflows/build.yml` runs the same
-task on an API 34 emulator for every branch push and uploads the HTML report as an artifact.
+This needs a connected device or a running emulator. Keep the phone awake and unlocked while it
+runs: a slept device leaves the test activity paused, and the suite waits for it to resume before
+the first test starts. `adb shell svc power stayon true` stops it sleeping.
+
+`.github/workflows/build.yml` runs the same task on an API 34 emulator for every branch push and
+uploads the HTML report as an artifact.
 
 Run a single test:
 
