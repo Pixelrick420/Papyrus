@@ -147,6 +147,15 @@ dependencies {
     implementation("io.noties.markwon:core:$markwon")
     implementation("io.noties.markwon:ext-strikethrough:$markwon")
     implementation("io.noties.markwon:ext-tables:$markwon")
+    implementation("io.noties.markwon:ext-tasklist:$markwon")
+    // `data:` URI images only; the HTTP loaders are removed in MarkdownRenderer, the reader stays offline.
+    implementation("io.noties.markwon:image:$markwon")
+    // `$$...$$` math, added to a document only when it has any. jlatexmath-android comes with it: GPL-2.0-or-later
+    // with the linking exception that lets an Apache-2.0 app bundle it, and about 1 MB of fonts and tables.
+    implementation("io.noties.markwon:inline-parser:$markwon")
+    implementation("io.noties.markwon:ext-latex:$markwon")
+    // No Prism4j: fenced code is coloured by the app's own tokenizer (SyntaxHighlighter), and autolinks are
+    // matched by Autolinks, so neither `syntax-highlight` nor `linkify` is needed.
 
     // Local-only crash reporting (replaces Crashlytics). `auto-service` is excluded on purpose: it
     // leaks in from acra-core and drags in Guava; our sender loads via the app's own META-INF/services file.

@@ -68,6 +68,8 @@ import com.papyrus.app.R
 import com.papyrus.app.data.LocationKind
 import com.papyrus.app.viewer.CodeLanguage
 import com.papyrus.app.viewer.LexStates
+import com.papyrus.app.viewer.MARKDOWN_BASE_TEXT_SP
+import com.papyrus.app.viewer.MarkdownStylePlugin
 import com.papyrus.app.viewer.OfficeBlock
 import com.papyrus.app.viewer.OfficeCell
 import com.papyrus.app.viewer.SyntaxHighlighter
@@ -141,6 +143,9 @@ fun MarkdownViewer(
     val geometry = rememberScrollGeometry(scroll)
     val textColor = MaterialTheme.colorScheme.onSurface.toArgb()
     val linkColor = MaterialTheme.colorScheme.primary.toArgb()
+    // The same palette as a source file, picked the same way, so a fenced block matches the code viewer.
+    val surface = MaterialTheme.colorScheme.surface
+    val codeStyles = remember(surface) { SyntaxPalette.forSurface(surface).codeStyles() }
     val baseTextPx = with(LocalDensity.current) { MARKDOWN_BASE_SP.toPx() }
     // Pixels, not sp: `TextView.textSize` reads sp, so handing it `toPx()` scaled the body by the
     // density twice.
@@ -232,6 +237,8 @@ fun MarkdownViewer(
                             // Committed scale, not live: the preview layer paints the in-flight gesture, and
                             // resizing per frame relaid out the whole document.
                             view.setTextSize(TypedValue.COMPLEX_UNIT_PX, textPx)
+                            // Code colours and formula colours follow the theme, which can change while the text stays.
+                            markwon.getPlugin(MarkdownStylePlugin::class.java)?.applyTheme(view, codeStyles)
                             // Only on a change: setting text kills a copy in progress; the view too, since
                             // `ScaledTypography` composes differently at 1x.
                             if (textState.view !== view || textState.text !== highlighted) {
@@ -953,7 +960,7 @@ private fun rowOfOccurrence(rows: List<List<OfficeCell>>, occurrence: Int, query
 /** Scroll speed (dp/s) revealing the knob on text surfaces; the PDF viewer keeps its 880 default. */
 private val TEXT_SHOW_VELOCITY = 1600.dp
 private const val HIGHLIGHT_DEBOUNCE_MS = 150L
-private val MARKDOWN_BASE_SP = 16.sp
+private val MARKDOWN_BASE_SP = MARKDOWN_BASE_TEXT_SP.sp
 private const val LINE_SPACING_MULTIPLIER = 1.25f
 
 private val NO_LINES = IntArray(0)

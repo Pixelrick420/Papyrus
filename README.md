@@ -11,8 +11,8 @@ on-device. The manifest declares no network or storage permissions; the only two
 | Format | Rendered as |
 | --- | --- |
 | PDF | `PdfRenderer` pages; zoom re-rasterises at the target resolution. Tappable links: a web link opens, an in-document jump scrolls to its page. A PDF with bookmarks gets an **Outline** in the viewer menu, and every PDF a **Go to page**. Password-protected files prompt for the password |
-| Markdown | Markwon to `Spanned` in a native `TextView`, with strikethrough and tables, links open on tap |
-| Plain text (`.txt`, `.log`, ...) | chunked 40 lines at a time, selectable monospace Compose `Text`. Decoded straight into the chunks, so a file costs about its own size in memory. Read up to 32 MB (Markdown: 4 MB). Optional line-number gutter and no-wrap mode with sideways scrolling |
+| Markdown | Markwon to `Spanned` in a native `TextView`, with strikethrough, tables, task lists (`- [ ]`, `- [x]`), bare `http(s)://`, `www.` and e-mail addresses made into links, and links open on tap. Fenced code blocks are coloured by the same tokenizer as source files (below). Images show only when the document carries them as `data:` URIs; any other image shows its alt text, since the app never touches the network. `$$...$$` is typeset as maths, inline or as a block between two `$$` lines (a single `$` is never maths, so prices stay text); a formula keeps the size it is typeset at when the text is zoomed. Read up to 6 MB |
+| Plain text (`.txt`, `.log`, ...) | chunked 40 lines at a time, selectable monospace Compose `Text`. Decoded straight into the chunks, so a file costs about its own size in memory. Read up to 32 MB (Markdown: 6 MB). Optional line-number gutter and no-wrap mode with sideways scrolling |
 | Source and config (`.kt`, `.py`, `.json`, ...) | as plain text, labelled `CODE` in the list, with syntax colour for the languages the app defines (below) |
 | CSV / TSV | a table through the Office pipeline, so find, zoom, reading position and bookmarks work as for Word files: the first row is the header (bold), long cells wrap and a wide table scrolls sideways. The delimiter comes from the file: `.tsv` is tab-separated, a `.csv` is sniffed among comma, semicolon, tab and pipe, which finds the semicolon files Excel writes in many locales. Quoting follows RFC 4180 (quoted delimiters, doubled quotes, line breaks inside a cell) and forgives a malformed file instead of refusing it. The encoding is detected as for plain text and can be picked from the menu. A table is held whole, one object per cell, so a file is read up to 8 MB and cut at 200,000 cells, 1,024 columns a row and 10,000 characters a cell, with the viewer's incomplete-document notice at the end. Not read aloud. A `.csv` added before this format existed is stored as `CODE` and is re-labelled the first time it opens |
 | DOCX / ODT | headings, paragraphs, bold / italic / underline / strikethrough / super- and subscript, text and highlight colours, links, bulleted and numbered lists (nested, with Word's and LibreOffice's numbering schemes), alignment, indentation, footnotes and endnotes, reviewer comments (marked in the text and listed after the body with author and date), equations (DOCX; written out as text such as `(a+b)/c`, `x²`, `√(x+1)`, not typeset), tables (with merged cells, shading and cell formatting) and images (at their stated size, with alt text), read straight from the archive. Macro-enabled files and templates (`.docm`, `.dotx`, `.dotm`, `.ott`) open like their plain counterparts; no macro is ever run. Documents with headings get an **Outline** in the viewer menu that jumps to a heading. Password-protected files prompt for the password |
@@ -46,6 +46,13 @@ strings, numbers, keywords, types, calls, annotations and variables, and no more
 scroll into view, and a single pass over the file on load records where each 40-line chunk begins (inside a block
 comment or a triple-quoted string, say), so a construct that crosses a chunk boundary still colours as one. A chunk
 over 20,000 characters is shown plain.
+
+A fenced code block in Markdown is coloured by the same tokenizer and palette, so it matches the same code in a source
+file. The language comes from the fence's tag instead of a file name: the first word of the info string, so `kotlin`,
+`kt`, `kotlin title="A.kt"`, `{.kotlin}` and `language-kotlin` are all Kotlin, as `c++`, `c#`, `shell`, `console`,
+`pwsh` and `docker` are what they say. A block with no tag, a tag the app does not define, or `text`, stays plain.
+Every coloured token is a span in the one `Spanned`, so a document colours at most 256 KB of fenced code and the rest
+stays plain. Colours are applied when the text draws, so a theme change shows without parsing the document again.
 
 ## Features
 
