@@ -1119,30 +1119,28 @@ private fun DocumentRow(
                     .padding(horizontal = 14.dp),
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    // fill = false: a short title keeps the star next to it, a long one still ends in an ellipsis.
-                    Text(
-                        doc.title,
-                        style = MaterialTheme.typography.titleMedium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f, fill = false),
-                    )
-                    if (doc.isFavourite) {
-                        Icon(
-                            painter = painterResource(R.drawable.ic_star),
-                            contentDescription = stringResource(R.string.home_favourite_marker),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(start = 6.dp).size(14.dp),
-                        )
-                    }
-                }
+                Text(
+                    doc.title,
+                    style = MaterialTheme.typography.titleMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
                 Text(
                     "$sizeLabel · $openedLabel",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
+                )
+            }
+            // Its own slot, left of the ⋮: inside the title's row the star sat at the end of a
+            // short name and at the far right of a long one, so it moved with the length of the name.
+            if (doc.isFavourite) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_star),
+                    contentDescription = stringResource(R.string.home_favourite_marker),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(end = 4.dp).size(14.dp),
                 )
             }
             // The checkbox takes the ⋮'s exact slot, so the row's contents hold still between modes.
