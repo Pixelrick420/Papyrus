@@ -221,7 +221,6 @@ plain SQL in `data/Migrations.kt`, and every version's schema is exported to `ap
 one is missing.
 
 ```mermaid
-%%{init: {"htmlLabels": false, "themeVariables": {"edgeLabelBackground": "Canvas"}}}%%
 erDiagram
     DOCUMENTS ||--o| READING_PROGRESS : "keeps one position"
     DOCUMENTS ||--o{ BOOKMARKS : "holds"
