@@ -107,19 +107,23 @@ never written with `OnConflictStrategy.REPLACE`: a replace is a delete plus an i
     default.
   - *About*: version, source link and license.
 - **Search** filters the library by title, in memory, over the list the screen already holds.
-- **Sort** is the icon beside the search pill: *Last opened* (the default), *Name, A to Z*, *Name, Z to A*, *Date added*
-  and *Size, largest first*; the menu marks the current one and the button's description names it. The choice is kept
+- **Sort & filter** is the slider icon beside the search pill. It opens a sheet that holds the sort order, every
+  file-type filter and the starred filter in one place, and it carries a badge counting the filters that are on. The
+  sheet shows how many files match right now, so a filter never hides rows without saying so.
+- **Sort** is the sheet's first section: *Last opened* (the default), *Name, A to Z*, *Name, Z to A*, *Date added*
+  and *Size, largest first*; the selected one is highlighted. The choice is kept
   in settings. Names compare the way a person reads them: case is ignored, `file2` comes before `file10`, digits come
   before letters, and letters follow the device language's alphabet (a Swedish reader finds Å after Z). Documents that
   tie always come most recently opened first and then by id, so the order never depends on the database and rows only
   glide when something about them changed. Sorting and filtering are pure functions over the one list query
   (`LibraryView.kt`), so there is no index and no second query.
-- **Filter chips** sit under the search pill: one per format group the library actually has (PDF, Word for DOC and DOCX,
-  ODT, EPUB, Markdown, Text, CSV / TSV, Code), plus **Favourites**. Several format chips show their union; Favourites narrows that to the
-  favourites. Chips compose with the title search, with a row hidden by Remove's undo window, and with sorting; the
-  selection survives rotation. When filters hide everything Home says so, with a **Clear filters** button, which is a
+- **File-type filters** are the sheet's second section: one per format group the library actually has (PDF, Word for
+  DOC and DOCX, ODT, EPUB, MD, Text, CSV, TSV, Code), plus **Starred**. Several format groups show their union; Starred
+  narrows that to the starred files. CSV and TSV are one format to the reader but two groups here, split by the file
+  name's extension. Filters compose with the title search, with a row hidden by Remove's undo window, and with sorting;
+  the selection survives rotation. When filters hide everything Home says so, with a **Clear filters** button, which is a
   different screen from the first-run one. *Select all* still means every row currently shown.
-- **Favourites** are set from a row's menu (*Add to favourites* / *Remove from favourites*) and show as a small star.
+- **Starred** files are set from a row's menu (*Star* / *Unstar*) and show as a small star.
   The flag is the `documents.isFavourite` column. Opening a document again or re-granting access never resets it: the
   first copies the stored row and replaces only what the provider reports anew (`DocumentEntity.reopenedWith`, covered
   by a unit test), the second rewrites the URI column alone.

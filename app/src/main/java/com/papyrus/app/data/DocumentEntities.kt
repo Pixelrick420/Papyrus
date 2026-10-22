@@ -105,16 +105,16 @@ data class DocumentEntity(
     val createdAt: Long,
     val lastOpenedAt: Long,
     /**
-     * Pinned by the reader. The default is spelled out so the migration's `ADD COLUMN ... DEFAULT 0` matches
-     * Room's expectation; `upsertByUri` copies the row, so the flag survives re-opening and re-granting.
+     * Starred by the reader. The column keeps the name it was created with; `upsertByUri` copies the
+     * row so the flag survives re-opening and re-granting.
      */
-    @ColumnInfo(defaultValue = "0") val isFavourite: Boolean = false,
+    @ColumnInfo(name = "isFavourite", defaultValue = "0") val isStarred: Boolean = false,
 )
 
 /**
  * This row as it is after being opened again as [fresh]: what the provider reports now (name, format,
  * size) and the new open time. Everything the reader owns survives: the id (so progress and bookmarks keep
- * their parent), when it was added, the stored URI and the favourite flag. Never replace the row instead:
+ * their parent), when it was added, the stored URI and the star flag. Never replace the row instead:
  * a replace is a delete plus an insert and would cascade that away.
  */
 fun DocumentEntity.reopenedWith(fresh: DocumentEntity): DocumentEntity = copy(

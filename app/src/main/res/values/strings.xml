@@ -36,6 +36,8 @@ access</string>
     <string name="home_search_hint">Search files</string>
     <string name="home_search_none">No files match “%1$s”</string>
     <string name="home_sort_cd">Sort: %1$s</string>
+    <string name="home_sort_section">Sort</string>
+    <string name="home_sort_filter_title">Sort &amp; filter</string>
     <string name="home_sort_last_opened">Last opened</string>
     <string name="home_sort_name_asc">A to Z</string>
     <string name="home_sort_name_desc">Z to A</string>
@@ -45,17 +47,27 @@ access</string>
     <string name="home_filter_word">Word</string>
     <string name="home_filter_odt">ODT</string>
     <string name="home_filter_epub">EPUB</string>
-    <string name="home_filter_markdown">Markdown</string>
+    <string name="home_filter_markdown">MD</string>
     <string name="home_filter_text">Text</string>
-    <string name="home_filter_csv">CSV / TSV</string>
+    <string name="home_filter_csv">CSV</string>
+    <string name="home_filter_tsv">TSV</string>
     <string name="home_filter_code">Code</string>
-    <string name="home_filter_favourites">Starred</string>
+    <string name="home_filter_starred">Starred</string>
+    <string name="home_filter_section">Filter</string>
     <string name="home_filter_none">No files match these filters</string>
-    <string name="home_filter_clear">Clear filters</string>
-    <string name="home_favourite_add">Add to favourites</string>
-    <string name="home_favourite_remove">Unstar</string>
-    <string name="home_favourite_marker">Star</string>
-    <string name="home_favourite_failed">Couldn\'t star</string>
+    <string name="home_filter_clear">Clear</string>
+    <plurals name="home_filter_count">
+        <item quantity="one">%1$d file</item>
+        <item quantity="other">%1$d files</item>
+    </plurals>
+    <plurals name="home_filter_active">
+        <item quantity="one">%1$d filter active</item>
+        <item quantity="other">%1$d filters active</item>
+    </plurals>
+    <string name="home_star_add">Star</string>
+    <string name="home_star_remove">Unstar</string>
+    <string name="home_star_marker">Star</string>
+    <string name="home_star_failed">Couldn\'t star</string>
     <string name="cd_search">Search files</string>
     <string name="cd_clear_search">Clear search</string>
 
