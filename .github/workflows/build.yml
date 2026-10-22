@@ -65,8 +65,10 @@ jobs:
           if-no-files-found: error
 
   instrumentation-tests:
-    name: Instrumentation tests (emulator)
-    if: github.ref_type == 'branch'
+    # Job id stays `instrumentation-tests` on purpose: gradle/actions/setup-gradle includes it in
+    # its cache key, so renaming the id would orphan the Gradle cache already on the remote.
+    name: Emulator tests
+    if: github.ref_type == 'tag'
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
@@ -102,45 +104,32 @@ jobs:
           android sdk install "system-images;android-34;google_apis;x86_64"
           android sdk install emulator
 
-      - name: AVD cache
-        uses: actions/cache@v6
-        id: avd-cache
-        with:
-          path: |
-            ~/.android/avd/*
-            ~/.android/adb*
-          key: avd-34-google_apis-x86_64
+      - name: Enable KVM
+        # The runner exposes /dev/kvm but not the group permissions, so without this the emulator
+        # silently falls back to software emulation and the job takes several times longer.
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
 
-      - name: Create AVD and generate snapshot for caching
-        if: steps.avd-cache.outputs.cache-hit != 'true'
+      - name: Run emulator tests
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 34
           target: google_apis
           arch: x86_64
           profile: pixel_6
-          force-avd-creation: false
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          disable-animations: true
-          script: echo "Generated AVD snapshot for caching."
-
-      - name: Run instrumentation tests
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 34
-          target: google_apis
-          arch: x86_64
-          profile: pixel_6
-          force-avd-creation: false
+          force-avd-creation: true
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
           script: ./gradlew --no-daemon connectedDebugAndroidTest
 
-      - name: Upload instrumentation test results
+      - name: Upload emulator test results
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: instrumentation-test-results
+          name: emulator-test-results
           path: |
             app/build/outputs/androidTest-results/
             app/build/reports/androidTests/
@@ -148,10 +137,9 @@ jobs:
 
   release:
     name: Publish release
-    # `always()` is load-bearing: a tag push skips `ci` (branch-only `if`), and a skipped job skips
-    # everything that `needs` it, so without this the release never publishes.
-    if: always() && github.ref_type == 'tag'
-    needs: ci
+    # Tag pushes run "Emulator tests" first; `success()` keeps a failed test run from publishing.
+    if: success() && github.ref_type == 'tag'
+    needs: instrumentation-tests
     runs-on: ubuntu-24.04
     permissions:
       contents: write
