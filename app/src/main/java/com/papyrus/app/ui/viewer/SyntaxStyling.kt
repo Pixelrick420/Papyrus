@@ -3,10 +3,12 @@ package com.papyrus.app.ui.viewer
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontStyle
+import com.papyrus.app.viewer.CodeTokenStyles
 import com.papyrus.app.viewer.SyntaxTokens
 import com.papyrus.app.viewer.TokenKind
 
@@ -62,6 +64,15 @@ class SyntaxPalette private constructor(private val styles: Array<SpanStyle>) {
 
         private const val DARK_SURFACE_LUMINANCE = 0.5f
     }
+}
+
+/** The same colours for a Markdown code block, which a `TextView` draws with spans and not Compose styles. */
+internal fun SyntaxPalette.codeStyles(): CodeTokenStyles {
+    val kinds = TokenKind.entries
+    return CodeTokenStyles(
+        colors = IntArray(kinds.size) { styleOf(kinds[it]).color.toArgb() },
+        italics = BooleanArray(kinds.size) { styleOf(kinds[it]).fontStyle == FontStyle.Italic },
+    )
 }
 
 /** A chunk's tokens with the palette that colours them; one object so it can key a `remember`. */

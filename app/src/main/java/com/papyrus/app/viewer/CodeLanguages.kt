@@ -13,6 +13,23 @@ object CodeLanguages {
         return byExtension[extension]
     }
 
+    /**
+     * The language a Markdown code fence names, or null to show the block plain. The tag is the first word of
+     * the info string, so `kotlin`, `kotlin title="A.kt"`, `kotlin{1,3}`, `{.kotlin}` and `language-kotlin`
+     * all select Kotlin, as do the short names `kt` and `py` that files use as extensions.
+     */
+    fun forFence(info: String?): CodeLanguage? {
+        val tag = fenceTag(info) ?: return null
+        return byName[tag] ?: byExtension[tag]
+    }
+
+    private fun fenceTag(info: String?): String? {
+        val trimmed = info?.trim().orEmpty().trimStart('{', '.')
+        val word = trimmed.takeWhile { !it.isWhitespace() && it != '{' && it != '}' && it != ',' && it != '=' }
+        val tag = word.lowercase().removePrefix("language-").removePrefix("lang-")
+        return tag.ifEmpty { null }
+    }
+
     private val SLASH_COMMENTS = listOf("//")
     private val BLOCK_COMMENT = Delimited("/*", "*/", TokenKind.COMMENT)
     private val TRIPLE_DOUBLE = Delimited("\"\"\"", "\"\"\"", TokenKind.STRING)
@@ -419,5 +436,24 @@ object CodeLanguages {
         add(DOCKERFILE, "dockerfile")
         add(MAKEFILE, "mk", "makefile")
         add(CMAKE, "cmake")
+    }
+
+    /** The names a code fence uses that are not file extensions; `text` and `plaintext` are left out on purpose. */
+    private val byName: Map<String, CodeLanguage> = buildMap {
+        fun add(language: CodeLanguage, vararg names: String) = names.forEach { put(it, language) }
+        add(KOTLIN, "kotlin")
+        add(CPP, "c++")
+        add(CSHARP, "csharp", "c#")
+        add(JAVASCRIPT, "javascript", "node", "nodejs")
+        add(TYPESCRIPT, "typescript")
+        add(PYTHON, "python", "python3", "py3")
+        add(RUBY, "ruby")
+        add(GO, "golang")
+        add(RUST, "rust")
+        add(SHELL, "shell", "shellsession", "console")
+        add(POWERSHELL, "powershell", "pwsh")
+        add(MARKUP, "xhtml")
+        add(DOCKERFILE, "docker")
+        add(MAKEFILE, "make")
     }
 }

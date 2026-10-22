@@ -52,6 +52,7 @@ import com.papyrus.app.viewer.PdfEncryption
 import com.papyrus.app.viewer.PdfPageSource
 import com.papyrus.app.viewer.PdfPageText
 import com.papyrus.app.viewer.PdfPageLink
+import com.papyrus.app.viewer.MarkdownRenderer
 import com.papyrus.app.viewer.PdfPageTextSource
 import com.papyrus.app.viewer.PdfPasswordException
 import com.papyrus.app.viewer.PrettyPrint
@@ -71,8 +72,6 @@ import com.papyrus.app.ui.viewer.findBlockHits
 import com.papyrus.app.ui.viewer.findChunkHits
 import com.tom_roush.pdfbox.pdmodel.encryption.InvalidPasswordException
 import io.noties.markwon.Markwon
-import io.noties.markwon.ext.strikethrough.StrikethroughPlugin
-import io.noties.markwon.ext.tables.TablePlugin
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
@@ -601,13 +600,11 @@ class ViewerViewModel(
                 PdfEncryption.USER_PASSWORD -> ViewerContent.NeedsPassword()
             }
             DocumentFormat.MARKDOWN -> {
-                val markwon = Markwon.builder(app)
-                    .usePlugin(StrikethroughPlugin.create())
-                    .usePlugin(TablePlugin.create(app))
-                    .build()
                 // Markwon takes the whole text and builds one Spanned for one TextView, so it keeps the small limit.
                 val decoded = openStream(uri).use { readTextString(it, MAX_MARKDOWN_BYTES, forcedCharset(), StatisticalCharsetGuesser) }
                 val source = if (decoded.truncated) decoded.text + "\n\n" + app.getString(R.string.viewer_truncated) else decoded.text
+                // Built after the read: which plugins a document needs depends on what it contains.
+                val markwon = MarkdownRenderer.create(app, source)
                 ViewerContent.Markdown(markwon, source, markwon.toMarkdown(source), decoded.encoding)
             }
             // CODE renders through the same surface as TEXT: monospace, chunked, selectable.
@@ -1111,8 +1108,10 @@ class ViewerViewModel(
         // Plain text streams into 40-line chunks, so memory is about the file's size, not several copies of it.
         const val MAX_TEXT_BYTES = 32 * 1024 * 1024
 
-        // Markdown is one Spanned in one TextView, which is far heavier per byte than a chunk of text.
-        const val MAX_MARKDOWN_BYTES = 4 * 1024 * 1024
+        // Markdown is one Spanned in one TextView, which is far heavier per byte than a chunk of text, and
+        // code colours, links and formulas each add spans to it. Raised from 4 MB with those features; if a
+        // large file runs out of memory on a low-end device, this is the number to bring back down.
+        const val MAX_MARKDOWN_BYTES = 6 * 1024 * 1024
 
         // The cell limit (see `DelimitedFile`) is reached long before this in any file but one of very wide cells.
         const val MAX_DELIMITED_BYTES = 8 * 1024 * 1024
