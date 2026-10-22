@@ -118,6 +118,18 @@ automatically and can be changed from the viewer menu.
 - **Zoom** with a pinch or a double-tap, from 0.5x to 3x.
 - **Links** open on tap for `http`, `https`, `mailto` and `tel`. A PDF's internal link scrolls to its page.
 
+### Accessibility
+
+- **TalkBack-first controls.** Each control is one focus stop that says what it is and what a tap does: a row reads
+  "Open", "Select" or "Deselect", a selected row reads as checked, and sheet titles are headings so TalkBack can jump
+  between sections.
+- **Live updates and touch targets.** The find-in-file counter announces each match change ("2 of 7") without moving
+  focus, and interactive controls meet the 48dp minimum touch target.
+- **Known limits.** A rendered PDF page is a bitmap, so TalkBack cannot read it; use Android's accessibility zoom
+  instead of pinch zoom, which TalkBack intercepts. Images inside documents are not described.
+- The manual test script and the checks enforced by `AccessibilitySemanticsTest` are in
+  [ACCESSIBILITY.md](ACCESSIBILITY.md).
+
 ### Opening documents
 
 - **Open with** shows a document from another app without adding it to the library.
@@ -178,15 +190,20 @@ compliance is enforced rather than documented.
 
 ## Test
 
-| Task                          | What it runs                |
-| ----------------------------- | --------------------------- |
-| `./gradlew check`             | unit tests, lint and detekt |
-| `./gradlew testDebugUnitTest` | unit tests alone            |
+| Task                                  | What it runs                |
+| ------------------------------------- | --------------------------- |
+| `./gradlew check`                     | unit tests, lint and detekt |
+| `./gradlew testDebugUnitTest`         | unit tests alone            |
+| `./gradlew connectedDebugAndroidTest` | semantics tests on a device |
+
+The semantics suite needs a device or emulator kept awake and unlocked; [ACCESSIBILITY.md](ACCESSIBILITY.md) covers
+that and the manual TalkBack script.
 
 The DOCX/ODT, EPUB and DOC extractors run against archives the tests build in memory (kxml2 stands in for the platform's
 `XmlPullParser`, and the `.doc` fixtures assemble the OLE2 container and piece table from scratch). detekt is scoped to
-dead code and correctness, with the deliberate broad catches baselined so they stay visible. CI runs only the tests and
-`assembleRelease`, so lint and detekt are local gates.
+dead code and correctness, with the deliberate broad catches baselined so they stay visible. CI runs the unit tests and
+`assembleRelease` on every branch push, and the same emulator suite on every `v*` tag before publishing; lint and detekt
+remain local gates.
 
 ## Architecture
 
@@ -281,10 +298,11 @@ detekt, and lint and detekt are not part of CI. The screenshots this README show
 
 ## Releases
 
-- Every push to `main` runs the tests and assembles an unsigned release APK, uploaded as a build artifact.
-- Pushing a `v*` tag publishes a signed APK to [Releases](../../releases). The tag must match `versionName` in
-  `app/build.gradle.kts`, and `versionCode` must exceed the previous release tag's, since that value alone orders the
-  upgrades.
+- Every push to `main` runs the unit tests and assembles an unsigned release APK, uploaded as a build artifact.
+- Pushing a `v*` tag runs the emulator suite first, then publishes a signed APK to [Releases](../../releases). A
+  failing emulator test stops the release before anything is published.
+- The tag must match `versionName` in `app/build.gradle.kts`, and `versionCode` must exceed the previous release tag's,
+  since that value alone orders the upgrades.
 - The job fails if the APK comes out unsigned or carries the Android debug certificate.
 - Signing uses a release keystore supplied from repository secrets, never committed to the repo. The job stops early
   if any of those secrets is missing rather than publishing an APK no one can upgrade to.
