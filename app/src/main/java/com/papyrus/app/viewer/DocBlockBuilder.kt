@@ -4,16 +4,21 @@ package com.papyrus.app.viewer
  * Text → blocks. A cell ends with a cell mark (0x07) and the row's TTP follows the last cell's
  * mark, so `cell\x07cell\x07\x07` is one row; nested tables arrive as plain paragraph marks.
  * Each paragraph becomes a [OfficeBlock.Heading], an [OfficeBlock.ListItem] or an
- * [OfficeBlock.Paragraph] by its style and list, numbered in reading order by [lists].
+ * [OfficeBlock.Paragraph] by its style and list, numbered in reading order by [lists], and carries
+ * the character formatting of its runs as spans.
  */
 internal class DocBlockBuilder(private val maxBlocks: Int, lists: DocListTables = DocListTables.EMPTY) {
     private enum class State { PARA, ROW, BETWEEN }
 
     private val blocks = mutableListOf<OfficeBlock>()
-    private val paragraph = StringBuilder()
-    private val cell = StringBuilder()
-    private val row = mutableListOf<String>()
-    private val rows = mutableListOf<List<String>>()
+    private val paragraph = RichTextBuilder()
+    private val cell = RichTextBuilder()
+    private val row = mutableListOf<RichSnapshot>()
+    private val rows = mutableListOf<List<RichSnapshot>>()
+
+    /** Characters of the current run not yet handed to [paragraph] or [cell], which take a run at a time. */
+    private val chunk = StringBuilder()
+
     /** Per-depth flag: field instructions (between 0x13 and 0x14) are not content. */
     private val fieldDepth = ArrayDeque<Boolean>()
     private val counters = DocListCounters(lists)
@@ -22,6 +27,9 @@ internal class DocBlockBuilder(private val maxBlocks: Int, lists: DocListTables 
 
     /** Where the paragraph being read began in [cell], so its list marker can go in front of it. */
     private var cellParagraphStart = 0
+
+    /** The paragraph being read has had a character that is not whitespace: a blank one is not a block. */
+    private var hasText = false
 
     /** A line or page break cut the paragraph: what follows is a continuation, not a new list item. */
     private var continuation = false
@@ -35,28 +43,30 @@ internal class DocBlockBuilder(private val maxBlocks: Int, lists: DocListTables 
         var at = 0
         for (run in runs) {
             val end = minOf(at + run.length, text.length)
-            if (!feedRange(text, at, end, run.para)) return
+            if (!feedRange(text, at, end, run)) return
             at = end
             if (at >= text.length) return
         }
-        feedRange(text, at, text.length, null)
+        feedRange(text, at, text.length, DocRun(text.length - at, null))
     }
 
     /** False once the block budget is spent. */
-    private fun feedRange(text: String, from: Int, to: Int, para: DocParaProps?): Boolean {
+    private fun feedRange(text: String, from: Int, to: Int, run: DocRun): Boolean {
         for (i in from until to) {
             if (blocks.size >= maxBlocks) {
+                chunk.setLength(0)
                 full = true
                 return false
             }
-            append(text[i], para)
+            append(text[i], run)
         }
+        flushChunk(run.format)
         return true
     }
 
     fun finish(): List<OfficeBlock> {
         if (state == State.ROW) {
-            if (cell.isNotEmpty()) row += cell.toString().trim('\n')
+            if (!cell.isEmpty()) row += cell.snapshot(::isNewline)
             commitRow()
         }
         flushTable()
@@ -64,39 +74,48 @@ internal class DocBlockBuilder(private val maxBlocks: Int, lists: DocListTables 
         return blocks
     }
 
-    private fun append(ch: Char, para: DocParaProps?) {
+    private fun append(ch: Char, run: DocRun) {
         when (ch) {
             FIELD_BEGIN -> {
+                flushChunk(run.format)
                 if (fieldDepth.size < MAX_FIELD_DEPTH) fieldDepth.addLast(false)
                 return
             }
             FIELD_SEPARATOR -> {
+                flushChunk(run.format)
                 if (fieldDepth.isNotEmpty()) fieldDepth[fieldDepth.lastIndex] = true
                 return
             }
             FIELD_END -> {
+                flushChunk(run.format)
                 if (fieldDepth.isNotEmpty()) fieldDepth.removeLast()
                 return
             }
             // Marks are honoured even inside a field instruction: structure survives a
             // malformed field, while its text is dropped by the check below.
             '\r', LINE_BREAK, PAGE_BREAK -> {
-                paragraphMark(ch, para)
+                flushChunk(run.format)
+                paragraphMark(ch, run.para)
                 return
             }
             CELL_MARK -> {
-                cellMark(para)
+                flushChunk(run.format)
+                cellMark(run.para)
                 return
             }
         }
         if (fieldDepth.isNotEmpty() && !fieldDepth.last()) return
-        when {
-            ch == '\t' -> target().append('\t')
-            ch.code >= 0x20 -> target().append(ch)
-        }
+        if (ch == '\t' || ch.code >= 0x20) chunk.append(ch)
     }
 
-    private fun target(): StringBuilder = if (state == State.ROW) cell else paragraph
+    /** Hands the pending characters, all of one run, to whatever is being built. */
+    private fun flushChunk(format: CharFormat) {
+        if (chunk.isEmpty()) return
+        val text = chunk.toString()
+        chunk.setLength(0)
+        if (!hasText && text.any { !it.isWhitespace() }) hasText = true
+        (if (state == State.ROW) cell else paragraph).append(text, format)
+    }
 
     /** A paragraph mark, or a line or page break, which ends a fragment of a paragraph but not the paragraph. */
     private fun paragraphMark(mark: Char, para: DocParaProps?) {
@@ -104,7 +123,7 @@ internal class DocBlockBuilder(private val maxBlocks: Int, lists: DocListTables 
             State.ROW -> {
                 val had = endParagraphIn(cell, para)
                 continuation = afterMark(mark, had)
-                cell.append('\n')
+                cell.append("\n")
                 cellParagraphStart = cell.length
             }
             State.BETWEEN -> {
@@ -124,16 +143,16 @@ internal class DocBlockBuilder(private val maxBlocks: Int, lists: DocListTables 
                 cellParagraphStart = 0
                 endParagraphIn(paragraph, para)
                 continuation = false
-                row += paragraph.toString()
-                paragraph.setLength(0)
-                cell.setLength(0)
+                row += paragraph.snapshot()
+                paragraph.clear()
+                cell.clear()
                 state = State.ROW
             }
-            State.ROW -> if (cell.isNotEmpty()) {
+            State.ROW -> if (!cell.isEmpty()) {
                 endParagraphIn(cell, para)
                 continuation = false
-                row += cell.toString().trim('\n')
-                cell.setLength(0)
+                row += cell.snapshot(::isNewline)
+                cell.clear()
                 cellParagraphStart = 0
             } else {
                 commitRow()
@@ -146,8 +165,10 @@ internal class DocBlockBuilder(private val maxBlocks: Int, lists: DocListTables 
      * Puts the marker of the paragraph that just ended in front of its text in [buffer], from
      * [cellParagraphStart]. False if it was blank, which is not numbered.
      */
-    private fun endParagraphIn(buffer: StringBuilder, para: DocParaProps?): Boolean {
-        if (buffer.substring(cellParagraphStart).isBlank()) return false
+    private fun endParagraphIn(buffer: RichTextBuilder, para: DocParaProps?): Boolean {
+        val had = hasText
+        hasText = false
+        if (!had) return false
         val marker = if (para == null) null else markerFor(para)
         if (!marker.isNullOrEmpty()) buffer.insert(cellParagraphStart, "$marker ")
         return true
@@ -161,16 +182,19 @@ internal class DocBlockBuilder(private val maxBlocks: Int, lists: DocListTables 
 
     private fun flushTable() {
         if (rows.isNotEmpty() && tableUsable && blocks.size < maxBlocks) {
-            blocks += OfficeBlock.Table(rows.map { r -> r.mapIndexed { i, text -> OfficeCell(text, column = i) } })
+            blocks += OfficeBlock.Table(
+                rows.map { r -> r.mapIndexed { i, cell -> OfficeCell(cell.text, column = i, spans = cell.spans) } },
+            )
         }
         rows.clear()
         tableUsable = true
     }
 
     private fun flushParagraph(mark: Char, para: DocParaProps?) {
-        val text = paragraph.toString()
-        paragraph.setLength(0)
-        val emitted = text.isNotBlank() && blocks.size < maxBlocks
+        val text = paragraph.snapshot()
+        paragraph.clear()
+        val emitted = hasText && blocks.size < maxBlocks
+        hasText = false
         if (emitted) blocks += blockFor(text, para)
         continuation = afterMark(mark, emitted)
     }
@@ -178,20 +202,24 @@ internal class DocBlockBuilder(private val maxBlocks: Int, lists: DocListTables 
     /** Whether what follows [mark] continues the paragraph: only a line or page break leaves it open. */
     private fun afterMark(mark: Char, hadText: Boolean): Boolean = mark != '\r' && (hadText || continuation)
 
-    private fun blockFor(text: String, para: DocParaProps?): OfficeBlock {
-        if (para == null) return OfficeBlock.Paragraph(text)
+    private fun blockFor(text: RichSnapshot, para: DocParaProps?): OfficeBlock {
+        if (para == null) return OfficeBlock.Paragraph(text.text, text.spans)
         val marker = markerFor(para)
         return when {
             para.headingLevel > 0 -> {
                 // A numbered heading keeps its number in the text, as it does for .docx.
-                val shown = if (marker.isNullOrEmpty()) text else "$marker $text"
-                OfficeBlock.Heading(shown, para.headingLevel, align = para.align)
+                if (marker.isNullOrEmpty()) {
+                    OfficeBlock.Heading(text.text, para.headingLevel, text.spans, para.align)
+                } else {
+                    val shifted = shiftSpans(text.spans, marker.length + 1)
+                    OfficeBlock.Heading("$marker ${text.text}", para.headingLevel, shifted, para.align)
+                }
             }
             marker != null -> {
                 val level = para.ilvl.coerceIn(0, DocListTables.LEVELS - 1)
-                OfficeBlock.ListItem(text, marker, level, align = para.align)
+                OfficeBlock.ListItem(text.text, marker, level, text.spans, para.align)
             }
-            else -> OfficeBlock.Paragraph(text, align = para.align, indent = indentLevel(para.leftTwips))
+            else -> OfficeBlock.Paragraph(text.text, text.spans, para.align, indentLevel(para.leftTwips))
         }
     }
 
@@ -205,6 +233,8 @@ internal class DocBlockBuilder(private val maxBlocks: Int, lists: DocListTables 
         if (continuation || para.ilvl >= DocListTables.LEVELS) return ""
         return counters.next(para.ilfo, para.ilvl)
     }
+
+    private fun isNewline(c: Char): Boolean = c == '\n'
 }
 
 private const val FIELD_BEGIN = '\u0013'

@@ -39,11 +39,13 @@ internal class DocSprmReader(private val buf: ByteArray, from: Int, end: Int) {
         return true
     }
 
-    fun u8(): Int = if (operandSize >= 1) buf[operand].toInt() and 0xFF else 0
+    /** The operand byte [at] bytes in; 0 if the operand is shorter than that. */
+    fun u8(at: Int = 0): Int = if (at >= 0 && at < operandSize) buf[operand + at].toInt() and 0xFF else 0
 
-    fun u16(): Int = if (operandSize >= 2) u16(buf, operand) else 0
+    /** The little-endian 16-bit value [at] bytes into the operand; 0 if it does not reach that far. */
+    fun u16(at: Int = 0): Int = if (at >= 0 && at + 2 <= operandSize) u16(buf, operand + at) else 0
 
-    /** The operand as a signed 16-bit value. */
+    /** The 16-bit value at the start of the operand, signed. */
     fun i16(): Int = u16().toShort().toInt()
 
     private fun operandSizeOf(op: Int, at: Int): Int = when (op ushr SPRA_SHIFT) {

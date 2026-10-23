@@ -16,15 +16,25 @@ internal object DocRichFixtures {
         val base: Int = NO_BASE,
         val papx: ByteArray = ByteArray(0),
         val sgc: Int = SGC_PARAGRAPH,
+        /** Character sprms the style gives its text (a paragraph style's UpxChpx, a character style's only UPX). */
+        val chpx: ByteArray = ByteArray(0),
     )
 
-    /** One paragraph: [text] without its mark, the [mark] that ends it, its style and its direct sprms. */
+    /** A stretch of a paragraph's text with its own direct character sprms. */
+    class Run(val text: String, val chpx: ByteArray = ByteArray(0))
+
+    /** One paragraph: its [runs] without the [mark] that ends it, its style and its direct sprms. */
     class Para(
-        val text: String,
+        val runs: List<Run>,
         val istd: Int = 0,
         val papx: ByteArray = ByteArray(0),
         val mark: Char = '\r',
-    )
+    ) {
+        constructor(text: String, istd: Int = 0, papx: ByteArray = ByteArray(0), mark: Char = '\r') :
+            this(listOf(Run(text)), istd, papx, mark)
+
+        val text: String get() = runs.joinToString("") { it.text }
+    }
 
     /** A list level: number format [nfc] (0 decimal, 4 lower letter, 0x17 bullet, 0xFF none) and its template. */
     class ListLevel(val nfc: Int, val text: String, val start: Int = 1)
@@ -71,6 +81,8 @@ internal object DocRichFixtures {
         splitAt: Int? = null,
         lists: List<ListDef> = emptyList(),
         instances: List<ListInstance> = emptyList(),
+        fonts: List<String> = emptyList(),
+        omitPapx: Boolean = false,
     ): ByteArray {
         val text = paras.joinToString("") { it.text + it.mark }
         val pieces = if (splitAt == null) {
@@ -83,26 +95,36 @@ internal object DocRichFixtures {
         val firstPage = DocFixtures.tailOffset(textBytes) / PAGE
         var fc = DocFixtures.TEXT_OFFSET.toLong()
         val entries = ArrayList<PapxEntry>()
+        val charEntries = ArrayList<ChpxEntry>()
         var consumed = 0
+        // Each character's width depends on the piece it falls in; the split piece is UTF-16.
+        fun widthOf(from: Int, chars: Int): Long =
+            (from until from + chars).sumOf { index -> if (splitAt != null && index >= splitAt) 2L else width.toLong() }
         for (para in paras) {
-            val chars = para.text.length + 1
-            // Each character's width depends on the piece it falls in; the split piece is UTF-16.
-            val bytes = (consumed until consumed + chars).sumOf { index ->
-                if (splitAt != null && index >= splitAt) 2 else width
+            val paraStart = fc
+            for (run in para.runs) {
+                val bytes = widthOf(consumed, run.text.length)
+                charEntries += ChpxEntry(fc, fc + bytes, run.chpx)
+                fc += bytes
+                consumed += run.text.length
             }
-            entries += PapxEntry(fc, fc + bytes, para.istd, para.papx)
-            fc += bytes
-            consumed += chars
+            val markBytes = widthOf(consumed, 1)
+            charEntries += ChpxEntry(fc, fc + markBytes, ByteArray(0))
+            fc += markBytes
+            consumed += 1
+            entries += PapxEntry(paraStart, fc, para.istd, para.papx)
         }
         val papx = papxPages(entries)
-        return DocFixtures.doc(
-            pieces = pieces,
-            wordTail = papx.pages,
-            tableParts = listOf(
-                DocFixtures.TablePart(PAIR_STSHF, stsh(styles)),
-                DocFixtures.TablePart(PAIR_BTE_PAPX, bte(papx.firstFcs, entries.last().to, firstPage)),
-            ) + listParts(lists, instances),
-        )
+        val chpx = chpxPages(charEntries)
+        val chpxFirstPage = firstPage + papx.pages.size / PAGE
+        val hasChpx = paras.any { p -> p.runs.any { it.chpx.isNotEmpty() } }
+        val parts = ArrayList<DocFixtures.TablePart>()
+        parts += DocFixtures.TablePart(PAIR_STSHF, stsh(styles))
+        if (!omitPapx) parts += DocFixtures.TablePart(PAIR_BTE_PAPX, bte(papx.firstFcs, entries.last().to, firstPage))
+        if (hasChpx) parts += DocFixtures.TablePart(PAIR_BTE_CHPX, bte(chpx.firstFcs, charEntries.last().to, chpxFirstPage))
+        if (fonts.isNotEmpty()) parts += DocFixtures.TablePart(PAIR_STTBFFFN, sttbfFfn(fonts))
+        parts += listParts(lists, instances)
+        return DocFixtures.doc(pieces = pieces, wordTail = papx.pages + (if (hasChpx) chpx.pages else ByteArray(0)), tableParts = parts)
     }
 
     // --- sprms -------------------------------------------------------------------------------
@@ -113,10 +135,38 @@ internal object DocRichFixtures {
     /** A sprm with a 2-byte operand. */
     fun sprmWord(opcode: Int, operand: Int): ByteArray = byteArrayOf(lo(opcode), hi(opcode), lo(operand), hi(operand))
 
+    /** A sprm with a 4-byte operand. */
+    fun sprmDword(opcode: Int, operand: Long): ByteArray =
+        byteArrayOf(lo(opcode), hi(opcode)) + ByteArray(4) { ((operand shr (it * 8)) and 0xFF).toByte() }
+
+    /** A sprm with a length-prefixed operand. */
+    fun sprmVar(opcode: Int, operand: ByteArray): ByteArray =
+        byteArrayOf(lo(opcode), hi(opcode), operand.size.toByte()) + operand
+
+    /** A COLORREF sprm operand for `0xRRGGBB`; [auto] writes the automatic flag instead. */
+    fun sprmColor(opcode: Int, rgb: Int, auto: Boolean = false): ByteArray =
+        byteArrayOf(lo(opcode), hi(opcode), (rgb shr 16).toByte(), (rgb shr 8).toByte(), rgb.toByte(), if (auto) 0xFF.toByte() else 0)
+
     fun grpprl(vararg sprms: ByteArray): ByteArray = sprms.fold(ByteArray(0)) { acc, next -> acc + next }
 
     const val PJC = 0x2461
     const val PDXALEFT = 0x845E
+    const val CFBOLD = 0x0835
+    const val CFITALIC = 0x0836
+    const val CFSTRIKE = 0x0837
+    const val CFDSTRIKE = 0x2A53
+    const val CKUL = 0x2A3E
+    const val CISS = 0x2A48
+    const val CHPSPOS = 0x4845
+    const val CICO = 0x2A42
+    const val CCV = 0x6870
+    const val CHIGHLIGHT = 0x2A0C
+    const val CSHD80 = 0x4866
+    const val CSHD = 0xCA71
+    const val CRGFTC0 = 0x4A4F
+    const val CRGFTC2 = 0x4A51
+    const val CISTD = 0x4A30
+    const val CPLAIN = 0x2A33
     const val PILVL = 0x260A
     const val PILFO = 0x460B
 
@@ -213,13 +263,12 @@ internal object DocRichFixtures {
         out.u16(style.name.length)
         out.write(style.name.toByteArray(Charsets.UTF_16LE))
         out.u16(0)
-        // A paragraph style's UpxPapx is its own `istd` then the sprms; its UpxChpx follows, empty here.
-        val papx = (if (style.sgc == SGC_PARAGRAPH) byteArrayOf(0, 0) + style.papx else ByteArray(0))
+        // A paragraph style's UpxPapx is its own `istd` then the sprms; its UpxChpx follows.
         if (style.sgc == SGC_PARAGRAPH) {
-            out.upx(papx)
-            out.upx(ByteArray(0))
+            out.upx(byteArrayOf(0, 0) + style.papx)
+            out.upx(style.chpx)
         } else {
-            out.upx(ByteArray(0))
+            out.upx(style.chpx)
         }
         return out.toByteArray()
     }
@@ -271,6 +320,62 @@ internal object DocRichFixtures {
         return PapxPages(out.toByteArray(), firsts)
     }
 
+    private class ChpxEntry(val from: Long, val to: Long, val grpprl: ByteArray)
+
+    /**
+     * CHPX FKP pages for [entries], which must tile the text: a run's entry is the word offset of its
+     * CHPX (a length byte and the sprms), or 0 for a run with none. A page holds up to 101 runs.
+     */
+    private fun chpxPages(entries: List<ChpxEntry>): PapxPages {
+        val out = ByteArrayOutputStream()
+        val firsts = ArrayList<Long>()
+        var i = 0
+        while (i < entries.size) {
+            var count = 0
+            var used = 4
+            while (i + count < entries.size && count < MAX_CHPX_PER_PAGE) {
+                val entry = entries[i + count]
+                val need = 4 + 1 + if (entry.grpprl.isEmpty()) 0 else (1 + entry.grpprl.size + 1) / 2 * 2
+                if (used + need > PAGE - 2) break
+                used += need
+                count++
+            }
+            check(count > 0) { "a single run's properties do not fit a page" }
+            val page = ByteArray(PAGE)
+            val group = entries.subList(i, i + count)
+            firsts += group.first().from
+            group.forEachIndexed { k, entry -> put32(page, k * 4, entry.from) }
+            put32(page, count * 4, group.last().to)
+            var top = PAGE - 2
+            group.forEachIndexed { k, entry ->
+                if (entry.grpprl.isEmpty()) return@forEachIndexed
+                val body = byteArrayOf(entry.grpprl.size.toByte()) + entry.grpprl
+                top -= (body.size + 1) / 2 * 2
+                body.copyInto(page, top)
+                page[(count + 1) * 4 + k] = (top / 2).toByte()
+            }
+            page[PAGE - 1] = count.toByte()
+            out.write(page)
+            i += count
+        }
+        return PapxPages(out.toByteArray(), firsts)
+    }
+
+    /** An SttbfFfn: each FFN is a length byte, 39 bytes of metrics and the NUL-terminated face name. */
+    private fun sttbfFfn(names: List<String>): ByteArray {
+        val out = ByteArrayOutputStream()
+        out.u16(names.size)
+        out.u16(0) // cbExtra
+        for (name in names) {
+            val face = name.toByteArray(Charsets.UTF_16LE)
+            out.write(FFN_METRICS_BYTES + face.size + 2)
+            repeat(FFN_METRICS_BYTES) { out.write(0) }
+            out.write(face)
+            out.u16(0)
+        }
+        return out.toByteArray()
+    }
+
     private fun stored(entry: PapxEntry): Int {
         val props = 2 + entry.grpprl.size
         return if (props % 2 == 1) 1 + props else 2 + props
@@ -307,7 +412,11 @@ internal object DocRichFixtures {
     const val NFC_BULLET = 0x17
     const val NFC_NONE = 0xFF
     private const val PAIR_STSHF = 1
+    private const val PAIR_BTE_CHPX = 12
     private const val PAIR_BTE_PAPX = 13
+    private const val PAIR_STTBFFFN = 15
+    private const val MAX_CHPX_PER_PAGE = 101
+    private const val FFN_METRICS_BYTES = 39
     private const val PAIR_PLFLST = 73
     private const val PAIR_PLFLFO = 74
     private const val LVLF_BYTES = 28
