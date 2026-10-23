@@ -3,6 +3,7 @@ package com.papyrus.app.viewer
 /**
  * Text → blocks. A cell ends with a cell mark (0x07) and the row's TTP follows the last cell's
  * mark, so `cell\x07cell\x07\x07` is one row; nested tables arrive as plain paragraph marks.
+ * Each paragraph becomes a [OfficeBlock.Heading] or an [OfficeBlock.Paragraph] by its style.
  */
 internal class DocBlockBuilder(private val maxBlocks: Int) {
     private enum class State { PARA, ROW, BETWEEN }
@@ -21,14 +22,28 @@ internal class DocBlockBuilder(private val maxBlocks: Int) {
     var full = false
         private set
 
-    fun feed(text: String) {
-        for (ch in text) {
+    /** Adds [text], whose characters [runs] describe in order; text past the last run has no properties. */
+    fun feed(text: String, runs: Sequence<DocRun>) {
+        var at = 0
+        for (run in runs) {
+            val end = minOf(at + run.length, text.length)
+            if (!feedRange(text, at, end, run.para)) return
+            at = end
+            if (at >= text.length) return
+        }
+        feedRange(text, at, text.length, null)
+    }
+
+    /** False once the block budget is spent. */
+    private fun feedRange(text: String, from: Int, to: Int, para: DocParaProps?): Boolean {
+        for (i in from until to) {
             if (blocks.size >= maxBlocks) {
                 full = true
-                return
+                return false
             }
-            append(ch)
+            append(text[i], para)
         }
+        return true
     }
 
     fun finish(): List<OfficeBlock> {
@@ -37,11 +52,11 @@ internal class DocBlockBuilder(private val maxBlocks: Int) {
             commitRow()
         }
         flushTable()
-        flushParagraph()
+        flushParagraph(null)
         return blocks
     }
 
-    private fun append(ch: Char) {
+    private fun append(ch: Char, para: DocParaProps?) {
         when (ch) {
             FIELD_BEGIN -> {
                 if (fieldDepth.size < MAX_FIELD_DEPTH) fieldDepth.addLast(false)
@@ -58,7 +73,7 @@ internal class DocBlockBuilder(private val maxBlocks: Int) {
             // Marks are honoured even inside a field instruction: structure survives a
             // malformed field, while its text is dropped by the check below.
             '\r', LINE_BREAK, PAGE_BREAK -> {
-                paragraphMark()
+                paragraphMark(para)
                 return
             }
             CELL_MARK -> {
@@ -75,17 +90,17 @@ internal class DocBlockBuilder(private val maxBlocks: Int) {
 
     private fun target(): StringBuilder = if (state == State.ROW) cell else paragraph
 
-    private fun paragraphMark() {
+    private fun paragraphMark(para: DocParaProps?) {
         when (state) {
             State.ROW -> cell.append('\n')
             State.BETWEEN -> {
                 // The paragraph after a TTP proves the table ended; a next row would have
                 // arrived as a cell mark first.
                 flushTable()
-                flushParagraph()
+                flushParagraph(para)
                 state = State.PARA
             }
-            State.PARA -> flushParagraph()
+            State.PARA -> flushParagraph(para)
         }
     }
 
@@ -121,10 +136,16 @@ internal class DocBlockBuilder(private val maxBlocks: Int) {
         tableUsable = true
     }
 
-    private fun flushParagraph() {
+    private fun flushParagraph(para: DocParaProps?) {
         val text = paragraph.toString()
-        if (text.isNotBlank() && blocks.size < maxBlocks) blocks += OfficeBlock.Paragraph(text)
+        if (text.isNotBlank() && blocks.size < maxBlocks) blocks += blockFor(text, para)
         paragraph.setLength(0)
+    }
+
+    private fun blockFor(text: String, para: DocParaProps?): OfficeBlock = when {
+        para == null -> OfficeBlock.Paragraph(text)
+        para.headingLevel > 0 -> OfficeBlock.Heading(text, para.headingLevel, align = para.align)
+        else -> OfficeBlock.Paragraph(text, align = para.align, indent = indentLevel(para.leftTwips))
     }
 }
 

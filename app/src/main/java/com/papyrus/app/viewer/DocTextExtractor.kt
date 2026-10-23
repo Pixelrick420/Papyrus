@@ -32,7 +32,7 @@ object DocTextExtractor {
         if (fib.ccpText == 0) return emptyList()
         val pieces = DocPieceTable.parse(readClx(cfb, fib))
         val builder = DocBlockBuilder(maxBlocks)
-        decodePieces(cfb, fib, pieces, builder)
+        decodePieces(cfb, fib, pieces, DocFormattingParser.open(cfb, fib), builder)
         return builder.finish()
     }
 
@@ -43,7 +43,13 @@ object DocTextExtractor {
         return cfb.read(fib.tableStream, fib.fc(DocFib.PAIR_CLX), lcbClx.toInt())
     }
 
-    private fun decodePieces(cfb: CompoundFile, fib: DocFib, pieces: DocPieceTable, builder: DocBlockBuilder) {
+    private fun decodePieces(
+        cfb: CompoundFile,
+        fib: DocFib,
+        pieces: DocPieceTable,
+        formatting: DocFormattingParser,
+        builder: DocBlockBuilder,
+    ) {
         val ccp = fib.ccpText.toLong()
         var consumed = 0L
         for (i in 0 until pieces.count) {
@@ -59,8 +65,10 @@ object DocTextExtractor {
             consumed += use
             val compressed = pieces.isCompressed(i)
             val byteLen = (if (compressed) use else use * 2).toInt()
-            val raw = cfb.read(DocFib.WORD_DOCUMENT, pieces.byteOffset(i), byteLen)
-            builder.feed(if (compressed) decodeCompressed(raw) else String(raw, Charsets.UTF_16LE))
+            val offset = pieces.byteOffset(i)
+            val raw = cfb.read(DocFib.WORD_DOCUMENT, offset, byteLen)
+            val text = if (compressed) decodeCompressed(raw) else String(raw, Charsets.UTF_16LE)
+            builder.feed(text, formatting.runs(offset, text.length, if (compressed) 1 else 2))
         }
     }
 }
