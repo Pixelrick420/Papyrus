@@ -16,6 +16,14 @@ internal class DocParaProps(val istd: Int) {
     var inTable = false
         private set
 
+    /** 1-based index of the paragraph's list instance (`sprmPIlfo`), or 0 when it is in no list. */
+    var ilfo = 0
+        private set
+
+    /** Level within the list (`sprmPIlvl`): 0 to 8, or past that for a list paragraph that shows no number. */
+    var ilvl = 0
+        private set
+
     /** Heading 1 to 6 from the paragraph's style, or 0 for body text. Set by [DocStyleSheet]. */
     var headingLevel = 0
         internal set
@@ -26,6 +34,8 @@ internal class DocParaProps(val istd: Int) {
         out.align = align
         out.leftTwips = leftTwips
         out.inTable = inTable
+        out.ilfo = ilfo
+        out.ilvl = ilvl
         out.headingLevel = headingLevel
         return out
     }
@@ -38,6 +48,9 @@ internal class DocParaProps(val istd: Int) {
                 PJC80, PJC -> align = alignmentOf(reader.u8())
                 PDXALEFT80, PDXALEFT -> leftTwips = reader.i16()
                 PFINTABLE -> inTable = reader.u8() != 0
+                // A negative `ilfo` names an old outline-numbered list, which is not read: no list.
+                PILFO -> ilfo = reader.i16().coerceAtLeast(0)
+                PILVL -> ilvl = reader.u8()
             }
         }
     }
@@ -55,6 +68,8 @@ internal class DocParaProps(val istd: Int) {
         const val PDXALEFT80 = 0x840F
         const val PDXALEFT = 0x845E
         const val PFINTABLE = 0x2416
+        const val PILVL = 0x260A
+        const val PILFO = 0x460B
         const val JC_CENTER = 1
         const val JC_RIGHT = 2
     }

@@ -31,7 +31,7 @@ object DocTextExtractor {
         val fib = DocFibParser.parse(cfb)
         if (fib.ccpText == 0) return emptyList()
         val pieces = DocPieceTable.parse(readClx(cfb, fib))
-        val builder = DocBlockBuilder(maxBlocks)
+        val builder = DocBlockBuilder(maxBlocks, DocListTables.parse(cfb, fib))
         decodePieces(cfb, fib, pieces, DocFormattingParser.open(cfb, fib), builder)
         return builder.finish()
     }
