@@ -15,6 +15,18 @@ internal object DocFixtures {
     class Piece(val text: String, val compressed: Boolean = true)
 
     /**
+     * A structure appended to the table stream after the Clx and named by FibRgFcLcb97 entry [pair].
+     * [lcb] is what the FIB records; it is shorter than [bytes] for a structure with data trailing it.
+     */
+    class TablePart(val pair: Int, val bytes: ByteArray, val lcb: Int = bytes.size)
+
+    /** Where a structure that follows the text of [textBytes] bytes starts in `WordDocument`: FKP pages are 512-aligned. */
+    fun tailOffset(textBytes: Int): Int = (FIB_SIZE + textBytes + PAGE - 1) / PAGE * PAGE
+
+    /** Size of `WordDocument` up to its first text byte; piece text is laid out from here. */
+    const val TEXT_OFFSET = 0x382
+
+    /**
      * A complete single-table-stream `.doc`. Corruption knobs cover every rejection the extractor
      * performs; [pieces] replaces the single-text-piece default for mixed-encoding tests.
      */
@@ -32,6 +44,8 @@ internal object DocFixtures {
         lcbClx: Int? = null,
         clxOverride: ByteArray? = null,
         prcPrefix: Boolean = false,
+        wordTail: ByteArray? = null,
+        tableParts: List<TablePart> = emptyList(),
     ): ByteArray {
         val specs = pieces ?: listOf(Piece(text))
         var offset = FIB_SIZE
@@ -43,6 +57,12 @@ internal object DocFixtures {
         }
         val pcdt = clxOverride ?: pcdt(laid)
         val clx = (if (prcPrefix) prcChunk() else ByteArray(0)) + pcdt
+        var tableEnd = clx.size
+        val pairs = HashMap<Int, Pair<Int, Int>>()
+        for (part in tableParts) {
+            pairs[part.pair] = tableEnd to part.lcb
+            tableEnd += part.bytes.size
+        }
         val fib = buildFib(
             ccpText = ccpText ?: specs.sumOf { it.text.length },
             wIdent = wIdent,
@@ -50,16 +70,21 @@ internal object DocFixtures {
             flags = flags,
             fcClx = fcClx,
             lcbClx = lcbClx ?: clx.size,
+            pairs = pairs,
         )
         val word = ByteArrayOutputStream(fib.size + offset)
             .also { out ->
                 out.write(fib)
                 laid.forEach { out.write(it.bytes) }
+                if (wordTail != null) {
+                    repeat(tailOffset(offset - FIB_SIZE) - offset) { out.write(0) }
+                    out.write(wordTail)
+                }
             }
             .toByteArray()
         val streams = LinkedHashMap<String, ByteArray>()
         if (!omitWordDocument) streams[WORD_DOCUMENT] = word
-        if (!omitTable) streams[tableStream] = clx
+        if (!omitTable) streams[tableStream] = tableParts.fold(clx) { acc, part -> acc + part.bytes }
         return compound(streams)
     }
 
@@ -123,7 +148,15 @@ internal object DocFixtures {
         return out.toByteArray()
     }
 
-    private fun buildFib(ccpText: Int, wIdent: Int, nFib: Int, flags: Int, fcClx: Int, lcbClx: Int): ByteArray {
+    private fun buildFib(
+        ccpText: Int,
+        wIdent: Int,
+        nFib: Int,
+        flags: Int,
+        fcClx: Int,
+        lcbClx: Int,
+        pairs: Map<Int, Pair<Int, Int>>,
+    ): ByteArray {
         val fib = ByteArray(FIB_SIZE)
         putU16(fib, 0x00, wIdent)
         putU16(fib, 0x02, nFib)
@@ -134,6 +167,10 @@ internal object DocFixtures {
         putU16(fib, 0x98, 93) // cbRgFcLcb
         putU32(fib, 0x1A2, fcClx.toLong())
         putU32(fib, 0x1A6, lcbClx.toLong())
+        for ((pair, location) in pairs) {
+            putU32(fib, FIB_PAIRS + pair * 8, location.first.toLong())
+            putU32(fib, FIB_PAIRS + pair * 8 + 4, location.second.toLong())
+        }
         return fib
     }
 
@@ -319,7 +356,9 @@ internal object DocFixtures {
 
     private const val HEADER_SIZE = 512
     private const val ENTRY_SIZE = 128
-    private const val FIB_SIZE = 0x382
+    private const val FIB_SIZE = TEXT_OFFSET
+    private const val FIB_PAIRS = 0x9A
+    private const val PAGE = 512
     private const val MINI_CUTOFF = 4096
     private const val MINI_SECTOR_SIZE = 64
     private const val DIFAT_HEADER_ENTRIES = 109
