@@ -3,40 +3,62 @@ package com.papyrus.app.viewer
 import java.io.IOException
 
 /**
- * [length] consecutive characters of a piece that share one paragraph's properties. [para] is null
- * when the document carries no paragraph properties at all, which is how plain text is told apart
- * from text whose paragraphs were all in the default style.
+ * [length] consecutive characters of a piece that share one paragraph's properties and one
+ * [format]. [para] is null when the document carries no paragraph properties at all, which is how
+ * plain text is told apart from text whose paragraphs were all in the default style.
  */
-internal class DocRun(val length: Int, val para: DocParaProps?)
+internal class DocRun(val length: Int, val para: DocParaProps?, val format: CharFormat = CharFormat.PLAIN)
 
 /**
  * Where a document keeps its formatting, and the way into it: the style sheet, and the paragraph
- * property runs (PAPX) found through a piece's `fc`. Everything here is optional enrichment, so a
- * structure that is missing or damaged is dropped and the text is read without it.
+ * (PAPX) and character (CHPX) property runs found through a piece's `fc`. Everything here is optional
+ * enrichment, so a structure that is missing or damaged is dropped and the text is read without it.
  */
 internal class DocFormattingParser private constructor(
     private val styles: DocStyleSheet,
     private val papx: DocFkpIndex?,
+    private val chpx: DocFkpIndex?,
+    private val chars: DocCharResolver,
 ) {
     /**
      * The runs of the [charCount] characters whose first sits at byte offset [fcFrom] of the
-     * `WordDocument` stream, each character [bytesPerChar] bytes wide. Lazy: a piece can hold 16
-     * million characters and the block budget usually ends the walk long before.
+     * `WordDocument` stream, each character [bytesPerChar] bytes wide: one per stretch over which
+     * neither the paragraph nor the character properties change. Lazy: a piece can hold 16 million
+     * characters and the block budget usually ends the walk long before.
      */
     fun runs(fcFrom: Long, charCount: Int, bytesPerChar: Int): Sequence<DocRun> {
-        if (papx == null) return sequenceOf(DocRun(charCount, null))
+        if (papx == null && chpx == null) return sequenceOf(DocRun(charCount, null))
         return sequence {
             val fcTo = fcFrom + charCount.toLong() * bytesPerChar
+            val paragraphs = papx?.runs(fcFrom, fcTo)?.iterator()
+            val characters = chpx?.runs(fcFrom, fcTo)?.iterator()
+            var paragraph = paragraphs?.nextOrNull()
+            var character = characters?.nextOrNull()
+            var props: DocParaProps? = paragraph?.let { paragraphOf(it) }
             var emitted = 0
-            for (run in papx.runs(fcFrom, fcTo)) {
-                val upTo = ((run.to - fcFrom) / bytesPerChar).coerceAtMost(charCount.toLong()).toInt()
-                if (upTo <= emitted) continue
-                yield(DocRun(upTo - emitted, paragraphOf(run)))
-                emitted = upTo
+            var pos = fcFrom
+            while (pos < fcTo) {
+                val end = minOf(paragraph?.to ?: fcTo, character?.to ?: fcTo)
+                if (end <= pos) break
+                val upTo = ((end - fcFrom) / bytesPerChar).coerceAtMost(charCount.toLong()).toInt()
+                if (upTo > emitted) {
+                    val istd = props?.istd ?: 0
+                    val format = character?.let { chars.format(istd, it.page, it.start, it.end) } ?: chars.format(istd, null, 0, 0)
+                    yield(DocRun(upTo - emitted, props, format))
+                    emitted = upTo
+                }
+                pos = end
+                if (paragraph != null && paragraph.to <= pos) {
+                    paragraph = paragraphs?.nextOrNull()
+                    props = paragraph?.let { paragraphOf(it) }
+                }
+                if (character != null && character.to <= pos) character = characters?.nextOrNull()
             }
-            if (emitted < charCount) yield(DocRun(charCount - emitted, styles.ofStyle(0)))
+            if (emitted < charCount) yield(DocRun(charCount - emitted, papx?.let { styles.ofStyle(0) }))
         }
     }
+
+    private fun <T> Iterator<T>.nextOrNull(): T? = if (hasNext()) next() else null
 
     /** A PAPX is the paragraph's `istd` then its direct sprms; a paragraph with none is in Normal. */
     private fun paragraphOf(run: DocFkpIndex.Run): DocParaProps {
@@ -45,14 +67,17 @@ internal class DocFormattingParser private constructor(
     }
 
     companion object {
-        /** FibRgFcLcb97 index of fcPlcfBtePapx. */
+        /** FibRgFcLcb97 indexes of fcPlcfBteChpx and fcPlcfBtePapx. */
+        const val PAIR_BTE_CHPX = 12
         const val PAIR_BTE_PAPX = 13
 
         fun open(cfb: CompoundFile, fib: DocFib): DocFormattingParser {
             val streamSize = cfb.streamSize(DocFib.WORD_DOCUMENT) ?: 0L
             val pages = DocPageReader(cfb, streamSize)
             val papx = DocFkpIndex.open(cfb, fib, PAIR_BTE_PAPX, pages, paragraph = true)
-            return DocFormattingParser(DocStyleSheet.parse(cfb, fib), papx)
+            val chpx = DocFkpIndex.open(cfb, fib, PAIR_BTE_CHPX, pages, paragraph = false)
+            val styles = DocStyleSheet.parse(cfb, fib)
+            return DocFormattingParser(styles, papx, chpx, DocCharResolver(styles, DocFontTable.parse(cfb, fib)))
         }
     }
 }

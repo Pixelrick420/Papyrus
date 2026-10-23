@@ -23,6 +23,8 @@ internal class DocStyleSheet private constructor(private val styles: Array<Style
         val name: String,
         /** Sprms of a paragraph style's UpxPapx, past its own `istd`. */
         val papx: ByteArray?,
+        /** Sprms of the style's UpxChpx: the text formatting a paragraph or character style gives. */
+        val chpx: ByteArray?,
     )
 
     private val resolved = arrayOfNulls<DocParaProps>(styles.size)
@@ -48,6 +50,18 @@ internal class DocStyleSheet private constructor(private val styles: Array<Style
         if (index in resolved.indices) resolved[index] = props
         return props
     }
+
+    /**
+     * Character sprms of style [istd] and of every style it is based on, root first, so applying them in
+     * order gives the style's formatting. None for a style the sheet lacks.
+     */
+    fun charSprms(istd: Int): List<ByteArray> {
+        val chain = chainOf(istd)
+        return chain.indices.reversed().mapNotNull { styles[chain[it]]?.chpx }
+    }
+
+    /** Whether the sheet has a style [istd] at all. */
+    fun has(istd: Int): Boolean = styles.getOrNull(istd) != null
 
     /** [istd] and the styles it is based on, nearest first; a cycle or an absurd depth ends the chain. */
     private fun chainOf(istd: Int): List<Int> {
@@ -92,6 +106,7 @@ internal class DocStyleSheet private constructor(private val styles: Array<Style
         private const val MAX_CHAIN = 64
         private const val STDF_BASE_BYTES = 10
         private const val SGC_PARAGRAPH = 1
+        private const val SGC_CHARACTER = 2
         private const val STI_HEADING_1 = 1
         private const val STI_HEADING_9 = 9
         private const val MAX_HEADING_LEVEL = 6
@@ -141,15 +156,24 @@ internal class DocStyleSheet private constructor(private val styles: Array<Style
             val nameChars = u16(data, nameAt)
             val nameEnd = nameAt + 2 + nameChars * 2
             val name = if (nameEnd + 2 <= limit) String(data, nameAt + 2, nameChars * 2, Charsets.UTF_16LE) else ""
-            // The first UPX follows the name's two-byte terminator; a paragraph style's is its UpxPapx.
-            val upxAt = nameEnd + 2
-            var papx: ByteArray? = null
-            if (kind == SGC_PARAGRAPH && cupx > 0 && upxAt + 2 <= limit) {
-                val len = u16(data, upxAt)
-                // The UpxPapx opens with its own `istd`, which the sprms follow.
-                if (len >= 2 && upxAt + 2 + len <= limit) papx = data.copyOfRange(upxAt + 4, upxAt + 2 + len)
+            // The UPXs follow the name's two-byte terminator: a length, then that many bytes, padded to even.
+            val upxs = ArrayList<ByteArray>(cupx)
+            var pos = nameEnd + 2
+            for (k in 0 until cupx) {
+                if (pos + 2 > limit) break
+                val len = u16(data, pos)
+                if (pos + 2 + len > limit) break
+                upxs += data.copyOfRange(pos + 2, pos + 2 + len)
+                pos += 2 + len + (len and 1)
             }
-            return Style(sti, kind, base, name, papx)
+            // A paragraph style has a UpxPapx (its own `istd`, then sprms) and a UpxChpx; a character style only the latter.
+            val papx = if (kind == SGC_PARAGRAPH) upxs.getOrNull(0)?.takeIf { it.size >= 2 }?.copyOfRange(2, upxs[0].size) else null
+            val chpx = when (kind) {
+                SGC_PARAGRAPH -> upxs.getOrNull(1)
+                SGC_CHARACTER -> upxs.getOrNull(0)
+                else -> null
+            }
+            return Style(sti, kind, base, name, papx, chpx)
         }
     }
 }
