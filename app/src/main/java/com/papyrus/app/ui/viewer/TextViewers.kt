@@ -482,16 +482,18 @@ private fun PlainTextList(
     val columnPx = remember(measurer, textStyle) { measurer.measure(COLUMN_PROBE, textStyle).size.width / COLUMN_PROBE.length.toFloat() }
 
     val gutter = if (options.showLineNumbers) {
-        val gapPx = with(density) { GutterGap.toPx() }
-        val digits = options.lineCount.coerceAtLeast(1).toString().length
+        val ruleGapPx = with(density) { GutterRuleGap.toPx() }
+        val digits = gutterDigits(options.lineCount, chunks.lastOrNull()?.endsWith('\n') == true)
+        val numberFieldPx = columnPx * digits
         val numberColor = colors.onSurfaceVariant.copy(alpha = GUTTER_ALPHA)
         val dividerColor = colors.outlineVariant
         // Remembered, so the chunks on screen are not all handed a new object, and recompose, on
         // every pass.
-        remember(columnPx, gapPx, digits, measurer, textStyle, numberColor, dividerColor) {
+        remember(numberFieldPx, ruleGapPx, measurer, textStyle, numberColor, dividerColor) {
             Gutter(
-                widthPx = columnPx * digits + gapPx * 2,
-                gapPx = gapPx,
+                numberFieldPx = numberFieldPx,
+                ruleGapPx = ruleGapPx,
+                widthPx = numberFieldPx + ruleGapPx,
                 measurer = measurer,
                 style = textStyle.copy(color = numberColor),
                 dividerColor = dividerColor,
@@ -649,8 +651,9 @@ private fun TextChunk(
 /** Sizes and style of the line-number column, in the pixels of the zoom it was measured at. */
 @Immutable
 private class Gutter(
+    val numberFieldPx: Float,
+    val ruleGapPx: Float,
     val widthPx: Float,
-    val gapPx: Float,
     val measurer: TextMeasurer,
     val style: TextStyle,
     val dividerColor: Color,
@@ -665,10 +668,10 @@ private fun DrawScope.drawGutter(marks: List<GutterMark>, layout: TextLayoutResu
     for (mark in marks) {
         drawText(
             mark.number,
-            topLeft = Offset(gutter.widthPx - gutter.gapPx - mark.number.size.width, top + layout.getLineTop(mark.row)),
+            topLeft = Offset(gutter.numberFieldPx - mark.number.size.width, top + layout.getLineTop(mark.row)),
         )
     }
-    val dividerX = gutter.widthPx - gutter.gapPx / 2
+    val dividerX = gutter.numberFieldPx + gutter.ruleGapPx / 2
     drawLine(gutter.dividerColor, Offset(dividerX, 0f), Offset(dividerX, size.height), strokeWidth = 1.dp.toPx())
 }
 
@@ -964,7 +967,7 @@ private val MARKDOWN_BASE_SP = MARKDOWN_BASE_TEXT_SP.sp
 private const val LINE_SPACING_MULTIPLIER = 1.25f
 
 private val NO_LINES = IntArray(0)
-private val GutterGap = 8.dp
+private val GutterRuleGap = 8.dp
 private val ChunkVerticalPadding = 2.dp
 private const val COLUMN_PROBE = "0000000000"
 private const val GUTTER_ALPHA = 0.7f
