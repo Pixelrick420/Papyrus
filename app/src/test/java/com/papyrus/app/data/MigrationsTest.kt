@@ -104,7 +104,7 @@ class MigrationsTest {
         assertEquals(Migrations.BASELINE_VERSION, Migrations.ALL.first().startVersion)
         assertEquals(Migrations.CURRENT_VERSION, Migrations.ALL.last().endVersion)
         assertEquals(
-            listOf(4 to 5, 5 to 6),
+            listOf(4 to 5, 5 to 6, 6 to 7),
             Migrations.ALL.map { it.startVersion to it.endVersion },
         )
     }
@@ -224,5 +224,36 @@ class MigrationsTest {
         val triggers = Regex("\"CREATE TRIGGER [^\"]*\"").findAll(exported).count()
 
         assertEquals(Migrations.V5_TO_V6_SQL.size, tables + triggers)
+    }
+
+    @Test
+    fun `the 6 to 7 statements only add, and the new table leaves with its document`() {
+        for (sql in Migrations.V6_TO_V7_SQL) {
+            assertTrue(
+                "not an additive, re-runnable statement: $sql",
+                Regex("^CREATE (TABLE|INDEX) IF NOT EXISTS ").containsMatchIn(sql),
+            )
+        }
+        val table = Migrations.V6_TO_V7_SQL.single { it.startsWith("CREATE TABLE") }
+        assertTrue(
+            "a deleted document must not leave its highlights behind: $table",
+            "REFERENCES `documents`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE" in table,
+        )
+    }
+
+    @Test
+    fun `every 6 to 7 statement is exactly what the exported schema says`() {
+        val exported = schemaFile(7).readText().replace(Regex("\\s+"), " ")
+        for (sql in Migrations.V6_TO_V7_SQL) {
+            val normalized = sql
+                .replace(Regex("(?<=IF NOT EXISTS )`\\w+`(?= \\()")) { "`\${TABLE_NAME}`" }
+                .replace(Regex("(?<= ON )`\\w+`")) { "`\${TABLE_NAME}`" }
+                .replace(Regex("\\s+"), " ")
+                .trim()
+            assertTrue(
+                "not in the exported schema, so the entity and the migration disagree:\n$normalized",
+                normalized in exported,
+            )
+        }
     }
 }

@@ -11,7 +11,7 @@ object Migrations {
     const val BASELINE_VERSION = 4
 
     /** The version in `@Database`; raise it together with a migration in [ALL]. */
-    const val CURRENT_VERSION = 6
+    const val CURRENT_VERSION = 7
 
     /**
      * 4 -> 5. Every statement only adds, so existing rows keep their ids and the files under
@@ -88,8 +88,28 @@ object Migrations {
         }
     }
 
+    /**
+     * 6 -> 7. Adds the `highlights` table, which only adds: no existing row is touched. It is written like the
+     * `bookmarks` table of 4 -> 5 (same key, same cascade), and MigrationsTest holds it to the exported `7.json`.
+     */
+    internal val V6_TO_V7_SQL: List<String> = listOf(
+        "CREATE TABLE IF NOT EXISTS `highlights` (" +
+            "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+            "`documentId` INTEGER NOT NULL, " +
+            "`page` INTEGER NOT NULL, " +
+            "`rects` TEXT NOT NULL, " +
+            "FOREIGN KEY(`documentId`) REFERENCES `documents`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "CREATE INDEX IF NOT EXISTS `index_highlights_documentId` ON `highlights` (`documentId`)",
+    )
+
+    private val MIGRATION_6_7 = object : Migration(6, 7) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            V6_TO_V7_SQL.forEach { db.execSQL(it) }
+        }
+    }
+
     /** Hand-written migrations, oldest first. */
-    val ALL: Array<Migration> = arrayOf(MIGRATION_4_5, MIGRATION_5_6)
+    val ALL: Array<Migration> = arrayOf(MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
 
     /**
      * Problems with [migrations] as a chain from [baseline] to [current], one message each, empty when

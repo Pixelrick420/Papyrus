@@ -95,6 +95,8 @@ access</string>
     <string name="viewer_pdf_no_text">This page has no selectable text.</string>
     <string name="viewer_link_failed">No app can open that link.</string>
     <string name="viewer_selection_clear">Clear selection</string>
+    <string name="viewer_highlight">Highlight</string>
+    <string name="viewer_highlight_remove">Remove highlight</string>
     <string name="viewer_error_epub_protected">This book is protected by DRM and can\'t be opened here.</string>
     <string name="viewer_incomplete">… (part of this document couldn\'t be shown)</string>
     <string name="viewer_truncated">… (file truncated for display)</string>

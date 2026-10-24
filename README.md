@@ -6,7 +6,7 @@
 
 <p align="center">
   <em>Offline document viewer for Android: PDF, Word, OpenDocument, EPUB, Markdown, text and code.</em><br>
-  <sub>No internet permission. No ads, no accounts, no analytics.</sub>
+  <sub>No internet permission. No ads. No accounts. No analytics.</sub>
 </p>
 
 <p align="center">
@@ -116,6 +116,8 @@ automatically and can be changed from the viewer menu.
 - **PDF outline and go to page** (Ctrl+G). The PDF's own bookmarks become a foldable **Outline**, and a long one starts
   folded.
 - **Bookmarks** (Ctrl+D) in every format: named or positional, rename and delete with Undo, at most 200 per document.
+- **PDF highlights** for library files: long-press to select text, then tap **Highlight**. Select highlighted text and
+  tap **Remove highlight** to take it off. They are kept in Papyrus's own database, so the PDF itself is never changed.
 - **Reading position** reopens a document where you stopped, at the same zoom, even after a rotation. A switch in
   Settings turns it off.
 - **Read aloud** speaks the page, chunk, block or paragraph, shades the sentence being read (and the word, where the
@@ -221,7 +223,7 @@ runs. Read aloud uses the text the viewer already extracted.
 flowchart LR
   A["Another app<br/>hands over a document"] --> C{"Which format?<br/>extension, MIME type, then the first 8 KB"}
   B["File picker"] --> C
-  C --> D["Library index<br/>one row per document, plus positions, bookmarks and searchable text"]
+  C --> D["Library index<br/>one row per document, plus positions, bookmarks, highlights and searchable text"]
   D --> E["Viewer"]
   E --> F["PDF"]
   E --> G["Markdown"]
@@ -235,11 +237,12 @@ flowchart LR
 The index is one Room row per document: URI, title, format, size, and the added and last-opened timestamps. Page count
 and MIME type are read live, so they are not stored.
 
-The current schema is 6. Version 4 is the oldest supported one, since earlier versions were test-only. Version 5 adds a
+The current schema is 7. Version 4 is the oldest supported one, since earlier versions were test-only. Version 5 adds a
 `reading_progress` table with one row per document, a `bookmarks` table, and `documents.isFavourite`. Version 6 adds
 the content index: a `document_text` table holding each document's extracted text and its index state, and a
-`document_text_fts` FTS4 table over it that stores only the inverted index, so no text is kept twice. Each of
-`reading_progress`, `bookmarks` and `document_text` references `documents(id)` with `ON DELETE CASCADE`, so deleting a
+`document_text_fts` FTS4 table over it that stores only the inverted index, so no text is kept twice. Version 7 adds a
+`highlights` table: a row per highlighted run of text on a page, holding its boxes on the page and no text. Each of
+`reading_progress`, `bookmarks`, `highlights` and `document_text` references `documents(id)` with `ON DELETE CASCADE`, so deleting a
 document removes its rows. `documents` rows are never written with `OnConflictStrategy.REPLACE`, because that deletes
 and reinserts, which would cascade the children away. Migrations are plain SQL in `data/Migrations.kt`, and every
 version's schema is exported to `app/schemas/` with a test that fails if one is missing.
@@ -250,6 +253,7 @@ version's schema is exported to `app/schemas/` with a test that fails if one is 
 erDiagram
     DOCUMENTS ||--o| READING_PROGRESS : "keeps one position"
     DOCUMENTS ||--o{ BOOKMARKS : "holds"
+    DOCUMENTS ||--o{ HIGHLIGHTS : "marks"
     DOCUMENTS ||--o| DOCUMENT_TEXT : "has one extracted text"
     DOCUMENT_TEXT ||--o| DOCUMENT_TEXT_FTS : "is indexed by"
 
@@ -283,6 +287,13 @@ erDiagram
         REAL locationFraction
         TEXT label
         INTEGER createdAt
+    }
+
+    HIGHLIGHTS {
+        INTEGER id PK
+        INTEGER documentId FK
+        INTEGER page
+        TEXT rects
     }
 
     DOCUMENT_TEXT {

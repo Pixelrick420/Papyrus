@@ -14,6 +14,7 @@ import androidx.room.RoomDatabase
         DocumentEntity::class,
         ReadingProgressEntity::class,
         BookmarkEntity::class,
+        HighlightEntity::class,
         DocumentTextEntity::class,
         DocumentTextFtsEntity::class,
     ],
@@ -27,6 +28,8 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun readingProgressDao(): ReadingProgressDao
 
     abstract fun bookmarkDao(): BookmarkDao
+
+    abstract fun highlightDao(): HighlightDao
 
     abstract fun searchDao(): SearchDao
 
