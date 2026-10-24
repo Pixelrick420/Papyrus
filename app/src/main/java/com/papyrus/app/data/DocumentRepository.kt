@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import androidx.core.content.FileProvider
 import androidx.core.net.toUri
+import com.papyrus.app.viewer.NormRect
 import com.papyrus.app.viewer.OfficeEncryption
 import com.papyrus.app.viewer.PdfEncryption
 import com.papyrus.app.viewer.TextSniffer
@@ -21,6 +22,7 @@ class DocumentRepository(
     private val dao: DocumentDao,
     private val progressDao: ReadingProgressDao,
     private val bookmarkDao: BookmarkDao,
+    private val highlightDao: HighlightDao,
     private val searchDao: SearchDao,
     private val settings: SettingsRepository,
 ) {
@@ -95,6 +97,22 @@ class DocumentRepository(
             label = bookmark.label,
             createdAt = bookmark.createdAt,
         )
+    }
+
+    /** The highlights of library document [id], live; nothing for a transient document, which has no row to hang them from. */
+    fun observeHighlights(id: Long): Flow<List<HighlightEntity>> =
+        if (id <= 0) flowOf(emptyList()) else highlightDao.observe(id)
+
+    /** Stores one highlight per page of [boxesByPage], each page's line boxes in page-relative units. */
+    suspend fun addHighlights(id: Long, boxesByPage: Map<Int, List<NormRect>>) {
+        if (id <= 0 || boxesByPage.isEmpty()) return
+        val rows = boxesByPage.map { (page, boxes) -> HighlightEntity(documentId = id, page = page, rects = encodeRects(boxes)) }
+        withContext(Dispatchers.IO) { highlightDao.insert(rows) }
+    }
+
+    suspend fun deleteHighlights(ids: List<Long>) = withContext(Dispatchers.IO) {
+        // Older SQLite builds cap a statement at 999 variables, so a very large removal goes in slices.
+        ids.chunked(MAX_IDS_PER_STATEMENT).forEach { highlightDao.delete(it) }
     }
 
     private fun handOver(entity: DocumentEntity): Long {

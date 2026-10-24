@@ -13,6 +13,8 @@ import com.papyrus.app.data.AppSettings
 import com.papyrus.app.data.Bookmark
 import com.papyrus.app.data.BookmarkAdd
 import com.papyrus.app.data.BookmarkEntity
+import com.papyrus.app.data.Highlight
+import com.papyrus.app.data.toHighlight
 import com.papyrus.app.data.MAX_BOOKMARKS_PER_DOCUMENT
 import com.papyrus.app.data.cleanBookmarkLabel
 import com.papyrus.app.data.forFormat
@@ -233,6 +235,9 @@ data class ViewerUiState(
      * they are kept under the new row, like the reading position.
      */
     val bookmarksAvailable: Boolean get() = (document?.id ?: 0L) > 0L || savedToLibrary
+
+    /** Highlights hang from a library row for the same reason bookmarks do. */
+    val highlightsAvailable: Boolean get() = bookmarksAvailable
 }
 
 /** What the viewer needs to say about a bookmark change, beyond the list itself updating. */
@@ -335,6 +340,13 @@ class ViewerViewModel(
         persistedIdFlow.flatMapLatest { repository.observeBookmarks(it) },
         _state.map { it.document?.format }.distinctUntilChanged(),
     ) { rows, format -> if (format == null) emptyList() else rows.forFormat(format) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS), emptyList())
+
+    /** This document's highlights; like the bookmarks, scoped to its library row and following it once saved. */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val highlights: StateFlow<List<Highlight>> = persistedIdFlow
+        .flatMapLatest { repository.observeHighlights(it) }
+        .map { rows -> rows.map { it.toHighlight() } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS), emptyList())
 
     private var saveJob: Job? = null
@@ -923,6 +935,18 @@ class ViewerViewModel(
 
     private fun deleteBookmarkRow(id: Long) {
         app.applicationScope.launch { runQuietly { repository.deleteBookmark(id) } }
+    }
+
+    /** Highlights the selected run of text; [boxesByPage] is its line boxes, page-relative. Does nothing without a library row. */
+    fun addHighlights(boxesByPage: Map<Int, List<NormRect>>) {
+        val id = persistedId
+        if (id <= 0) return
+        app.applicationScope.launch { runQuietly { repository.addHighlights(id, boxesByPage) } }
+    }
+
+    fun removeHighlights(ids: List<Long>) {
+        if (ids.isEmpty()) return
+        app.applicationScope.launch { runQuietly { repository.deleteHighlights(ids) } }
     }
 
     /** A bookmark write that fails leaves the list as the database has it, which the screen already shows. */

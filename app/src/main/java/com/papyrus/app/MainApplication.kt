@@ -34,6 +34,7 @@ class MainApplication : Application() {
             database.documentDao(),
             database.readingProgressDao(),
             database.bookmarkDao(),
+            database.highlightDao(),
             database.searchDao(),
             settings,
         )

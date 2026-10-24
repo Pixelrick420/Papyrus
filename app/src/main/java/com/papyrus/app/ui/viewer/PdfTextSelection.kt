@@ -165,6 +165,19 @@ internal class PdfSelectionState(
         return out.toString().ifEmpty { null }
     }
 
+    /** The selection's line boxes by page, loading any page not yet read; empty if nothing is selected. */
+    suspend fun selectedRects(): Map<Int, List<NormRect>> {
+        val current = selection ?: return emptyMap()
+        val out = LinkedHashMap<Int, List<NormRect>>()
+        for (page in current.pages) {
+            val span = current.spanOn(page) ?: continue
+            val text = ensureText(page) ?: continue
+            val rects = text.selectionRects(span.from, span.to)
+            if (rects.isNotEmpty()) out[page] = rects
+        }
+        return out
+    }
+
     private suspend fun caretAt(point: PagePoint): PdfTextPos? {
         val text = ensureText(point.page) ?: return null
         return text.caretAt(point.x, point.y, point.aspect)?.let { PdfTextPos(point.page, it) }
@@ -255,6 +268,20 @@ internal fun DrawScope.drawSelection(rects: List<NormRect>, handles: PageHandles
     for (spot in listOfNotNull(handles.start, handles.end)) {
         drawLine(color, Offset(spot.x, spot.top), Offset(spot.x, spot.bottom), strokeWidth = HandleStem.toPx())
         drawCircle(color, radius, spot.knob)
+    }
+}
+
+/** A highlighter's yellow, light enough that the text under it stays readable. */
+private val HighlightWash = Color(0xFFFFEB3B).copy(alpha = 0.4f)
+
+/** The reader's stored highlights, flat washes drawn under the find matches and the selection. */
+internal fun DrawScope.drawHighlights(rects: List<NormRect>) {
+    for (rect in rects) {
+        drawRect(
+            color = HighlightWash,
+            topLeft = Offset(rect.left * size.width, rect.top * size.height),
+            size = Size((rect.right - rect.left) * size.width, (rect.bottom - rect.top) * size.height),
+        )
     }
 }
 

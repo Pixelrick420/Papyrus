@@ -87,6 +87,8 @@ internal fun PdfViewer(
     nightMode: Boolean = false,
     pageHits: List<Int> = emptyList(),
     pageMatches: Map<Int, List<List<NormRect>>> = emptyMap(),
+    /** The reader's own highlights, by page; unrelated to find's matches. */
+    highlights: Map<Int, List<NormRect>> = emptyMap(),
     activePage: Int? = null,
     activeOccurrence: Int? = null,
     loadLinks: suspend (Int) -> List<PdfPageLink>? = { null },
@@ -222,6 +224,7 @@ internal fun PdfViewer(
                             // Only the active page knows which of its matches is current.
                             activeMatch = activeOccurrence.takeIf { index == activePage },
                             matches = pageMatches[index].orEmpty(),
+                            highlights = highlights[index].orEmpty(),
                             matchAlpha = MATCH_ALPHA * highlightAlpha,
                             onlyActive = onlyActive,
                             reveal = reveal.takeIf { index == activePage },
@@ -283,6 +286,7 @@ private fun PdfPage(
     nightMode: Boolean,
     activeMatch: Int?,
     matches: List<List<NormRect>>,
+    highlights: List<NormRect>,
     matchAlpha: Float,
     onlyActive: Boolean,
     reveal: RevealTicket?,
@@ -420,6 +424,10 @@ private fun PdfPage(
                 colorFilter = if (nightMode) PdfNightMode.Invert else null,
                 modifier = Modifier.fillMaxSize(),
             )
+        }
+        if (highlights.isNotEmpty()) {
+            // Right over the page and under everything else, so a match, a link or the selection reads through it.
+            Canvas(Modifier.fillMaxSize()) { drawHighlights(highlights) }
         }
         if (linkRects.isNotEmpty()) {
             // Under the matches and the selection, so a link never hides a find highlight.

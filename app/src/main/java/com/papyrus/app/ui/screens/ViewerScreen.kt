@@ -82,9 +82,12 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.papyrus.app.R
 import com.papyrus.app.data.DocumentFormat
+import com.papyrus.app.data.Highlight
 import com.papyrus.app.data.LocationKind
 import com.papyrus.app.data.OpenPersistableDocument
 import com.papyrus.app.data.ReadingLocation
+import com.papyrus.app.data.rectsByPage
+import com.papyrus.app.data.touchedBy
 import com.papyrus.app.ui.AppViewModelProvider
 import com.papyrus.app.ui.asString
 import com.papyrus.app.ui.components.ControlHeight
@@ -134,6 +137,7 @@ fun ViewerScreen(
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val message by viewModel.messages.collectAsStateWithLifecycle()
     val bookmarks by viewModel.bookmarks.collectAsStateWithLifecycle()
+    val highlights by viewModel.highlights.collectAsStateWithLifecycle()
     val tts by viewModel.tts.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
@@ -208,6 +212,13 @@ fun ViewerScreen(
     // The selection takes over the header's overflow slot, so an open menu would pop up behind it.
     LaunchedEffect(selectionState.hasSelection) {
         if (selectionState.hasSelection) menuOpen = false
+    }
+
+    val pageHighlights = remember(highlights) { highlights.rectsByPage() }
+    // Which stored highlights the selection sits on: Remove is offered only when there is one. Worked out
+    // once the selected pages have their text, and not at all while the document has no highlights.
+    val touchedHighlights by produceState<List<Highlight>>(emptyList(), selectionState.selection, highlights) {
+        value = if (highlights.isEmpty()) emptyList() else highlights.touchedBy(selectionState.selectedRects())
     }
 
     val find = state.find
@@ -348,6 +359,8 @@ fun ViewerScreen(
                 encodingAvailable = encodingAvailable,
                 menuOpen = menuOpen,
                 selectionActive = selectionState.hasSelection,
+                highlightAvailable = state.highlightsAvailable,
+                canRemoveHighlight = touchedHighlights.isNotEmpty(),
                 showShare = state.document != null,
                 showSaveToLibrary = state.canSaveToLibrary,
                 savingToLibrary = state.savingToLibrary,
@@ -371,6 +384,16 @@ fun ViewerScreen(
                         selectionState.selectedText()?.let { copyToClipboard(context, it) }
                         selectionState.clear()
                     }
+                },
+                onHighlight = {
+                    selectionScope.launch {
+                        viewModel.addHighlights(selectionState.selectedRects())
+                        selectionState.clear()
+                    }
+                },
+                onRemoveHighlight = {
+                    viewModel.removeHighlights(touchedHighlights.map { it.id })
+                    selectionState.clear()
                 },
                 onClearSelection = selectionState::clear,
             )
@@ -433,6 +456,7 @@ fun ViewerScreen(
                             nightMode = settings.nightMode,
                             pageHits = find.hits,
                             pageMatches = find.pageMatches,
+                            highlights = pageHighlights,
                             activePage = find.activeIndex,
                             activeOccurrence = find.activeOccurrence,
                             loadLinks = viewModel::pageLinks,
@@ -624,7 +648,7 @@ private const val FIND_ANIMATION_MS = 200
 /** Below this many pages the page list is short enough to scroll, so Go to page stays out of the menu. */
 private const val MIN_GO_TO_PAGES = 6
 
-/** Flat title row like Home's; a selection swaps the overflow menu for Copy and dismiss. */
+/** Flat title row like Home's; a selection swaps the overflow menu for Copy, Highlight and dismiss. */
 @Composable
 private fun ViewerHeader(
     title: String,
@@ -636,6 +660,8 @@ private fun ViewerHeader(
     encodingAvailable: Boolean,
     menuOpen: Boolean,
     selectionActive: Boolean,
+    highlightAvailable: Boolean,
+    canRemoveHighlight: Boolean,
     showShare: Boolean,
     showSaveToLibrary: Boolean,
     savingToLibrary: Boolean,
@@ -655,6 +681,8 @@ private fun ViewerHeader(
     onSaveToLibrary: () -> Unit,
     onReadAloud: () -> Unit,
     onCopySelection: () -> Unit,
+    onHighlight: () -> Unit,
+    onRemoveHighlight: () -> Unit,
     onClearSelection: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -688,6 +716,25 @@ private fun ViewerHeader(
                     contentDescription = stringResource(R.string.viewer_copy),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+            }
+            // Only a library document can keep a highlight; Remove shows only on a selection that touches one.
+            if (highlightAvailable) {
+                IconButton(onClick = onHighlight) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_highlight),
+                        contentDescription = stringResource(R.string.viewer_highlight),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                if (canRemoveHighlight) {
+                    IconButton(onClick = onRemoveHighlight) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_remove),
+                            contentDescription = stringResource(R.string.viewer_highlight_remove),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
             }
             IconButton(onClick = onClearSelection) {
                 Icon(
