@@ -16,6 +16,13 @@ internal class DocParaProps(val istd: Int) {
     var inTable = false
         private set
 
+    /**
+     * The paragraph is a row's end mark (`sprmPFTtp`, the "table terminating paragraph"). Its 0x07 looks
+     * like a cell mark, and an empty cell's does too, so this flag is the only sure sign that a row is over.
+     */
+    var rowEnd = false
+        private set
+
     /** 1-based index of the paragraph's list instance (`sprmPIlfo`), or 0 when it is in no list. */
     var ilfo = 0
         private set
@@ -34,6 +41,7 @@ internal class DocParaProps(val istd: Int) {
         out.align = align
         out.leftTwips = leftTwips
         out.inTable = inTable
+        out.rowEnd = rowEnd
         out.ilfo = ilfo
         out.ilvl = ilvl
         out.headingLevel = headingLevel
@@ -48,6 +56,7 @@ internal class DocParaProps(val istd: Int) {
                 PJC80, PJC -> align = alignmentOf(reader.u8())
                 PDXALEFT80, PDXALEFT -> leftTwips = reader.i16()
                 PFINTABLE -> inTable = reader.u8() != 0
+                PFTTP -> rowEnd = reader.u8() != 0
                 // A negative `ilfo` names an old outline-numbered list, which is not read: no list.
                 PILFO -> ilfo = reader.i16().coerceAtLeast(0)
                 PILVL -> ilvl = reader.u8()
@@ -68,6 +77,7 @@ internal class DocParaProps(val istd: Int) {
         const val PDXALEFT80 = 0x840F
         const val PDXALEFT = 0x845E
         const val PFINTABLE = 0x2416
+        const val PFTTP = 0x2417
         const val PILVL = 0x260A
         const val PILFO = 0x460B
         const val JC_CENTER = 1

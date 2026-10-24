@@ -1,8 +1,11 @@
 package com.papyrus.app.viewer
 
 /**
- * Text → blocks. A cell ends with a cell mark (0x07) and the row's TTP follows the last cell's
- * mark, so `cell\x07cell\x07\x07` is one row; nested tables arrive as plain paragraph marks.
+ * Text → blocks. A cell ends with a cell mark (0x07) and the row ends with one more, so
+ * `cell\x07cell\x07\x07` is one row; nested tables arrive as plain paragraph marks. The two kinds of
+ * mark look alike in the text, and so does an empty cell's, so the paragraph properties decide: a
+ * paragraph in a table (`sprmPFInTable`) opens a row, and a mark flagged as the row's end (`sprmPFTtp`)
+ * closes it. A document without those flags is read by the old rule that an empty cell mark ends a row.
  * Each paragraph becomes a [OfficeBlock.Heading], an [OfficeBlock.ListItem] or an
  * [OfficeBlock.Paragraph] by its style and list, numbered in reading order by [lists], and carries
  * the character formatting of its runs as spans.
@@ -83,6 +86,7 @@ internal class DocBlockBuilder(private val maxBlocks: Int, lists: DocListTables 
     }
 
     private fun append(ch: Char, run: DocRun) {
+        if (state != State.ROW && run.para?.inTable == true) openRow()
         when (ch) {
             FIELD_BEGIN -> {
                 flushChunk(run.format)
@@ -119,6 +123,23 @@ internal class DocBlockBuilder(private val maxBlocks: Int, lists: DocListTables 
             open.instruction.length < DocLinks.MAX_INSTRUCTION -> open.instruction.append(ch)
             else -> open.overflowed = true
         }
+    }
+
+    /**
+     * Starts a row, or the table's first, when the paragraph properties put the character being read in a
+     * cell: its text goes to [cell] from the first character, so a cell of several paragraphs stays whole,
+     * whichever column it is. Text already pending in [paragraph] is carried over rather than lost.
+     */
+    private fun openRow() {
+        cell.clear()
+        if (!paragraph.isEmpty()) {
+            val pending = paragraph.snapshot()
+            cell.appendRich(pending.text, pending.spans)
+            paragraph.clear()
+        }
+        cellParagraphStart = 0
+        continuation = false
+        state = State.ROW
     }
 
     /** The separator ends a field's instruction: a HYPERLINK's target now applies to the result that follows. */
@@ -171,17 +192,31 @@ internal class DocBlockBuilder(private val maxBlocks: Int, lists: DocListTables 
                 cell.clear()
                 state = State.ROW
             }
-            State.ROW -> if (!cell.isEmpty()) {
-                endParagraphIn(cell, para)
-                continuation = false
-                row += linked(cell.snapshot(::isNewline))
-                cell.clear()
-                cellParagraphStart = 0
-            } else {
+            State.ROW -> if (endsRow(para)) {
+                // Text with no cell mark of its own before the row's end mark is still a cell.
+                if (!cell.isEmpty()) endCell(para)
                 commitRow()
                 state = State.BETWEEN
+            } else {
+                endCell(para)
             }
         }
+    }
+
+    /**
+     * Whether a cell mark ends its row. In a paragraph the properties place in a table that is its
+     * row-end flag alone, since an empty cell is no sign of one; otherwise a mark with no text since the last.
+     */
+    private fun endsRow(para: DocParaProps?): Boolean =
+        if (para != null && para.inTable) para.rowEnd else cell.isEmpty()
+
+    /** Ends the cell being read, empty or not, and adds it to the row. */
+    private fun endCell(para: DocParaProps?) {
+        endParagraphIn(cell, para)
+        continuation = false
+        row += linked(cell.snapshot(::isNewline))
+        cell.clear()
+        cellParagraphStart = 0
     }
 
     /**
