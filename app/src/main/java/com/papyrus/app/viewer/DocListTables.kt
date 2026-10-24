@@ -164,7 +164,6 @@ internal class DocListCounters(private val tables: DocListTables) {
     private val counts = HashMap<Int, IntArray>()
     private val started = HashSet<Int>()
 
-    /** Whether [ilfo] names a list that is defined. */
     fun defines(ilfo: Int): Boolean = (tables.listOf(ilfo) ?: -1) >= 0
 
     /** The marker for the next paragraph of instance [ilfo] at [ilvl]; null if the level is not defined. */

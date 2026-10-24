@@ -9,7 +9,6 @@ package com.papyrus.app.viewer
 /** A long outline starts folded: past this many entries the top level is what a reader can browse. */
 internal const val AUTO_FOLD_ABOVE = 60
 
-/** Whether the entry at [position] has entries nested under it. */
 fun hasChildren(entries: List<OutlineEntry>, position: Int): Boolean =
     position in 0 until entries.lastIndex && entries[position + 1].depth > entries[position].depth
 

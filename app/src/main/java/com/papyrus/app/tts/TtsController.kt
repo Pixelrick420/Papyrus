@@ -134,7 +134,6 @@ class TtsController(
         _playback.update { it.copy(isPlaying = false, isPaused = true) }
     }
 
-    /** Stop and forget the position. */
     fun stop() {
         engine.stop()
         resetPosition()

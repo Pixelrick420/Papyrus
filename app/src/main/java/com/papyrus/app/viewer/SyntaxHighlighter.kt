@@ -158,8 +158,6 @@ private class Scanner(
 
     private fun peek(offset: Int = 1): Char = if (pos + offset < n) text[pos + offset] else NUL
 
-    // --- Code ---------------------------------------------------------------------------------
-
     private fun runCode(): Int {
         while (pos < n) {
             val c = text[pos]
@@ -472,8 +470,6 @@ private class Scanner(
         return true
     }
 
-    // --- Keys at the start of a line (YAML, INI, TOML) -----------------------------------------------
-
     private fun lineKey(): Boolean = when (lang.lineKeys) {
         LineKeys.YAML -> yamlKey()
         LineKeys.EQUALS -> equalsKey()
@@ -524,8 +520,6 @@ private class Scanner(
         pos = k + 1
         return true
     }
-
-    // --- Markup (HTML, XML, SVG) ---------------------------------------------------------------------
 
     private fun runMarkup(): Int {
         while (pos < n) {

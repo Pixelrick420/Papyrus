@@ -33,8 +33,6 @@ class OfficeCommentsTest {
         },
     )
 
-    // ---- DOCX ---------------------------------------------------------------------------------
-
     @Test
     fun `docx comment is marked in the text and listed after the body with its author and date`() {
         val bytes = docxWith(
@@ -171,8 +169,6 @@ class OfficeCommentsTest {
         assertEquals("About the cell.", (blocks.last() as OfficeBlock.Note).text)
     }
 
-    // ---- ODT ----------------------------------------------------------------------------------
-
     @Test
     fun `odt comment on a range is marked where the range ends`() {
         val bytes = OfficeFixtures.odt(
@@ -254,8 +250,6 @@ class OfficeCommentsTest {
 
         assertEquals(listOf<OfficeBlock>(OfficeBlock.Paragraph("Kept.")), extractOdt(bytes))
     }
-
-    // ---- shared -------------------------------------------------------------------------------
 
     @Test
     fun `byline shows author and minute, and drops what is not a date`() {

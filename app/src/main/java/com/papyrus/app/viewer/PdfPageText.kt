@@ -61,16 +61,6 @@ class PdfPageText(
         return PageMatches(count, groups ?: emptyList())
     }
 
-    /** Match count, including ones whose boxes were dropped; non-overlapping like [matches]. */
-    fun countMatches(query: String): Int = matches(query, limit = 0).count
-
-    /**
-     * One entry per match in order, each holding that match's rectangles (one per line it covers);
-     * a match with no drawable glyph keeps an empty entry. Stops once [limit] rectangles exist.
-     */
-    fun matchGroups(query: String, limit: Int = MAX_RECTS_PER_PAGE): List<List<NormRect>> =
-        matches(query, limit).groups
-
     /** True when glyph boxes were kept. A page past the extractor's budget holds text without them. */
     val hasBoxes: Boolean get() = boxes.isNotEmpty()
 

@@ -89,8 +89,6 @@ object OfficeEncryption {
         }
     }
 
-    // --- OOXML (ECMA-376 Agile) ---------------------------------------------------------------
-
     private fun oleStatus(openStream: () -> InputStream): Party {
         val cfb = CompoundFile(openStream, probeLength(openStream))
         if (!cfb.hasStream(ENCRYPTION_INFO)) return Party.NOT_ENCRYPTED
@@ -214,8 +212,6 @@ object OfficeEncryption {
             }
         }
     }
-
-    // --- OpenDocument 1.2 CBC ------------------------------------------------------------------
 
     private fun odfStatus(openStream: () -> InputStream, newParserFactory: () -> XmlPullParser): Party {
         val entries = parseOdfManifest(openStream, newParserFactory)
@@ -358,8 +354,6 @@ object OfficeEncryption {
         }
     }
 
-    // --- Crypto primitives ---------------------------------------------------------------------
-
     /** H(salt + UTF-16LE password), then H(le32(i) + h) for `spinCount` rounds — per MS-OFFCRYPTO. */
     private fun deriveIteratedHash(password: String, salt: ByteArray, hashName: String, spinCount: Int): ByteArray {
         if (spinCount < 0 || spinCount > MAX_SPIN_COUNT) throw IOException("unsupported spin count")
@@ -459,8 +453,6 @@ object OfficeEncryption {
         "SHA512" -> "SHA-512"
         else -> throw IOException("unsupported hash algorithm")
     }
-
-    // --- Small helpers -------------------------------------------------------------------------
 
     private fun readHead(openStream: () -> InputStream): ByteArray {
         openStream().use { input ->

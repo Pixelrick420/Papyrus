@@ -2,7 +2,6 @@ package com.papyrus.app.data
 
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -11,7 +10,7 @@ import org.junit.Test
  * dropped, and what the excerpt looks like once FTS4's markers are gone.
  *
  * The SQL itself is not exercised here — [FakeSearchDao] stands in for it — so this covers exactly
- * what the repository adds on top: ranking, limiting, marker stripping and the offset it carries.
+ * what the repository adds on top: ranking, limiting and marker stripping.
  */
 class SearchRepositoryTest {
 
@@ -25,8 +24,7 @@ class SearchRepositoryTest {
             .toByteArray()
     }
 
-    private fun snippet(documentId: Long, text: String, offsets: String? = "0 0 0 4") =
-        SnippetRow(documentId = documentId, snippet = text, termOffsets = offsets)
+    private fun snippet(documentId: Long, text: String) = SnippetRow(documentId = documentId, snippet = text)
 
     @Test
     fun `the best-ranked document comes first`() {
@@ -158,22 +156,11 @@ class SearchRepositoryTest {
     @Test
     fun `a null excerpt reads as empty text, not as a missing hit`() {
         dao.candidateRows = listOf(RawContentMatch(1, matchInfo(documentFrequency = 1)))
-        dao.snippetRows = listOf(SnippetRow(documentId = 1, snippet = null, termOffsets = null))
+        dao.snippetRows = listOf(SnippetRow(documentId = 1, snippet = null))
 
         val hit = runBlocking { repository.search("paper") }.single()
 
         assertEquals("", hit.snippet)
         assertTrue(hit.highlightRanges.isEmpty())
-        assertNull(hit.matchOffset)
-    }
-
-    @Test
-    fun `the earliest match's byte offset is carried for opening at the match`() {
-        dao.candidateRows = listOf(RawContentMatch(1, matchInfo(documentFrequency = 1)))
-        dao.snippetRows = listOf(snippet(1, "the \u0001paper\u0002", offsets = "0 0 42 5 0 0 7 5"))
-
-        val hit = runBlocking { repository.search("paper") }.single()
-
-        assertEquals(7, hit.matchOffset)
     }
 }

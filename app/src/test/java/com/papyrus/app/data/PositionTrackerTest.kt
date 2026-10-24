@@ -17,8 +17,6 @@ class PositionTrackerTest {
         clock += ms
     }
 
-    // ---- the gate ----
-
     @Test
     fun `nothing is saved before a pending restore has been applied`() {
         tracker.beginLoad(restorePending = true)
@@ -49,8 +47,6 @@ class PositionTrackerTest {
         advance(60_000)
         assertNull(tracker.take(force = true))
     }
-
-    // ---- movement ----
 
     @Test
     fun `opening and leaving without scrolling writes nothing`() {
@@ -105,8 +101,6 @@ class PositionTrackerTest {
         tracker.observe(at(0)) // read ahead, then went back to the top: that is where they stopped
         assertEquals(at(0), tracker.take(force = true))
     }
-
-    // ---- debounce and flush ----
 
     @Test
     fun `a save waits for the idle period and is handed over once`() {
@@ -165,8 +159,6 @@ class PositionTrackerTest {
         tracker.observe(at(199, 0.9f, atEnd = true))
         assertEquals(at(199, 0.9f, atEnd = true), tracker.take(force = true))
     }
-
-    // ---- reloads ----
 
     @Test
     fun `a reload closes the gate again but keeps the last position for restoring`() {

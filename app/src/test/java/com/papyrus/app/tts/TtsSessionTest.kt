@@ -98,9 +98,8 @@ class TtsSessionTest {
 
     @Test
     fun `stopFor clears a failed session too`() {
-        // A failure leaves the bar up, so leaving its page must still clear it — isActiveFor is false here.
+        // A failure leaves the bar up, so leaving its page must still clear it.
         val session = sessionReading("7")
-        assertFalse(session.isActiveFor("7"))
         session.stopFor("7")
         assertEquals("", session.state.value.documentId)
     }

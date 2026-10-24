@@ -27,6 +27,13 @@ class PdfPageTextTest {
             BitSet().apply { breaks.forEach { set(it) } },
         )
 
+    /** Match count, including matches whose boxes were dropped. */
+    private fun PdfPageText.countMatches(query: String): Int = matches(query, limit = 0).count
+
+    /** One entry per match in order; a match with no drawable glyph keeps an empty entry. */
+    private fun PdfPageText.matchGroups(query: String, limit: Int = PdfPageText.MAX_RECTS_PER_PAGE) =
+        matches(query, limit).groups
+
     @Test
     fun `a match is one rectangle spanning its characters`() {
         val text = "find the needle here"

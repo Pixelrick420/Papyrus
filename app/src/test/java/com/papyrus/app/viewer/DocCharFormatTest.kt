@@ -348,8 +348,6 @@ class DocCharFormatTest {
         assertEquals(OfficeBlock.Paragraph("code"), extract(broken).single())
     }
 
-    // --- helpers ---------------------------------------------------------------------------------
-
     /** Heading 1 whose style makes its text bold, in place of the plain one. */
     private val HEADING_BOLD = Style("Heading 1", sti = 1, base = 0, chpx = on(CFBOLD))
 

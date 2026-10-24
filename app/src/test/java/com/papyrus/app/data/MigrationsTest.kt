@@ -144,8 +144,6 @@ class MigrationsTest {
         assertEquals(emptyList<String>(), problems(3 to 4, current = 4))
     }
 
-    // --- 5 -> 6: the content index -------------------------------------------------------------
-
     @Test
     fun `the 5 to 6 statements can all be re-run, so a half-applied migration can be retried`() {
         assertEquals(6, Migrations.V5_TO_V6_SQL.size)

@@ -28,9 +28,7 @@ data class ExtractedText(
  *
  * The stored text is the same text find-in-file scans, per format: PDF page texts in order joined by
  * [PdfPageTextSource.PAGE_SEPARATOR], Office/EPUB blocks through [officeBlocksToText], plain text
- * decoded from the source. That is a contract, not an accident: a future open-at-the-match action
- * maps a character offset from the index back to a page or block by re-running the same extraction,
- * so no offset map needs to be stored.
+ * decoded from the source.
  *
  * Every failure is terminal, never thrown: the indexer's queue must always drain. Encryption is
  * checked before parsing, so a protected document is [TextIndexState.SKIPPED] and is not retried.

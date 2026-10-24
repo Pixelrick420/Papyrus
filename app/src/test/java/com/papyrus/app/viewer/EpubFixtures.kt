@@ -19,7 +19,7 @@ internal object EpubFixtures {
     /**
      * A whole EPUB. Chapters are `ch0`, `ch1`, ... in manifest order; [spineOrder] lists indices to read
      * them in another order. [nav] and [ncx] are the contents of `nav.xhtml` and `toc.ncx`; [media] are
-     * files under `OEBPS/`; [extra] are whole entries by archive path; [coverMeta] and [coverImageId] name
+     * files under `OEBPS/`; [extra] are whole entries by archive path; [coverMetaId] and [coverImageHref] name
      * a cover the two ways EPUB does; [mimetypeLast] puts the mimetype entry at the end of the archive.
      */
     fun epub(

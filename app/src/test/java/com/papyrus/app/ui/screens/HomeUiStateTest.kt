@@ -53,7 +53,6 @@ class HomeUiStateTest {
         documentId = documentId,
         snippet = snippet,
         highlightRanges = listOf(4..8),
-        matchOffset = 0,
         score = 1.0,
     )
 
@@ -152,8 +151,6 @@ class HomeUiStateTest {
 
         assertEquals(listOf(FormatGroup.PDF, FormatGroup.EPUB), state.groups)
     }
-
-    // --- content search ---------------------------------------------------------------------
 
     @Test
     fun `a document whose text matched is listed even though its title did not`() {

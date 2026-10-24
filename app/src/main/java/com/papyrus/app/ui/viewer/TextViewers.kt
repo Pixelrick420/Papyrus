@@ -694,7 +694,7 @@ private fun TextChunk(
         Modifier
     } else {
         Modifier.drawBehind {
-            // Nothing until the layout arrives — same frame the gutter used to start measuring on.
+            // Nothing until the layout arrives.
             val laidOut = layout
             if (laidOut != null && marks.isNotEmpty()) drawGutter(marks, laidOut, gutter)
         }
@@ -1001,7 +1001,7 @@ private class OfficeUnits(
     }
 }
 
-/** A table splits into band units; every other block is one unit, exactly as it was. */
+/** A table splits into band units; every other block is one unit. */
 private fun officeUnits(blocks: List<OfficeBlock>): OfficeUnits {
     val units = ArrayList<OfficeUnit>()
     val firstUnit = IntArray(blocks.size)

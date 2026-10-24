@@ -56,7 +56,6 @@ import com.papyrus.app.viewer.MarkdownRenderer
 import com.papyrus.app.viewer.PdfPageTextSource
 import com.papyrus.app.viewer.PdfPasswordException
 import com.papyrus.app.viewer.PrettyPrint
-import com.papyrus.app.viewer.PrettyKind
 import com.papyrus.app.viewer.SyntaxHighlighter
 import com.papyrus.app.viewer.TextChunks
 import com.papyrus.app.viewer.TextEncoding
@@ -896,7 +895,6 @@ class ViewerViewModel(
         }
     }
 
-    /** Undo for an add: the row is removed again. */
     fun undoAddBookmark(bookmark: BookmarkEntity) = deleteBookmarkRow(bookmark.id)
 
     /** Renames to [typed] (the reader's own text); an emptied field falls back to the position. */

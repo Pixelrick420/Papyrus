@@ -65,8 +65,7 @@ data class DocumentTextEntity(
  * The inverted index over [DocumentTextEntity.text]; it holds no copy of the text.
  *
  * Only `text` is indexed. Writes go to `document_text` alone: Room's content-sync triggers keep this
- * table current, which is why [SearchDao] exposes no insert or update for it. Deleting straight from
- * this table is reserved for the startup repair of rows orphaned by a crash.
+ * table current, which is why [SearchDao] exposes no insert or update for it.
  *
  * The `rowid` field is required by Room for an external-content FTS entity (the generated triggers
  * need it to write the `docid`), and it is never set by us: the triggers always take it from the

@@ -10,15 +10,6 @@ data class ContentHit(
     val snippet: String,
     /** The parts of [snippet] that matched, as ranges to draw emphasised. */
     val highlightRanges: List<IntRange>,
-    /**
-     * Where the earliest match sits in the indexed text, as a byte offset (SQLite counts bytes, not
-     * characters), or null when `offsets()` reported none.
-     *
-     * This is the seam for opening a result at the match rather than at the top: re-extract the
-     * document, walk this many bytes into the text, and the page or block is the one holding that
-     * character — no stored page map, and nothing to re-derive at index time.
-     */
-    val matchOffset: Int?,
     /** BM25, higher is better. Only comparable between hits of the same search. */
     val score: Double,
 )
@@ -31,8 +22,7 @@ data class ContentHit(
  * of documents that survived ranking, because `snippet` reads the content row.
  *
  * Deliberately narrower than a general search service: it takes the reader's text rather than a
- * MATCH expression, so no caller has to know FTS4 syntax or its escaping rules. Tapping a hit is
- * the caller's business; all that needs carrying for it is [ContentHit.matchOffset].
+ * MATCH expression, so no caller has to know FTS4 syntax or its escaping rules.
  */
 class SearchRepository(private val dao: SearchDao) {
 
@@ -58,7 +48,6 @@ class SearchRepository(private val dao: SearchDao) {
                     documentId = scored.documentId,
                     snippet = excerpt.text,
                     highlightRanges = excerpt.highlightRanges,
-                    matchOffset = FtsOffsets.earliest(row.termOffsets),
                     score = scored.score,
                 )
             }

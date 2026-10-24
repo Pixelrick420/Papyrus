@@ -13,21 +13,18 @@ data class RawContentMatch(
 
 /**
  * One excerpt request's answer. [snippet] carries [SearchDao.SNIPPET_START] and
- * [SearchDao.SNIPPET_END] around each matched word; [termOffsets] is FTS4's `offsets()` text, a
- * space-separated list of byte offsets and lengths.
+ * [SearchDao.SNIPPET_END] around each matched word.
  */
 data class SnippetRow(
     val documentId: Long,
     val snippet: String?,
-    val termOffsets: String?,
 )
 
 /**
  * The index's only write path and both read phases.
  *
  * Writes go to `document_text` exclusively: the external-content FTS table is maintained by Room's
- * generated triggers, so [document_text_fts] has no insert or update here. The one exception is the
- * startup repair, which deletes index rows whose content row is gone.
+ * generated triggers, so `document_text_fts` has no insert or update here.
  */
 @Dao
 interface SearchDao {
@@ -63,14 +60,6 @@ interface SearchDao {
         insertText(row)
     }
 
-    /** Startup repair: text rows whose document was deleted (a cascade normally takes them too). */
-    @Query("DELETE FROM document_text WHERE rowid NOT IN (SELECT id FROM documents)")
-    suspend fun deleteOrphanedText()
-
-    /** Startup repair: index entries whose content row is gone, which would answer but not open. */
-    @Query("DELETE FROM document_text_fts WHERE rowid NOT IN (SELECT rowid FROM document_text)")
-    suspend fun deleteOrphanedIndex()
-
     /**
      * Phase one of a search: every document matching [match], with the ranking data and no content
      * read. `matchinfo` reads only the inverted index, so this stays cheap on a large library.
@@ -90,16 +79,13 @@ interface SearchDao {
 
     /**
      * Phase two: excerpts for the best-ranked ids only, since `snippet` reads the content row.
-     * `offsets` is where the matched terms sit in the stored text, kept so a later
-     * open-at-the-match action can find the hit without a re-index.
      *
      * The marker characters are repeated in Kotlin as [SNIPPET_START] and [SNIPPET_END]; Room
      * cannot template a query string, so the two copies have to be kept in step by hand.
      */
     @Query(
         "SELECT document_text_fts.rowid AS documentId, " +
-            "snippet(document_text_fts, char(1), char(2), '…', -1, 32) AS snippet, " +
-            "offsets(document_text_fts) AS termOffsets " +
+            "snippet(document_text_fts, char(1), char(2), '…', -1, 32) AS snippet " +
             "FROM document_text_fts " +
             "WHERE document_text_fts MATCH :match AND document_text_fts.rowid IN (:ids)",
     )

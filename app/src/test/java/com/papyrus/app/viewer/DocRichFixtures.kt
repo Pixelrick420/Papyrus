@@ -127,8 +127,6 @@ internal object DocRichFixtures {
         return DocFixtures.doc(pieces = pieces, wordTail = papx.pages + (if (hasChpx) chpx.pages else ByteArray(0)), tableParts = parts)
     }
 
-    // --- sprms -------------------------------------------------------------------------------
-
     /** A sprm with a 1-byte operand. */
     fun sprm(opcode: Int, operand: Int): ByteArray = byteArrayOf(lo(opcode), hi(opcode), operand.toByte())
 
@@ -169,8 +167,6 @@ internal object DocRichFixtures {
     const val CPLAIN = 0x2A33
     const val PILVL = 0x260A
     const val PILFO = 0x460B
-
-    // --- structures ----------------------------------------------------------------------------
 
     /** The two list tables as the table stream holds them: [lst] runs on past its recorded length [lstLcb]. */
     class ListBytes(val lst: ByteArray, val lstLcb: Int, val lfo: ByteArray)

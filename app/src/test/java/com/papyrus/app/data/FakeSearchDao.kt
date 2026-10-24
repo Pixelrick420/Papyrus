@@ -25,9 +25,6 @@ internal class FakeSearchDao : SearchDao {
     /** Ids deleted with [deleteText], the delete half of [replace]. */
     val deleted = mutableListOf<Long>()
 
-    /** How many times the two startup repairs ran. */
-    var orphanRepairs = 0
-
     /** What [candidates] answers with, and the MATCH expressions it was asked. */
     var candidateRows = listOf<RawContentMatch>()
     val candidateQueries = mutableListOf<String>()
@@ -51,14 +48,6 @@ internal class FakeSearchDao : SearchDao {
 
     override suspend fun deleteText(id: Long) {
         deleted += id
-    }
-
-    override suspend fun deleteOrphanedText() {
-        orphanRepairs++
-    }
-
-    override suspend fun deleteOrphanedIndex() {
-        orphanRepairs++
     }
 
     override suspend fun candidates(match: String): List<RawContentMatch> {

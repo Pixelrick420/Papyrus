@@ -28,8 +28,6 @@ class BookmarkRulesTest {
         createdAt = createdAt,
     )
 
-    // --- same spot -------------------------------------------------------------------------------
-
     @Test
     fun `any two places on one pdf page are the same bookmark`() {
         assertTrue(page(3, 0.1f).isSameBookmarkSpot(page(3, 0.9f)))
@@ -64,8 +62,6 @@ class BookmarkRulesTest {
         assertFalse(chunk(0).isSameBookmarkSpot(char(0)))
     }
 
-    // --- deciding an add -------------------------------------------------------------------------
-
     @Test
     fun `a new spot is added`() {
         assertEquals(BookmarkDecision.ADD, decideBookmark(listOf(page(1), page(2)), page(5)))
@@ -95,8 +91,6 @@ class BookmarkRulesTest {
     fun `the limit is a parameter`() {
         assertEquals(BookmarkDecision.LIMIT_REACHED, decideBookmark(listOf(page(0)), page(1), limit = 1))
     }
-
-    // --- what a place reads as -------------------------------------------------------------------
 
     @Test
     fun `a pdf place reads as a one based page`() {
@@ -144,8 +138,6 @@ class BookmarkRulesTest {
         assertEquals(LocationSummary(SummaryKind.LINE, 41), chunk(1, Float.NaN).summary(10))
     }
 
-    // --- labels ----------------------------------------------------------------------------------
-
     @Test
     fun `a typed label is one trimmed line`() {
         assertEquals("Chapter two", cleanBookmarkLabel("  Chapter\n  two \t", "Page 3"))
@@ -162,8 +154,6 @@ class BookmarkRulesTest {
         val cut = cleanBookmarkLabel("x".repeat(500), "Page 3")
         assertEquals(MAX_BOOKMARK_LABEL_CHARS, cut.length)
     }
-
-    // --- rows ------------------------------------------------------------------------------------
 
     @Test
     fun `bookmarks come back in document order`() {

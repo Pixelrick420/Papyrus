@@ -2,7 +2,7 @@ package com.papyrus.app.data
 
 /** What [SearchQuery.parse] made of what the reader typed. */
 data class ParsedSearch(
-    /** An FTS4 MATCH expression, e.g. `"scal"* "paper"*`. */
+    /** An FTS4 MATCH expression, e.g. `"scal*" "paper*"`. */
     val expression: String,
     /** The words it was built from, in the order they were typed. */
     val terms: List<String>,

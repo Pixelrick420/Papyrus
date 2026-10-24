@@ -15,7 +15,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  *
  * The database is the queue. [SearchDao.pending] is the only source of truth about what is left to
  * do, so nothing is lost if the process dies mid-pass, a document is removed while its extraction
- * runs, or two passes overlap: the next pass simply re-reads the queue and skins what is already
+ * runs, or two passes overlap: the next pass simply re-reads the queue and skips what is already
  * indexed. That is also why [start] can be called without knowing what happened before — the first
  * pass after an upgrade is what picks up an index written by an older [INDEX_VERSION].
  *

@@ -7,11 +7,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
 
-/**
- * The shape of the indexed text for Office/EPUB documents. One block per line is a contract: a
- * future open-at-the-match action turns a character offset back into a block by counting newlines,
- * so a change here would silently point results at the wrong paragraph.
- */
+/** The shape of the indexed text for Office/EPUB documents: one block per line. */
 class OfficeBlocksTextTest {
 
     private fun paragraph(text: String) = OfficeBlock.Paragraph(text)

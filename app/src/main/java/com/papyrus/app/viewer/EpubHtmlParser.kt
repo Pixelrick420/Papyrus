@@ -233,8 +233,6 @@ internal class EpubHtmlParser(
         }
     }
 
-    // --- text -----------------------------------------------------------------------------------
-
     private fun text(raw: String) {
         if (ignoreDepth > 0 || raw.isEmpty()) return
         val currentCell = cell
@@ -331,8 +329,6 @@ internal class EpubHtmlParser(
         lastSpace = true
     }
 
-    // --- lists ----------------------------------------------------------------------------------
-
     private fun startItem(p: XmlPullParser) {
         flushBlock()
         val list = lists.lastOrNull()
@@ -356,8 +352,6 @@ internal class EpubHtmlParser(
         }
     }
 
-    // --- images ---------------------------------------------------------------------------------
-
     private fun image(src: String?, alt: String?, width: String?, dir: String) {
         val path = src?.let { resolveEpubPath(dir, it) } ?: return
         // A cell holds text only, and the image's place in a paragraph is between its two halves.
@@ -371,8 +365,6 @@ internal class EpubHtmlParser(
         val description = alt?.trim()?.takeIf { it.isNotEmpty() }?.take(MAX_ALT_CHARS)
         sink.pending += PendingImage(path, sink.blocks.size, widthDp, description)
     }
-
-    // --- tables ---------------------------------------------------------------------------------
 
     private fun startTable() {
         tableDepth++
@@ -462,8 +454,6 @@ internal class EpubHtmlParser(
             lastSpace = true
         }
     }
-
-    // --- attributes -----------------------------------------------------------------------------
 
     /** The value of the attribute called [name] under any namespace prefix (`href`, `xlink:href`, `xl:href`). */
     private fun attribute(p: XmlPullParser, name: String): String? {

@@ -458,8 +458,6 @@ class OfficeTextExtractorTest {
         assertTrue(blocks.none { it is OfficeBlock.Table })
     }
 
-    // --- Block budget ---
-
     @Test
     fun `a block budget keeps only the leading docx blocks, in order`() {
         val bytes = OfficeFixtures.docx(
@@ -536,8 +534,7 @@ class OfficeTextExtractorTest {
         assertEquals("image/*", OfficeTextExtractor.guessMimeType("archive.bin"))
     }
 
-    // ---- Real-file regressions: each case below was reproduced on a LibreOffice-written document. ----
-
+    // Real-file regressions: each case below was reproduced on a LibreOffice-written document.
     @Test
     fun `docx tab stop definitions are not tab characters`() {
         // <w:tabs><w:tab/></w:tabs> declares a stop; it used to add one "\t" per stop before the text.

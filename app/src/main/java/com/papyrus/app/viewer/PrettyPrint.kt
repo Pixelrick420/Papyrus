@@ -48,8 +48,6 @@ object PrettyPrint {
     }
 }
 
-// --- JSON --------------------------------------------------------------------
-
 /**
  * Whitespace between tokens is dropped and re-laid by rule: a newline + one indent step after `{`
  * and `[`, a newline + one fewer step before `}` and `]` (an empty `{}` / `[]` stays on one line),
@@ -205,8 +203,6 @@ private fun jsonLiteralEnd(text: String, start: Int): Int {
 }
 
 private fun String.nextIs(at: Int, c: Char) = at + 1 < length && this[at + 1] == c
-
-// --- Markup ------------------------------------------------------------------
 
 /**
  * Whitespace between constructs is dropped; every construct starts a line of its own unless it

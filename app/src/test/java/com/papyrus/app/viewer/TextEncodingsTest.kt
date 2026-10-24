@@ -113,7 +113,6 @@ class TextEncodingsTest {
 
     @Test
     fun `a guess for non-utf-8 bytes is used`() {
-        // こんにちは in Shift_JIS.
         val data = "こんにちは".toByteArray(Charset.forName("Shift_JIS"))
 
         val found = detect(data, guesser = CharsetGuesser { _, _ -> "Shift_JIS" })
