@@ -160,7 +160,7 @@ fun MarkdownViewer(
     // The one match an arrival landed on. Markdown has no hits to reveal, so this is the only mark
     // it gets; the viewer screen scrolls to the same offset.
     val arrivalRange = remember(text, arrival?.term) {
-        arrival?.term?.let { findMatchRanges(text.toString(), it).firstOrNull() }
+        arrival?.term?.let { findMatchRanges(text, it).firstOrNull() }
     }
     val arrivalSpans = remember { ArrivalSpans() }
     val textState = remember { MarkdownTextState() }
@@ -409,7 +409,7 @@ private fun rememberHighlightedText(text: Spanned, query: String): Spanned {
 
 private fun Spanned.withHighlight(query: String): Spanned {
     val result = SpannableString(this)
-    for (range in findMatchRanges(toString(), query)) {
+    for (range in findMatchRanges(this, query)) {
         // One span object per match: `setSpan` moves an object attached elsewhere, so a shared
         // instance left only the last match highlighted.
         result.setSpan(

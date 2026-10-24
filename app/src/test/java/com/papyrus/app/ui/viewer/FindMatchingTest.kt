@@ -60,4 +60,53 @@ class FindMatchingTest {
         val text = "the quick brown fox"
         assertEquals(listOf(4..14), findMatchRanges(text, "quick brown"))
     }
+
+    @Test
+    fun `searching for unrendered link destination highlights rendered link text`() {
+        val theme = io.noties.markwon.core.MarkwonTheme.emptyBuilder().build()
+        val linkSpan = io.noties.markwon.core.spans.LinkSpan(theme, "actual-link") { _, _ -> }
+        val spanned = FakeSpanned("before example-link-text after", listOf(Triple(linkSpan, 7, 24)))
+        val ranges = findMatchRanges(spanned, "actual-link")
+        assertEquals(listOf(7..23), ranges)
+        assertEquals(1, countOccurrences(spanned, "actual-link"))
+    }
+
+    @Test
+    fun `spans with unrendered link destination compose with direct text matches`() {
+        val theme = io.noties.markwon.core.MarkwonTheme.emptyBuilder().build()
+        val linkSpan = io.noties.markwon.core.spans.LinkSpan(theme, "https://example.com/actual-link") { _, _ -> }
+        val spanned = FakeSpanned("actual first, then example-link-text and done", listOf(Triple(linkSpan, 19, 36)))
+        val ranges = findMatchRanges(spanned, "actual")
+        assertEquals(listOf(0..5, 19..35), ranges)
+        assertEquals(2, countOccurrences(spanned, "actual"))
+    }
+
+    @Test
+    fun `office text spans with link match destination and highlight text`() {
+        val span = com.papyrus.app.viewer.TextSpan(7, 24, com.papyrus.app.viewer.CharFormat(link = "https://example.com/target"))
+        val text = "before example-link-text after"
+        val ranges = findMatchRanges(text, listOf(span), "target")
+        assertEquals(listOf(7..23), ranges)
+        assertEquals(1, countOccurrences(text, listOf(span), "target"))
+    }
+}
+
+private class FakeSpanned(
+    private val text: String,
+    private val spans: List<Triple<Any, Int, Int>> = emptyList(),
+) : android.text.Spanned, CharSequence by text {
+    override fun toString(): String = text
+    @Suppress("UNCHECKED_CAST")
+    override fun <T : Any?> getSpans(start: Int, end: Int, type: Class<T>?): Array<T> {
+        val matched = spans.filter { (span, s, e) ->
+            (type == null || type.isInstance(span)) && s <= end && e >= start
+        }.map { it.first as T }
+        val array = java.lang.reflect.Array.newInstance(type ?: Any::class.java, matched.size) as Array<T>
+        for (i in matched.indices) array[i] = matched[i]
+        return array
+    }
+    override fun getSpanStart(tag: Any?): Int = spans.firstOrNull { it.first === tag }?.second ?: -1
+    override fun getSpanEnd(tag: Any?): Int = spans.firstOrNull { it.first === tag }?.third ?: -1
+    override fun getSpanFlags(tag: Any?): Int = 0
+    override fun nextSpanTransition(start: Int, limit: Int, type: Class<*>?): Int = limit
 }

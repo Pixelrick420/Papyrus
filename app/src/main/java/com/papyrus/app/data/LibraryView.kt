@@ -97,8 +97,8 @@ fun availableGroups(documents: List<DocumentEntity>): List<FormatGroup> {
  * then put in [sort] order. Pure, so every combination is unit-tested; sorting in memory is fine at
  * library sizes.
  *
- * Both kinds of match land in one list rather than two sections, so the sort order stays the order
- * the person chose and a row never appears twice.
+ * When searching, matches of filenames appear first, followed by matches of content. Within each group,
+ * rows follow the chosen [sort] order.
  */
 fun libraryView(
     documents: List<DocumentEntity>,
@@ -113,7 +113,12 @@ fun libraryView(
         filter.matches(it) &&
             (needle.isEmpty() || it.title.contains(needle, ignoreCase = true) || it.id in alsoMatching)
     }
-    return kept.sortedWith(comparatorFor(sort, locale))
+    val comparator = comparatorFor(sort, locale)
+    if (needle.isEmpty()) {
+        return kept.sortedWith(comparator)
+    }
+    val (filenameMatches, contentMatches) = kept.partition { it.title.contains(needle, ignoreCase = true) }
+    return filenameMatches.sortedWith(comparator) + contentMatches.sortedWith(comparator)
 }
 
 /**

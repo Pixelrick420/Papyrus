@@ -108,7 +108,7 @@ internal fun formattedText(
     /** The colour a fading match returns to; unspecified leaves the text to inherit. */
     baseTextColor: Color = Color.Unspecified,
 ): AnnotatedString {
-    val ranges = if (highlight == null) emptyList() else findMatchRanges(text, highlight.query)
+    val ranges = if (highlight == null) emptyList() else findMatchRanges(text, spans, highlight.query)
     if (spans.isEmpty() && ranges.isEmpty()) return AnnotatedString(text)
     return buildAnnotatedString {
         append(text)
