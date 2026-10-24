@@ -10,7 +10,13 @@ import androidx.room.RoomDatabase
  * already hold v4 and Room throws on downgrade. No destructive fallback: wiping rows orphans app-owned files.
  */
 @Database(
-    entities = [DocumentEntity::class, ReadingProgressEntity::class, BookmarkEntity::class],
+    entities = [
+        DocumentEntity::class,
+        ReadingProgressEntity::class,
+        BookmarkEntity::class,
+        DocumentTextEntity::class,
+        DocumentTextFtsEntity::class,
+    ],
     version = Migrations.CURRENT_VERSION,
     exportSchema = true,
 )
@@ -21,6 +27,8 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun readingProgressDao(): ReadingProgressDao
 
     abstract fun bookmarkDao(): BookmarkDao
+
+    abstract fun searchDao(): SearchDao
 
     companion object {
         private const val DB_NAME = "papyrus.db"

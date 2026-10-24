@@ -11,7 +11,7 @@ object Migrations {
     const val BASELINE_VERSION = 4
 
     /** The version in `@Database`; raise it together with a migration in [ALL]. */
-    const val CURRENT_VERSION = 5
+    const val CURRENT_VERSION = 6
 
     /**
      * 4 -> 5. Every statement only adds, so existing rows keep their ids and the files under
@@ -48,8 +48,48 @@ object Migrations {
         }
     }
 
+    /**
+     * 5 -> 6. Adds the external-content FTS4 index and the table it reads from. Statements are copied
+     * verbatim from the exported `6.json` (MigrationsTest's DDL guard holds them to it), so the
+     * triggers match the ones Room generates and cannot drift from the entity definitions.
+     */
+    internal val V5_TO_V6_SQL: List<String> = listOf(
+        "CREATE TABLE IF NOT EXISTS `document_text` (" +
+            "`rowid` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+            "`text` TEXT NOT NULL, " +
+            "`state` TEXT NOT NULL, " +
+            "`charCount` INTEGER NOT NULL, " +
+            "`sourceSize` INTEGER NOT NULL, " +
+            "`indexedAt` INTEGER NOT NULL, " +
+            "`indexVersion` INTEGER NOT NULL, " +
+            "FOREIGN KEY(`rowid`) REFERENCES `documents`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "CREATE VIRTUAL TABLE IF NOT EXISTS `document_text_fts` USING FTS4(" +
+            "`text` TEXT NOT NULL, " +
+            "tokenize=unicode61 `remove_diacritics=1`, " +
+            "content=`document_text`, " +
+            "prefix=`2,3`)",
+        "CREATE TRIGGER IF NOT EXISTS room_fts_content_sync_document_text_fts_BEFORE_UPDATE " +
+            "BEFORE UPDATE ON `document_text` BEGIN " +
+            "DELETE FROM `document_text_fts` WHERE `docid`=OLD.`rowid`; END",
+        "CREATE TRIGGER IF NOT EXISTS room_fts_content_sync_document_text_fts_BEFORE_DELETE " +
+            "BEFORE DELETE ON `document_text` BEGIN " +
+            "DELETE FROM `document_text_fts` WHERE `docid`=OLD.`rowid`; END",
+        "CREATE TRIGGER IF NOT EXISTS room_fts_content_sync_document_text_fts_AFTER_UPDATE " +
+            "AFTER UPDATE ON `document_text` BEGIN " +
+            "INSERT INTO `document_text_fts`(`docid`, `text`) VALUES (NEW.`rowid`, NEW.`text`); END",
+        "CREATE TRIGGER IF NOT EXISTS room_fts_content_sync_document_text_fts_AFTER_INSERT " +
+            "AFTER INSERT ON `document_text` BEGIN " +
+            "INSERT INTO `document_text_fts`(`docid`, `text`) VALUES (NEW.`rowid`, NEW.`text`); END",
+    )
+
+    private val MIGRATION_5_6 = object : Migration(5, 6) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            V5_TO_V6_SQL.forEach { db.execSQL(it) }
+        }
+    }
+
     /** Hand-written migrations, oldest first. */
-    val ALL: Array<Migration> = arrayOf(MIGRATION_4_5)
+    val ALL: Array<Migration> = arrayOf(MIGRATION_4_5, MIGRATION_5_6)
 
     /**
      * Problems with [migrations] as a chain from [baseline] to [current], one message each, empty when

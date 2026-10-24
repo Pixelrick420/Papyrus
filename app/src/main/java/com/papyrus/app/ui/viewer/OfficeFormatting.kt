@@ -105,6 +105,8 @@ internal fun formattedText(
     highlight: FindHighlight?,
     palette: FormatPalette,
     onLink: (String) -> Unit = {},
+    /** The colour a fading match returns to; unspecified leaves the text to inherit. */
+    baseTextColor: Color = Color.Unspecified,
 ): AnnotatedString {
     val ranges = if (highlight == null) emptyList() else findMatchRanges(text, highlight.query)
     if (spans.isEmpty() && ranges.isEmpty()) return AnnotatedString(text)
@@ -123,8 +125,9 @@ internal fun formattedText(
             }
         }
         ranges.forEachIndexed { index, range ->
-            val style = if (index == highlight?.activeOccurrence) ActiveSpan else OtherSpan
-            addStyle(style, range.first, range.last + 1)
+            val mark = highlight ?: return@forEachIndexed
+            if (!mark.paints(index)) return@forEachIndexed
+            addStyle(mark.styleFor(index, baseTextColor), range.first, range.last + 1)
         }
     }
 }

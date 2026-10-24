@@ -34,8 +34,9 @@ class LibraryViewTest {
         sort: LibrarySort,
         query: String = "",
         filter: LibraryFilter = LibraryFilter(),
+        alsoMatching: Set<Long> = emptySet(),
         locale: Locale = Locale.ENGLISH,
-    ) = libraryView(docs, query, filter, sort, locale)
+    ) = libraryView(docs, query, filter, sort, alsoMatching = alsoMatching, locale = locale)
 
     // --- sort orders -----------------------------------------------------------------------------
 
@@ -270,6 +271,60 @@ class LibraryViewTest {
     @Test
     fun `a blank query is no query`() {
         assertEquals(6, view(library, LibrarySort.LAST_OPENED, query = "   ").size)
+    }
+
+    // --- content matches, in the same list ------------------------------------------------------
+
+    @Test
+    fun `a document whose text matched is kept even though its title did not`() {
+        val docs = listOf(doc(1, "Report.pdf"), doc(2, "meeting notes.txt"))
+
+        assertEquals(listOf(2L), ids(view(docs, LibrarySort.LAST_OPENED, query = "paper", alsoMatching = setOf(2L))))
+    }
+
+    @Test
+    fun `title and content matches land in one list in the chosen order`() {
+        val docs = listOf(doc(1, "paper report", opened = 10), doc(2, "paper notes", opened = 30), doc(3, "minutes", opened = 20))
+
+        val shown = view(docs, LibrarySort.LAST_OPENED, query = "paper", alsoMatching = setOf(3L))
+
+        assertEquals(listOf(2L, 3L, 1L), ids(shown))
+    }
+
+    @Test
+    fun `a document matching both the title and the text appears once`() {
+        val docs = listOf(doc(1, "paper", opened = 10), doc(2, "notes", opened = 20))
+
+        val shown = view(docs, LibrarySort.LAST_OPENED, query = "paper", alsoMatching = setOf(1L))
+
+        assertEquals(listOf(1L), ids(shown))
+    }
+
+    @Test
+    fun `a content id the filter hides stays hidden`() {
+        // The format chips narrow what a search can surface, exactly as they narrow the browsing list.
+        val docs = listOf(doc(1, "Report.pdf"), doc(2, "meeting notes.txt", DocumentFormat.TEXT))
+        val pdfOnly = LibraryFilter().toggled(FormatGroup.PDF)
+
+        assertEquals(
+            emptyList<Long>(),
+            ids(view(docs, LibrarySort.LAST_OPENED, query = "paper", filter = pdfOnly, alsoMatching = setOf(2L))),
+        )
+    }
+
+    @Test
+    fun `a content id for a document that is gone adds nothing`() {
+        val docs = listOf(doc(1, "Report.pdf"))
+
+        assertEquals(
+            emptyList<Long>(),
+            ids(view(docs, LibrarySort.LAST_OPENED, query = "paper", alsoMatching = setOf(99L))),
+        )
+    }
+
+    @Test
+    fun `with no query, content ids change nothing`() {
+        assertEquals(6, view(library, LibrarySort.LAST_OPENED, alsoMatching = setOf(1L)).size)
     }
 
     @Test

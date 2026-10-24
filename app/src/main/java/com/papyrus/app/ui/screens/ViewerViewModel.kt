@@ -65,13 +65,18 @@ import com.papyrus.app.viewer.TextSniffer
 import com.papyrus.app.viewer.chunkText
 import com.papyrus.app.viewer.readTextChunks
 import com.papyrus.app.viewer.readTextString
+import com.papyrus.app.ui.viewer.ARRIVAL_FADE_MILLIS
+import com.papyrus.app.ui.viewer.ARRIVAL_HOLD_MILLIS
+import com.papyrus.app.ui.viewer.ArrivalHighlight
 import com.papyrus.app.ui.viewer.asText
 import com.papyrus.app.ui.viewer.clampScale
 import com.papyrus.app.ui.viewer.countOccurrences
 import com.papyrus.app.ui.viewer.findBlockHits
 import com.papyrus.app.ui.viewer.findChunkHits
+import com.papyrus.app.ui.viewer.findMatchRanges
 import com.tom_roush.pdfbox.pdmodel.encryption.InvalidPasswordException
 import io.noties.markwon.Markwon
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
@@ -93,6 +98,7 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
 import java.io.FileNotFoundException
 import java.io.InputStream
@@ -206,6 +212,8 @@ data class ViewerUiState(
     val document: DocumentEntity? = null,
     val content: ViewerContent = ViewerContent.Loading,
     val find: FindState = FindState(),
+    /** A content search landing on its first match; null when this viewer was not opened from one. */
+    val arrival: ArrivalHighlight? = null,
     /** Raised instead of an error, so the content on screen survives the lost grant. */
     val needsRegrant: Boolean = false,
     /** True only for a handed-over document: library rows are already saved, and an encrypted file
@@ -273,6 +281,15 @@ class ViewerViewModel(
 
     /** Cancelled per query; racing searches would let the older overwrite the newer. */
     private var findJob: Job? = null
+
+    /** The word this viewer was opened for by a content search; consumed by the first load. */
+    private var pendingArrivalTerm: String? = savedState[Routes.ARG_QUERY]
+
+    /** Completed by [onRestored], so the arrival runs after the stored position, never before it. */
+    private var restoreGate: CompletableDeferred<Unit>? = null
+
+    /** Holds the arrival mark lit and then fades it; cancelled when the reader takes over with find. */
+    private var arrivalJob: Job? = null
 
     /** Cancelled per reload, so a quick encoding pick and a settings toggle leave the later one on screen. */
     private var reloadJob: Job? = null
@@ -369,6 +386,7 @@ class ViewerViewModel(
             return
         }
         val restore = restoreFor(doc)
+        restoreGate = if (restore == null) null else CompletableDeferred()
         viewport = null
         tracker.beginLoad(restorePending = restore != null)
         _state.value = ViewerUiState(
@@ -382,6 +400,50 @@ class ViewerViewModel(
         _state.update { it.copy(content = content) }
         loadPdfOutline()
         autosaveIfEnabled()
+        // A content result opens on its first match, after the stored position had its chance to land.
+        val term = pendingArrivalTerm
+        pendingArrivalTerm = null
+        if (term != null) {
+            if (restore != null) withTimeoutOrNull(ARRIVAL_RESTORE_TIMEOUT_MILLIS) { restoreGate?.await() }
+            applyArrival(term, content)
+        }
+    }
+
+    /**
+     * Opens on [term]'s first match: the same find state and reveal machinery find uses, held lit for
+     * [ARRIVAL_HOLD_MILLIS] and then faded over [ARRIVAL_FADE_MILLIS]. A format find cannot search (a
+     * scanned PDF, one past the budget) stays at the restored position with nothing to highlight, and
+     * says nothing about it: the reader asked to open a document, not to search it again.
+     */
+    private fun applyArrival(term: String, content: ViewerContent) {
+        when (content) {
+            is ViewerContent.Pdf, is ViewerContent.PlainText, is ViewerContent.Office, is ViewerContent.Markdown -> Unit
+            else -> return
+        }
+        arrivalJob?.cancel()
+        arrivalJob = viewModelScope.launch {
+            // Undebounced: the reader is already looking at the page this lands on.
+            val result = withContext(Dispatchers.IO) { computeHits(term, warnOverBudget = false) }
+            if (result.hits.isEmpty() && result.occurrences == 0) return@launch
+            val offset = (content as? ViewerContent.Markdown)?.let {
+                findMatchRanges(it.text.toString(), term).firstOrNull()?.first
+            }
+            // The reader is going somewhere on purpose; a running voice must not drag them back.
+            ttsReleaseScroll()
+            _state.update {
+                it.copy(
+                    find = it.find
+                        .withQueryEchoed(term)
+                        .withSearched(term, result.hits, result.occurrences, result.pageMatches),
+                    arrival = ArrivalHighlight(term, offset = offset),
+                )
+            }
+            delay(ARRIVAL_HOLD_MILLIS)
+            _state.update { it.copy(arrival = it.arrival?.copy(fading = true)) }
+            delay(ARRIVAL_FADE_MILLIS)
+            // Both cleared: the mark is gone and a later find starts from an empty box, not the search.
+            _state.update { it.copy(arrival = null, find = FindState()) }
+        }
     }
 
     /**
@@ -507,6 +569,8 @@ class ViewerViewModel(
     fun onRestored(applied: PositionSample) {
         viewport = applied
         tracker.restoreApplied(applied)
+        // An arrival waiting on the restore can land now instead of at the timeout.
+        restoreGate?.complete(Unit)
     }
 
     /** The viewport now shows [sample]; called often, so it only records and schedules. */
@@ -934,7 +998,10 @@ class ViewerViewModel(
 
     fun openFind() {
         findBudgetWarned = false
-        _state.update { it.copy(find = it.find.copy(open = true)) }
+        // The reader is taking over the search: the arrival's mark and its timers go, the query stays.
+        arrivalJob?.cancel()
+        arrivalJob = null
+        _state.update { it.copy(find = it.find.copy(open = true), arrival = null) }
     }
 
     fun closeFind() {
@@ -973,7 +1040,7 @@ class ViewerViewModel(
         val pageMatches: Map<Int, List<List<NormRect>>> = emptyMap(),
     )
 
-    private suspend fun computeHits(query: String): FindResult {
+    private suspend fun computeHits(query: String, warnOverBudget: Boolean = true): FindResult {
         if (query.isBlank()) return FindResult()
         return when (val content = _state.value.content) {
             is ViewerContent.PlainText -> {
@@ -985,14 +1052,14 @@ class ViewerViewModel(
             // One Spanned, every match lit at once: no target to step, count must be right.
             is ViewerContent.Markdown ->
                 FindResult(occurrences = countOccurrences(content.text.toString(), query))
-            is ViewerContent.Pdf -> findPdfPages(query)
+            is ViewerContent.Pdf -> findPdfPages(query, warnOverBudget)
             else -> FindResult()
         }
     }
 
     /** A page repeats in hits per match; budget-exceeding pages still count, scans have no text. */
-    private suspend fun findPdfPages(query: String): FindResult {
-        if (overFindBudget()) return FindResult()
+    private suspend fun findPdfPages(query: String, warnOverBudget: Boolean): FindResult {
+        if (overFindBudget(warnOverBudget)) return FindResult()
         val pages = pdfPageText ?: extractPageText().also { pdfPageText = it }
         val hits = ArrayList<Int>()
         val pageMatches = HashMap<Int, List<List<NormRect>>>()
@@ -1009,9 +1076,9 @@ class ViewerViewModel(
      * Past the budget find reports no matches and says why, once per find session: parsing the
      * whole file again to gather them risks the heap, the same tradeoff the outline reader makes.
      */
-    private fun overFindBudget(): Boolean {
+    private fun overFindBudget(warn: Boolean = true): Boolean {
         if ((_state.value.document?.sizeBytes ?: 0L) <= MAX_PDF_FIND_BYTES) return false
-        if (!findBudgetWarned) {
+        if (warn && !findBudgetWarned) {
             findBudgetWarned = true
             _messages.value = UiText(R.string.viewer_find_too_large)
         }
@@ -1122,6 +1189,9 @@ class ViewerViewModel(
         const val KEY_ENCODING = "encoding"
         const val NANOS_PER_MILLI = 1_000_000L
         const val STOP_TIMEOUT_MILLIS = 5_000L
+
+        /** How long an arrival waits for the stored position; past this it lands anyway. */
+        const val ARRIVAL_RESTORE_TIMEOUT_MILLIS = 1_500L
 
         /** Past this the whole file is not parsed again just to gather find matches. */
         const val MAX_PDF_FIND_BYTES = 64L * 1024 * 1024

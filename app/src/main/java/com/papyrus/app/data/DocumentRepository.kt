@@ -21,6 +21,7 @@ class DocumentRepository(
     private val dao: DocumentDao,
     private val progressDao: ReadingProgressDao,
     private val bookmarkDao: BookmarkDao,
+    private val searchDao: SearchDao,
     private val settings: SettingsRepository,
 ) {
     private val resolver get() = context.contentResolver
@@ -189,6 +190,9 @@ class DocumentRepository(
     /** Removes the index entry only, never the user's file; an app-owned copy goes with its row. */
     suspend fun remove(document: DocumentEntity) = withContext(Dispatchers.IO) {
         SafStorage.releasePermission(resolver, document.uri.toUri())
+        // Explicit, so the FTS delete trigger fires; the cascade is only a backstop for rows removed
+        // by some other path.
+        searchDao.deleteText(document.id)
         dao.deleteById(document.id)
         LibraryImport.deleteOwnedCopy(context, document.uri.toUri())
     }

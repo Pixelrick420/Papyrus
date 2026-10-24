@@ -100,11 +100,13 @@ class MigrationsTest {
     }
 
     @Test
-    fun `the 4 to 5 migration is registered as exactly one step from the baseline`() {
-        val step = Migrations.ALL.single()
-        assertEquals(4, step.startVersion)
-        assertEquals(5, step.endVersion)
-        assertEquals(5, Migrations.CURRENT_VERSION)
+    fun `the shipped migrations start at the baseline and end at the current version`() {
+        assertEquals(Migrations.BASELINE_VERSION, Migrations.ALL.first().startVersion)
+        assertEquals(Migrations.CURRENT_VERSION, Migrations.ALL.last().endVersion)
+        assertEquals(
+            listOf(4 to 5, 5 to 6),
+            Migrations.ALL.map { it.startVersion to it.endVersion },
+        )
     }
 
     @Test
@@ -140,5 +142,89 @@ class MigrationsTest {
     fun `a migration from below the baseline is not demanded`() {
         // Older schemas are unsupported: a stray 3 -> 4 is neither required nor an error.
         assertEquals(emptyList<String>(), problems(3 to 4, current = 4))
+    }
+
+    // --- 5 -> 6: the content index -------------------------------------------------------------
+
+    @Test
+    fun `the 5 to 6 statements can all be re-run, so a half-applied migration can be retried`() {
+        assertEquals(6, Migrations.V5_TO_V6_SQL.size)
+        for (sql in Migrations.V5_TO_V6_SQL) {
+            assertTrue(
+                "not re-runnable: $sql",
+                Regex("^CREATE (TABLE|VIRTUAL TABLE|TRIGGER) IF NOT EXISTS ").containsMatchIn(sql),
+            )
+        }
+    }
+
+    @Test
+    fun `the index table is external-content over the stored text, with the prefix tables the query expects`() {
+        val fts = Migrations.V5_TO_V6_SQL.single { it.startsWith("CREATE VIRTUAL TABLE") }
+
+        assertTrue("not FTS4: $fts", "USING FTS4(" in fts)
+        // External content is what keeps the words in one place instead of two.
+        assertTrue("not external content: $fts", "content=`document_text`" in fts)
+        assertTrue("diacritics must fold, or `uber` misses `Über`: $fts", "remove_diacritics=1" in fts)
+        assertTrue("SearchQuery prefix-matches from two characters: $fts", "prefix=`2,3`" in fts)
+    }
+
+    @Test
+    fun `the content table cascades with its document and carries every column the entity declares`() {
+        val table = Migrations.V5_TO_V6_SQL.single { it.startsWith("CREATE TABLE") }
+
+        assertTrue(
+            "a deleted document must not leave its text behind: $table",
+            "REFERENCES `documents`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE" in table,
+        )
+        for (column in listOf("rowid", "text", "state", "charCount", "sourceSize", "indexedAt", "indexVersion")) {
+            assertTrue("missing column `$column`: $table", "`$column` " in table)
+        }
+    }
+
+    @Test
+    fun `one trigger per write keeps the FTS rows in step with the content table`() {
+        val triggers = Migrations.V5_TO_V6_SQL.filter { it.startsWith("CREATE TRIGGER") }
+
+        // Room names and generates exactly these four; anything else would not fire.
+        assertEquals(
+            listOf("BEFORE_UPDATE", "BEFORE_DELETE", "AFTER_UPDATE", "AFTER_INSERT"),
+            triggers.map { sql ->
+                listOf("BEFORE_UPDATE", "BEFORE_DELETE", "AFTER_UPDATE", "AFTER_INSERT")
+                    .single { it in sql }
+            },
+        )
+        for (sql in triggers) {
+            assertTrue("not scoped to the content table: $sql", "ON `document_text`" in sql)
+        }
+    }
+
+    @Test
+    fun `every 5 to 6 statement is exactly what the exported schema says`() {
+        // The migration's statement list and the entities are two sources for one schema; Room
+        // compares the result of the migration against the entities on first open and would throw.
+        val exported = schemaFile(6).readText().replace(Regex("\\s+"), " ")
+        for (sql in Migrations.V5_TO_V6_SQL) {
+            // Room exports a table's own CREATE with its name replaced by this placeholder.
+            val normalized = sql
+                .replace(Regex("(?<=IF NOT EXISTS )`\\w+`")) { "`\${TABLE_NAME}`" }
+                .replace(Regex("\\s+"), " ")
+                .trim()
+            assertTrue(
+                "not in the exported schema, so the entities and the migration disagree:\n$normalized",
+                normalized in exported,
+            )
+        }
+    }
+
+    @Test
+    fun `the exported schema holds no 5 to 6 statement the migration forgot`() {
+        // Catches drift in the other direction: a trigger Room generates that is not in the list.
+        val exported = schemaFile(6).readText()
+        // A table's own CREATE carries `${TABLE_NAME}` instead of its name, so its name is counted
+        // from the entity entry; the triggers name the content table outright.
+        val tables = Regex("\"tableName\": \"(document_text[^\"]*)\"").findAll(exported).count()
+        val triggers = Regex("\"CREATE TRIGGER [^\"]*\"").findAll(exported).count()
+
+        assertEquals(Migrations.V5_TO_V6_SQL.size, tables + triggers)
     }
 }

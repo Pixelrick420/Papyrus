@@ -25,11 +25,14 @@ import com.papyrus.app.ui.screens.ViewerScreen
 object Routes {
     const val HOME = "home"
     const val ARG_DOCUMENT_ID = "documentId"
-    const val VIEWER = "viewer/{$ARG_DOCUMENT_ID}"
+    const val ARG_QUERY = "query"
+    const val VIEWER = "viewer/{$ARG_DOCUMENT_ID}?$ARG_QUERY={$ARG_QUERY}"
     const val SETTINGS = "settings"
 
-    // Only the Room row id travels; avoids URI-encoding pitfalls in route strings.
-    fun viewer(documentId: Long) = "viewer/$documentId"
+    // Only the Room row id travels, plus the search word a content result should land on; the query
+    // is encoded because it can hold spaces, quotes, `&` and non-ASCII.
+    fun viewer(documentId: Long, query: String? = null): String =
+        if (query == null) "viewer/$documentId" else "viewer/$documentId?$ARG_QUERY=${Uri.encode(query)}"
 }
 
 private const val NAV_DURATION_MS = 300
@@ -84,7 +87,7 @@ fun PapyrusNavGraph(
         composable(Routes.HOME) {
             // Still registered for share intents and hardware keyboards, though no UI navigates here.
             HomeScreen(
-                onOpenDocument = { id -> navController.navigate(Routes.viewer(id)) },
+                onOpenDocument = { id, query -> navController.navigate(Routes.viewer(id, query)) },
                 // Single-top so a double tap on the icon cannot stack two Settings screens.
                 onOpenSettings = { navController.navigate(Routes.SETTINGS) { launchSingleTop = true } },
             )
@@ -94,7 +97,14 @@ fun PapyrusNavGraph(
         }
         composable(
             route = Routes.VIEWER,
-            arguments = listOf(navArgument(Routes.ARG_DOCUMENT_ID) { type = NavType.LongType }),
+            arguments = listOf(
+                navArgument(Routes.ARG_DOCUMENT_ID) { type = NavType.LongType },
+                navArgument(Routes.ARG_QUERY) {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                },
+            ),
         ) {
             ViewerScreen(onBack = leaveViewer)
         }
