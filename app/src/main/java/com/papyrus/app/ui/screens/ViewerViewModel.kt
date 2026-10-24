@@ -425,7 +425,7 @@ class ViewerViewModel(
             val result = withContext(Dispatchers.IO) { computeHits(term, warnOverBudget = false) }
             if (result.hits.isEmpty() && result.occurrences == 0) return@launch
             val offset = (content as? ViewerContent.Markdown)?.let {
-                findMatchRanges(it.text.toString(), term).firstOrNull()?.first
+                findMatchRanges(it.text, term).firstOrNull()?.first
             }
             // The reader is going somewhere on purpose; a running voice must not drag them back.
             ttsReleaseScroll()
@@ -1049,7 +1049,7 @@ class ViewerViewModel(
             is ViewerContent.Office -> FindResult(hits = findBlockHits(content.blocks, query))
             // One Spanned, every match lit at once: no target to step, count must be right.
             is ViewerContent.Markdown ->
-                FindResult(occurrences = countOccurrences(content.text.toString(), query))
+                FindResult(occurrences = countOccurrences(content.text, query))
             is ViewerContent.Pdf -> findPdfPages(query, warnOverBudget)
             else -> FindResult()
         }

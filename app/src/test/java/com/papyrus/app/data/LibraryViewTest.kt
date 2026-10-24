@@ -271,12 +271,24 @@ class LibraryViewTest {
     }
 
     @Test
-    fun `title and content matches land in one list in the chosen order`() {
+    fun `filename matches come first followed by content matches, each in chosen sort order`() {
         val docs = listOf(doc(1, "paper report", opened = 10), doc(2, "paper notes", opened = 30), doc(3, "minutes", opened = 20))
 
         val shown = view(docs, LibrarySort.LAST_OPENED, query = "paper", alsoMatching = setOf(3L))
 
-        assertEquals(listOf(2L, 3L, 1L), ids(shown))
+        assertEquals(listOf(2L, 1L, 3L), ids(shown))
+    }
+
+    @Test
+    fun `filename matches come first in alphabetical order then content matches in alphabetical order`() {
+        val docs = listOf(
+            doc(1, "zebra paper"),
+            doc(2, "apple paper"),
+            doc(3, "banana"),
+            doc(4, "carrot"),
+        )
+        val shown = view(docs, LibrarySort.NAME_ASC, query = "paper", alsoMatching = setOf(3L, 4L))
+        assertEquals(listOf(2L, 1L, 3L, 4L), ids(shown))
     }
 
     @Test

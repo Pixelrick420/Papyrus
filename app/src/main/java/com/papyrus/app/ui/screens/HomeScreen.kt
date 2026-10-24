@@ -83,6 +83,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -118,6 +121,8 @@ import com.papyrus.app.ui.asString
 import com.papyrus.app.ui.components.ControlCorner
 import com.papyrus.app.ui.components.ControlHeight
 import com.papyrus.app.ui.components.DocumentThumbnail
+import com.papyrus.app.ui.viewer.ActiveMatchColor
+import com.papyrus.app.ui.viewer.findMatchRanges
 import com.papyrus.app.ui.viewer.focusTermFor
 import com.papyrus.app.ui.components.SearchPill
 import com.papyrus.app.ui.components.SnippetText
@@ -805,6 +810,7 @@ fun HomeScreen(
                             selected = doc.id in state.selection.ids,
                             menuOpen = menuFor == doc.id,
                             onMenuOpenChange = { open -> menuFor = if (open) doc.id else null },
+                            searchQuery = state.query,
                             onClick = {
                                 if (state.selection.active) {
                                     viewModel.toggleSelection(doc.id)
@@ -1075,6 +1081,7 @@ private fun DocumentRow(
     onRemove: () -> Unit,
     onShare: () -> Unit,
     onToggleStarred: () -> Unit,
+    searchQuery: String = "",
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -1086,6 +1093,26 @@ private fun DocumentRow(
             justNow
         } else {
             DateUtils.getRelativeTimeSpanString(doc.lastOpenedAt, System.currentTimeMillis(), DateUtils.MINUTE_IN_MILLIS).toString()
+        }
+    }
+    val needle = searchQuery.trim()
+    val isFilenameMatch = needle.isNotEmpty() && doc.title.contains(needle, ignoreCase = true)
+    val orangeHighlight = ActiveMatchColor.copy(alpha = 0.35f)
+    val annotatedTitle = remember(doc.title, needle, isFilenameMatch) {
+        if (!isFilenameMatch) {
+            AnnotatedString(doc.title)
+        } else {
+            buildAnnotatedString {
+                append(doc.title)
+                val ranges = findMatchRanges(doc.title, needle)
+                for (range in ranges) {
+                    val start = range.first.coerceIn(0, doc.title.length)
+                    val end = (range.last + 1).coerceIn(start, doc.title.length)
+                    if (end > start) {
+                        addStyle(SpanStyle(background = orangeHighlight), start, end)
+                    }
+                }
+            }
         }
     }
     val shape = RoundedCornerShape(16.dp)
@@ -1126,18 +1153,20 @@ private fun DocumentRow(
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
                 Text(
-                    doc.title,
+                    annotatedTitle,
                     style = MaterialTheme.typography.titleMedium,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                Text(
-                    "$sizeLabel · $openedLabel",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                if (needle.isEmpty() || isFilenameMatch) {
+                    Text(
+                        "$sizeLabel · $openedLabel",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
                 // Only a content match has an excerpt to show; without it, a document found only by
                 // its contents would look like a result with no reason to be here.
                 hit?.let { SnippetText(text = it.snippet, highlights = it.highlightRanges) }
