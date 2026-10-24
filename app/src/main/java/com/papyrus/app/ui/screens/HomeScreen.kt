@@ -93,6 +93,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.papyrus.app.R
+import com.papyrus.app.data.ContentHit
 import com.papyrus.app.data.DocumentEntity
 import com.papyrus.app.data.DocumentFormat
 import com.papyrus.app.data.DocumentRepository
@@ -101,6 +102,8 @@ import com.papyrus.app.data.LibraryFilter
 import com.papyrus.app.data.LibrarySort
 import com.papyrus.app.data.OpenPersistableDocuments
 import com.papyrus.app.data.SafAccess
+import com.papyrus.app.data.SearchQuery
+import com.papyrus.app.data.SearchRepository
 import com.papyrus.app.data.SettingsRepository
 import com.papyrus.app.data.ThumbnailLoader
 import com.papyrus.app.data.availableGroups
@@ -115,10 +118,13 @@ import com.papyrus.app.ui.asString
 import com.papyrus.app.ui.components.ControlCorner
 import com.papyrus.app.ui.components.ControlHeight
 import com.papyrus.app.ui.components.DocumentThumbnail
+import com.papyrus.app.ui.viewer.focusTermFor
 import com.papyrus.app.ui.components.SearchPill
+import com.papyrus.app.ui.components.SnippetText
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.channels.Channel
@@ -158,7 +164,22 @@ data class HomeUiState(
     /** The file-type groups the sheet lists: what the library has plus what is selected, so a selected group can always be unselected. */
     val groups: List<FormatGroup> = emptyList(),
     val hasStarred: Boolean = false,
+    /** The excerpt to show under each row that matched inside its text, by document id. */
+    val contentHits: Map<Long, ContentHit> = emptyMap(),
+    /** A content search for [query] is still running, so an empty [results] may yet fill. */
+    val searching: Boolean = false,
 )
+
+/**
+ * One content search: the [query] it answers and its [hits], or null while the search is running.
+ *
+ * The query travels with the hits so a keystroke can never leave the previous query's excerpts on
+ * screen under the new one — which is the failure mode a plain result list has.
+ */
+internal data class ContentSearch(val query: String, val hits: Map<Long, ContentHit>?)
+
+/** What [HomeViewModel.uiState] needs beyond the library, its filters and its selection. */
+private data class AsyncState(val pendingRemovalToken: Long?, val content: ContentSearch?)
 
 /**
  * What the list shows for one set of inputs. Pure and independent of the flows it reads from, so
@@ -170,6 +191,8 @@ internal fun buildHomeUiState(
     selection: SelectionState,
     pendingRemovalToken: Long?,
     hidden: Set<Long>,
+    contentHits: Map<Long, ContentHit> = emptyMap(),
+    searching: Boolean = false,
 ): HomeUiState {
     val needle = params.query.trim()
     // Hiding first keeps `libraryEmpty` and the results agreeing with what the screen actually shows.
@@ -179,18 +202,23 @@ internal fun buildHomeUiState(
         libraryEmpty = documents.isEmpty(),
         query = needle,
         documents = documents,
-        results = libraryView(documents, needle, params.filter, params.sort),
+        results = libraryView(documents, needle, params.filter, params.sort, alsoMatching = contentHits.keys),
         selection = selection,
         pendingRemovalToken = pendingRemovalToken,
         filter = params.filter,
         sort = params.sort,
         groups = (availableGroups(documents) + params.filter.groups).distinct().sortedBy { it.ordinal },
         hasStarred = documents.any { it.isStarred },
+        contentHits = contentHits,
+        searching = searching,
     )
 }
 
 /** How many share probes run at once: enough to hide a slow provider, few enough to stay polite. */
 private const val SHARE_PROBE_PARALLELISM = 4
+
+/** How long typing has to pause before the content search runs: long enough to skip a burst. */
+private const val CONTENT_SEARCH_DEBOUNCE_MILLIS = 250L
 
 /**
  * The share pre-flight for several files, concurrently but at most [limit] at a time: each document
@@ -218,6 +246,8 @@ internal data class ViewParams(val query: String, val filter: LibraryFilter, val
 
 class HomeViewModel(
     private val repository: DocumentRepository,
+    /** Searches document text; [repository] only lists documents and filters their titles. */
+    private val search: SearchRepository,
     val thumbnailLoader: ThumbnailLoader,
     /**
      * Outlives this ViewModel, so a removal still in its undo window when Home is cleared commits here.
@@ -228,6 +258,11 @@ class HomeViewModel(
 
     private val _query = MutableStateFlow("")
     val query: StateFlow<String> = _query.asStateFlow()
+
+    /** The running content search, its answer, or null before the first one; see [ContentSearch]. */
+    private val contentSearch = MutableStateFlow<ContentSearch?>(null)
+
+    private var contentSearchJob: Job? = null
 
     /** Kept here, so it survives a rotation; not stored, a new session starts unfiltered. */
     private val _filter = MutableStateFlow(LibraryFilter())
@@ -273,22 +308,74 @@ class HomeViewModel(
     }
 
     /**
+     * The two inputs that are neither the library nor its filters, paired so the typed five-argument
+     * [combine] below still fits them.
+     */
+    private val asyncState = combine(pendingRemoval.pending, contentSearch) { pending, content ->
+        AsyncState(pending?.token, content)
+    }
+
+    /**
      * Filtered in memory; starts "not loaded" so a populated library cannot flash its empty state.
      * Hidden rows are left out of documents and libraryEmpty too, so bulk actions agree with the screen.
      * The filter runs on [Dispatchers.Default] so typing never waits on a large library, and
      * [distinctUntilChanged] drops the second, identical state the prune above would otherwise publish.
+     *
+     * A content search's answer is used only while its query is still the one being typed, so a
+     * slower search for a shorter query can never add rows under the current one.
      */
     val uiState: StateFlow<HomeUiState> = combine(
-        repository.documents, viewParams, _selection, pendingRemoval.pending, hiddenIds,
-    ) { all, params, selection, pending, hidden ->
-        buildHomeUiState(all, params, selection, pending?.token, hidden)
+        repository.documents, viewParams, _selection, hiddenIds, asyncState,
+    ) { all, params, selection, hidden, async ->
+        val answer = async.content?.takeIf { it.query == params.query }
+        buildHomeUiState(
+            all = all,
+            params = params,
+            selection = selection,
+            pendingRemovalToken = async.pendingRemovalToken,
+            hidden = hidden,
+            contentHits = answer?.hits.orEmpty(),
+            searching = params.query.isNotEmpty() && answer?.hits == null,
+        )
     }
         .distinctUntilChanged()
         .flowOn(Dispatchers.Default)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeUiState())
 
+    /**
+     * The title filter is synchronous; the content search is debounced and cancelled by the next
+     * keystroke, because it reads the database rather than scanning the list already in memory.
+     */
     fun onQueryChange(value: String) {
         _query.value = value
+        searchContents(value.trim())
+    }
+
+    /**
+     * Never blocks the list: the rows that match by title appear at once and the content hits join
+     * them when they arrive. A failed search reports once and reads as no hits, so a broken index is
+     * not indistinguishable from a library that simply does not contain the words.
+     */
+    private fun searchContents(needle: String) {
+        contentSearchJob?.cancel()
+        if (SearchQuery.parse(needle) == null) {
+            // Nothing searchable — empty, or punctuation only — so no query is worth running.
+            contentSearch.value = ContentSearch(needle, emptyMap())
+            return
+        }
+        contentSearch.value = ContentSearch(needle, hits = null)
+        contentSearchJob = viewModelScope.launch {
+            delay(CONTENT_SEARCH_DEBOUNCE_MILLIS)
+            val hits = try {
+                search.search(needle)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                _messages.send(UiText(R.string.home_search_failed))
+                emptyList()
+            }
+            contentSearch.value = ContentSearch(needle, hits.associateBy { it.documentId })
+        }
     }
 
     fun startSelection(id: Long) {
@@ -498,7 +585,7 @@ private val TitleInset = 24.dp
 
 @Composable
 fun HomeScreen(
-    onOpenDocument: (Long) -> Unit,
+    onOpenDocument: (Long, String?) -> Unit,
     onOpenSettings: () -> Unit,
     viewModel: HomeViewModel = viewModel(factory = AppViewModelProvider.Factory),
 ) {
@@ -530,7 +617,7 @@ fun HomeScreen(
     val openFiles = rememberLauncherForActivityResult(OpenPersistableDocuments()) { uris ->
         viewModel.onDocumentsPicked(
             uris = uris,
-            open = onOpenDocument,
+            open = { id -> onOpenDocument(id, null) },
             onAdded = { scope.launch { listState.scrollToItem(0) } },
         )
     }
@@ -712,6 +799,7 @@ fun HomeScreen(
                     items(state.results, key = { it.id }) { doc ->
                         DocumentRow(
                             doc = doc,
+                            hit = state.contentHits[doc.id],
                             loader = viewModel.thumbnailLoader,
                             selecting = state.selection.active,
                             selected = doc.id in state.selection.ids,
@@ -722,7 +810,7 @@ fun HomeScreen(
                                     viewModel.toggleSelection(doc.id)
                                 } else {
                                     dismissKeyboard()
-                                    onOpenDocument(doc.id)
+                                    onOpenDocument(doc.id, focusTermFor(state.query, hasContentHit = state.contentHits[doc.id] != null))
                                 }
                             },
                             onLongPress = {
@@ -744,8 +832,9 @@ fun HomeScreen(
 
                 // Overlaid, not swapped with the list, so the last row can fade out inside it; no exit animation —
                 // the message goes at once and the rows fade in, which reads cleaner than a cross-fade.
+                // Held back while a content search runs: its rows may still be on the way.
                 EmptyStateOverlay(
-                    visible = state.loaded && state.results.isEmpty(),
+                    visible = state.loaded && state.results.isEmpty() && !state.searching,
                     libraryEmpty = state.libraryEmpty && state.query.isEmpty(),
                     query = state.query,
                     filtersActive = state.filter.isActive && !state.libraryEmpty,
@@ -974,6 +1063,8 @@ private fun EmptyState(
 @Composable
 private fun DocumentRow(
     doc: DocumentEntity,
+    /** Where the current search matched inside this document, when it did. */
+    hit: ContentHit?,
     loader: ThumbnailLoader,
     selecting: Boolean,
     selected: Boolean,
@@ -1047,6 +1138,9 @@ private fun DocumentRow(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+                // Only a content match has an excerpt to show; without it, a document found only by
+                // its contents would look like a result with no reason to be here.
+                hit?.let { SnippetText(text = it.snippet, highlights = it.highlightRanges) }
             }
             // Its own slot, left of the ⋮: inside the title's row the star sat at the end of a
             // short name and at the far right of a long one, so it moved with the length of the name.

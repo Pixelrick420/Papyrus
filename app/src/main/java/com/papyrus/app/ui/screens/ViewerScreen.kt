@@ -6,6 +6,7 @@ import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -87,6 +88,7 @@ import com.papyrus.app.data.ReadingLocation
 import com.papyrus.app.ui.AppViewModelProvider
 import com.papyrus.app.ui.asString
 import com.papyrus.app.ui.components.ControlHeight
+import com.papyrus.app.ui.viewer.ARRIVAL_FADE_MILLIS
 import com.papyrus.app.ui.viewer.BookmarksSheet
 import com.papyrus.app.ui.viewer.EncodingDialog
 import com.papyrus.app.ui.viewer.FileInfoSheet
@@ -209,6 +211,17 @@ fun ViewerScreen(
     }
 
     val find = state.find
+    val arrival = state.arrival
+    // The mark arrives opaque, holds while the ViewModel waits, then this fades it out.
+    val highlightAlpha by animateFloatAsState(
+        targetValue = if (arrival?.fading == true) 0f else 1f,
+        animationSpec = tween(ARRIVAL_FADE_MILLIS.toInt()),
+        label = "arrivalAlpha",
+    )
+    // Markdown has no hit to reveal, so its arrival is one character offset to scroll to.
+    LaunchedEffect(arrival?.offset) {
+        arrival?.offset?.let { jump = ViewerJump(ReadingLocation(LocationKind.CHAR, it)) }
+    }
     // Only surfaces with searchable content; a failed load has neither.
     val findAvailable = when (state.content) {
         is ViewerContent.Pdf, is ViewerContent.PlainText, is ViewerContent.Office, is ViewerContent.Markdown -> true
@@ -427,16 +440,21 @@ fun ViewerScreen(
                             position = position,
                             speaking = spoken,
                             ttsLocked = voiceLocksScroll,
+                            highlightAlpha = highlightAlpha,
+                            onlyActive = arrival != null,
                         )
                         is ViewerContent.Markdown -> MarkdownViewer(
                             markwon = content.markwon,
                             source = content.source,
                             text = content.text,
-                            findQuery = find.query,
+                            // Empty during an arrival: the mark below is the only one it may light.
+                            findQuery = if (arrival != null) "" else find.query,
                             zoom = zoom,
                             position = position,
                             speaking = spoken,
                             ttsLocked = voiceLocksScroll,
+                            arrival = arrival,
+                            highlightAlpha = highlightAlpha,
                         )
                         is ViewerContent.PlainText -> {
                             // Keyed on the fields, not the content: comparing two contents would walk every chunk.
@@ -464,6 +482,8 @@ fun ViewerScreen(
                                 position = position,
                                 speaking = spoken,
                                 ttsLocked = voiceLocksScroll,
+                                highlightAlpha = highlightAlpha,
+                                onlyActive = arrival != null,
                             )
                         }
                         is ViewerContent.Office -> OfficeViewer(
@@ -476,6 +496,8 @@ fun ViewerScreen(
                             speaking = spoken,
                             ttsLocked = voiceLocksScroll,
                             incomplete = content.incomplete,
+                            highlightAlpha = highlightAlpha,
+                            onlyActive = arrival != null,
                         )
                         // The dialog covers the page; only an in-flight retry is worth showing behind it.
                         is ViewerContent.NeedsPassword ->

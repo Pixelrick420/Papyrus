@@ -83,7 +83,13 @@ class SyntaxStyling(val tokens: SyntaxTokens, val palette: SyntaxPalette)
  * [text] with syntax colours and find highlights, highlights added last so a match wins over the
  * colour and gets exactly one style, matching [formattedText]'s Office layering.
  */
-internal fun syntaxHighlightedText(text: String, syntax: SyntaxStyling, highlight: FindHighlight?): AnnotatedString {
+internal fun syntaxHighlightedText(
+    text: String,
+    syntax: SyntaxStyling,
+    highlight: FindHighlight?,
+    /** The colour a fading match returns to; unspecified leaves the text to inherit. */
+    baseTextColor: Color = Color.Unspecified,
+): AnnotatedString {
     val ranges = if (highlight == null) emptyList<IntRange>() else findMatchRanges(text, highlight.query)
     val tokens = syntax.tokens
     if (tokens.size == 0 && ranges.isEmpty()) return AnnotatedString(text)
@@ -95,7 +101,9 @@ internal fun syntaxHighlightedText(text: String, syntax: SyntaxStyling, highligh
             if (end > start) addStyle(syntax.palette.styleOf(tokens.kind(i)), start, end)
         }
         ranges.forEachIndexed { index, range ->
-            addStyle(if (index == highlight?.activeOccurrence) ActiveSpan else OtherSpan, range.first, range.last + 1)
+            val mark = highlight ?: return@forEachIndexed
+            if (!mark.paints(index)) return@forEachIndexed
+            addStyle(mark.styleFor(index, baseTextColor), range.first, range.last + 1)
         }
     }
 }

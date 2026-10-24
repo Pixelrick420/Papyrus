@@ -94,6 +94,10 @@ internal fun PdfViewer(
     position: PositionHooks = PositionHooks.None,
     speaking: TtsHighlight? = null,
     ttsLocked: Boolean = false,
+    /** 1 at full strength, 0 gone: the animated fade of a search arrival's mark. */
+    highlightAlpha: Float = 1f,
+    /** Only the current match is painted: an arrival lights the one place it landed on. */
+    onlyActive: Boolean = false,
 ) {
     val restoreTarget = rememberRestoredTarget(LocationKind.PAGE, source.pageCount, position)
     val listState = rememberLazyListState(initialFirstVisibleItemIndex = restoreTarget?.unit ?: 0)
@@ -218,6 +222,8 @@ internal fun PdfViewer(
                             // Only the active page knows which of its matches is current.
                             activeMatch = activeOccurrence.takeIf { index == activePage },
                             matches = pageMatches[index].orEmpty(),
+                            matchAlpha = MATCH_ALPHA * highlightAlpha,
+                            onlyActive = onlyActive,
                             reveal = reveal.takeIf { index == activePage },
                             selectionState = selectionState,
                             pageGeometry = pageGeometry,
@@ -277,6 +283,8 @@ private fun PdfPage(
     nightMode: Boolean,
     activeMatch: Int?,
     matches: List<List<NormRect>>,
+    matchAlpha: Float,
+    onlyActive: Boolean,
     reveal: RevealTicket?,
     selectionState: PdfSelectionState,
     pageGeometry: State<PdfPageGeometry>,
@@ -428,10 +436,10 @@ private fun PdfPage(
                 drawSpokenRects(spokenRects.word, wordColor, corner)
             }
         }
-        if (matches.isNotEmpty()) {
+        if (matches.isNotEmpty() && (!onlyActive || activeMatch != null)) {
             // Matched words in page-relative units, so they stay put at any width. Translucent.
-            val otherColor = OtherMatchColor.copy(alpha = MATCH_ALPHA)
-            val activeColor = ActiveMatchColor.copy(alpha = MATCH_ALPHA)
+            val otherColor = OtherMatchColor.copy(alpha = matchAlpha)
+            val activeColor = ActiveMatchColor.copy(alpha = matchAlpha)
             val corner = with(LocalDensity.current) { 2.dp.toPx() }
             Canvas(Modifier.fillMaxSize()) {
                 fun drawMatch(rects: List<NormRect>, color: Color) {
@@ -444,7 +452,7 @@ private fun PdfPage(
                         )
                     }
                 }
-                matches.forEachIndexed { i, rects -> if (i != activeMatch) drawMatch(rects, otherColor) }
+                if (!onlyActive) matches.forEachIndexed { i, rects -> if (i != activeMatch) drawMatch(rects, otherColor) }
                 // Last, so the current match sits on top of any neighbour it touches.
                 activeMatch?.let { matches.getOrNull(it) }?.let { drawMatch(it, activeColor) }
             }

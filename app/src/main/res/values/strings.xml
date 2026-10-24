@@ -39,6 +39,7 @@ access</string>
 
     <string name="home_search_hint">Search files</string>
     <string name="home_search_none">No files match “%1$s”</string>
+    <string name="home_search_failed">Couldn\'t search inside your files</string>
     <string name="home_sort_cd">Sort: %1$s</string>
     <string name="home_sort_cd_with_filters">Sort: %1$s, %2$s</string>
     <string name="home_sort_section">Sort</string>

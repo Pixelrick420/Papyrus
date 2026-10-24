@@ -92,19 +92,27 @@ fun availableGroups(documents: List<DocumentEntity>): List<FormatGroup> {
 }
 
 /**
- * What Home shows: [documents] kept by the title [query] (case-insensitive, as before) and by [filter],
- * then put in [sort] order. Pure, so every combination is unit-tested; sorting in memory is fine at library
- * sizes and keeps the one list query as it was.
+ * What Home shows: [documents] kept by the title [query] (case-insensitive, as before), by [filter],
+ * and by [alsoMatching] — ids a content search found [query] inside, whose titles may not match it —
+ * then put in [sort] order. Pure, so every combination is unit-tested; sorting in memory is fine at
+ * library sizes and keeps the one list query as it was.
+ *
+ * Both kinds of match land in one list rather than two sections, so the sort order stays the order
+ * the person chose and a row never appears twice.
  */
 fun libraryView(
     documents: List<DocumentEntity>,
     query: String,
     filter: LibraryFilter,
     sort: LibrarySort,
+    alsoMatching: Set<Long> = emptySet(),
     locale: Locale = Locale.getDefault(),
 ): List<DocumentEntity> {
     val needle = query.trim()
-    val kept = documents.filter { filter.matches(it) && (needle.isEmpty() || it.title.contains(needle, ignoreCase = true)) }
+    val kept = documents.filter {
+        filter.matches(it) &&
+            (needle.isEmpty() || it.title.contains(needle, ignoreCase = true) || it.id in alsoMatching)
+    }
     return kept.sortedWith(comparatorFor(sort, locale))
 }
 

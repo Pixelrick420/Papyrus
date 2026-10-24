@@ -24,6 +24,7 @@ import com.papyrus.app.data.DocumentFormat
 import com.papyrus.app.data.LibrarySort
 import com.papyrus.app.tts.TtsState
 import com.papyrus.app.ui.components.SearchPill
+import com.papyrus.app.ui.components.SnippetText
 import com.papyrus.app.ui.screens.SortFilterButton
 import com.papyrus.app.ui.viewer.FileInfoSheet
 import com.papyrus.app.ui.viewer.FindInFileBar
@@ -141,6 +142,17 @@ class AccessibilitySemanticsTest {
                 node.config.getOrNull(SemanticsProperties.LiveRegion) == LiveRegionMode.Polite
             },
         )
+    }
+
+    @Test
+    fun searchSnippetReadsAsOneTextNode() {
+        rule.setContent {
+            SnippetText(text = "the scale of paper", highlights = listOf(4..8))
+        }
+
+        // One node, not one per highlighted range: a screen reader must read the excerpt as a
+        // sentence rather than stop at every emphasised word.
+        rule.onAllNodesWithText("the scale of paper").assertCountEquals(1)
     }
 
     /** Touch bounds, not layout bounds: Material enforces the 48dp minimum on the touch target. */

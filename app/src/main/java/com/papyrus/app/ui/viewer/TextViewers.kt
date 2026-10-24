@@ -50,6 +50,7 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
@@ -138,6 +139,10 @@ fun MarkdownViewer(
     position: PositionHooks = PositionHooks.None,
     speaking: TtsHighlight? = null,
     ttsLocked: Boolean = false,
+    /** The search result this viewer arrived on; find's query is empty while it is set. */
+    arrival: ArrivalHighlight? = null,
+    /** 1 at full strength, 0 gone: the animated fade of [arrival]. */
+    highlightAlpha: Float = 1f,
 ) {
     val scroll = rememberScrollState()
     val geometry = rememberScrollGeometry(scroll)
@@ -152,6 +157,12 @@ fun MarkdownViewer(
     val textPx = baseTextPx * zoom.committedScale
     val rendered = rememberRenderedMarkdown(markwon, source, text, textPx, textColor, linkColor)
     val highlighted = rememberHighlightedText(rendered, findQuery)
+    // The one match an arrival landed on. Markdown has no hits to reveal, so this is the only mark
+    // it gets; the viewer screen scrolls to the same offset.
+    val arrivalRange = remember(text, arrival?.term) {
+        arrival?.term?.let { findMatchRanges(text.toString(), it).firstOrNull() }
+    }
+    val arrivalSpans = remember { ArrivalSpans() }
     val textState = remember { MarkdownTextState() }
     // The column's own 16.dp padding sits above the text inside the scrolled content.
     val contentTopPx = with(LocalDensity.current) { 16.dp.toPx() }
@@ -248,6 +259,8 @@ fun MarkdownViewer(
                             }
                             // After any re-set of the text, which drops every span it had.
                             spokenSpans.show(view, spoken, sentenceColor, wordColor)
+                            // Also moved in place: the fade repaints this one range, not the document.
+                            arrivalSpans.show(view, arrivalRange, highlightAlpha, textColor)
                         },
                     )
                 }
@@ -309,6 +322,52 @@ private class SpokenSpan : CharacterStyle(), UpdateAppearance {
 
     override fun updateDrawState(ds: TextPaint) {
         ds.bgColor = color
+    }
+}
+
+/** A match mark whose background and text colour can be changed without touching the text. */
+private class FadingMatchSpan : CharacterStyle(), UpdateAppearance {
+    var background = 0
+    var foreground = 0
+
+    override fun updateDrawState(ds: TextPaint) {
+        ds.bgColor = background
+        ds.color = foreground
+    }
+}
+
+/**
+ * The one match a search arrival landed on. Unlike find's spans it is moved in place and only its
+ * paint changes, so a fade costs a repaint rather than re-setting the whole document — which would
+ * also drop a selection in progress.
+ */
+private class ArrivalSpans {
+    private val span = FadingMatchSpan()
+    private var attachedTo: Spannable? = null
+
+    fun show(view: TextView, range: IntRange?, alpha: Float, baseTextColor: Int) {
+        val text = view.text as? Spannable
+        // A re-set text replaces the Spannable and takes the old span with it; otherwise the span is
+        // moved to the new range, or taken off when there is nothing left to mark.
+        val hadSpan = attachedTo != null
+        attachedTo?.removeSpan(span)
+        attachedTo = null
+        if (text == null || range == null) {
+            if (hadSpan) view.invalidate()
+            return
+        }
+        val faded = alpha.coerceIn(0f, 1f)
+        val from = range.first.coerceIn(0, text.length)
+        val to = (range.last + 1).coerceIn(from, text.length)
+        if (to <= from || faded <= 0f) {
+            view.invalidate()
+            return
+        }
+        span.background = ActiveMatchColor.copy(alpha = faded).toArgb()
+        span.foreground = lerp(MatchTextColor, Color(baseTextColor), 1f - faded).toArgb()
+        text.setSpan(span, from, to, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        attachedTo = text
+        view.invalidate()
     }
 }
 
@@ -400,6 +459,10 @@ fun PlainTextViewer(
     position: PositionHooks = PositionHooks.None,
     speaking: TtsHighlight? = null,
     ttsLocked: Boolean = false,
+    /** 1 at full strength, 0 gone: the animated fade of a search arrival's mark. */
+    highlightAlpha: Float = 1f,
+    /** Only the current match is painted: an arrival lights the one place it landed on. */
+    onlyActive: Boolean = false,
 ) {
     val restoreTarget = rememberRestoredTarget(LocationKind.CHUNK, chunks.size, position)
     val listState = rememberLazyListState(initialFirstVisibleItemIndex = restoreTarget?.unit ?: 0)
@@ -451,6 +514,8 @@ fun PlainTextViewer(
                 zoom = zoom,
                 speaking = speaking,
                 ttsLocked = ttsLocked,
+                highlightAlpha = highlightAlpha,
+                onlyActive = onlyActive,
                 modifier = scrollModifier,
             )
         }
@@ -471,6 +536,8 @@ private fun PlainTextList(
     zoom: ZoomState,
     speaking: TtsHighlight?,
     ttsLocked: Boolean,
+    highlightAlpha: Float,
+    onlyActive: Boolean,
     modifier: Modifier,
 ) {
     val colors = MaterialTheme.colorScheme
@@ -535,7 +602,12 @@ private fun PlainTextList(
                     text = chunks[index],
                     index = index,
                     isLast = index == chunks.lastIndex,
-                    highlight = findHighlightFor(findQuery, activeOccurrence = activeOccurrence.takeIf { isActive }),
+                    highlight = findHighlightFor(
+                        findQuery,
+                        activeOccurrence = activeOccurrence.takeIf { isActive },
+                        alpha = highlightAlpha,
+                        onlyActive = onlyActive,
+                    ),
                     reveal = reveal.takeIf { isActive },
                     style = textStyle,
                     options = options,
@@ -733,6 +805,10 @@ fun OfficeViewer(
     ttsLocked: Boolean = false,
     /** Something was left out (a chapter that could not be read, a limit reached): end with a notice saying so. */
     incomplete: Boolean = false,
+    /** 1 at full strength, 0 gone: the animated fade of a search arrival's mark. */
+    highlightAlpha: Float = 1f,
+    /** Only the current match is painted: an arrival lights the one place it landed on. */
+    onlyActive: Boolean = false,
 ) {
     val units = remember(blocks) { officeUnits(blocks) }
     // One sideways scroll per table, shared by every band of it, so dragging any band moves the
@@ -805,7 +881,12 @@ fun OfficeViewer(
                         val unit = units[unitIndex]
                         val block = blocks[unit.block]
                         val isActive = unit.block == activeHit
-                        val highlight = findHighlightFor(findQuery, activeOccurrence = activeOccurrence.takeIf { isActive })
+                        val highlight = findHighlightFor(
+                            findQuery,
+                            activeOccurrence = activeOccurrence.takeIf { isActive },
+                            alpha = highlightAlpha,
+                            onlyActive = onlyActive,
+                        )
                         val band = unit.rows
                         // The voice is in this block; a table's bands all belong to it, but only the first is followed.
                         val spokenHere = speaking?.takeIf { it.anchor == unit.block }

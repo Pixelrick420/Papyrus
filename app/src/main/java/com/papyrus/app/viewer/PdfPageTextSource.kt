@@ -87,6 +87,33 @@ class PdfPageTextSource(
         }
     }
 
+    /**
+     * Every page's text in order joined by [PAGE_SEPARATOR], cut at [maxChars], or null if the
+     * document cannot be read. For the search index.
+     *
+     * Reads a page at a time instead of reusing [allPages]: that method keeps 4 floats per character
+     * (16 bytes, up to about 32 MB for one document), which indexing has no use for. The join is a
+     * contract with the indexer, not a formatting choice: re-running the same page texts and summing
+     * their lengths plus one separator per boundary turns a stored character offset back into a page
+     * later, so an open-at-the-match action needs nothing extra in the database.
+     */
+    suspend fun allText(maxChars: Int): String? = lock.withLock {
+        if (closed) null else withContext(Dispatchers.IO) { readAllText(maxChars) }
+    }
+
+    /** Runs on the IO dispatcher, under [lock]. */
+    private fun readAllText(maxChars: Int): String? {
+        val open = document ?: open() ?: return null
+        if (maxChars <= 0) return ""
+        val text = StringBuilder()
+        for (index in 0 until open.numberOfPages) {
+            if (text.length >= maxChars) break
+            if (text.isNotEmpty()) text.append(PAGE_SEPARATOR)
+            text.append(PdfTextExtractor.extractPage(open, index).text)
+        }
+        return if (text.length <= maxChars) text.toString() else text.substring(0, maxChars)
+    }
+
     /** A document that failed to load is not retried: loading is the expensive part, and it would fail the same way. */
     private fun open(): PDDocument? {
         if (unreadable) return null
@@ -116,5 +143,10 @@ class PdfPageTextSource(
                 }
             }
         }
+    }
+
+    companion object {
+        /** Joins page texts in [allText]; change this only together with the offset-to-page lookup. */
+        const val PAGE_SEPARATOR = "\n"
     }
 }
