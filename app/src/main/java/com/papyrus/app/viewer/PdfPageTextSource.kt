@@ -92,10 +92,7 @@ class PdfPageTextSource(
      * document cannot be read. For the search index.
      *
      * Reads a page at a time instead of reusing [allPages]: that method keeps 4 floats per character
-     * (16 bytes, up to about 32 MB for one document), which indexing has no use for. The join is a
-     * contract with the indexer, not a formatting choice: re-running the same page texts and summing
-     * their lengths plus one separator per boundary turns a stored character offset back into a page
-     * later, so an open-at-the-match action needs nothing extra in the database.
+     * (16 bytes, up to about 32 MB for one document), which indexing has no use for.
      */
     suspend fun allText(maxChars: Int): String? = lock.withLock {
         if (closed) null else withContext(Dispatchers.IO) { readAllText(maxChars) }
@@ -146,7 +143,7 @@ class PdfPageTextSource(
     }
 
     companion object {
-        /** Joins page texts in [allText]; change this only together with the offset-to-page lookup. */
+        /** Joins page texts in [allText]. */
         const val PAGE_SEPARATOR = "\n"
     }
 }

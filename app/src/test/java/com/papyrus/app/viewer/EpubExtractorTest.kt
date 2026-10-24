@@ -33,8 +33,6 @@ class EpubExtractorTest {
         }
     }
 
-    // --- reading order ---------------------------------------------------------------------------
-
     @Test
     fun `the spine decides the order, not the manifest or the archive`() {
         val bytes = EpubFixtures.epub(
@@ -102,8 +100,6 @@ class EpubExtractorTest {
         }
         assertEquals(listOf("cased"), texts(read(bytes)))
     }
-
-    // --- markup to blocks ------------------------------------------------------------------------
 
     @Test
     fun `headings paragraphs and whitespace`() {
@@ -242,8 +238,6 @@ class EpubExtractorTest {
         assertEquals(listOf("visible", "end"), texts(book))
     }
 
-    // --- entities and malformed chapters ------------------------------------------------------------
-
     @Test
     fun `html entities that xml does not define are read`() {
         val body = "<p>a&nbsp;b &mdash; caf&eacute; &hellip; &copy; &amp; &#233; &#x41;</p>"
@@ -303,8 +297,6 @@ class EpubExtractorTest {
         assertTrue(book.incomplete)
     }
 
-    // --- images ----------------------------------------------------------------------------------
-
     @Test
     fun `images are placed where they appear`() {
         val dir = temp.newFolder("media")
@@ -363,8 +355,6 @@ class EpubExtractorTest {
         assertEquals(2, book.blocks.size)
         assertTrue(book.blocks[1] is OfficeBlock.Image)
     }
-
-    // --- outline ---------------------------------------------------------------------------------
 
     private val threeChapters = listOf(
         chapter("<h1>One</h1><p>a</p><p>b</p>", "one.xhtml"),
@@ -441,8 +431,6 @@ class EpubExtractorTest {
         assertEquals(OfficeBlock.Heading("Two", 1), book.blocks[index])
     }
 
-    // --- cover -----------------------------------------------------------------------------------
-
     @Test
     fun `a cover named by the cover-image property is found`() {
         val bytes = EpubFixtures.epub(
@@ -478,8 +466,6 @@ class EpubExtractorTest {
     fun `reading the cover of something that is not an epub is just none`() {
         assertNull(extractor().readCover(OfficeFixtures.streamFactory(byteArrayOf(1, 2, 3))))
     }
-
-    // --- protection ------------------------------------------------------------------------------
 
     private fun withEncryption(xml: String?, rights: Boolean = false): ByteArray {
         val extra = LinkedHashMap<String, ByteArray>()
@@ -522,8 +508,6 @@ class EpubExtractorTest {
     fun `an encryption file that cannot be read fails closed`() {
         assertProtected(withEncryption("<encryption><oops>"))
     }
-
-    // --- hostile archives ------------------------------------------------------------------------
 
     private fun expectFormatError(bytes: ByteArray, limits: EpubLimits = EpubLimits()) {
         try {
@@ -600,8 +584,6 @@ class EpubExtractorTest {
         )
     }
 
-    // --- limits and the incomplete notice -------------------------------------------------------------
-
     @Test
     fun `reaching the block limit keeps what fits and says the book is incomplete`() {
         val body = (1..50).joinToString("") { "<p>para $it</p>" }
@@ -632,8 +614,6 @@ class EpubExtractorTest {
         assertFalse(read(EpubFixtures.epub(threeChapters)).incomplete)
     }
 
-    // --- preview ---------------------------------------------------------------------------------
-
     @Test
     fun `a preview reads only the first chapters`() {
         val bytes = EpubFixtures.epub(
@@ -647,8 +627,6 @@ class EpubExtractorTest {
         assertEquals(listOf("first"), texts(book))
         assertNull(book.outline)
     }
-
-    // --- helpers ---------------------------------------------------------------------------------
 
     @Test
     fun `references fold and refuse to leave the book`() {

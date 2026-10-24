@@ -91,7 +91,12 @@ automatically and can be changed from the viewer menu.
 
 ### Library
 
-- **Search** filters the list by title as you type.
+- **Search** filters the list by title as you type and also looks inside the documents. A document that matches by
+  content shows an excerpt under its title, with the matching words highlighted. Every word must appear, and a word
+  matches by prefix, so `scal` finds "scaling". Content matches are limited to the 20 most relevant documents, and the
+  list keeps your chosen sort order. Opening a content match lands on the first occurrence of the first word and holds
+  a highlight on it for two seconds before it fades; where find cannot search the document, it opens at the saved
+  position instead.
 - **Sort & filter** is the slider icon beside the search pill. One sheet holds every sort order, every file-type
   filter and the starred filter, with a badge counting what is on and a live count of matching files.
 - **Sort** by last opened, name (A to Z or Z to A), date added or size. Names sort the way a person reads them, so
@@ -184,9 +189,9 @@ Needs JDK 17, the Android SDK, and Android 8.0 (API 26) or up.
 | `./gradlew installLocalDebug`   | build and install on the connected device        |
 | `./gradlew installLocalRelease` | minified release build, signed for local install |
 
-`installLocalRelease` signs a throwaway copy with the local debug keystore, because the `release` build type carries no
-signing config of its own. The build fails outright if any configuration resolves a Google dependency, so F-Droid
-compliance is enforced rather than documented.
+`installLocalRelease` signs a throwaway copy with the local debug keystore, because the `release` build type is unsigned
+unless all four `PAPYRUS_*` signing properties are supplied. The build fails outright if any configuration resolves a
+Google Play Services, Firebase, ML Kit or Play dependency, so F-Droid compliance is enforced rather than documented.
 
 ## Test
 
@@ -202,8 +207,8 @@ that and the manual TalkBack script.
 The DOCX/ODT, EPUB and DOC extractors run against archives the tests build in memory (kxml2 stands in for the platform's
 `XmlPullParser`, and the `.doc` fixtures assemble the OLE2 container and piece table from scratch). detekt is scoped to
 dead code and correctness, with the deliberate broad catches baselined so they stay visible. CI runs the unit tests and
-`assembleRelease` on every branch push, and the same emulator suite on every `v*` tag before publishing; lint and detekt
-remain local gates.
+`assembleRelease` on every push to `main`, and the same emulator suite on every `v*` tag before publishing; lint and
+detekt remain local gates.
 
 ## Architecture
 
@@ -216,7 +221,7 @@ runs. Read aloud uses the text the viewer already extracted.
 flowchart LR
   A["Another app<br/>hands over a document"] --> C{"Which format?<br/>extension, MIME type, then the first 8 KB"}
   B["File picker"] --> C
-  C --> D["Library index<br/>one row per document, plus positions and bookmarks"]
+  C --> D["Library index<br/>one row per document, plus positions, bookmarks and searchable text"]
   D --> E["Viewer"]
   E --> F["PDF"]
   E --> G["Markdown"]
@@ -230,17 +235,23 @@ flowchart LR
 The index is one Room row per document: URI, title, format, size, and the added and last-opened timestamps. Page count
 and MIME type are read live, so they are not stored.
 
-The current schema is 5. Version 4 is the oldest supported one, since earlier versions were test-only. Version 5 adds a
-`reading_progress` table with one row per document, a `bookmarks` table, and `documents.isFavourite`. Both new tables
-reference `documents(id)` with `ON DELETE CASCADE`, so deleting a document removes them. Rows are never written with
-`OnConflictStrategy.REPLACE`, because that deletes and reinserts, which would cascade the children away. Migrations are
-plain SQL in `data/Migrations.kt`, and every version's schema is exported to `app/schemas/` with a test that fails if
-one is missing.
+The current schema is 6. Version 4 is the oldest supported one, since earlier versions were test-only. Version 5 adds a
+`reading_progress` table with one row per document, a `bookmarks` table, and `documents.isFavourite`. Version 6 adds
+the content index: a `document_text` table holding each document's extracted text and its index state, and a
+`document_text_fts` FTS4 table over it that stores only the inverted index, so no text is kept twice. Each of
+`reading_progress`, `bookmarks` and `document_text` references `documents(id)` with `ON DELETE CASCADE`, so deleting a
+document removes its rows. `documents` rows are never written with `OnConflictStrategy.REPLACE`, because that deletes
+and reinserts, which would cascade the children away. Migrations are plain SQL in `data/Migrations.kt`, and every
+version's schema is exported to `app/schemas/` with a test that fails if one is missing.
+
+`document_text_fts` is not a child of `documents`: it follows `document_text` through triggers Room generates.
 
 ```mermaid
 erDiagram
     DOCUMENTS ||--o| READING_PROGRESS : "keeps one position"
     DOCUMENTS ||--o{ BOOKMARKS : "holds"
+    DOCUMENTS ||--o| DOCUMENT_TEXT : "has one extracted text"
+    DOCUMENT_TEXT ||--o| DOCUMENT_TEXT_FTS : "is indexed by"
 
     DOCUMENTS {
         INTEGER id PK
@@ -273,7 +284,37 @@ erDiagram
         TEXT label
         INTEGER createdAt
     }
+
+    DOCUMENT_TEXT {
+        INTEGER rowid PK, FK
+        TEXT text
+        TEXT state
+        INTEGER charCount
+        INTEGER sourceSize
+        INTEGER indexedAt
+        INTEGER indexVersion
+    }
+
+    DOCUMENT_TEXT_FTS {
+        INTEGER rowid PK
+        TEXT text
+    }
 ```
+
+### Content search
+
+A background indexer fills `document_text` for every document that has no text yet, a batch of 16 at a time, and runs
+again whenever the library changes. The database is its queue, so an interrupted pass simply resumes. Text is
+extracted by the same readers the viewer uses, so a search and find-in-file see the same words. Each document ends in
+one of four states: `INDEXED`, `FAILED` (the reader threw; never retried), `SKIPPED` (encrypted, DRM-protected, or no
+reader for the format) or `TOO_LARGE` (the file is over 64 MB and is never opened). At most 1,000,000 characters are
+kept per document. Raising `SearchIndexer.INDEX_VERSION` re-indexes everything.
+
+A query is split into words (anything that is not a letter or digit separates them, and at most 8 are kept), each
+quoted for FTS4 so nothing typed can act as an operator, and each of two or more characters matches by prefix. Search
+runs in two phases: the index finds the matching documents and they are ranked with BM25, then excerpts are fetched for
+only the 20 best. The Home screen waits 250 ms after the last keystroke before it queries, and a search that fails is
+reported once and shown as no content matches.
 
 ## Known limitations
 
@@ -287,6 +328,9 @@ erDiagram
 - Markdown shows an image only when the document carries it as a `data:` URI; the app never touches the network, so
   every other image falls back to its alt text.
 - CSV and TSV tables are not read aloud.
+- Content search only finds text that is in the index. Encrypted and DRM-protected documents are not indexed, nor are
+  files over 64 MB, and a document is indexed up to its first 1,000,000 characters. A scanned PDF with no text layer is
+  indexed as empty. A document is searchable by content only once the indexer has reached it.
 - Size and shape caps: Markdown up to 6 MB, plain text up to 32 MB, a table up to 8 MB and 200,000 cells. A table that
   hits a cap ends with the viewer's incomplete-document notice instead of failing.
 

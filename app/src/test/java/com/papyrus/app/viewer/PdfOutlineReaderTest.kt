@@ -52,8 +52,6 @@ class PdfOutlineReaderTest {
 
     private fun entry(index: Int, depth: Int, title: String) = OutlineEntry(index, depth, title)
 
-    // ---- what a good outline reads as ----
-
     @Test
     fun `a nested outline is a depth-tagged list in reading order`() {
         val doc = document(6)
@@ -97,8 +95,6 @@ class PdfOutlineReaderTest {
         doc.withOutline(bookmark("  Part\n  One \t ", doc.to(0)))
         assertEquals(listOf(entry(0, 0, "Part One")), PdfOutlineReader.read(doc))
     }
-
-    // ---- destinations ----
 
     @Test
     fun `a GoTo action resolves like a destination`() {
@@ -165,8 +161,6 @@ class PdfOutlineReaderTest {
         assertEquals(listOf(entry(1, 0, "Here")), PdfOutlineReader.read(doc))
     }
 
-    // ---- entries that go nowhere ----
-
     @Test
     fun `an unresolvable leaf is dropped and its siblings are kept`() {
         val doc = document(3)
@@ -199,8 +193,6 @@ class PdfOutlineReaderTest {
         assertEquals(listOf(entry(0, 0, "Before"), entry(2, 0, "After")), PdfOutlineReader.read(doc))
     }
 
-    // ---- blank titles ----
-
     @Test
     fun `a blank title leaves the row out but the children keep their place`() {
         val doc = document(4)
@@ -220,8 +212,6 @@ class PdfOutlineReaderTest {
         doc.withOutline(bookmark(null, doc.to(0), bookmark("Child", doc.to(1))))
         assertEquals(listOf(entry(1, 0, "Child")), PdfOutlineReader.read(doc))
     }
-
-    // ---- damage ----
 
     @Test
     fun `a sibling chain that loops back is read once`() {

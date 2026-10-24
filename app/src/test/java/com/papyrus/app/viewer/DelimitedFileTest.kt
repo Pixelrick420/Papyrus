@@ -119,8 +119,6 @@ class DelimitedFileTest {
         assertTrue(rows(tricky).all { it.isNotEmpty() })
     }
 
-    // --- the delimiter ------------------------------------------------------------------------
-
     private fun delimiter(name: String?, text: String) = DelimitedFile.delimiterFor(name, text)
 
     @Test
@@ -179,8 +177,6 @@ class DelimitedFileTest {
 
         assertEquals(';', delimiter("a.csv", head + body))
     }
-
-    // --- limits -------------------------------------------------------------------------------
 
     @Test
     fun `a file past the cell limit stops at a row boundary and says so`() {
@@ -249,8 +245,6 @@ class DelimitedFileTest {
         assertEquals(listOf(listOf("a", "b", "c")), read.rows)
         assertTrue(read.truncated)
     }
-
-    // --- the table ----------------------------------------------------------------------------
 
     @Test
     fun `rows become one table with the first row as a bold header`() {

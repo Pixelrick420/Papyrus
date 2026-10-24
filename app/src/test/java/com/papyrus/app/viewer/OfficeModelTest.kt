@@ -9,8 +9,6 @@ class OfficeModelTest {
     private val bold = CharFormat(bold = true)
     private val italic = CharFormat(italic = true)
 
-    // ---- RichTextBuilder ----
-
     @Test
     fun `builder records spans against the text as it grows`() {
         val builder = RichTextBuilder()
@@ -77,8 +75,6 @@ class OfficeModelTest {
         assertEquals(listOf(TextSpan(5, 8, bold)), builder.snapshot().spans)
     }
 
-    // ---- span and line helpers ----
-
     @Test
     fun `slicing keeps only the overlap, re-based, and drops spans outside`() {
         val spans = listOf(TextSpan(0, 3, bold), TextSpan(2, 8, italic), TextSpan(9, 12, bold))
@@ -101,8 +97,6 @@ class OfficeModelTest {
         assertEquals(text.split('\n').filter { it.isNotEmpty() }, splitLines(text, spans).map { it.text })
         assertEquals(emptyList<LineText>(), splitLines("", emptyList()))
     }
-
-    // ---- list numbering ----
 
     @Test
     fun `list numbers format in every scheme Word offers`() {
@@ -129,8 +123,6 @@ class OfficeModelTest {
         assertEquals("–", displayBullet("–", 0))
         assertEquals("•", displayBullet("not one char", 0))
     }
-
-    // ---- lengths, indentation, links ----
 
     @Test
     fun `lengths convert to twips and an unknown unit is rejected rather than guessed`() {

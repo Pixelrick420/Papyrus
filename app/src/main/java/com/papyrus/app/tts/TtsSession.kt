@@ -110,8 +110,8 @@ class TtsSession {
 
     /**
      * Stop and clear the session when it is reading [documentId]; another document's playback is left
-     * alone. This is [isActiveFor] widened to the failure case: an error session has neither playing nor
-     * paused set, yet the bar showing it belongs to that document's page and goes with it.
+     * alone. A failed session counts too: it has neither playing nor paused set, yet the bar showing it
+     * belongs to that document's page and goes with it.
      */
     fun stopFor(documentId: String) {
         if (documentId.isNotEmpty() && state.value.documentId == documentId) stop()
@@ -152,8 +152,4 @@ class TtsSession {
             )
         }
     }
-
-    /** Whether [documentId] is the document currently being read (playing or paused). */
-    fun isActiveFor(documentId: String): Boolean =
-        (state.value.isPlaying || state.value.isPaused) && state.value.documentId == documentId
 }

@@ -161,7 +161,7 @@ internal fun openText(input: InputStream, maxBytes: Int, forced: Charset?, guess
     return OpenedText(InputStreamReader(limited, encoding.charset), encoding, limited)
 }
 
-/** Ends at [limit] bytes and notes whether the source still had more: the file was cut short. */
+/** Ends after [remaining] bytes and notes whether the source still had more: the file was cut short. */
 internal class LimitedInputStream(private val source: InputStream, private var remaining: Long) : InputStream() {
 
     var cutShort = false

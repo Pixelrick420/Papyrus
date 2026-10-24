@@ -14,8 +14,6 @@ class ReadingLocationTest {
     private fun sample(location: ReadingLocation, count: Int = 100, atEnd: Boolean = false, zoom: Float = 1f) =
         PositionSample(location, count, atEnd, zoom)
 
-    // ---- kinds ----
-
     @Test
     fun `every format with a viewer has a kind and only UNKNOWN has none`() {
         for (format in DocumentFormat.entries) {
@@ -42,8 +40,6 @@ class ReadingLocationTest {
         assertNull(LocationKind.fromCode(99))
         assertNull(LocationKind.fromCode(-1))
     }
-
-    // ---- clamping ----
 
     @Test
     fun `a location inside the document is left alone`() {
@@ -94,8 +90,6 @@ class ReadingLocationTest {
         assertEquals(ReadingLocation(LocationKind.CHUNK, 54, 0f), ReadingLocation(LocationKind.CHUNK, 70, 0.3f).clampedTo(55))
     }
 
-    // ---- progress ----
-
     @Test
     fun `pdf progress is page plus fraction over page count`() {
         assertEquals(0.4975f, page(99, 0.5f).progress(200), 1e-6f)
@@ -133,8 +127,6 @@ class ReadingLocationTest {
         assertEquals(1f, sample(page(99), count = 100, atEnd = true).progress, 0f)
     }
 
-    // ---- pixel conversions ----
-
     @Test
     fun `offset and fraction convert both ways`() {
         assertEquals(0.5f, fractionWithin(300, 600), 0f)
@@ -164,8 +156,6 @@ class ReadingLocationTest {
         assertEquals(1f, fractionWithin(900, 600), 0f)
     }
 
-    // ---- same spot ----
-
     @Test
     fun `sub-percent rounding is the same spot, a different unit is not`() {
         assertTrue(page(4, 0.500f).isSameSpot(page(4, 0.505f)))
@@ -180,8 +170,6 @@ class ReadingLocationTest {
         assertFalse(sample(page(4)).isSameSpot(sample(page(4), zoom = 1.5f)))
         assertFalse(sample(page(4)).isSameSpot(sample(page(4), atEnd = true)))
     }
-
-    // ---- stored rows ----
 
     private fun row(kind: Int, unit: Int = 3, fraction: Float = 0.5f, zoom: Float = 1.5f) =
         ReadingProgressEntity(1, kind, unit, fraction, 10, zoom, 0.35f, 0)

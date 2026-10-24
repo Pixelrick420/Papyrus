@@ -16,8 +16,6 @@ class DocTextExtractorTest {
 
     private fun paragraphs(vararg texts: String) = texts.map { OfficeBlock.Paragraph(it) }
 
-    // --- Piece decoding ---
-
     @Test
     fun `single compressed piece extracts its text`() {
         val bytes = DocFixtures.doc("Hello, world")
@@ -91,8 +89,6 @@ class DocTextExtractorTest {
 
         assertEquals(paragraphs(body), extract(bytes))
     }
-
-    // --- Tables and fields ---
 
     @Test
     fun `adjacent cell marks form one row`() {
@@ -199,8 +195,6 @@ class DocTextExtractorTest {
         assertEquals(paragraphs("one", "two", "three"), extract(bytes))
     }
 
-    // --- Container selection ---
-
     @Test
     fun `the flag-selected table stream is read`() {
         val bytes = DocFixtures.doc("via 1Table", flags = 0x0200, tableStream = "1Table")
@@ -221,8 +215,6 @@ class DocTextExtractorTest {
 
         assertEquals(paragraphs("with prc"), extract(bytes))
     }
-
-    // --- Rejected input ---
 
     @Test
     fun `bytes that are not a compound file are rejected`() {

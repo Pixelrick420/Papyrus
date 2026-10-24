@@ -205,8 +205,6 @@ class TableSizingTest {
         assertEquals(2, metrics.preferredDp.size)
     }
 
-    // --- row heights ---
-
     private fun cell(row: Int, column: Int, rowspan: Int = 1, colspan: Int = 1) = GridCell(row, column, colspan, rowspan)
 
     @Test
@@ -270,8 +268,6 @@ class TableSizingTest {
 
         assertEquals(listOf(100, 100), heights.toList())
     }
-
-    // --- band boundaries ---
 
     @Test
     fun `bands cut a plain table at the cap with a short one at the end`() {

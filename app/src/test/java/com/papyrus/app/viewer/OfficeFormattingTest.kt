@@ -55,8 +55,6 @@ class OfficeFormattingTest {
     private fun item(text: String, level: Int = 0) =
         """<w:p><w:pPr><w:numPr><w:ilvl w:val="$level"/><w:numId w:val="1"/></w:numPr></w:pPr><w:r><w:t>$text</w:t></w:r></w:p>"""
 
-    // ---- DOCX: character formatting ----
-
     @Test
     fun `docx bold and italic runs become spans over the unchanged text`() {
         val blocks = extractDocx(
@@ -153,8 +151,6 @@ class OfficeFormattingTest {
         assertEquals(listOf(TextSpan(0, 1, bold)), (extractDocx(docx(body))[0] as OfficeBlock.Paragraph).spans)
     }
 
-    // ---- DOCX: links ----
-
     @Test
     fun `docx hyperlink text carries its target and an unsafe scheme is dropped`() {
         val rels = OfficeFixtures.docxLinkRels("rId5" to "https://example.com/a", "rId6" to "javascript:alert(1)")
@@ -200,8 +196,6 @@ class OfficeFormattingTest {
         assertEquals("click now", paragraph.text)
         assertEquals(listOf(TextSpan(0, 5, CharFormat(link = "https://example.org/y"))), paragraph.spans)
     }
-
-    // ---- DOCX: alignment, indentation, headings ----
 
     @Test
     fun `docx alignment and indentation are read`() {
@@ -250,8 +244,6 @@ class OfficeFormattingTest {
             extractDocx(docx(body, styles = styles)),
         )
     }
-
-    // ---- DOCX: lists ----
 
     @Test
     fun `docx bullets step down by level and symbol-font glyphs fall back to a plain bullet`() {
@@ -328,8 +320,6 @@ class OfficeFormattingTest {
         )
     }
 
-    // ---- DOCX: notes ----
-
     @Test
     fun `docx footnote leaves a raised marker in the text and the note follows the body`() {
         val body = """
@@ -379,8 +369,6 @@ class OfficeFormattingTest {
         assertEquals(1, blocks.size)
         assertEquals("Text1", (blocks[0] as OfficeBlock.Paragraph).text)
     }
-
-    // ---- DOCX: tables and images ----
 
     @Test
     fun `docx cell keeps its shading its formatting and its paragraph alignment`() {
@@ -459,8 +447,6 @@ class OfficeFormattingTest {
 
         assertEquals(listOf<OfficeBlock>(OfficeBlock.Paragraph("Survives")), extractDocx(bytes))
     }
-
-    // ---- ODT ----
 
     private val odtStyles = """
         <style:style style:name="T1" style:family="text"><style:text-properties fo:font-weight="bold"/></style:style>

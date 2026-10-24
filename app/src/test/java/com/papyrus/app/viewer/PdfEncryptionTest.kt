@@ -127,8 +127,6 @@ class PdfEncryptionTest {
         PDDocument.load(target).use { assertFalse(it.isEncrypted) }
     }
 
-    // ---- the byte screen that spares an unencrypted PDF a whole-file PdfBox load ----
-
     /** Counts opens: the plain-PDF path must open once, to scan, and no more. */
     private class CountingSource(private val bytes: ByteArray) : () -> InputStream {
         var opens = 0

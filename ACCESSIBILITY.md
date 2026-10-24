@@ -10,6 +10,8 @@ with the script at the end.
   stops, and a badge joined to a button does not announce itself on its own.
 - A control that changes state says so. A selected row reads as checked and its action reads
   "Select" or "Deselect", not "Open".
+- A search result's excerpt is one text node. The highlighted words do not split it into separate stops,
+  so TalkBack reads it as a sentence.
 - Sheet titles are headings, so TalkBack's heading navigation skips between sections.
 - The find-in-file match counter is a polite live region: stepping through matches announces
   "2 of 7" without moving focus.
@@ -44,11 +46,13 @@ device face down if you want to remove visual cues.
 
 ### Home
 
-1. The search pill is one stop: "Search files, edit box". Typing filters the list.
+1. The search pill is one stop: "Search files, edit box". Typing filters the list by title and adds documents
+   whose text contains the words.
 2. The clear button appears only when there is text: "Clear search, button".
 3. The sort button is one stop: "Sort: Last opened, button". With filters on it also reads the
    count, for example "Sort: A to Z, 2 filters active, button".
-4. Each document row is one stop: title, size, when it was opened, then "Double tap to open".
+4. Each document row is one stop: title, size, when it was opened and, for a content match, its excerpt, then
+   "Double tap to open".
    A long press starts selection.
 5. In selection mode the header reads back, the count, Remove, Share and "Select all, checkbox".
    Each row reads "checked" or "not checked" and its action is "Select" or "Deselect". A tap

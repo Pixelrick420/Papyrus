@@ -258,8 +258,6 @@ class TtsControllerTest {
         assertTrue(engine.spoken.isEmpty())
     }
 
-    // --- Where the voice is inside a unit ------------------------------------------------------
-
     private val prose = "Hello brave world. How are you today? Fine."
 
     @Test

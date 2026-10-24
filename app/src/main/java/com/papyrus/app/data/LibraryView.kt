@@ -92,10 +92,10 @@ fun availableGroups(documents: List<DocumentEntity>): List<FormatGroup> {
 }
 
 /**
- * What Home shows: [documents] kept by the title [query] (case-insensitive, as before), by [filter],
+ * What Home shows: [documents] kept by the title [query] (case-insensitive), by [filter],
  * and by [alsoMatching] — ids a content search found [query] inside, whose titles may not match it —
  * then put in [sort] order. Pure, so every combination is unit-tested; sorting in memory is fine at
- * library sizes and keeps the one list query as it was.
+ * library sizes.
  *
  * Both kinds of match land in one list rather than two sections, so the sort order stays the order
  * the person chose and a row never appears twice.

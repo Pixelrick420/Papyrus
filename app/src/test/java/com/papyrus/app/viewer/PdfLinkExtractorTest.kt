@@ -3,7 +3,6 @@ package com.papyrus.app.viewer
 import com.tom_roush.pdfbox.cos.COSArray
 import com.tom_roush.pdfbox.cos.COSFloat
 import com.tom_roush.pdfbox.cos.COSName
-import com.tom_roush.pdfbox.cos.COSString
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.PDPage
 import com.tom_roush.pdfbox.pdmodel.common.PDRectangle
@@ -67,8 +66,6 @@ class PdfLinkExtractorTest {
     private fun urls(document: PDDocument, index: Int = 0): List<String> =
         PdfLinkExtractor.extract(document, index).map { (it.target as PdfLinkTarget.External).url }
 
-    // ---- URI actions ----
-
     @Test
     fun `a uri action becomes an external link over the drawn rectangle`() {
         val document = document(page(uriLink("https://example.com/a")))
@@ -103,8 +100,6 @@ class PdfLinkExtractorTest {
 
         assertEquals(listOf("https://example.com/good"), urls(document))
     }
-
-    // ---- GoTo destinations ----
 
     @Test
     fun `a goto action to a page of this document is an internal jump to it`() {
@@ -148,8 +143,6 @@ class PdfLinkExtractorTest {
         assertTrue(PdfLinkExtractor.extract(document, 0).isEmpty())
     }
 
-    // ---- Actions a reader cannot follow ----
-
     @Test
     fun `an action that is not uri or goto is dropped`() {
         val actions = listOf(
@@ -167,8 +160,6 @@ class PdfLinkExtractorTest {
 
         assertTrue(PdfLinkExtractor.extract(document, 0).isEmpty())
     }
-
-    // ---- Malformed annotations ----
 
     @Test
     fun `a rectangle that is not an array throws and its neighbour survives`() {
@@ -199,8 +190,6 @@ class PdfLinkExtractorTest {
         assertEquals(listOf("https://example.com/good"), urls(document))
     }
 
-    // ---- Pages with nothing on them ----
-
     @Test
     fun `a page with no annotations has no links`() {
         assertTrue(PdfLinkExtractor.extract(document(page()), 0).isEmpty())
@@ -213,8 +202,6 @@ class PdfLinkExtractorTest {
         assertTrue(PdfLinkExtractor.extract(document, 1).isEmpty())
         assertTrue(PdfLinkExtractor.extract(document, -1).isEmpty())
     }
-
-    // ---- Rect normalization ----
 
     /** The frame of a 200x100 crop box, with its lower-left where [x], [y] put it. */
     private fun frame(rotation: Int = 0, x: Float = 0f, y: Float = 0f) = PdfPageFrame(200f, 100f, x, y, rotation)

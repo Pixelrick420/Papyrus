@@ -11,8 +11,6 @@ class TtsAlignmentTest {
 
     private val english = Locale.ENGLISH
 
-    // --- Sentences -----------------------------------------------------------------------------
-
     @Test
     fun `sentence bounds start every sentence and end at the length`() {
         val text = "Hello world. How are you? Fine."
@@ -55,8 +53,6 @@ class TtsAlignmentTest {
         assertEquals(11, TtsAlignment.wordEnd("hello world", 6))
         assertEquals(5, TtsAlignment.wordEnd("hello", 0))
     }
-
-    // --- Mapping back onto the text on screen --------------------------------------------------
 
     @Test
     fun `a word is found again across a line break and indentation`() {

@@ -3,7 +3,6 @@ package com.papyrus.app.ui.viewer
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
-/** What night mode does to a page's colours: white paper reads black, black text reads white. */
 class PdfNightModeTest {
 
     @Test

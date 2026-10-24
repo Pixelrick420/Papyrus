@@ -6,8 +6,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Equations used to vanish from a .docx without a trace; they now read as typed text, so these pin
- * the shape of that text for the constructs Word actually produces.
+ * Equations read as typed text; these pin the shape of that text for the constructs Word actually
+ * produces.
  */
 class DocxMathTest {
 

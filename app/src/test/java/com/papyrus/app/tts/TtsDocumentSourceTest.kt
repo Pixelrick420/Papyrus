@@ -12,8 +12,6 @@ import java.io.File
 /** Pure: builds the read-aloud queue and the resume mapping from plain values. */
 class TtsDocumentSourceTest {
 
-    // --- Paragraph splitting -------------------------------------------------------------------
-
     @Test
     fun `blank lines split paragraphs and line breaks collapse`() {
         val text = "First line\nsecond line.\n\n\nThird paragraph\nover two lines."
@@ -55,8 +53,6 @@ class TtsDocumentSourceTest {
         assertEquals("padded text", paragraphs[0].text)
         assertEquals("next", paragraphs[1].text)
     }
-
-    // --- Per-format units ----------------------------------------------------------------------
 
     @Test
     fun `plain text anchors each unit to its chunk index`() {
@@ -135,8 +131,6 @@ class TtsDocumentSourceTest {
         )
         assertTrue(TtsDocumentSource.units(DocumentFormat.UNKNOWN, plainTextChunks = listOf("hi")).isEmpty())
     }
-
-    // --- Resume mapping ------------------------------------------------------------------------
 
     @Test
     fun `a page or chunk location lands on the first unit at or after it`() {

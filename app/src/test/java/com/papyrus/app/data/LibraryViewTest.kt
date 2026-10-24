@@ -38,8 +38,6 @@ class LibraryViewTest {
         locale: Locale = Locale.ENGLISH,
     ) = libraryView(docs, query, filter, sort, alsoMatching = alsoMatching, locale = locale)
 
-    // --- sort orders -----------------------------------------------------------------------------
-
     @Test
     fun `last opened puts the most recent first`() {
         val docs = listOf(doc(1, opened = 10), doc(2, opened = 30), doc(3, opened = 20))
@@ -64,8 +62,6 @@ class LibraryViewTest {
         assertEquals(listOf(2L, 1L, 3L), ids(view(docs, LibrarySort.NAME_ASC)))
         assertEquals(listOf(3L, 1L, 2L), ids(view(docs, LibrarySort.NAME_DESC)))
     }
-
-    // --- natural, case-insensitive, locale-aware names --------------------------------------------
 
     @Test
     fun `numbers inside names compare as numbers`() {
@@ -121,8 +117,6 @@ class LibraryViewTest {
         assertEquals(listOf(3L, 1L, 2L), ids(view(docs, LibrarySort.NAME_ASC)))
     }
 
-    // --- ties -----------------------------------------------------------------------------------
-
     @Test
     fun `equal names fall back to most recently opened and then id`() {
         val docs = listOf(
@@ -173,8 +167,6 @@ class LibraryViewTest {
         }
     }
 
-    // --- format groups ----------------------------------------------------------------------------
-
     @Test
     fun `old and new Word files are one group`() {
         assertEquals(FormatGroup.WORD, FormatGroup.of(doc(1, format = DocumentFormat.DOC)))
@@ -216,8 +208,6 @@ class LibraryViewTest {
         assertEquals(listOf(FormatGroup.PDF, FormatGroup.WORD, FormatGroup.CODE), availableGroups(docs))
         assertEquals(emptyList<FormatGroup>(), availableGroups(emptyList()))
     }
-
-    // --- filter and search ----------------------------------------------------------------------
 
     private val library = listOf(
         doc(1, "Annual report.pdf", DocumentFormat.PDF, starred = true),
@@ -272,8 +262,6 @@ class LibraryViewTest {
     fun `a blank query is no query`() {
         assertEquals(6, view(library, LibrarySort.LAST_OPENED, query = "   ").size)
     }
-
-    // --- content matches, in the same list ------------------------------------------------------
 
     @Test
     fun `a document whose text matched is kept even though its title did not`() {
@@ -355,8 +343,6 @@ class LibraryViewTest {
         assertEquals(withStarred.activeCount > 0, withStarred.isActive)
     }
 
-    // --- starred --------------------------------------------------------------------------------
-
     @Test
     fun `opening a document again keeps what the reader owns`() {
         val stored = doc(7, "old name.pdf", size = 10, created = 111, opened = 222, starred = true)
@@ -380,8 +366,6 @@ class LibraryViewTest {
         val after = before.map { if (it.id == 2L) it.copy(isStarred = true) else it }
         assertEquals(listOf(2L), ids(view(after, LibrarySort.LAST_OPENED, filter = filter)))
     }
-
-    // --- csv and tsv ----------------------------------------------------------------------------
 
     @Test
     fun `csv and tsv are two groups, csv first and both between text and code`() {

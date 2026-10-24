@@ -59,13 +59,13 @@ potential-bugs:
 exceptions:
   active: true
   # The two rules below are baselined (see baseline.xml) rather than switched off,
-  # so the findings stay visible in the report instead of disappearing. All 23 are
+  # so the findings stay visible in the report instead of disappearing. All of them are
   # deliberate or false positives, e.g.:
-  #   * PdfPageSource.kt:117,121 -- `catch (e: Exception) { cleanup(); throw e }`
+  #   * PdfPageSource.kt -- `catch (e: Exception) { cleanup(); throw e }`
   #     is a cleanup-and-rethrow, which SwallowedException misreads as a swallow.
   #   * ViewerViewModel.kt -- a specific catch per known failure mode, then a
   #     generic catch that maps anything left over to viewer_error_generic.
-  #   * ThumbnailLoader.kt:65 -- commented in place as broad on purpose; a
+  #   * ThumbnailLoader.kt -- commented in place as broad on purpose; a
   #     thumbnail is decoration and must not crash the app.
   # Baseline consequence to be aware of: these two rules will not fail the build
   # for NEW occurrences either. Delete baseline.xml if you would rather they did.

@@ -60,7 +60,6 @@ internal class DocStyleSheet private constructor(private val styles: Array<Style
         return chain.indices.reversed().mapNotNull { styles[chain[it]]?.chpx }
     }
 
-    /** Whether the sheet has a style [istd] at all. */
     fun has(istd: Int): Boolean = styles.getOrNull(istd) != null
 
     /** [istd] and the styles it is based on, nearest first; a cycle or an absurd depth ends the chain. */

@@ -8,6 +8,7 @@ Features:
 - EPUB reflowed with the book's own table of contents as the outline
 - Markdown with tables, task lists, coloured code blocks, maths and embedded images
 - Plain text, logs and code with syntax highlighting for 30+ languages
+- Library search by title and by what is inside your documents
 - Find in file in every format
 - Read aloud with follow-along highlighting, works with the screen off
 - Bookmarks, starred files, reading-position memory, theme choice
