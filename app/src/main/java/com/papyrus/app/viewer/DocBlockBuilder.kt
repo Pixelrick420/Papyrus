@@ -10,6 +10,14 @@ package com.papyrus.app.viewer
 internal class DocBlockBuilder(private val maxBlocks: Int, lists: DocListTables = DocListTables.EMPTY) {
     private enum class State { PARA, ROW, BETWEEN }
 
+    /** A field being read: its instruction until the separator, then its result, which a hyperlink makes a link. */
+    private class Field {
+        var inResult = false
+        var link: String? = null
+        var overflowed = false
+        val instruction = StringBuilder()
+    }
+
     private val blocks = mutableListOf<OfficeBlock>()
     private val paragraph = RichTextBuilder()
     private val cell = RichTextBuilder()
@@ -19,8 +27,8 @@ internal class DocBlockBuilder(private val maxBlocks: Int, lists: DocListTables 
     /** Characters of the current run not yet handed to [paragraph] or [cell], which take a run at a time. */
     private val chunk = StringBuilder()
 
-    /** Per-depth flag: field instructions (between 0x13 and 0x14) are not content. */
-    private val fieldDepth = ArrayDeque<Boolean>()
+    /** Open fields, outermost first: an instruction (between 0x13 and 0x14) is not content. */
+    private val fields = ArrayDeque<Field>()
     private val counters = DocListCounters(lists)
     private var state = State.PARA
     private var tableUsable = true
@@ -66,7 +74,7 @@ internal class DocBlockBuilder(private val maxBlocks: Int, lists: DocListTables 
 
     fun finish(): List<OfficeBlock> {
         if (state == State.ROW) {
-            if (!cell.isEmpty()) row += cell.snapshot(::isNewline)
+            if (!cell.isEmpty()) row += linked(cell.snapshot(::isNewline))
             commitRow()
         }
         flushTable()
@@ -78,17 +86,17 @@ internal class DocBlockBuilder(private val maxBlocks: Int, lists: DocListTables 
         when (ch) {
             FIELD_BEGIN -> {
                 flushChunk(run.format)
-                if (fieldDepth.size < MAX_FIELD_DEPTH) fieldDepth.addLast(false)
+                if (fields.size < MAX_FIELD_DEPTH) fields.addLast(Field())
                 return
             }
             FIELD_SEPARATOR -> {
                 flushChunk(run.format)
-                if (fieldDepth.isNotEmpty()) fieldDepth[fieldDepth.lastIndex] = true
+                fields.lastOrNull()?.let(::beginResult)
                 return
             }
             FIELD_END -> {
                 flushChunk(run.format)
-                if (fieldDepth.isNotEmpty()) fieldDepth.removeLast()
+                if (fields.isNotEmpty()) fields.removeLast()
                 return
             }
             // Marks are honoured even inside a field instruction: structure survives a
@@ -104,8 +112,21 @@ internal class DocBlockBuilder(private val maxBlocks: Int, lists: DocListTables 
                 return
             }
         }
-        if (fieldDepth.isNotEmpty() && !fieldDepth.last()) return
-        if (ch == '\t' || ch.code >= 0x20) chunk.append(ch)
+        if (ch != '\t' && ch.code < 0x20) return
+        val open = fields.lastOrNull()
+        when {
+            open == null || open.inResult -> chunk.append(ch)
+            open.instruction.length < DocLinks.MAX_INSTRUCTION -> open.instruction.append(ch)
+            else -> open.overflowed = true
+        }
+    }
+
+    /** The separator ends a field's instruction: a HYPERLINK's target now applies to the result that follows. */
+    private fun beginResult(field: Field) {
+        field.inResult = true
+        // An instruction cut short may have lost the end of its target, so it links nowhere.
+        if (!field.overflowed) field.link = DocLinks.hyperlinkTarget(field.instruction)
+        field.instruction.setLength(0)
     }
 
     /** Hands the pending characters, all of one run, to whatever is being built. */
@@ -114,7 +135,9 @@ internal class DocBlockBuilder(private val maxBlocks: Int, lists: DocListTables 
         val text = chunk.toString()
         chunk.setLength(0)
         if (!hasText && text.any { !it.isWhitespace() }) hasText = true
-        (if (state == State.ROW) cell else paragraph).append(text, format)
+        // The nearest enclosing hyperlink, so a field nested in a link's result stays part of the link.
+        val link = fields.lastOrNull { it.inResult && it.link != null }?.link
+        (if (state == State.ROW) cell else paragraph).append(text, if (link == null) format else format.copy(link = link))
     }
 
     /** A paragraph mark, or a line or page break, which ends a fragment of a paragraph but not the paragraph. */
@@ -143,7 +166,7 @@ internal class DocBlockBuilder(private val maxBlocks: Int, lists: DocListTables 
                 cellParagraphStart = 0
                 endParagraphIn(paragraph, para)
                 continuation = false
-                row += paragraph.snapshot()
+                row += linked(paragraph.snapshot())
                 paragraph.clear()
                 cell.clear()
                 state = State.ROW
@@ -151,7 +174,7 @@ internal class DocBlockBuilder(private val maxBlocks: Int, lists: DocListTables 
             State.ROW -> if (!cell.isEmpty()) {
                 endParagraphIn(cell, para)
                 continuation = false
-                row += cell.snapshot(::isNewline)
+                row += linked(cell.snapshot(::isNewline))
                 cell.clear()
                 cellParagraphStart = 0
             } else {
@@ -191,7 +214,7 @@ internal class DocBlockBuilder(private val maxBlocks: Int, lists: DocListTables 
     }
 
     private fun flushParagraph(mark: Char, para: DocParaProps?) {
-        val text = paragraph.snapshot()
+        val text = linked(paragraph.snapshot())
         paragraph.clear()
         val emitted = hasText && blocks.size < maxBlocks
         hasText = false
@@ -235,6 +258,12 @@ internal class DocBlockBuilder(private val maxBlocks: Int, lists: DocListTables 
     }
 
     private fun isNewline(c: Char): Boolean = c == '\n'
+
+    /** [text] with the addresses written out in it made links; ones a field already linked keep their target. */
+    private fun linked(text: RichSnapshot): RichSnapshot {
+        val found = DocLinks.find(text.text)
+        return if (found.isEmpty()) text else RichSnapshot(text.text, DocLinks.overlay(text.spans, found))
+    }
 }
 
 private const val FIELD_BEGIN = '\u0013'

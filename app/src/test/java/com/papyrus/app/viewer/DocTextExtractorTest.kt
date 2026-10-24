@@ -165,7 +165,15 @@ class DocTextExtractorTest {
     fun `field instruction text is dropped and its result kept`() {
         val bytes = DocFixtures.doc("\u0013HYPERLINK \"https://example.test\"\u0014Click here\u0015")
 
-        assertEquals(paragraphs("Click here"), extract(bytes))
+        val link = CharFormat(link = "https://example.test")
+        assertEquals(listOf(OfficeBlock.Paragraph("Click here", listOf(TextSpan(0, 10, link)))), extract(bytes))
+    }
+
+    @Test
+    fun `the result of a field that is not a hyperlink stays plain`() {
+        val bytes = DocFixtures.doc("Page \u0013PAGE\u00143\u0015 of 9")
+
+        assertEquals(paragraphs("Page 3 of 9"), extract(bytes))
     }
 
     @Test
