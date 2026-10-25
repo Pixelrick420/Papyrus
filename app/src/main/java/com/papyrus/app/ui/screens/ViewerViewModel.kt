@@ -15,6 +15,7 @@ import com.papyrus.app.data.Bookmark
 import com.papyrus.app.data.BookmarkAdd
 import com.papyrus.app.data.BookmarkEntity
 import com.papyrus.app.data.Highlight
+import com.papyrus.app.data.exportableRectsByPage
 import com.papyrus.app.data.toHighlight
 import com.papyrus.app.data.MAX_BOOKMARKS_PER_DOCUMENT
 import com.papyrus.app.data.cleanBookmarkLabel
@@ -470,15 +471,28 @@ class ViewerViewModel(
      */
     private fun loadPdfOutline() {
         val shown = (_state.value.content as? ViewerContent.Pdf)?.source ?: return
-        // PdfBox parses the whole file into memory, and until the viewer shares one document it would be a
-        // second copy next to the renderer's: a very large file gets no outline rather than risk the heap.
-        if ((_state.value.document?.sizeBytes ?: 0L) > MAX_OUTLINE_FILE_BYTES) return
-        val source = pageSource() ?: return
+        val document = _state.value.document
         viewModelScope.launch {
-            val entries = source.outline()?.takeIf { it.isNotEmpty() } ?: return@launch
+            // The cache is asked first, so a file too large to parse still keeps the outline it had.
+            val entries = document?.let { repository.cachedOutline(it) } ?: readPdfOutline(document) ?: return@launch
+            if (entries.isEmpty()) return@launch
             // A re-grant may have replaced the document while this was reading: publish only for the one it was read for.
             _state.update { if ((it.content as? ViewerContent.Pdf)?.source === shown) it.copy(pdfOutline = entries) else it }
         }
+    }
+
+    /**
+     * Reads the bookmarks from the file and keeps them for the next open. PdfBox parses the whole file
+     * into memory, and until the viewer shares one document it would be a second copy next to the
+     * renderer's: a very large file gets no outline rather than risk the heap.
+     */
+    private suspend fun readPdfOutline(document: DocumentEntity?): List<OutlineEntry>? {
+        if ((document?.sizeBytes ?: 0L) > MAX_OUTLINE_FILE_BYTES) return null
+        val source = pageSource() ?: return null
+        val entries = source.outline() ?: return null
+        // A title read from an unlocked copy came out of a password-protected file, so it is not kept.
+        if (document != null && unlockedFile == null) runQuietly { repository.storeOutline(document, entries) }
+        return entries
     }
 
     /**
@@ -534,15 +548,46 @@ class ViewerViewModel(
      * Writes the open document, form edits included, to the copy the reader picked in the system
      * picker. The source is never written to; a failed write takes the half-written copy back.
      */
-    fun saveFormCopy(uri: Uri) {
+    fun saveFormCopy(uri: Uri) = savePdfCopy(
+        uri = uri,
+        saved = UiText(R.string.viewer_form_saved),
+        failed = UiText(R.string.viewer_form_save_failed),
+    )
+
+    /**
+     * Writes a copy that carries the reader's highlights as page annotations, so another viewer sees
+     * them too. Only a plain highlight is representable in the file: a note stays in Papyrus.
+     */
+    fun saveHighlightCopy(uri: Uri) {
+        val marks = highlights.value.exportableRectsByPage()
+        if (marks.isEmpty()) return
+        savePdfCopy(
+            uri = uri,
+            saved = UiText(R.string.viewer_highlight_saved),
+            failed = UiText(R.string.viewer_highlight_save_failed),
+            highlights = marks,
+        )
+    }
+
+    /** One copy path for both saves: open the destination, write, and take a failed one back. */
+    private fun savePdfCopy(
+        uri: Uri,
+        saved: UiText,
+        failed: UiText,
+        highlights: Map<Int, List<List<NormRect>>> = emptyMap(),
+    ) {
         val source = (_state.value.content as? ViewerContent.Pdf)?.source ?: return
         viewModelScope.launch {
-            val saved = writeFormCopy(uri, source)
-            _messages.value = UiText(if (saved) R.string.viewer_form_saved else R.string.viewer_form_save_failed)
+            val written = writePdfCopy(uri, source, highlights)
+            _messages.value = if (written) saved else failed
         }
     }
 
-    private suspend fun writeFormCopy(uri: Uri, source: PdfPageSource): Boolean {
+    private suspend fun writePdfCopy(
+        uri: Uri,
+        source: PdfPageSource,
+        highlights: Map<Int, List<List<NormRect>>>,
+    ): Boolean {
         val resolver = app.contentResolver
         val destination = try {
             resolver.openFileDescriptor(uri, "w")
@@ -552,7 +597,7 @@ class ViewerViewModel(
             null
         } ?: return false
         val written = try {
-            destination.use { source.writeCopy(it) }
+            destination.use { source.writeCopy(it, highlights) }
         } catch (e: CancellationException) {
             discardCopy(uri)
             throw e
@@ -1040,6 +1085,11 @@ class ViewerViewModel(
     fun removeHighlights(ids: List<Long>) {
         if (ids.isEmpty()) return
         app.applicationScope.launch { runQuietly { repository.deleteHighlights(ids) } }
+    }
+
+    /** Stores the reader's note on a mark; a blank note turns it back into a plain highlight. */
+    fun setHighlightNote(id: Long, note: String) {
+        app.applicationScope.launch { runQuietly { repository.setHighlightNote(id, note) } }
     }
 
     /** A bookmark write that fails leaves the list as the database has it, which the screen already shows. */

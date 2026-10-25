@@ -11,7 +11,7 @@ object Migrations {
     const val BASELINE_VERSION = 4
 
     /** The version in `@Database`; raise it together with a migration in [ALL]. */
-    const val CURRENT_VERSION = 7
+    const val CURRENT_VERSION = 8
 
     /**
      * 4 -> 5. Every statement only adds, so existing rows keep their ids and the files under
@@ -108,8 +108,32 @@ object Migrations {
         }
     }
 
+    /**
+     * 7 -> 8. Gives a highlight a kind and a note, and adds the outline cache. Every statement only
+     * adds: an existing highlight keeps its row, its id and its overlay, and reads back as a plain
+     * highlight because `kind` defaults to 1. The cache table leaves with its document, like the
+     * per-document tables before it.
+     */
+    internal val V7_TO_V8_SQL: List<String> = listOf(
+        "ALTER TABLE `highlights` ADD COLUMN `kind` INTEGER NOT NULL DEFAULT 1",
+        "ALTER TABLE `highlights` ADD COLUMN `note` TEXT",
+        "CREATE TABLE IF NOT EXISTS `pdf_outlines` (" +
+            "`documentId` INTEGER NOT NULL, " +
+            "`sourceSize` INTEGER NOT NULL, " +
+            "`cacheVersion` INTEGER NOT NULL, " +
+            "`entries` TEXT NOT NULL, " +
+            "PRIMARY KEY(`documentId`), " +
+            "FOREIGN KEY(`documentId`) REFERENCES `documents`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+    )
+
+    private val MIGRATION_7_8 = object : Migration(7, 8) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            V7_TO_V8_SQL.forEach { db.execSQL(it) }
+        }
+    }
+
     /** Hand-written migrations, oldest first. */
-    val ALL: Array<Migration> = arrayOf(MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
+    val ALL: Array<Migration> = arrayOf(MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
 
     /**
      * Problems with [migrations] as a chain from [baseline] to [current], one message each, empty when

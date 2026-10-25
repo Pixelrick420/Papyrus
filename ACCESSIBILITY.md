@@ -88,11 +88,18 @@ device face down if you want to remove visual cues.
    one stop with its label, page, value and state; text and choice fields open a dialog, while check
    boxes and radio buttons switch on tap. Edits apply to the open document only: Save a copy writes a
    new file through the system picker and never changes the original. An XFA form is read-only.
+10. **PDF notes:** a highlight carrying a note is one stop over the passage it marks, read as
+    "Note: <the reader's words>" and labelled "Open note" as a button. The stop covers the whole run,
+    not the dot drawn at its end, so it is a full fingertip target. Opening it offers a note field
+    with a character counter, Save, and Delete highlight. Only plain highlights are written into a
+    saved copy of the PDF; the note stays in Papyrus.
 
 ### Known limits
 
 - PDF pages are bitmaps, so TalkBack reads their extracted text as one stop per page rather than
   walking the text line by line.
+- A note is stored, drawn and read in Papyrus only. It is not written into a saved copy of the PDF,
+  since the platform's annotation API offers no note annotation here.
 - Pinch zoom is a two-finger gesture that TalkBack intercepts. Use Android's accessibility zoom
   instead. Text documents keep their normal TalkBack text navigation.
 - Images inside documents are not described.

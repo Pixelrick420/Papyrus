@@ -8,6 +8,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -16,7 +17,9 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -53,9 +56,14 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import com.papyrus.app.R
+import com.papyrus.app.data.Highlight
+import com.papyrus.app.data.HighlightKind
 import com.papyrus.app.data.LocationKind
 import com.papyrus.app.viewer.NormRect
 import com.papyrus.app.viewer.PdfLinkTarget
@@ -90,12 +98,14 @@ internal fun PdfViewer(
     nightMode: Boolean = false,
     pageHits: List<Int> = emptyList(),
     pageMatches: Map<Int, List<List<NormRect>>> = emptyMap(),
-    /** The reader's own highlights, by page; unrelated to find's matches. */
-    highlights: Map<Int, List<NormRect>> = emptyMap(),
+    /** The reader's own marks, by page; unrelated to find's matches. */
+    highlights: Map<Int, List<Highlight>> = emptyMap(),
     activePage: Int? = null,
     activeOccurrence: Int? = null,
     loadLinks: suspend (Int) -> List<PdfPageLink>? = { null },
     onLinkTarget: (PdfLinkTarget) -> Unit = {},
+    /** A tap on one of the reader's marks: it opens that mark's note. */
+    onMark: (Highlight) -> Unit = {},
     position: PositionHooks = PositionHooks.None,
     speaking: TtsHighlight? = null,
     ttsLocked: Boolean = false,
@@ -231,6 +241,7 @@ internal fun PdfViewer(
                             activeMatch = activeOccurrence.takeIf { index == activePage },
                             matches = pageMatches[index].orEmpty(),
                             highlights = highlights[index].orEmpty(),
+                            onMark = onMark,
                             matchAlpha = MATCH_ALPHA * highlightAlpha,
                             onlyActive = onlyActive,
                             reveal = reveal.takeIf { index == activePage },
@@ -293,7 +304,7 @@ private fun PdfPage(
     nightMode: Boolean,
     activeMatch: Int?,
     matches: List<List<NormRect>>,
-    highlights: List<NormRect>,
+    highlights: List<Highlight>,
     matchAlpha: Float,
     onlyActive: Boolean,
     reveal: RevealTicket?,
@@ -303,6 +314,7 @@ private fun PdfPage(
     pageGeometry: State<PdfPageGeometry>,
     loadLinks: suspend (Int) -> List<PdfPageLink>?,
     onLinkTarget: (PdfLinkTarget) -> Unit,
+    onMark: (Highlight) -> Unit,
     speaking: TtsHighlight?,
     followVoice: Boolean,
     viewportHeight: () -> Int,
@@ -396,8 +408,10 @@ private fun PdfPage(
     }
     val linkRects = remember(links) { links.map { it.rect } }
     val liveLinks = rememberUpdatedState(links)
+    val liveMarks = rememberUpdatedState(highlights)
     // Read through a state, so the gesture's long-lived pointer handler never holds a stale callback.
     val liveOnLink = rememberUpdatedState(onLinkTarget)
+    val liveOnMark = rememberUpdatedState(onMark)
 
     val density = LocalDensity.current
     val handleRadius = with(density) { HandleRadius.toPx() }
@@ -422,12 +436,15 @@ private fun PdfPage(
                 geometry = pageGeometry,
                 handles = handles,
                 links = liveLinks,
+                marks = liveMarks,
                 pageSize = rememberUpdatedState(pageSize),
                 onLink = { target -> liveOnLink.value(target) },
+                onMark = { mark -> liveOnMark.value(mark) },
                 haptics = LocalHapticFeedback.current,
                 reachPx = with(density) { SelectionReach.toPx() },
                 grabRadiusPx = with(density) { HandleGrabRadius.toPx() },
                 linkSlopPx = with(density) { LinkTapSlop.toPx() },
+                markSlopPx = with(density) { MarkTapSlop.toPx() },
             ),
     ) {
         bitmap?.let { bmp ->
@@ -448,6 +465,10 @@ private fun PdfPage(
         if (highlights.isNotEmpty()) {
             // Right over the page and under everything else, so a match, a link or the selection reads through it.
             Canvas(Modifier.fillMaxSize()) { drawHighlights(highlights) }
+            // A note's dot is its own stop, so a screen reader can reach the note a stroke cannot describe.
+            for (mark in highlights) {
+                if (mark.kind == HighlightKind.NOTE) NoteStop(mark, pageSize, onMark)
+            }
         }
         if (linkRects.isNotEmpty()) {
             // Under the matches and the selection, so a link never hides a find highlight.
@@ -511,6 +532,33 @@ private fun PdfPage(
 private const val MATCH_ALPHA = 0.5f
 
 private val ACTIVE_HIT_BORDER = 5.dp
+
+/**
+ * A note's run as its own touch and screen-reader stop. The wash and the rule are a Canvas, which
+ * cannot be focused or described; this box covers the run, carries the note's words and opens it.
+ * Its own stop rather than a dot-sized one: a fingertip target has to be the passage, not the dot.
+ */
+@Composable
+private fun NoteStop(mark: Highlight, pageSize: IntSize, onMark: (Highlight) -> Unit) {
+    if (mark.rects.isEmpty() || pageSize == IntSize.Zero) return
+    val left = mark.rects.minOf { it.left } * pageSize.width
+    val top = mark.rects.minOf { it.top } * pageSize.height
+    val right = mark.rects.maxOf { it.right } * pageSize.width
+    val bottom = mark.rects.maxOf { it.bottom } * pageSize.height
+    val density = LocalDensity.current
+    val width = with(density) { (right - left).toDp().coerceAtLeast(1.dp) }
+    val height = with(density) { (bottom - top).toDp().coerceAtLeast(1.dp) }
+    val description = stringResource(R.string.viewer_annotation_mark, mark.note.orEmpty())
+    val editLabel = stringResource(R.string.viewer_annotation_edit)
+
+    Box(
+        Modifier
+            .offset { IntOffset(left.roundToInt(), top.roundToInt()) }
+            .size(width, height)
+            .clickable(onClickLabel = editLabel, onClick = { onMark(mark) })
+            .semantics { contentDescription = description },
+    )
+}
 
 /**
  * Whether a screen reader is running. Asked of the system service rather than Compose's own

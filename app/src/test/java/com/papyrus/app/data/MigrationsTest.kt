@@ -104,7 +104,7 @@ class MigrationsTest {
         assertEquals(Migrations.BASELINE_VERSION, Migrations.ALL.first().startVersion)
         assertEquals(Migrations.CURRENT_VERSION, Migrations.ALL.last().endVersion)
         assertEquals(
-            listOf(4 to 5, 5 to 6, 6 to 7),
+            listOf(4 to 5, 5 to 6, 6 to 7, 7 to 8),
             Migrations.ALL.map { it.startVersion to it.endVersion },
         )
     }
@@ -254,6 +254,57 @@ class MigrationsTest {
                 "not in the exported schema, so the entity and the migration disagree:\n$normalized",
                 normalized in exported,
             )
+        }
+    }
+
+    @Test
+    fun `the 7 to 8 statements only add, and the new table leaves with its document`() {
+        // The allow-list rules out DROP, DELETE, UPDATE and table rebuilds, so no existing highlight
+        // can be lost by this step, only given two more columns.
+        val additive = Regex("^(ALTER TABLE `\\w+` ADD COLUMN |CREATE TABLE IF NOT EXISTS )")
+        for (sql in Migrations.V7_TO_V8_SQL) {
+            assertTrue("not an additive statement: $sql", additive.containsMatchIn(sql))
+        }
+        val table = Migrations.V7_TO_V8_SQL.single { it.startsWith("CREATE TABLE") }
+        assertTrue(
+            "a deleted document must not leave its cached outline behind: $table",
+            "REFERENCES `documents`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE" in table,
+        )
+    }
+
+    @Test
+    fun `the new highlight columns have defaults, so a v7 row stays valid without being rewritten`() {
+        val kind = Migrations.V7_TO_V8_SQL.single { it.startsWith("ALTER TABLE") && "`kind`" in it }
+        val note = Migrations.V7_TO_V8_SQL.single { it.startsWith("ALTER TABLE") && "`note`" in it }
+
+        // The default is what makes every existing highlight read back as a plain highlight.
+        assertTrue("missing the highlight default: $kind", "`kind` INTEGER NOT NULL DEFAULT 1" in kind)
+        assertTrue("a note must be optional: $note", "`note` TEXT" in note && "NOT NULL" !in note)
+    }
+
+    @Test
+    fun `every 7 to 8 statement is exactly what the exported schema says`() {
+        val exported = schemaFile(8).readText().replace(Regex("\\s+"), " ")
+        for (sql in Migrations.V7_TO_V8_SQL) {
+            val normalized = sql
+                .replace(Regex("(?<=IF NOT EXISTS )`\\w+`(?= \\()")) { "`\${TABLE_NAME}`" }
+                .replace(Regex("(?<= ON )`\\w+`")) { "`\${TABLE_NAME}`" }
+                .replace(Regex("\\s+"), " ")
+                .trim()
+            if (sql.startsWith("ALTER TABLE")) {
+                // Room exports the table as a whole, never the ALTER: the added column's own
+                // declaration is what must appear in it, exactly as the entities describe it.
+                val column = normalized.substringAfter("ADD COLUMN ")
+                assertTrue(
+                    "not in the exported highlights table, so the entity and the migration disagree:\n$column",
+                    column in exported,
+                )
+            } else {
+                assertTrue(
+                    "not in the exported schema, so the entity and the migration disagree:\n$normalized",
+                    normalized in exported,
+                )
+            }
         }
     }
 }

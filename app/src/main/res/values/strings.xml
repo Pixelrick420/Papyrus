@@ -134,6 +134,17 @@ access</string>
     <string name="viewer_form_read_only">Read only</string>
     <string name="viewer_form_edit">Edit field</string>
     <string name="viewer_form_copy_name">Form copy</string>
+    <string name="viewer_save_copy_with_highlights">Save a copy with highlights</string>
+    <string name="viewer_highlight_copy_name">Highlight copy</string>
+    <string name="viewer_highlight_saved">Saved a copy with highlights</string>
+    <string name="viewer_highlight_save_failed">Couldn\'t save a copy.</string>
+    <string name="viewer_annotation_title">Note</string>
+    <string name="viewer_annotation_field">Your note</string>
+    <string name="viewer_annotation_counter">%1$d/%2$d</string>
+    <string name="viewer_annotation_hint">Notes stay in Papyrus. A saved copy of the PDF carries highlights, not notes.</string>
+    <string name="viewer_annotation_mark">Note: %1$s</string>
+    <string name="viewer_annotation_edit">Open note</string>
+    <string name="viewer_annotation_delete">Delete highlight</string>
     <string name="viewer_pretty_failed">Couldn\'t format this file; showing it as stored.</string>
 
     <string name="bookmark_add">Add bookmark</string>
