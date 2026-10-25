@@ -81,11 +81,14 @@ device face down if you want to remove visual cues.
    a highlight. A page with no text layer shows "This page has no selectable text." Copy confirms
    with a "Copied" toast before Android 13 and with the system's own confirmation from Android 13
    on.
+8. **PDF page text:** with TalkBack running, a shown page reads "Page 3." followed by the page's
+   own text, from the platform renderer where the device has one and from PDFBox otherwise. A page
+   with no text layer reads only its number.
 
 ### Known limits
 
-- PDF pages are bitmaps. TalkBack can announce the page indicator and any extracted text used for
-  find-in-file, but it cannot read the rendered page.
+- PDF pages are bitmaps, so TalkBack reads their extracted text as one stop per page rather than
+  walking the text line by line.
 - Pinch zoom is a two-finger gesture that TalkBack intercepts. Use Android's accessibility zoom
   instead. Text documents keep their normal TalkBack text navigation.
 - Images inside documents are not described.
