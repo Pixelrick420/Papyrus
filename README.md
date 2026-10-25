@@ -92,11 +92,11 @@ automatically and can be changed from the viewer menu.
 ### Library
 
 - **Search** filters the list by title as you type and also looks inside the documents. A document that matches by
-  content shows an excerpt under its title, with the matching words highlighted. Every word must appear, and a word
-  matches by prefix, so `scal` finds "scaling". Content matches are limited to the 20 most relevant documents, and the
-  list keeps your chosen sort order. Opening a content match lands on the first occurrence of the first word and holds
-  a highlight on it for two seconds before it fades; where find cannot search the document, it opens at the saved
-  position instead.
+  content shows an excerpt under its title, with the matching words highlighted. Every word must appear, though a
+  single-character word is dropped when a longer one is typed, and a word matches by prefix, so `scal` finds "scaling".
+  Content matches are limited to the 20 most relevant documents, and the list keeps your chosen sort order. Opening a
+  content match lands on the first occurrence of the first searchable word and holds a highlight on it for two seconds
+  before it fades; where find cannot search the document, it opens at the saved position instead.
 - **Sort & filter** is the slider icon beside the search pill. One sheet holds every sort order, every file-type
   filter and the starred filter, with a badge counting what is on and a live count of matching files.
 - **Sort** by last opened, name (A to Z or Z to A), date added or size. Names sort the way a person reads them, so
@@ -116,8 +116,9 @@ automatically and can be changed from the viewer menu.
 - **PDF outline and go to page** (Ctrl+G). The PDF's own bookmarks become a foldable **Outline**, and a long one starts
   folded.
 - **Bookmarks** (Ctrl+D) in every format: named or positional, rename and delete with Undo, at most 200 per document.
-- **PDF highlights** for library files: long-press to select text, then tap **Highlight**. Select highlighted text and
-  tap **Remove highlight** to take it off. They are kept in Papyrus's own database, so the PDF itself is never changed.
+- **PDF text selection**: long-press to select text, then tap **Copy** to put it on the clipboard. For a library file,
+  **Highlight** also saves the selection, and on a selection that touches one, **Remove highlight** takes it off.
+  Highlights are kept in Papyrus's own database, so the PDF itself is never changed.
 - **Reading position** reopens a document where you stopped, at the same zoom, even after a rotation. A switch in
   Settings turns it off.
 - **Read aloud** speaks the page, chunk, block or paragraph, shades the sentence being read (and the word, where the
@@ -216,8 +217,8 @@ detekt remain local gates.
 
 Papyrus gets a document one of two ways: you pick it in the system file picker, or another app hands one over. Either
 way it works out the format and opens the viewer for it. A picked file also joins the library, with its reading
-position and bookmarks. A document handed over by another app is not added to the library and lives only while Papyrus
-runs. Read aloud uses the text the viewer already extracted.
+position and bookmarks. A document handed over by another app joins the library only when **Autosave external docs** is
+on; otherwise it is not added and lives only while Papyrus runs. Read aloud uses the text the viewer already extracted.
 
 ```mermaid
 flowchart LR
@@ -321,11 +322,11 @@ one of four states: `INDEXED`, `FAILED` (the reader threw; never retried), `SKIP
 reader for the format) or `TOO_LARGE` (the file is over 64 MB and is never opened). At most 1,000,000 characters are
 kept per document. Raising `SearchIndexer.INDEX_VERSION` re-indexes everything.
 
-A query is split into words (anything that is not a letter or digit separates them, and at most 8 are kept), each
-quoted for FTS4 so nothing typed can act as an operator, and each of two or more characters matches by prefix. Search
-runs in two phases: the index finds the matching documents and they are ranked with BM25, then excerpts are fetched for
-only the 20 best. The Home screen waits 250 ms after the last keystroke before it queries, and a search that fails is
-reported once and shown as no content matches.
+A query is split into words (anything that is not a letter or digit separates them, at most 8 are kept, and a
+single-character word is dropped when a longer one is present), each quoted for FTS4 so nothing typed can act as an
+operator, and each of two or more characters matches by prefix. Search runs in two phases: the index finds the matching
+documents and they are ranked with BM25, then excerpts are fetched for only the 20 best. The Home screen waits 250 ms
+after the last keystroke before it queries, and a search that fails is reported once and shown as no content matches.
 
 ## Known limitations
 

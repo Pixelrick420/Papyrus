@@ -75,6 +75,12 @@ device face down if you want to remove visual cues.
 5. **Outline:** the title is a heading. A fold control names the entry it hides or shows
    ("Expand Chapter 1"); an entry without a destination is present but not clickable.
 6. **Bookmarks:** the title is a heading; rename and delete name the bookmark they act on.
+7. **PDF text selection:** a long press on a page with a text layer selects a run of text and
+   replaces the overflow control with "Copy, button" and "Clear selection, button", plus
+   "Highlight, button" for a library PDF and "Remove highlight, button" when the selection touches
+   a highlight. A page with no text layer shows "This page has no selectable text." Copy confirms
+   with a "Copied" toast before Android 13 and with the system's own confirmation from Android 13
+   on.
 
 ### Known limits
 
