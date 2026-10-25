@@ -3,7 +3,7 @@ Papyrus is an offline document viewer with support for PDF, Word, OpenDocument, 
 Documents are picked through the system file picker and indexed in a local library. No internet permission is requested and nothing leaves your device.
 
 Features:
-- PDF with zoom, links, bookmarks/outline and go-to-page
+- PDF with zoom, links, text selection and copy, highlights, bookmarks/outline and go-to-page
 - Word and OpenDocument with footnotes, comments, tables and images
 - EPUB reflowed with the book's own table of contents as the outline
 - Markdown with tables, task lists, coloured code blocks, maths and embedded images
