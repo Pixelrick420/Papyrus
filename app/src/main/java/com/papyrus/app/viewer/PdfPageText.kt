@@ -229,6 +229,55 @@ class PdfPageText(
 
         private val WHITESPACE_RUN = Regex("\\s+")
 
+        /**
+         * Text with per-character boxes synthesised from per-line boxes: each character takes an
+         * equal slice of its line's span, whitespace takes none, and '\n' ends a line. A line may
+         * report several boxes (a run the platform cut in two); they are unioned so every glyph
+         * stays hit-testable. [lineBoxes] holds one list per line of [text], or is empty when no
+         * geometry is known — the text then stays searchable but not selectable.
+         */
+        fun fromLines(text: String, lineBoxes: List<List<NormRect>>): PdfPageText {
+            val breaks = BitSet()
+            for (i in text.indices) if (text[i] == '\n') breaks.set(i)
+            if (lineBoxes.isEmpty()) return PdfPageText(text, FloatArray(0), breaks)
+            val boxes = FloatArray(text.length * 4) { Float.NaN }
+            var lineIndex = 0
+            var start = 0
+            while (start <= text.length) {
+                val end = text.indexOf('\n', start).let { if (it < 0) text.length else it }
+                fillLine(text, start, end, lineBoxes.getOrNull(lineIndex).orEmpty(), boxes)
+                lineIndex++
+                if (end == text.length) break
+                start = end + 1
+            }
+            return PdfPageText(text, boxes, breaks)
+        }
+
+        /** Splits one line's union box evenly across its characters; a line with no span gets none. */
+        private fun fillLine(text: String, start: Int, end: Int, rects: List<NormRect>, boxes: FloatArray) {
+            if (rects.isEmpty() || end <= start) return
+            var left = rects.first().left
+            var top = rects.first().top
+            var right = rects.first().right
+            var bottom = rects.first().bottom
+            for (rect in rects) {
+                left = min(left, rect.left)
+                top = min(top, rect.top)
+                right = max(right, rect.right)
+                bottom = max(bottom, rect.bottom)
+            }
+            if (right <= left || bottom <= top) return
+            val step = (right - left) / (end - start)
+            for (i in 0 until end - start) {
+                if (text[start + i].isWhitespace()) continue
+                val o = (start + i) * 4
+                boxes[o] = left + step * i
+                boxes[o + 1] = top
+                boxes[o + 2] = left + step * (i + 1)
+                boxes[o + 3] = bottom
+            }
+        }
+
         /** NFKC-normalised so a typed "fi" finds the "ﬁ" ligature, whitespace runs collapsed to one space. */
         fun normalizeQuery(query: String): String =
             WHITESPACE_RUN.replace(Normalizer.normalize(query, Normalizer.Form.NFKC), " ")
