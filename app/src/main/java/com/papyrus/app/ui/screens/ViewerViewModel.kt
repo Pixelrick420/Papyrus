@@ -2,6 +2,7 @@ package com.papyrus.app.ui.screens
 
 import android.content.Intent
 import android.net.Uri
+import android.provider.DocumentsContract
 import android.text.Spanned
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
@@ -51,6 +52,8 @@ import com.papyrus.app.viewer.OfficeTextExtractor
 import com.papyrus.app.viewer.OFFICE_UNLOCK_DIR
 import com.papyrus.app.viewer.PDF_UNLOCK_DIR
 import com.papyrus.app.viewer.PdfEncryption
+import com.papyrus.app.viewer.PdfFormEdit
+import com.papyrus.app.viewer.PdfFormField
 import com.papyrus.app.viewer.PdfPageSource
 import com.papyrus.app.viewer.PdfPageText
 import com.papyrus.app.viewer.PdfPageLink
@@ -229,6 +232,8 @@ data class ViewerUiState(
     val restore: RestoreRequest? = null,
     /** A PDF's outline, once read; empty until then and for a document without any. */
     val pdfOutline: List<OutlineEntry> = emptyList(),
+    /** An AcroForm's widgets, once read; empty for a document without a fillable form. */
+    val formFields: List<PdfFormField> = emptyList(),
 ) {
     /**
      * Bookmarks hang from a library row, so a transient document has none until it is saved; from then on
@@ -410,6 +415,7 @@ class ViewerViewModel(
         val content = loadContentSafely(doc)
         _state.update { it.copy(content = content) }
         loadPdfOutline()
+        loadPdfForm()
         autosaveIfEnabled()
         // A content result opens on its first match, after the stored position had its chance to land.
         val term = pendingArrivalTerm
@@ -473,6 +479,93 @@ class ViewerViewModel(
             // A re-grant may have replaced the document while this was reading: publish only for the one it was read for.
             _state.update { if ((it.content as? ViewerContent.Pdf)?.source === shown) it.copy(pdfOutline = entries) else it }
         }
+    }
+
+    /**
+     * Reads the fillable widgets of a PDF that has just loaded, a page at a time off the main thread
+     * and after its first page, so a large form never delays what is on screen. Nothing is offered for
+     * a document without an AcroForm, or on a device whose renderer has no form API.
+     */
+    private fun loadPdfForm() {
+        val shown = (_state.value.content as? ViewerContent.Pdf)?.source ?: return
+        if (!shown.hasForm) return
+        viewModelScope.launch {
+            val fields = shown.formFields()
+            // A re-grant may have replaced the document while this was reading.
+            _state.update { if ((it.content as? ViewerContent.Pdf)?.source === shown) it.copy(formFields = fields) else it }
+        }
+    }
+
+    /** Replaces a text field's value in the open document. Nothing reaches the file until a copy is saved. */
+    fun setFormText(field: PdfFormField, text: String) =
+        applyFormEdit(field.page, PdfFormEdit.Text(field.widget, text))
+
+    /** Selects choice items by index; a single-choice box passes exactly one. */
+    fun selectFormChoice(field: PdfFormField, selected: List<Int>) =
+        applyFormEdit(field.page, PdfFormEdit.Choice(field.widget, selected))
+
+    /** Switches a check box or radio button, which the platform does with a tap on the widget itself. */
+    fun toggleFormField(field: PdfFormField) = applyFormEdit(field.page, PdfFormEdit.Tap(field.widget))
+
+    /**
+     * Applies one edit in memory and re-reads that page's widgets: the platform can adjust what it
+     * reports after an edit, so the sheet shows what the document now holds, not what was typed.
+     */
+    private fun applyFormEdit(page: Int, edit: PdfFormEdit) {
+        val shown = (_state.value.content as? ViewerContent.Pdf)?.source ?: return
+        viewModelScope.launch {
+            if (!shown.applyFormEdit(page, edit)) {
+                _messages.value = UiText(R.string.viewer_form_edit_failed)
+                return@launch
+            }
+            _state.update { current ->
+                if ((current.content as? ViewerContent.Pdf)?.source !== shown) {
+                    current
+                } else {
+                    // Only one page is re-read; the rest keep the widgets they already had.
+                    val fields = current.formFields.filterNot { it.page == page } + shown.formFields(page)
+                    current.copy(formFields = fields.sortedWith(compareBy({ it.page }, { it.widget })))
+                }
+            }
+        }
+    }
+
+    /**
+     * Writes the open document, form edits included, to the copy the reader picked in the system
+     * picker. The source is never written to; a failed write takes the half-written copy back.
+     */
+    fun saveFormCopy(uri: Uri) {
+        val source = (_state.value.content as? ViewerContent.Pdf)?.source ?: return
+        viewModelScope.launch {
+            val saved = writeFormCopy(uri, source)
+            _messages.value = UiText(if (saved) R.string.viewer_form_saved else R.string.viewer_form_save_failed)
+        }
+    }
+
+    private suspend fun writeFormCopy(uri: Uri, source: PdfPageSource): Boolean {
+        val resolver = app.contentResolver
+        val destination = try {
+            resolver.openFileDescriptor(uri, "w")
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            null
+        } ?: return false
+        val written = try {
+            destination.use { source.writeCopy(it) }
+        } catch (e: CancellationException) {
+            discardCopy(uri)
+            throw e
+        } catch (_: Exception) {
+            false
+        }
+        if (!written) discardCopy(uri)
+        return written
+    }
+
+    /** A failed write leaves a truncated file behind; deleting the document takes the file with it. */
+    private fun discardCopy(uri: Uri) {
+        runCatching { DocumentsContract.deleteDocument(app.contentResolver, uri) }
     }
 
     /**

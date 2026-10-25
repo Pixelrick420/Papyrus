@@ -5,6 +5,7 @@ import android.content.res.Configuration
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -102,6 +103,7 @@ import com.papyrus.app.ui.viewer.MarkdownViewer
 import com.papyrus.app.ui.viewer.OfficeViewer
 import com.papyrus.app.ui.viewer.OutlineSheet
 import com.papyrus.app.ui.viewer.PasswordDialog
+import com.papyrus.app.ui.viewer.PdfFormSheet
 import com.papyrus.app.ui.viewer.PdfSelectionState
 import com.papyrus.app.ui.viewer.PdfViewer
 import com.papyrus.app.ui.viewer.PlainTextOptions
@@ -189,6 +191,7 @@ fun ViewerScreen(
     var outlineOpen by remember { mutableStateOf(false) }
     var goToOpen by remember { mutableStateOf(false) }
     var bookmarksOpen by remember { mutableStateOf(false) }
+    var formOpen by remember { mutableStateOf(false) }
 
     // Only a document with an outline has the menu item: an Office document that used heading styles, or a
     // PDF whose bookmarks have been read (off the main thread, so they arrive after the first page).
@@ -242,6 +245,9 @@ fun ViewerScreen(
     // handed-over document lacks until it is saved. Ctrl+D and the menu both ask this.
     val bookmarkableContent = findAvailable
     val bookmarksAvailable = bookmarkableContent && state.bookmarksAvailable
+    // Form fields are offered once their widgets have been read; a document without a fillable form
+    // never gets any, so the menu item stays away.
+    val formAvailable = state.formFields.isNotEmpty()
 
     // Read aloud is offered whenever find is (the same speakable formats), except for a table, which
     // has no reading order to speak; and the bar shows only while *this* document is the one being
@@ -280,6 +286,18 @@ fun ViewerScreen(
     // SAF grants have no runtime dialog, so re-access means a re-pick through the picker.
     val regrantFile = rememberLauncherForActivityResult(OpenPersistableDocument()) { uri ->
         if (uri != null) viewModel.regrant(uri) else viewModel.consumeRegrantRequest()
+    }
+
+    // A filled form is only ever saved as a copy, so the picker chooses where. A cancelled pick leaves
+    // the sheet open; a chosen one closes it, so the save's own message is not lost behind it.
+    val formCopyName = formCopyFileName(state.document?.title, stringResource(R.string.viewer_form_copy_name))
+    val saveFormCopy = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument(PDF_MIME_TYPE),
+    ) { uri ->
+        if (uri != null) {
+            formOpen = false
+            viewModel.saveFormCopy(uri)
+        }
     }
 
     LaunchedEffect(message) {
@@ -356,6 +374,7 @@ fun ViewerScreen(
                 goToAvailable = goToAvailable,
                 bookmarkableContent = bookmarkableContent,
                 bookmarksAvailable = bookmarksAvailable,
+                formAvailable = formAvailable,
                 encodingAvailable = encodingAvailable,
                 menuOpen = menuOpen,
                 selectionActive = selectionState.hasSelection,
@@ -374,6 +393,7 @@ fun ViewerScreen(
                 onGoTo = { goToOpen = true },
                 onAddBookmark = viewModel::addBookmark,
                 onBookmarks = { bookmarksOpen = true },
+                onForm = { formOpen = true },
                 onEncoding = { encodingOpen = true },
                 onInfo = { infoOpen = true },
                 onShare = shareDocument,
@@ -641,9 +661,29 @@ fun ViewerScreen(
             onDismiss = { bookmarksOpen = false },
         )
     }
+
+    if (formOpen && formAvailable) {
+        PdfFormSheet(
+            fields = state.formFields,
+            onSetText = viewModel::setFormText,
+            onChoose = viewModel::selectFormChoice,
+            onToggle = viewModel::toggleFormField,
+            onSaveCopy = { saveFormCopy.launch(formCopyName) },
+            onDismiss = { formOpen = false },
+        )
+    }
 }
 
 private const val FIND_ANIMATION_MS = 200
+
+/** The type a saved form copy is offered as; only PDFs have forms. */
+private const val PDF_MIME_TYPE = "application/pdf"
+
+/** A copy is named after the document, given a PDF suffix when its title has none. */
+private fun formCopyFileName(title: String?, fallback: String): String {
+    val base = title?.trim()?.takeIf { it.isNotEmpty() } ?: fallback
+    return if (base.endsWith(".pdf", ignoreCase = true)) base else "$base.pdf"
+}
 
 /** Below this many pages the page list is short enough to scroll, so Go to page stays out of the menu. */
 private const val MIN_GO_TO_PAGES = 6
@@ -657,6 +697,7 @@ private fun ViewerHeader(
     goToAvailable: Boolean,
     bookmarkableContent: Boolean,
     bookmarksAvailable: Boolean,
+    formAvailable: Boolean,
     encodingAvailable: Boolean,
     menuOpen: Boolean,
     selectionActive: Boolean,
@@ -675,6 +716,7 @@ private fun ViewerHeader(
     onGoTo: () -> Unit,
     onAddBookmark: () -> Unit,
     onBookmarks: () -> Unit,
+    onForm: () -> Unit,
     onEncoding: () -> Unit,
     onInfo: () -> Unit,
     onShare: () -> Unit,
@@ -783,6 +825,12 @@ private fun ViewerHeader(
                         DropdownMenuItem(
                             text = { Text(stringResource(R.string.viewer_outline_title)) },
                             onClick = { onMenuOpenChange(false); onOutline() },
+                        )
+                    }
+                    if (formAvailable) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.viewer_form_title)) },
+                            onClick = { onMenuOpenChange(false); onForm() },
                         )
                     }
                     // Only for a PDF long enough to number: [MIN_GO_TO_PAGES] or more.

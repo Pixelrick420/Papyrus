@@ -84,6 +84,10 @@ device face down if you want to remove visual cues.
 8. **PDF page text:** with TalkBack running, a shown page reads "Page 3." followed by the page's
    own text, from the platform renderer where the device has one and from PDFBox otherwise. A page
    with no text layer reads only its number.
+9. **PDF form fields:** a PDF with a fillable AcroForm offers Form fields in the menu. Each field is
+   one stop with its label, page, value and state; text and choice fields open a dialog, while check
+   boxes and radio buttons switch on tap. Edits apply to the open document only: Save a copy writes a
+   new file through the system picker and never changes the original. An XFA form is read-only.
 
 ### Known limits
 

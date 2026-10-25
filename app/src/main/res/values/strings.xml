@@ -121,6 +121,19 @@ access</string>
     <string name="viewer_save_library">Save to library</string>
     <string name="viewer_save_done">Saved to your library</string>
     <string name="viewer_save_failed">Couldn\'t save this document.</string>
+    <string name="viewer_form_title">Form fields</string>
+    <string name="viewer_form_hint">Fill in the fields, then save a copy. The original file stays as it is.</string>
+    <string name="viewer_form_save">Save a copy</string>
+    <string name="viewer_form_saved">Saved a copy</string>
+    <string name="viewer_form_save_failed">Couldn\'t save a copy.</string>
+    <string name="viewer_form_edit_failed">Couldn\'t change that field.</string>
+    <string name="viewer_form_field">Field on page %1$d</string>
+    <string name="viewer_form_page">Page %1$d</string>
+    <string name="viewer_form_row_detail">%1$s · %2$s</string>
+    <string name="viewer_form_value_empty">Not filled</string>
+    <string name="viewer_form_read_only">Read only</string>
+    <string name="viewer_form_edit">Edit field</string>
+    <string name="viewer_form_copy_name">Form copy</string>
     <string name="viewer_pretty_failed">Couldn\'t format this file; showing it as stored.</string>
 
     <string name="bookmark_add">Add bookmark</string>
