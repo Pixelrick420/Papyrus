@@ -79,7 +79,7 @@ on-device. The manifest declares no network or storage permissions; the only two
 
 | Format                | What you get                                                                              |
 | --------------------- | ----------------------------------------------------------------------------------------- |
-| **PDF**               | Zoom, tappable links, PDF bookmarks as an **Outline**, **Go to page**, password unlock    |
+| **PDF**               | Zoom, links, **Outline**, **Go to page**, text selection, highlights and notes, form filling, password unlock |
 | **DOCX / ODT**        | Headings, lists, tables, images, footnotes, reviewer comments, DOCX equations as text     |
 | **DOC**               | Paragraphs and tables                                                                     |
 | **EPUB**              | A reflowed book, its own table of contents as the **Outline**, its cover as the thumbnail |
@@ -118,11 +118,19 @@ automatically and can be changed from the viewer menu.
 
 - **Find in file** (Ctrl+F) in every format, with the current match highlighted.
 - **PDF outline and go to page** (Ctrl+G). The PDF's own bookmarks become a foldable **Outline**, and a long one starts
-  folded.
+  folded. A long outline appears as it is read, and is cached, so the next open shows it at once.
 - **Bookmarks** (Ctrl+D) in every format: named or positional, rename and delete with Undo, at most 200 per document.
 - **PDF text selection**: long-press to select text, then tap **Copy** to put it on the clipboard. For a library file,
   **Highlight** also saves the selection, and on a selection that touches one, **Remove highlight** takes it off.
-  Highlights are kept in Papyrus's own database, so the PDF itself is never changed.
+  Tap a stored highlight to write or edit its note; clearing the text and saving makes it a plain highlight again. A
+  note keeps the highlighter wash, adds a rule and a dot, and lives in Papyrus. Highlights and notes are kept in
+  Papyrus's own database, so the PDF itself is never changed.
+  Where the device can write page annotations, **Save a copy with highlights** writes the plain highlights into a new
+  PDF through the system picker. The notes stay behind, since a saved copy carries highlights only.
+- **PDF form fields**: a PDF with a fillable AcroForm offers **Form fields** in the menu. Each field shows its label,
+  page, value and state; text and choice fields open a dialog, while check boxes and radio buttons switch on tap.
+  Edits apply to the open document only: **Save a copy** writes a new file through the system picker and never
+  changes the original. An XFA form offers no fields, and a signature field can be seen but not signed.
 - **Reading position** reopens a document where you stopped, at the same zoom, even after a rotation. A switch in
   Settings turns it off.
 - **Read aloud** speaks the page, chunk, block or paragraph, shades the sentence being read (and the word, where the
@@ -137,8 +145,10 @@ automatically and can be changed from the viewer menu.
   between sections.
 - **Live updates and touch targets.** The find-in-file counter announces each match change ("2 of 7") without moving
   focus, and interactive controls meet the 48dp minimum touch target.
-- **Known limits.** A rendered PDF page is a bitmap, so TalkBack cannot read it; use Android's accessibility zoom
-  instead of pinch zoom, which TalkBack intercepts. Images inside documents are not described.
+- **Known limits.** With TalkBack running, a PDF page with a text layer is read as one stop per page — its page
+  number and the page's own text — rather than line by line; a page with no text layer reads only its number. Use
+  Android's accessibility zoom instead of pinch zoom, which TalkBack intercepts. Images inside documents are not
+  described.
 - The manual test script and the checks enforced by `AccessibilitySemanticsTest` are in
   [ACCESSIBILITY.md](ACCESSIBILITY.md).
 
@@ -176,6 +186,8 @@ automatically and can be changed from the viewer menu.
   its images. A zip-slip entry, an oversized archive or a decompression bomb fails the book, not the app, and DRM is
   refused.
 - **Crash reports** are JSON files in app storage, written by ACRA. Nothing leaves the device.
+- **Highlights and notes** stay in Papyrus's private database, are removed with the document, and are never written
+  into your file unless you save a copy. A saved copy carries plain highlights only; notes are not exported.
 
 ## Install
 
@@ -242,15 +254,18 @@ flowchart LR
 The index is one Room row per document: URI, title, format, size, and the added and last-opened timestamps. Page count
 and MIME type are read live, so they are not stored.
 
-The current schema is 7. Version 4 is the oldest supported one, since earlier versions were test-only. Version 5 adds a
+The current schema is 8. Version 4 is the oldest supported one, since earlier versions were test-only. Version 5 adds a
 `reading_progress` table with one row per document, a `bookmarks` table, and `documents.isFavourite`. Version 6 adds
 the content index: a `document_text` table holding each document's extracted text and its index state, and a
 `document_text_fts` FTS4 table over it that stores only the inverted index, so no text is kept twice. Version 7 adds a
-`highlights` table: a row per highlighted run of text on a page, holding its boxes on the page and no text. Each of
-`reading_progress`, `bookmarks`, `highlights` and `document_text` references `documents(id)` with `ON DELETE CASCADE`, so deleting a
-document removes its rows. `documents` rows are never written with `OnConflictStrategy.REPLACE`, because that deletes
-and reinserts, which would cascade the children away. Migrations are plain SQL in `data/Migrations.kt`, and every
-version's schema is exported to `app/schemas/` with a test that fails if one is missing.
+`highlights` table: a row per highlighted run of text on a page, holding its boxes on the page and no text. Version 8
+gives a highlight a `kind` and an optional `note`, so the same table holds plain highlights and notes, and adds a
+`pdf_outlines` table that caches a PDF's bookmarks against the file's size and the outline reader's version. Each of
+`reading_progress`, `bookmarks`, `highlights`, `document_text` and `pdf_outlines` references `documents(id)` with
+`ON DELETE CASCADE`, so deleting a document removes its rows. `documents` rows are never written with
+`OnConflictStrategy.REPLACE`, because that deletes and reinserts, which would cascade the children away. Migrations are
+plain SQL in `data/Migrations.kt`, and every version's schema is exported to `app/schemas/` with a test that fails if one
+is missing.
 
 `document_text_fts` is not a child of `documents`: it follows `document_text` through triggers Room generates.
 
@@ -259,6 +274,7 @@ erDiagram
     DOCUMENTS ||--o| READING_PROGRESS : "keeps one position"
     DOCUMENTS ||--o{ BOOKMARKS : "holds"
     DOCUMENTS ||--o{ HIGHLIGHTS : "marks"
+    DOCUMENTS ||--o| PDF_OUTLINES : "caches its outline"
     DOCUMENTS ||--o| DOCUMENT_TEXT : "has one extracted text"
     DOCUMENT_TEXT ||--o| DOCUMENT_TEXT_FTS : "is indexed by"
 
@@ -299,6 +315,15 @@ erDiagram
         INTEGER documentId FK
         INTEGER page
         TEXT rects
+        INTEGER kind
+        TEXT note
+    }
+
+    PDF_OUTLINES {
+        INTEGER documentId PK, FK
+        INTEGER sourceSize
+        INTEGER cacheVersion
+        TEXT entries
     }
 
     DOCUMENT_TEXT {
@@ -340,7 +365,13 @@ after the last keystroke before it queries, and a search that fails is reported 
   handled, and links between chapters stay plain text.
 - Password-protected documents open when they are a PDF, a `.docx` (ECMA-376 Agile) or an `.odt` (ODF 1.2
   AES-256-CBC). Newer ODF 1.3 packages and the legacy binary schemes are reported as protected but not opened.
-- A PDF over 128 MB gets no outline, because PdfBox would hold a second copy of it in memory next to the renderer's.
+- A PDF over 128 MB is not read for an outline, because PdfBox would hold a second copy of it in memory next to the
+  renderer's; an outline already cached from an earlier open is still shown.
+- Filling a PDF form needs Android 12 or newer with PDF SDK extension 13, and writing highlights into a saved copy needs
+  extension 18, built in from Android 17. Elsewhere the page still renders, and its text, find and selection fall back
+  to PDFBox, but no **Form fields** menu is offered and highlights stay in Papyrus alone. An XFA form is never offered
+  for filling, a signature field can be seen but not signed, and at most 300 form fields are read.
+- Notes are stored, drawn and read in Papyrus only. A saved copy of the PDF carries plain highlights, not notes.
 - Markdown shows an image only when the document carries it as a `data:` URI; the app never touches the network, so
   every other image falls back to its alt text.
 - CSV and TSV tables are not read aloud.
