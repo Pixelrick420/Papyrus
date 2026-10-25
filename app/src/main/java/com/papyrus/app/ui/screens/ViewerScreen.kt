@@ -198,7 +198,7 @@ fun ViewerScreen(
     var noteMark by remember { mutableStateOf<Highlight?>(null) }
 
     // Only a document with an outline has the menu item: an Office document that used heading styles, or a
-    // PDF whose bookmarks have been read (off the main thread, so they arrive after the first page).
+    // PDF whose bookmarks are still streaming in (read off the main thread, so they arrive after the first page).
     val office = state.content as? ViewerContent.Office
     // A document's own table of contents (an EPUB's) wins; otherwise the outline is its headings.
     val officeEntries = remember(office) { office?.let { it.outline ?: officeOutline(it.blocks) }.orEmpty() }

@@ -38,10 +38,21 @@ object PdfOutlineReader {
     /** Levels descended; real outlines stop at four or five, and recursion has to stay shallow. */
     const val MAX_LEVELS = 32
 
-    /** The outline of [document], empty when it has none, or when it cannot be read at all. */
-    fun read(document: PDDocument): List<OutlineEntry> {
+    /** Top-level bookmarks read before a progressive read hands over what it has. */
+    private const val EMIT_BATCH = 64
+
+    /**
+     * The outline of [document], empty when it has none, or when it cannot be read at all.
+     *
+     * [emit] is handed everything read so far as the walk moves from one top-level bookmark to the
+     * next, so a long outline can be shown while the rest of it is still being read; the last call
+     * is the returned list. Only the top level emits, since a nested bookmark cannot be handed over
+     * before its parent's place is known.
+     */
+    fun read(document: PDDocument, emit: (List<OutlineEntry>) -> Unit = {}): List<OutlineEntry> {
         val outline = attempt { document.documentCatalog.documentOutline } ?: return emptyList()
-        return Walk(Destinations(document)).siblings(attempt { outline.firstChild }, level = 0, depth = 0)
+        return Walk(Destinations(document))
+            .siblings(attempt { outline.firstChild }, level = 0, depth = 0, emit = emit)
     }
 
     private class Walk(private val destinations: Destinations) {
@@ -52,10 +63,18 @@ object PdfOutlineReader {
         /**
          * The entries of the sibling chain starting at [first], each followed by its own subtree.
          * [level] counts real nesting and bounds the recursion; [depth] is the indent the entries get,
-         * which a skipped untitled bookmark does not add to.
+         * which a skipped untitled bookmark does not add to. Only the top-level call passes [emit].
          */
-        fun siblings(first: PDOutlineItem?, level: Int, depth: Int): List<OutlineEntry> {
+        fun siblings(
+            first: PDOutlineItem?,
+            level: Int,
+            depth: Int,
+            emit: ((List<OutlineEntry>) -> Unit)? = null,
+        ): List<OutlineEntry> {
             val out = ArrayList<OutlineEntry>()
+            // What emit has already been given. Only a top-level list is emitted, and it only ever grows
+            // by appending, so a snapshot is always a prefix of what [siblings] will return.
+            var emitted = 0
             var item = first
             while (item != null && budget > 0) {
                 val dictionary = item.cosObject
@@ -77,8 +96,13 @@ object PdfOutlineReader {
                         out.addAll(below)
                     }
                 }
+                if (emit != null && out.size - emitted >= EMIT_BATCH) {
+                    emit(ArrayList(out))
+                    emitted = out.size
+                }
                 item = attempt { current.nextSibling }
             }
+            if (emit != null && out.size > emitted) emit(ArrayList(out))
             return out
         }
     }

@@ -466,33 +466,40 @@ class ViewerViewModel(
 
     /**
      * Reads the bookmarks of a PDF that has just loaded. Launched after its first page is already
-     * showing, off the main thread, so a large outline never delays the page. The menu offers Outline
-     * only once this lands with something in it.
+     * showing, off the main thread, so a large outline never delays the page. The entries are
+     * published as they are read, so the menu offers Outline as soon as the first ones land.
      */
     private fun loadPdfOutline() {
         val shown = (_state.value.content as? ViewerContent.Pdf)?.source ?: return
         val document = _state.value.document
         viewModelScope.launch {
             // The cache is asked first, so a file too large to parse still keeps the outline it had.
-            val entries = document?.let { repository.cachedOutline(it) } ?: readPdfOutline(document) ?: return@launch
-            if (entries.isEmpty()) return@launch
-            // A re-grant may have replaced the document while this was reading: publish only for the one it was read for.
-            _state.update { if ((it.content as? ViewerContent.Pdf)?.source === shown) it.copy(pdfOutline = entries) else it }
+            val cached = document?.let { repository.cachedOutline(it) }
+            if (cached != null) {
+                if (cached.isNotEmpty()) showPdfOutline(shown, cached)
+                return@launch
+            }
+            readPdfOutline(shown, document)
         }
     }
 
     /**
-     * Reads the bookmarks from the file and keeps them for the next open. PdfBox parses the whole file
-     * into memory, and until the viewer shares one document it would be a second copy next to the
-     * renderer's: a very large file gets no outline rather than risk the heap.
+     * Reads the bookmarks from the file, publishing what it has as it goes, and keeps them for the
+     * next open. PdfBox parses the whole file into memory, and until the viewer shares one document
+     * it would be a second copy next to the renderer's: a very large file gets no outline rather
+     * than risk the heap.
      */
-    private suspend fun readPdfOutline(document: DocumentEntity?): List<OutlineEntry>? {
-        if ((document?.sizeBytes ?: 0L) > MAX_OUTLINE_FILE_BYTES) return null
-        val source = pageSource() ?: return null
-        val entries = source.outline() ?: return null
+    private suspend fun readPdfOutline(shown: PdfPageSource, document: DocumentEntity?) {
+        if ((document?.sizeBytes ?: 0L) > MAX_OUTLINE_FILE_BYTES) return
+        val source = pageSource() ?: return
+        val entries = source.outline { soFar -> showPdfOutline(shown, soFar) } ?: return
         // A title read from an unlocked copy came out of a password-protected file, so it is not kept.
         if (document != null && unlockedFile == null) runQuietly { repository.storeOutline(document, entries) }
-        return entries
+    }
+
+    /** Publishes an outline only for the document it was read for: a re-grant may have replaced it. */
+    private fun showPdfOutline(shown: PdfPageSource, entries: List<OutlineEntry>) {
+        _state.update { if ((it.content as? ViewerContent.Pdf)?.source === shown) it.copy(pdfOutline = entries) else it }
     }
 
     /**
@@ -1370,7 +1377,12 @@ class ViewerViewModel(
         /** Past this the whole file is not parsed again just to gather find matches. */
         const val MAX_PDF_FIND_BYTES = 64L * 1024 * 1024
 
-        /** Past this a PDF is not opened a second time just to read its bookmarks. */
-        const val MAX_OUTLINE_FILE_BYTES = 64L * 1024 * 1024
+        /**
+         * Past this a PDF is not opened a second time just to read its bookmarks. The outline is
+         * handed over as it is read, so this ceiling is the one parse's heap, not the reader's wait;
+         * it is raised from the old 64 MB, not lifted, since a second copy of a huge file is still
+         * one copy too many beside the renderer.
+         */
+        const val MAX_OUTLINE_FILE_BYTES = 128L * 1024 * 1024
     }
 }

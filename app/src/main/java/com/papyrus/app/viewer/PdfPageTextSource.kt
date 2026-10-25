@@ -60,17 +60,23 @@ class PdfPageTextSource(
     /**
      * The document's bookmarks, or null if it cannot be read. Read once, on the same open document and
      * under the same lock as the pages, off the main thread, so it never delays the first page.
+     *
+     * [emit] is handed everything read so far as the walk proceeds, so a long outline can be shown
+     * while the rest of it is still being read. It runs under the lock and must not block.
      */
-    suspend fun outline(): List<OutlineEntry>? = lock.withLock {
+    suspend fun outline(emit: (List<OutlineEntry>) -> Unit = {}): List<OutlineEntry>? = lock.withLock {
         if (closed) return@withLock null
-        outlineCache?.let { return@withLock it }
-        withContext(Dispatchers.IO) { readOutline() }?.also { outlineCache = it }
+        outlineCache?.let { cached ->
+            if (cached.isNotEmpty()) emit(cached)
+            return@withLock cached
+        }
+        withContext(Dispatchers.IO) { readOutline(emit) }?.also { outlineCache = it }
     }
 
     /** Runs on the IO dispatcher, under [lock]. */
-    private fun readOutline(): List<OutlineEntry>? {
+    private fun readOutline(emit: (List<OutlineEntry>) -> Unit): List<OutlineEntry>? {
         val open = document ?: open() ?: return null
-        return PdfOutlineReader.read(open)
+        return PdfOutlineReader.read(open, emit)
     }
 
     /**
