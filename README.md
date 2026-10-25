@@ -60,6 +60,10 @@
       <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/info.png" width="190" loading="lazy" alt="The file info sheet"><br>
       <sub><b>File info</b><br>name, format, size, URI</sub>
     </td>
+    <td align="center" valign="top">
+      <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/search.png" width="190" loading="lazy" alt="Search"><br>
+      <sub><b>Search</b><br>full-text content search</sub>
+    </td>
   </tr>
 </table>
 
