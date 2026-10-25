@@ -2,11 +2,14 @@ package com.papyrus.app.viewer
 
 import android.graphics.Bitmap
 import android.graphics.Point
+import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.pdf.PdfRenderer
 import android.graphics.pdf.PdfRendererPreV
 import android.graphics.pdf.RenderParams
 import android.graphics.pdf.content.PdfPageTextContent
+import android.graphics.pdf.models.FormEditRecord
+import android.graphics.pdf.models.FormWidgetInfo
 import android.graphics.pdf.models.PageMatchBounds
 import android.graphics.pdf.models.selection.PageSelection
 import android.graphics.pdf.models.selection.SelectionBoundary
@@ -102,11 +105,20 @@ internal interface PdfEngine : Closeable {
     val kind: PdfEngineKind
     val pageCount: Int
 
+    /** The document's form kind; only an AcroForm is offered for filling. */
+    val formType: PdfFormType
+
     /** Opens [index]; the caller closes the page before opening another. */
     fun open(index: Int): PdfEnginePage
+
+    /**
+     * Writes the document, in-memory edits included, to [destination]; false when this engine has
+     * no write API. The source file is never touched or removed.
+     */
+    fun write(destination: ParcelFileDescriptor): Boolean
 }
 
-/** An open page. Text, search and selection are empty on an engine that predates those APIs. */
+/** An open page. Text, search, forms and selection are empty on an engine that predates those APIs. */
 internal interface PdfEnginePage : Closeable {
     val index: Int
     val width: Int
@@ -123,6 +135,12 @@ internal interface PdfEnginePage : Closeable {
 
     /** The lines between two boundaries, or null when the engine has no selection API. */
     fun select(start: PlatformBoundary, stop: PlatformBoundary): List<PlatformLine>?
+
+    /** The page's form widgets; empty when the engine has no form API. */
+    fun widgets(): List<PdfFormField>
+
+    /** Applies [edit] to the document in memory, true when the platform accepted it. */
+    fun applyEdit(edit: PdfFormEdit): Boolean
 }
 
 /** A selection end: a character index into the page's text, or a point in page pixels. */
@@ -156,8 +174,14 @@ internal object PdfEngineFactory {
 internal class PdfEngineV35(private val renderer: PdfRenderer) : PdfEngine {
     override val kind = PdfEngineKind.V35
     override val pageCount: Int get() = renderer.pageCount
+    override val formType: PdfFormType get() = PdfFormType.of(renderer.pdfFormType)
 
     override fun open(index: Int): PdfEnginePage = V35Page(renderer.openPage(index))
+
+    override fun write(destination: ParcelFileDescriptor): Boolean {
+        renderer.write(destination, false)
+        return true
+    }
 
     override fun close() = renderer.close()
 
@@ -175,6 +199,16 @@ internal class PdfEngineV35(private val renderer: PdfRenderer) : PdfEngine {
         override fun select(start: PlatformBoundary, stop: PlatformBoundary): List<PlatformLine>? =
             page.selectContent(start.boundary(), stop.boundary())?.lines()
 
+        override fun widgets(): List<PdfFormField> =
+            page.formWidgetInfos.orEmpty().map { it.field(page.index, page.width, page.height) }
+
+        override fun applyEdit(edit: PdfFormEdit): Boolean {
+            page.applyEdit(edit.record(page.index) { widget ->
+                page.getFormWidgetInfoAtIndex(widget).widgetRect.centre()
+            })
+            return true
+        }
+
         override fun close() = page.close()
     }
 }
@@ -182,8 +216,14 @@ internal class PdfEngineV35(private val renderer: PdfRenderer) : PdfEngine {
 internal class PdfEnginePreV(private val renderer: PdfRendererPreV) : PdfEngine {
     override val kind = PdfEngineKind.PRE_V
     override val pageCount: Int get() = renderer.pageCount
+    override val formType: PdfFormType get() = PdfFormType.of(renderer.pdfFormType)
 
     override fun open(index: Int): PdfEnginePage = PreVPage(renderer.openPage(index))
+
+    override fun write(destination: ParcelFileDescriptor): Boolean {
+        renderer.write(destination, false)
+        return true
+    }
 
     override fun close() = renderer.close()
 
@@ -201,6 +241,16 @@ internal class PdfEnginePreV(private val renderer: PdfRendererPreV) : PdfEngine 
         override fun select(start: PlatformBoundary, stop: PlatformBoundary): List<PlatformLine>? =
             page.selectContent(start.boundary(), stop.boundary())?.lines()
 
+        override fun widgets(): List<PdfFormField> =
+            page.formWidgetInfos.orEmpty().map { it.field(page.index, page.width, page.height) }
+
+        override fun applyEdit(edit: PdfFormEdit): Boolean {
+            page.applyEdit(edit.record(page.index) { widget ->
+                page.getFormWidgetInfoAtIndex(widget).widgetRect.centre()
+            })
+            return true
+        }
+
         override fun close() = page.close()
     }
 }
@@ -208,8 +258,11 @@ internal class PdfEnginePreV(private val renderer: PdfRendererPreV) : PdfEngine 
 internal class PdfEngineLegacy(private val renderer: PdfRenderer) : PdfEngine {
     override val kind = PdfEngineKind.LEGACY
     override val pageCount: Int get() = renderer.pageCount
+    override val formType = PdfFormType.NONE
 
     override fun open(index: Int): PdfEnginePage = LegacyPage(renderer.openPage(index))
+
+    override fun write(destination: ParcelFileDescriptor): Boolean = false
 
     override fun close() = renderer.close()
 
@@ -228,6 +281,10 @@ internal class PdfEngineLegacy(private val renderer: PdfRenderer) : PdfEngine {
         override fun search(query: String): List<PlatformMatch> = emptyList()
 
         override fun select(start: PlatformBoundary, stop: PlatformBoundary): List<PlatformLine>? = null
+
+        override fun widgets(): List<PdfFormField> = emptyList()
+
+        override fun applyEdit(edit: PdfFormEdit): Boolean = false
 
         override fun close() = page.close()
     }
@@ -252,6 +309,46 @@ private object PdfDisplayParams {
 private fun PdfPageTextContent.line(): PlatformLine = PlatformLine(text, bounds.map { it.pageRect() })
 
 private fun RectF.pageRect(): PageRect = PageRect(left, top, right, bottom)
+
+private fun Rect.centre(): Point = Point(centerX(), centerY())
+
+/** A widget as viewer terms: page-relative box, label and choices, with the indices an edit needs. */
+private fun FormWidgetInfo.field(pageIndex: Int, pageWidth: Int, pageHeight: Int): PdfFormField {
+    val box = widgetRect
+    val items = listItems.orEmpty()
+    return PdfFormField(
+        page = pageIndex,
+        widget = widgetIndex,
+        kind = PdfFieldKind.of(widgetType),
+        bounds = PdfPlatformText.normRect(box.pageRect(), pageWidth.toFloat(), pageHeight.toFloat()),
+        label = accessibilityLabel?.takeIf { it.isNotBlank() },
+        value = textValue.orEmpty(),
+        options = items.map { it.label },
+        selectedOptions = items.mapIndexedNotNull { index, item -> index.takeIf { item.isSelected } },
+        readOnly = isReadOnly,
+        multiline = isMultiLineText,
+        multiSelect = isMultiSelect,
+    )
+}
+
+private fun Rect.pageRect(): PageRect =
+    PageRect(left.toFloat(), top.toFloat(), right.toFloat(), bottom.toFloat())
+
+/** [edit] as the platform's record; a tap lands on the widget's own centre, which the caller supplies. */
+private inline fun PdfFormEdit.record(pageIndex: Int, tapPoint: (Int) -> Point): FormEditRecord {
+    val builder = when (this) {
+        is PdfFormEdit.Text -> FormEditRecord
+            .Builder(FormEditRecord.EDIT_TYPE_SET_TEXT, pageIndex, widget)
+            .setText(text)
+        is PdfFormEdit.Choice -> FormEditRecord
+            .Builder(FormEditRecord.EDIT_TYPE_SET_INDICES, pageIndex, widget)
+            .setSelectedIndices(selected.toIntArray())
+        is PdfFormEdit.Tap -> FormEditRecord
+            .Builder(FormEditRecord.EDIT_TYPE_CLICK, pageIndex, widget)
+            .setClickPoint(tapPoint(widget))
+    }
+    return builder.build()
+}
 
 private fun PageMatchBounds.match(): PlatformMatch = PlatformMatch(textStartIndex, bounds.map { it.pageRect() })
 

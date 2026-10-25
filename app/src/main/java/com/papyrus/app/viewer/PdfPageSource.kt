@@ -34,6 +34,9 @@ class PdfPageSource private constructor(
 
     val pageCount: Int = engine.pageCount
 
+    /** True when the reader may be offered filling: this engine has the API and the form is an AcroForm. */
+    val hasForm: Boolean get() = capabilities.forms
+
     private val dispatcher = Dispatchers.Default.limitedParallelism(1)
     private val lock = Mutex()
     private var closed = false
@@ -117,6 +120,51 @@ class PdfPageSource private constructor(
         }
     }
 
+    /**
+     * Every form widget in the document, in page order. Read a page at a time off the main thread, so
+     * a large form never delays the first page; past [MAX_FORM_FIELDS] the rest are left out rather
+     * than holding an unbounded list for a sheet to show.
+     */
+    internal suspend fun formFields(): List<PdfFormField> {
+        if (!capabilities.forms) return emptyList()
+        val fields = ArrayList<PdfFormField>()
+        for (index in 0 until pageCount) {
+            if (fields.size >= MAX_FORM_FIELDS) break
+            fields += withPage(index) { it.widgets() }.orEmpty()
+        }
+        return fields
+    }
+
+    /** One page's widgets, for refreshing just that page after an edit. */
+    internal suspend fun formFields(page: Int): List<PdfFormField> {
+        if (!capabilities.forms) return emptyList()
+        return withPage(page) { it.widgets() }.orEmpty()
+    }
+
+    /** Applies [edit] to page [index] in memory; false when the engine refused or the page failed. */
+    internal suspend fun applyFormEdit(index: Int, edit: PdfFormEdit): Boolean {
+        if (!capabilities.forms) return false
+        return withPage(index) { it.applyEdit(edit) } ?: false
+    }
+
+    /**
+     * Writes the document, edits included, to [destination]. Runs on the render dispatcher, so it
+     * never overlaps a page being read; the source file and this renderer stay as they were.
+     */
+    internal suspend fun writeCopy(destination: ParcelFileDescriptor): Boolean =
+        withContext(dispatcher) {
+            lock.withLock {
+                if (closed) return@withLock false
+                try {
+                    engine.write(destination)
+                } catch (ignored: Exception) {
+                    // Where and which class only: the file being written is the reader's document.
+                    Log.w(TAG, "PDF copy failed: ${ignored.javaClass.simpleName}")
+                    false
+                }
+            }
+        }
+
     /** Runs [attempt] on page [index], serialised with rendering; null when closed or the page fails. */
     private suspend fun <T> withPage(index: Int, attempt: (PdfEnginePage) -> T): T? =
         withContext(dispatcher) {
@@ -162,6 +210,9 @@ class PdfPageSource private constructor(
 
     companion object {
         private const val TAG = "PdfPageSource"
+
+        /** One sheet's worth of widgets; past this the form is not offered rather than half-listed. */
+        private const val MAX_FORM_FIELDS = 300
 
         private fun cacheBytes(): Int =
             (Runtime.getRuntime().maxMemory() / 8).toInt().coerceIn(8 shl 20, 128 shl 20)
@@ -210,7 +261,9 @@ class PdfPageSource private constructor(
             val engine = createEngine(pfd, device)
             // A platform engine that turned out to be missing at open renders only, so its text,
             // form and annotation calls must not be attempted either.
-            val capabilities = if (engine.kind == device.kind) device else PdfCapabilities.legacy()
+            val aligned = if (engine.kind == device.kind) device else PdfCapabilities.legacy()
+            // An XFA form is drawn but never filled: the platform's AcroForm edit path does not apply.
+            val capabilities = aligned.copy(forms = aligned.forms && engine.formType.fillable)
             return PdfPageSource(pfd, engine, capabilities, tempFile)
         }
 
