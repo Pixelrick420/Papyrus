@@ -87,10 +87,13 @@ device face down if you want to remove visual cues.
 9. **PDF form fields:** a PDF with a fillable AcroForm offers Form fields in the menu. Each field is
    one stop with its label, page, value and state; text and choice fields open a dialog, while check
    boxes and radio buttons switch on tap. Edits apply to the open document only: Save a copy writes a
-   new file through the system picker and never changes the original. An XFA form is read-only.
-10. **PDF notes:** a highlight carrying a note is one stop over the passage it marks, read as
+   new file through the system picker and never changes the original. A PDF whose form is XFA
+   offers no Form fields, so it stays as rendered, and a signature field is shown but cannot be
+   signed.
+10. **PDF notes:** tapping any stored highlight opens its note sheet, so saving text in a plain
+    highlight turns it into a note. A note is one stop over the passage it marks, read as
     "Note: <the reader's words>" and labelled "Open note" as a button. The stop covers the whole run,
-    not the dot drawn at its end, so it is a full fingertip target. Opening it offers a note field
+    not the dot drawn at its end, so it is a full fingertip target. The sheet offers a note field
     with a character counter, Save, and Delete highlight. Only plain highlights are written into a
     saved copy of the PDF; the note stays in Papyrus.
 
