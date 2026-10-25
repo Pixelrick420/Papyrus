@@ -33,14 +33,52 @@ class HighlightRulesTest {
     }
 
     @Test
-    fun `boxes are grouped by page across highlights`() {
+    fun `marks are grouped by page in their stored order`() {
         val a = line(0.1f, 0.5f, 0.1f)
         val b = line(0.1f, 0.5f, 0.3f)
         val c = line(0.2f, 0.6f, 0.2f)
 
-        val byPage = listOf(highlight(1, 0, a), highlight(2, 4, c), highlight(3, 0, b)).rectsByPage()
+        val byPage = listOf(highlight(1, 0, a), highlight(2, 4, c), highlight(3, 0, b)).marksByPage()
 
-        assertEquals(mapOf(0 to listOf(a, b), 4 to listOf(c)), byPage)
+        assertEquals(
+            mapOf(0 to listOf(highlight(1, 0, a), highlight(3, 0, b)), 4 to listOf(highlight(2, 4, c))),
+            byPage,
+        )
+    }
+
+    @Test
+    fun `only plain highlights are exportable and a note is left out`() {
+        val marked = line(0.1f, 0.5f, 0.1f)
+        val noted = line(0.1f, 0.5f, 0.3f)
+        val marks = listOf(
+            highlight(1, 0, marked),
+            Highlight(2, 0, listOf(noted), HighlightKind.NOTE, "check this"),
+        )
+
+        assertEquals(mapOf(0 to listOf(listOf(marked))), marks.exportableRectsByPage())
+    }
+
+    @Test
+    fun `a document whose marks all carry notes exports nothing`() {
+        val note = Highlight(1, 3, listOf(line(0.1f, 0.5f, 0.1f)), HighlightKind.NOTE, "hm")
+
+        assertTrue(listOf(note).exportableRectsByPage().isEmpty())
+    }
+
+    @Test
+    fun `an unknown stored kind reads as a highlight`() {
+        assertEquals(HighlightKind.HIGHLIGHT, HighlightKind.fromCode(1))
+        assertEquals(HighlightKind.NOTE, HighlightKind.fromCode(2))
+        assertEquals(HighlightKind.HIGHLIGHT, HighlightKind.fromCode(0))
+        assertEquals(HighlightKind.HIGHLIGHT, HighlightKind.fromCode(99))
+    }
+
+    @Test
+    fun `a note is trimmed, capped and blank when the reader cleared it`() {
+        assertEquals("keep", cleanHighlightNote("  keep  "))
+        assertEquals(null, cleanHighlightNote("   "))
+        assertEquals(MAX_HIGHLIGHT_NOTE_CHARS, cleanHighlightNote("x".repeat(MAX_HIGHLIGHT_NOTE_CHARS + 50))?.length)
+        assertEquals("a", cleanHighlightNote(" a "))
     }
 
     @Test

@@ -6,6 +6,7 @@ import androidx.core.content.FileProvider
 import androidx.core.net.toUri
 import com.papyrus.app.viewer.NormRect
 import com.papyrus.app.viewer.OfficeEncryption
+import com.papyrus.app.viewer.OutlineEntry
 import com.papyrus.app.viewer.PdfEncryption
 import com.papyrus.app.viewer.TextSniffer
 import kotlinx.coroutines.Dispatchers
@@ -23,6 +24,7 @@ class DocumentRepository(
     private val progressDao: ReadingProgressDao,
     private val bookmarkDao: BookmarkDao,
     private val highlightDao: HighlightDao,
+    private val pdfOutlineDao: PdfOutlineDao,
     private val searchDao: SearchDao,
     private val settings: SettingsRepository,
 ) {
@@ -113,6 +115,45 @@ class DocumentRepository(
     suspend fun deleteHighlights(ids: List<Long>) = withContext(Dispatchers.IO) {
         // Older SQLite builds cap a statement at 999 variables, so a very large removal goes in slices.
         ids.chunked(MAX_IDS_PER_STATEMENT).forEach { highlightDao.delete(it) }
+    }
+
+    /**
+     * Stores the reader's [note] on highlight [id]; a blank note clears it and turns the mark back
+     * into a plain highlight. Nothing from the document is written, only what the reader typed.
+     */
+    suspend fun setHighlightNote(id: Long, note: String) = withContext(Dispatchers.IO) {
+        val cleaned = cleanHighlightNote(note)
+        highlightDao.setNote(id, cleaned, (if (cleaned == null) HighlightKind.HIGHLIGHT else HighlightKind.NOTE).code)
+    }
+
+    /**
+     * The outline read for [document] before, or null when there is none or it may no longer match:
+     * a row is reused only while the file is the same size and the encoding's version is this build's.
+     */
+    suspend fun cachedOutline(document: DocumentEntity): List<OutlineEntry>? = withContext(Dispatchers.IO) {
+        if (document.id <= 0) return@withContext null
+        val row = pdfOutlineDao.get(document.id) ?: return@withContext null
+        if (row.sourceSize != document.sizeBytes || row.cacheVersion != PDF_OUTLINE_CACHE_VERSION) {
+            return@withContext null
+        }
+        decodeOutline(row.entries)
+    }
+
+    /**
+     * Keeps [entries] for [document] so the next open does not read the bookmarks again. Only a
+     * library row can hold one; the caller must not store an outline read from an unlocked copy,
+     * since its titles come from a password-protected file.
+     */
+    suspend fun storeOutline(document: DocumentEntity, entries: List<OutlineEntry>) = withContext(Dispatchers.IO) {
+        if (document.id <= 0) return@withContext
+        pdfOutlineDao.put(
+            PdfOutlineEntity(
+                documentId = document.id,
+                sourceSize = document.sizeBytes,
+                cacheVersion = PDF_OUTLINE_CACHE_VERSION,
+                entries = encodeOutline(entries),
+            ),
+        )
     }
 
     private fun handOver(entity: DocumentEntity): Long {

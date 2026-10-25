@@ -27,6 +27,8 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import com.papyrus.app.R
+import com.papyrus.app.data.Highlight
+import com.papyrus.app.data.HighlightKind
 import com.papyrus.app.viewer.NormRect
 import com.papyrus.app.viewer.PagePoint
 import com.papyrus.app.viewer.PdfLinkTarget
@@ -274,14 +276,48 @@ internal fun DrawScope.drawSelection(rects: List<NormRect>, handles: PageHandles
 /** A highlighter's yellow, light enough that the text under it stays readable. */
 private val HighlightWash = Color(0xFFFFEB3B).copy(alpha = 0.4f)
 
-/** The reader's stored highlights, flat washes drawn under the find matches and the selection. */
-internal fun DrawScope.drawHighlights(rects: List<NormRect>) {
-    for (rect in rects) {
-        drawRect(
-            color = HighlightWash,
-            topLeft = Offset(rect.left * size.width, rect.top * size.height),
-            size = Size((rect.right - rect.left) * size.width, (rect.bottom - rect.top) * size.height),
-        )
+/** A note's rule and dot: darker than the wash, so a run that carries a note is told apart at a glance. */
+private val NoteInk = Color(0xFFF57F17)
+
+/** How far a note's dot stands from the text it marks, and how big it is. */
+internal val NoteDotRadius = 4.dp
+
+private val NoteRule = 2.dp
+
+/**
+ * The reader's stored marks, drawn under the find matches and the selection. A highlight is a flat
+ * wash; a note keeps the wash but adds a rule under each line and a dot at the end of the run, so
+ * the words stay as legible as they are in the book.
+ */
+internal fun DrawScope.drawHighlights(marks: List<Highlight>) {
+    val width = size.width
+    val height = size.height
+    for (mark in marks) {
+        for (rect in mark.rects) {
+            drawRect(
+                color = HighlightWash,
+                topLeft = Offset(rect.left * width, rect.top * height),
+                size = Size((rect.right - rect.left) * width, (rect.bottom - rect.top) * height),
+            )
+        }
+        if (mark.kind != HighlightKind.NOTE) continue
+        val rule = NoteRule.toPx()
+        for (rect in mark.rects) {
+            val bottom = rect.bottom * height
+            drawRect(
+                color = NoteInk,
+                topLeft = Offset(rect.left * width, bottom - rule),
+                size = Size((rect.right - rect.left) * width, rule),
+            )
+        }
+        // One dot per mark, after its last line, the way a sticky note sits at the end of a passage.
+        mark.rects.lastOrNull()?.let { last ->
+            drawCircle(
+                color = NoteInk,
+                radius = NoteDotRadius.toPx(),
+                center = Offset(last.right * width, last.bottom * height),
+            )
+        }
     }
 }
 
@@ -293,6 +329,9 @@ private const val LINK_LINE_ALPHA = 0.6f
 
 /** Link hit slop, in page pixels. */
 internal val LinkTapSlop = 4.dp
+
+/** Mark hit slop, in page pixels: a note is a thin rule, so its run gets a little more room. */
+internal val MarkTapSlop = 6.dp
 
 /**
  * What a press turned out to be. A tap carries its release so a link tap can consume it — that is
@@ -314,13 +353,16 @@ internal fun Modifier.pdfSelectionGestures(
     geometry: State<PdfPageGeometry>,
     handles: State<PageHandles>,
     links: State<List<PdfPageLink>>,
+    marks: State<List<Highlight>>,
     pageSize: State<IntSize>,
     onLink: (PdfLinkTarget) -> Unit,
+    onMark: (Highlight) -> Unit,
     haptics: HapticFeedback,
     reachPx: Float,
     grabRadiusPx: Float,
     linkSlopPx: Float,
-): Modifier = pointerInput(state, page, reachPx, grabRadiusPx, linkSlopPx) {
+    markSlopPx: Float,
+): Modifier = pointerInput(state, page, reachPx, grabRadiusPx, linkSlopPx, markSlopPx) {
     awaitEachGesture {
         val down = awaitFirstDown(requireUnconsumed = false)
         val grabbed = handles.value.grab(down.position, grabRadiusPx)
@@ -337,11 +379,22 @@ internal fun Modifier.pdfSelectionGestures(
         when (val press = classifyPress(down)) {
             is Press.Tap -> {
                 val target = linkAt(links.value, pageSize.value, down.position, linkSlopPx)
-                if (target != null) {
-                    press.up.consume()
-                    onLink(target)
+                // A mark is only followed when nothing is selected: with a selection, a tap dismisses it.
+                val mark = if (target == null && !state.hasSelection) {
+                    markAt(marks.value, pageSize.value, down.position, markSlopPx)
                 } else {
-                    state.clear()
+                    null
+                }
+                when {
+                    target != null -> {
+                        press.up.consume()
+                        onLink(target)
+                    }
+                    mark != null -> {
+                        press.up.consume()
+                        onMark(mark)
+                    }
+                    else -> state.clear()
                 }
             }
             Press.Other -> Unit
@@ -372,6 +425,19 @@ private fun linkAt(links: List<PdfPageLink>, size: IntSize, point: Offset, slopP
         if (point.x in left..right && point.y in top..bottom) return link.target
     }
     return null
+}
+
+/** The topmost stored mark under [point]: the last one drawn is the one a finger lands on. */
+private fun markAt(marks: List<Highlight>, size: IntSize, point: Offset, slopPx: Float): Highlight? {
+    if (marks.isEmpty() || size == IntSize.Zero) return null
+    val w = size.width.toFloat()
+    val h = size.height.toFloat()
+    return marks.lastOrNull { mark ->
+        mark.rects.any { rect ->
+            point.x >= rect.left * w - slopPx && point.x <= rect.right * w + slopPx &&
+                point.y >= rect.top * h - slopPx && point.y <= rect.bottom * h + slopPx
+        }
+    }
 }
 
 /** Classifies a press: held still, let go early, or something else. */

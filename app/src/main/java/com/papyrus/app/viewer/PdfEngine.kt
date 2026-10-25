@@ -7,6 +7,7 @@ import android.graphics.RectF
 import android.graphics.pdf.PdfRenderer
 import android.graphics.pdf.PdfRendererPreV
 import android.graphics.pdf.RenderParams
+import android.graphics.pdf.component.HighlightAnnotation
 import android.graphics.pdf.content.PdfPageTextContent
 import android.graphics.pdf.models.FormEditRecord
 import android.graphics.pdf.models.FormWidgetInfo
@@ -141,6 +142,12 @@ internal interface PdfEnginePage : Closeable {
 
     /** Applies [edit] to the document in memory, true when the platform accepted it. */
     fun applyEdit(edit: PdfFormEdit): Boolean
+
+    /**
+     * Adds one highlight annotation per mark, in page points. False when the engine refused or has
+     * no annotation API, so the caller does not write a copy that claims highlights it lacks.
+     */
+    fun highlight(marks: List<List<NormRect>>): Boolean
 }
 
 /** A selection end: a character index into the page's text, or a point in page pixels. */
@@ -209,6 +216,8 @@ internal class PdfEngineV35(private val renderer: PdfRenderer) : PdfEngine {
             return true
         }
 
+        override fun highlight(marks: List<List<NormRect>>): Boolean = PdfHighlightWriter.add(page, marks)
+
         override fun close() = page.close()
     }
 }
@@ -251,6 +260,8 @@ internal class PdfEnginePreV(private val renderer: PdfRendererPreV) : PdfEngine 
             return true
         }
 
+        override fun highlight(marks: List<List<NormRect>>): Boolean = PdfHighlightWriter.add(page, marks)
+
         override fun close() = page.close()
     }
 }
@@ -286,9 +297,46 @@ internal class PdfEngineLegacy(private val renderer: PdfRenderer) : PdfEngine {
 
         override fun applyEdit(edit: PdfFormEdit): Boolean = false
 
+        override fun highlight(marks: List<List<NormRect>>): Boolean = false
+
         override fun close() = page.close()
     }
 }
+
+/**
+ * Writes the reader's highlights into the document as page annotations, so a saved copy keeps them
+ * in any viewer. Its own class rather than a method on the page: [HighlightAnnotation] exists only
+ * where the platform's annotation API does, and the page classes load on devices without it.
+ */
+private object PdfHighlightWriter {
+
+    fun add(page: PdfRenderer.Page, marks: List<List<NormRect>>): Boolean = write(marks, page.width, page.height) {
+        page.addPageAnnotation(it)
+    }
+
+    fun add(page: PdfRendererPreV.Page, marks: List<List<NormRect>>): Boolean = write(marks, page.width, page.height) {
+        page.addPageAnnotation(it)
+    }
+
+    /** One annotation per mark; a negative index is the platform refusing it. */
+    private fun write(
+        marks: List<List<NormRect>>,
+        width: Int,
+        height: Int,
+        add: (HighlightAnnotation) -> Int,
+    ): Boolean {
+        for (mark in marks) {
+            val bounds = mark.map { it.annotationRect(width.toFloat(), height.toFloat()) }
+            if (bounds.isEmpty()) continue
+            val annotation = HighlightAnnotation(bounds).apply { color = HIGHLIGHT_ANNOTATION_COLOR }
+            if (add(annotation) < 0) return false
+        }
+        return true
+    }
+}
+
+/** The highlighter's yellow, opaque in the file rather than washed out as it is on screen. */
+private const val HIGHLIGHT_ANNOTATION_COLOR = 0xFFFFEB3B.toInt()
 
 /**
  * Display render with every annotation layer on, so the reader sees the page as a viewer would.
@@ -309,6 +357,10 @@ private object PdfDisplayParams {
 private fun PdfPageTextContent.line(): PlatformLine = PlatformLine(text, bounds.map { it.pageRect() })
 
 private fun RectF.pageRect(): PageRect = PageRect(left, top, right, bottom)
+
+/** A stored box (page-relative) as the annotation API takes it: page points, top-left origin. */
+private fun NormRect.annotationRect(pageWidth: Float, pageHeight: Float): RectF =
+    RectF(left * pageWidth, top * pageHeight, right * pageWidth, bottom * pageHeight)
 
 private fun Rect.centre(): Point = Point(centerX(), centerY())
 

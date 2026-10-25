@@ -87,7 +87,8 @@ import com.papyrus.app.data.Highlight
 import com.papyrus.app.data.LocationKind
 import com.papyrus.app.data.OpenPersistableDocument
 import com.papyrus.app.data.ReadingLocation
-import com.papyrus.app.data.rectsByPage
+import com.papyrus.app.data.exportableRectsByPage
+import com.papyrus.app.data.marksByPage
 import com.papyrus.app.data.touchedBy
 import com.papyrus.app.ui.AppViewModelProvider
 import com.papyrus.app.ui.asString
@@ -103,6 +104,7 @@ import com.papyrus.app.ui.viewer.MarkdownViewer
 import com.papyrus.app.ui.viewer.OfficeViewer
 import com.papyrus.app.ui.viewer.OutlineSheet
 import com.papyrus.app.ui.viewer.PasswordDialog
+import com.papyrus.app.ui.viewer.PdfAnnotationSheet
 import com.papyrus.app.ui.viewer.PdfFormSheet
 import com.papyrus.app.ui.viewer.PdfSelectionState
 import com.papyrus.app.ui.viewer.PdfViewer
@@ -192,6 +194,8 @@ fun ViewerScreen(
     var goToOpen by remember { mutableStateOf(false) }
     var bookmarksOpen by remember { mutableStateOf(false) }
     var formOpen by remember { mutableStateOf(false) }
+    // The mark whose note is open; null when the sheet is closed.
+    var noteMark by remember { mutableStateOf<Highlight?>(null) }
 
     // Only a document with an outline has the menu item: an Office document that used heading styles, or a
     // PDF whose bookmarks have been read (off the main thread, so they arrive after the first page).
@@ -217,7 +221,13 @@ fun ViewerScreen(
         if (selectionState.hasSelection) menuOpen = false
     }
 
-    val pageHighlights = remember(highlights) { highlights.rectsByPage() }
+    val pageHighlights = remember(highlights) { highlights.marksByPage() }
+    // Only a plain highlight can be written into a PDF, so a document whose marks are all notes has
+    // nothing to offer here.
+    val exportableHighlights = remember(highlights) { highlights.exportableRectsByPage() }
+    val highlightCopyAvailable = state.highlightsAvailable &&
+        (state.content as? ViewerContent.Pdf)?.source?.canAnnotate == true &&
+        exportableHighlights.isNotEmpty()
     // Which stored highlights the selection sits on: Remove is offered only when there is one. Worked out
     // once the selected pages have their text, and not at all while the document has no highlights.
     val touchedHighlights by produceState<List<Highlight>>(emptyList(), selectionState.selection, highlights) {
@@ -288,9 +298,10 @@ fun ViewerScreen(
         if (uri != null) viewModel.regrant(uri) else viewModel.consumeRegrantRequest()
     }
 
-    // A filled form is only ever saved as a copy, so the picker chooses where. A cancelled pick leaves
-    // the sheet open; a chosen one closes it, so the save's own message is not lost behind it.
-    val formCopyName = formCopyFileName(state.document?.title, stringResource(R.string.viewer_form_copy_name))
+    // A filled form, or a set of highlights, is only ever saved as a copy, so the picker chooses
+    // where. A cancelled pick leaves the sheet open; a chosen one closes it, so the save's own
+    // message is not lost behind it.
+    val formCopyName = pdfCopyFileName(state.document?.title, stringResource(R.string.viewer_form_copy_name))
     val saveFormCopy = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument(PDF_MIME_TYPE),
     ) { uri ->
@@ -299,6 +310,11 @@ fun ViewerScreen(
             viewModel.saveFormCopy(uri)
         }
     }
+    val highlightCopyName =
+        pdfCopyFileName(state.document?.title, stringResource(R.string.viewer_highlight_copy_name))
+    val saveHighlightCopy = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument(PDF_MIME_TYPE),
+    ) { uri -> if (uri != null) viewModel.saveHighlightCopy(uri) }
 
     LaunchedEffect(message) {
         message?.let {
@@ -375,6 +391,7 @@ fun ViewerScreen(
                 bookmarkableContent = bookmarkableContent,
                 bookmarksAvailable = bookmarksAvailable,
                 formAvailable = formAvailable,
+                highlightCopyAvailable = highlightCopyAvailable,
                 encodingAvailable = encodingAvailable,
                 menuOpen = menuOpen,
                 selectionActive = selectionState.hasSelection,
@@ -394,6 +411,7 @@ fun ViewerScreen(
                 onAddBookmark = viewModel::addBookmark,
                 onBookmarks = { bookmarksOpen = true },
                 onForm = { formOpen = true },
+                onSaveHighlightCopy = { saveHighlightCopy.launch(highlightCopyName) },
                 onEncoding = { encodingOpen = true },
                 onInfo = { infoOpen = true },
                 onShare = shareDocument,
@@ -477,6 +495,7 @@ fun ViewerScreen(
                             pageHits = find.hits,
                             pageMatches = find.pageMatches,
                             highlights = pageHighlights,
+                            onMark = { noteMark = it },
                             activePage = find.activeIndex,
                             activeOccurrence = find.activeOccurrence,
                             loadLinks = viewModel::pageLinks,
@@ -672,6 +691,21 @@ fun ViewerScreen(
             onDismiss = { formOpen = false },
         )
     }
+
+    noteMark?.let { mark ->
+        PdfAnnotationSheet(
+            mark = mark,
+            onSave = { note ->
+                viewModel.setHighlightNote(mark.id, note)
+                noteMark = null
+            },
+            onDelete = {
+                viewModel.removeHighlights(listOf(mark.id))
+                noteMark = null
+            },
+            onDismiss = { noteMark = null },
+        )
+    }
 }
 
 private const val FIND_ANIMATION_MS = 200
@@ -680,7 +714,7 @@ private const val FIND_ANIMATION_MS = 200
 private const val PDF_MIME_TYPE = "application/pdf"
 
 /** A copy is named after the document, given a PDF suffix when its title has none. */
-private fun formCopyFileName(title: String?, fallback: String): String {
+private fun pdfCopyFileName(title: String?, fallback: String): String {
     val base = title?.trim()?.takeIf { it.isNotEmpty() } ?: fallback
     return if (base.endsWith(".pdf", ignoreCase = true)) base else "$base.pdf"
 }
@@ -698,6 +732,7 @@ private fun ViewerHeader(
     bookmarkableContent: Boolean,
     bookmarksAvailable: Boolean,
     formAvailable: Boolean,
+    highlightCopyAvailable: Boolean,
     encodingAvailable: Boolean,
     menuOpen: Boolean,
     selectionActive: Boolean,
@@ -717,6 +752,7 @@ private fun ViewerHeader(
     onAddBookmark: () -> Unit,
     onBookmarks: () -> Unit,
     onForm: () -> Unit,
+    onSaveHighlightCopy: () -> Unit,
     onEncoding: () -> Unit,
     onInfo: () -> Unit,
     onShare: () -> Unit,
@@ -831,6 +867,13 @@ private fun ViewerHeader(
                         DropdownMenuItem(
                             text = { Text(stringResource(R.string.viewer_form_title)) },
                             onClick = { onMenuOpenChange(false); onForm() },
+                        )
+                    }
+                    // Only when there is a plain highlight to write and the engine can annotate.
+                    if (highlightCopyAvailable) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.viewer_save_copy_with_highlights)) },
+                            onClick = { onMenuOpenChange(false); onSaveHighlightCopy() },
                         )
                     }
                     // Only for a PDF long enough to number: [MIN_GO_TO_PAGES] or more.

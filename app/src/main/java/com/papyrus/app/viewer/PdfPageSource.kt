@@ -37,6 +37,9 @@ class PdfPageSource private constructor(
     /** True when the reader may be offered filling: this engine has the API and the form is an AcroForm. */
     val hasForm: Boolean get() = capabilities.forms
 
+    /** True when a saved copy can carry the reader's highlights as page annotations. */
+    val canAnnotate: Boolean get() = capabilities.annotations
+
     private val dispatcher = Dispatchers.Default.limitedParallelism(1)
     private val lock = Mutex()
     private var closed = false
@@ -148,22 +151,48 @@ class PdfPageSource private constructor(
     }
 
     /**
-     * Writes the document, edits included, to [destination]. Runs on the render dispatcher, so it
-     * never overlaps a page being read; the source file and this renderer stay as they were.
+     * Writes the document, edits included, to [destination]; [highlights] adds one annotation per
+     * mark, by page. Runs on the render dispatcher, so it never overlaps a page being read; the
+     * source file and this renderer stay as they were.
+     *
+     * All or nothing: a page whose annotation is refused fails the whole write, rather than leaving
+     * a copy whose highlights are silently missing. The caller deletes the half-written file.
      */
-    internal suspend fun writeCopy(destination: ParcelFileDescriptor): Boolean =
-        withContext(dispatcher) {
-            lock.withLock {
-                if (closed) return@withLock false
-                try {
-                    engine.write(destination)
-                } catch (ignored: Exception) {
-                    // Where and which class only: the file being written is the reader's document.
-                    Log.w(TAG, "PDF copy failed: ${ignored.javaClass.simpleName}")
-                    false
+    internal suspend fun writeCopy(
+        destination: ParcelFileDescriptor,
+        highlights: Map<Int, List<List<NormRect>>> = emptyMap(),
+    ): Boolean = withContext(dispatcher) {
+        lock.withLock {
+            if (closed) return@withLock false
+            try {
+                if (highlights.isNotEmpty()) {
+                    // A copy that claims highlights the engine cannot write is not a copy at all.
+                    if (!capabilities.annotations) return@withLock false
+                    for ((page, marks) in highlights) {
+                        if (!annotate(page, marks)) return@withLock false
+                    }
                 }
+                engine.write(destination)
+            } catch (ignored: Exception) {
+                // Where and which class only: the file being written is the reader's document.
+                Log.w(TAG, "PDF copy failed: ${ignored.javaClass.simpleName}")
+                false
             }
         }
+    }
+
+    /** Called with [lock] held, since the engine allows one open page at a time. */
+    private fun annotate(page: Int, marks: List<List<NormRect>>): Boolean {
+        return try {
+            engine.open(page).use { it.highlight(marks) }
+        } catch (ignored: Exception) {
+            logPageFailure(page, ignored)
+            false
+        } catch (ignored: LinkageError) {
+            logPageFailure(page, ignored)
+            false
+        }
+    }
 
     /** Runs [attempt] on page [index], serialised with rendering; null when closed or the page fails. */
     private suspend fun <T> withPage(index: Int, attempt: (PdfEnginePage) -> T): T? =
@@ -173,18 +202,18 @@ class PdfPageSource private constructor(
                 try {
                     engine.open(index).use(attempt)
                 } catch (ignored: Exception) {
-                    failed(index, ignored)
+                    logPageFailure(index, ignored)
+                    null
                 } catch (ignored: LinkageError) {
-                    failed(index, ignored)
+                    logPageFailure(index, ignored)
+                    null
                 }
             }
         }
 
-    /** Null for the caller, so one unreadable page never takes the whole document down. */
-    private fun failed(index: Int, error: Throwable): Nothing? {
-        // Log where, never what: a page can hold form values or text the reader typed.
+    /** Where and which class only, never what: a page can hold form values or text the reader typed. */
+    private fun logPageFailure(index: Int, error: Throwable) {
         Log.w(TAG, "PDF page $index unavailable: ${error.javaClass.simpleName}")
-        return null
     }
 
     /**
