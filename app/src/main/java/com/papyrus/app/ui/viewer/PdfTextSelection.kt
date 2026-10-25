@@ -31,10 +31,12 @@ import com.papyrus.app.data.Highlight
 import com.papyrus.app.data.HighlightKind
 import com.papyrus.app.viewer.NormRect
 import com.papyrus.app.viewer.PagePoint
+import com.papyrus.app.viewer.PageSpan
 import com.papyrus.app.viewer.PdfLinkTarget
 import com.papyrus.app.viewer.PdfPageGeometry
 import com.papyrus.app.viewer.PdfPageLink
 import com.papyrus.app.viewer.PdfPageText
+import com.papyrus.app.viewer.PdfPlatformSelection
 import com.papyrus.app.viewer.PdfSelection
 import com.papyrus.app.viewer.PdfTextPos
 import kotlinx.coroutines.CoroutineScope
@@ -66,6 +68,8 @@ internal class PdfSelectionState(
     private val scope: CoroutineScope,
     private val loadText: suspend (Int) -> PdfPageText?,
     private val onNoText: () -> Unit,
+    private val loadSelection: suspend (page: Int, from: Int, to: Int) -> PdfPlatformSelection? =
+        { _, _, _ -> null },
 ) {
     var selection by mutableStateOf<PdfSelection?>(null)
         private set
@@ -159,10 +163,12 @@ internal class PdfSelectionState(
         for (page in current.pages) {
             val span = current.spanOn(page) ?: continue
             val text = ensureText(page) ?: continue
-            val part = text.textBetween(span.from, span.to).trim()
-            if (part.isEmpty()) continue
+            val part = platformSelection(page, span, text)?.text?.takeIf { it.isNotBlank() }
+                ?: text.textBetween(span.from, span.to)
+            val trimmed = part.trim()
+            if (trimmed.isEmpty()) continue
             if (out.isNotEmpty()) out.append('\n')
-            out.append(part)
+            out.append(trimmed)
         }
         return out.toString().ifEmpty { null }
     }
@@ -174,10 +180,25 @@ internal class PdfSelectionState(
         for (page in current.pages) {
             val span = current.spanOn(page) ?: continue
             val text = ensureText(page) ?: continue
-            val rects = text.selectionRects(span.from, span.to)
+            val rects = platformSelection(page, span, text)?.rects?.takeIf { it.isNotEmpty() }
+                ?: text.selectionRects(span.from, span.to)
             if (rects.isNotEmpty()) out[page] = rects
         }
         return out
+    }
+
+    /**
+     * The engine's own reading of [span] on [page], or null when the page did not come from it or
+     * it cannot answer: the text model's characters are then the answer. The platform selects in
+     * the same index space as the model, because the model's text is its lines joined by newlines;
+     * a middle page's open end is clamped to the text the page actually has.
+     */
+    private suspend fun platformSelection(page: Int, span: PageSpan, text: PdfPageText): PdfPlatformSelection? {
+        if (!text.fromPlatform) return null
+        val from = span.from.coerceIn(0, text.text.length)
+        val to = span.to.coerceIn(from, text.text.length)
+        if (from == to) return null
+        return loadSelection(page, from, to)
     }
 
     private suspend fun caretAt(point: PagePoint): PdfTextPos? {

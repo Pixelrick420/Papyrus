@@ -61,6 +61,8 @@ import com.papyrus.app.viewer.PdfPageLink
 import com.papyrus.app.viewer.MarkdownRenderer
 import com.papyrus.app.viewer.PdfPageTextSource
 import com.papyrus.app.viewer.PdfPasswordException
+import com.papyrus.app.viewer.PdfPlatformSelection
+import com.papyrus.app.viewer.PlatformBoundary
 import com.papyrus.app.viewer.PrettyPrint
 import com.papyrus.app.viewer.SyntaxHighlighter
 import com.papyrus.app.viewer.TextChunks
@@ -1229,17 +1231,44 @@ class ViewerViewModel(
         }
     }
 
-    /** A page repeats in hits per match; budget-exceeding pages still count, scans have no text. */
+    /**
+     * A page repeats in hits per match; budget-exceeding pages still count, scans have no text.
+     *
+     * The platform engine's own search answers first — it reads the page it already renders, so even
+     * a file too large to parse again stays searchable. It is exact-case, so a query with capitals,
+     * and any page it cannot read, go to the PdfBox text model, which every device has.
+     */
     private suspend fun findPdfPages(query: String, warnOverBudget: Boolean): FindResult {
-        if (overFindBudget(warnOverBudget)) return FindResult()
-        val pages = pdfPageText ?: extractPageText().also { pdfPageText = it }
+        val source = (_state.value.content as? ViewerContent.Pdf)?.source
+        val found = HashMap<Int, PdfPageText.PageMatches>()
+        val missed = ArrayList<Int>()
+        if (source != null) {
+            for (index in 0 until source.pageCount) {
+                val match = source.platformSearch(index, query)
+                if (match == null) missed += index else found[index] = match
+            }
+        }
+        if (source == null || missed.isNotEmpty()) {
+            // Parsing the whole file is exactly what the budget exists to avoid, so a page the
+            // platform could not scan is scanned from the model only while it fits; past that the
+            // platform's own answers are all there is, and the reader is told once why.
+            if (overFindBudget(warnOverBudget)) {
+                if (source == null) return FindResult()
+            } else {
+                val pages = pdfPageText ?: extractPageText().also { pdfPageText = it }
+                for (index in if (source == null) pages.indices else missed) {
+                    val page = pages.getOrNull(index) ?: continue
+                    found[index] = page.matches(query)
+                }
+            }
+        }
         val hits = ArrayList<Int>()
         val pageMatches = HashMap<Int, List<List<NormRect>>>()
-        pages.forEachIndexed { index, page ->
-            val found = page.matches(query)
-            if (found.count == 0) return@forEachIndexed
-            repeat(found.count) { hits += index }
-            if (found.groups.any { it.isNotEmpty() }) pageMatches[index] = found.groups
+        for (index in found.keys.sorted()) {
+            val match = found[index] ?: continue
+            if (match.count == 0) continue
+            repeat(match.count) { hits += index }
+            if (match.groups.any { it.isNotEmpty() }) pageMatches[index] = match.groups
         }
         return FindResult(hits = hits, pageMatches = pageMatches)
     }
@@ -1278,6 +1307,19 @@ class ViewerViewModel(
     /** The rendered source's own text, or null when this engine has none or nothing is open as a PDF. */
     private suspend fun platformPageText(index: Int): PdfPageText? =
         (_state.value.content as? ViewerContent.Pdf)?.source?.platformText(index)
+
+    /**
+     * The engine's own reading of the characters `[from, to)` of one page, or null when it has no
+     * selection API or cannot answer that page; the text model's characters and boxes are then the
+     * answer. The index is the same one [pageText] reports, since the platform's lines are what its
+     * text is made of.
+     */
+    internal suspend fun platformSelection(page: Int, from: Int, to: Int): PdfPlatformSelection? =
+        (_state.value.content as? ViewerContent.Pdf)?.source?.platformSelect(
+            page,
+            PlatformBoundary.Index(from),
+            PlatformBoundary.Index(to),
+        )
 
     /** One page's links. Shares [pageTextSource] with [pageText], so the document is opened once. */
     suspend fun pageLinks(index: Int): List<PdfPageLink>? = pageSource()?.links(index)
