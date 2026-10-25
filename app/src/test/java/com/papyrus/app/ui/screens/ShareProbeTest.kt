@@ -65,7 +65,10 @@ class ShareProbeTest {
             selected = listOf(1, 2, 3, 4, 5, 6),
             limit = limit,
             probe = { id ->
-                widest.updateAndGet { seen -> maxOf(seen, inFlight.incrementAndGet()) }
+                // Counted outside the lambda: updateAndGet can retry, and an increment inside it would then
+                // count this probe twice with only one decrement to match.
+                val now = inFlight.incrementAndGet()
+                widest.updateAndGet { seen -> maxOf(seen, now) }
                 delay(25)
                 inFlight.decrementAndGet()
                 SafAccess.Readable
