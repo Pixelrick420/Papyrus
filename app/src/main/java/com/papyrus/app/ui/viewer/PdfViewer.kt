@@ -1,6 +1,7 @@
 package com.papyrus.app.ui.viewer
 
 import android.graphics.Bitmap
+import android.view.accessibility.AccessibilityManager
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
@@ -25,6 +26,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.derivedStateOf
@@ -47,6 +49,7 @@ import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
@@ -121,6 +124,9 @@ internal fun PdfViewer(
 
     // Hits repeat a page once per match; the page only needs to be known once.
     val hitPages = remember(pageHits) { pageHits.toSet() }
+
+    // Whether a page should also carry its text for a screen reader; asked once for the document.
+    val readsPages = accessibilityEnabled()
 
     BackHandler(enabled = selectionState.hasSelection) { selectionState.clear() }
 
@@ -229,6 +235,7 @@ internal fun PdfViewer(
                             onlyActive = onlyActive,
                             reveal = reveal.takeIf { index == activePage },
                             selectionState = selectionState,
+                            readsPages = readsPages,
                             pageGeometry = pageGeometry,
                             loadLinks = loadLinks,
                             onLinkTarget = onLinkTarget,
@@ -291,6 +298,8 @@ private fun PdfPage(
     onlyActive: Boolean,
     reveal: RevealTicket?,
     selectionState: PdfSelectionState,
+    /** An accessibility service is on, so the page should have its text read for it. */
+    readsPages: Boolean,
     pageGeometry: State<PdfPageGeometry>,
     loadLinks: suspend (Int) -> List<PdfPageLink>?,
     onLinkTarget: (PdfLinkTarget) -> Unit,
@@ -346,6 +355,12 @@ private fun PdfPage(
     val pageText = selectionState.textOf(index)
     LaunchedEffect(selectionState, index, span != null) {
         if (span != null) selectionState.ensureText(index)
+    }
+    // With an accessibility service running, a shown page reads its text too: a rendered bitmap is
+    // otherwise one bare "Page N" stop. The same cache feeds it, so a page listened to costs nothing
+    // extra to select from.
+    LaunchedEffect(selectionState, index, readsPages) {
+        if (readsPages) selectionState.ensureText(index)
     }
     val selectionRects = remember(span, pageText) {
         if (span != null && pageText != null) pageText.selectionRects(span.from, span.to) else emptyList()
@@ -416,9 +431,14 @@ private fun PdfPage(
             ),
     ) {
         bitmap?.let { bmp ->
+            val spoken = pageText?.text?.takeIf { readsPages && it.isNotBlank() }
             Image(
                 bitmap = remember(bmp) { bmp.asImageBitmap() },
-                contentDescription = stringResource(R.string.cd_pdf_page, index + 1),
+                contentDescription = if (spoken == null) {
+                    stringResource(R.string.cd_pdf_page, index + 1)
+                } else {
+                    stringResource(R.string.cd_pdf_page_with_text, index + 1, spoken)
+                },
                 contentScale = ContentScale.FillBounds,
                 // Filtered as it is drawn, so the page is not re-rendered.
                 colorFilter = if (nightMode) PdfNightMode.Invert else null,
@@ -491,3 +511,27 @@ private fun PdfPage(
 private const val MATCH_ALPHA = 0.5f
 
 private val ACTIVE_HIT_BORDER = 5.dp
+
+/**
+ * Whether a screen reader is running. Asked of the system service rather than Compose's own
+ * accessibility manager, which exposes only timeout calculations. The answer is re-read whenever
+ * the service turns on or off, so pages start carrying text without the document being reopened.
+ */
+@Composable
+private fun accessibilityEnabled(): Boolean {
+    val context = LocalContext.current
+    val manager = remember(context) { context.getSystemService(AccessibilityManager::class.java) }
+    var enabled by remember(manager) { mutableStateOf(manager?.isEnabled == true) }
+    DisposableEffect(manager) {
+        if (manager == null) return@DisposableEffect onDispose {}
+        val listener = object : AccessibilityManager.AccessibilityStateChangeListener {
+            override fun onAccessibilityStateChanged(isEnabled: Boolean) {
+                enabled = isEnabled
+            }
+        }
+        manager.addAccessibilityStateChangeListener(listener)
+        enabled = manager.isEnabled
+        onDispose { manager.removeAccessibilityStateChangeListener(listener) }
+    }
+    return enabled
+}

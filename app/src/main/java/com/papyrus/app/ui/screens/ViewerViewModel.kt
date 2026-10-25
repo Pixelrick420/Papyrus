@@ -1114,11 +1114,20 @@ class ViewerViewModel(
      */
     private suspend fun extractPageText(): List<PdfPageText> = pageSource()?.allPages() ?: emptyList()
 
-    /** One page of text plus boxes; a search read is reused unless it was past the box budget. */
+    /**
+     * One page of text plus boxes. The open platform engine is asked first — it is the reader's own
+     * extractor, so TalkBack, selection and read-aloud see what the page actually draws — and only a
+     * page it cannot answer falls back to PDFBox. A search read is reused unless it was past the
+     * box budget.
+     */
     suspend fun pageText(index: Int): PdfPageText? {
         pdfPageText?.getOrNull(index)?.takeIf { it.hasBoxes || it.text.isBlank() }?.let { return it }
-        return pageSource()?.page(index)
+        return platformPageText(index) ?: pageSource()?.page(index)
     }
+
+    /** The rendered source's own text, or null when this engine has none or nothing is open as a PDF. */
+    private suspend fun platformPageText(index: Int): PdfPageText? =
+        (_state.value.content as? ViewerContent.Pdf)?.source?.platformText(index)
 
     /** One page's links. Shares [pageTextSource] with [pageText], so the document is opened once. */
     suspend fun pageLinks(index: Int): List<PdfPageLink>? = pageSource()?.links(index)
