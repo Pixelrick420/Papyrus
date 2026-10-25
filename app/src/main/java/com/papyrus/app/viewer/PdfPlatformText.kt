@@ -34,10 +34,11 @@ internal object PdfPlatformText {
      * never matches across a line break — the platform reports lines, not a reflowed paragraph.
      */
     fun from(lines: List<PlatformLine>, pageWidth: Float, pageHeight: Float): PdfPageText {
-        if (lines.isEmpty()) return PdfPageText.fromLines("", emptyList())
+        if (lines.isEmpty()) return PdfPageText.fromLines("", emptyList(), fromPlatform = true)
         return PdfPageText.fromLines(
             text = lines.joinToString("\n") { it.text },
             lineBoxes = lines.map { line -> line.rects.mapNotNull { normRect(it, pageWidth, pageHeight) } },
+            fromPlatform = true,
         )
     }
 

@@ -95,6 +95,20 @@ class PdfPlatformTextTest {
     }
 
     @Test
+    fun `platform text says where it came from, so a selection can go back to the engine`() {
+        val read = page(line("ab", top = 0f, bottom = 10f, right = 10f), height = 10f)
+
+        assertTrue(read.fromPlatform)
+        assertTrue(PdfPlatformText.from(emptyList(), 100f, 100f).fromPlatform)
+    }
+
+    @Test
+    fun `text built from boxes says it did not come from the platform`() {
+        assertFalse(PdfPageText.fromLines("ab", emptyList()).fromPlatform)
+        assertTrue(PdfPageText.fromLines("ab", emptyList(), fromPlatform = true).fromPlatform)
+    }
+
+    @Test
     fun `a zero-width line gets no boxes`() {
         val text = page(line("ab", top = 0f, bottom = 10f, left = 5f, right = 5f), height = 10f)
 

@@ -214,6 +214,7 @@ fun ViewerScreen(
             scope = selectionScope,
             loadText = viewModel::pageText,
             onNoText = { Toast.makeText(context, R.string.viewer_pdf_no_text, Toast.LENGTH_SHORT).show() },
+            loadSelection = viewModel::platformSelection,
         )
     }
     // The selection takes over the header's overflow slot, so an open menu would pop up behind it.

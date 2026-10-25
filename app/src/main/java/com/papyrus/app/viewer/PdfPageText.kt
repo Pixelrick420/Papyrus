@@ -18,6 +18,12 @@ class PdfPageText(
     val text: String,
     private val boxes: FloatArray,
     private val lineBreaks: BitSet = BitSet(),
+    /**
+     * True when the text and boxes came from the platform renderer rather than PdfBox. The platform
+     * reads and selects in the same unit, so a page that says so can have its selection handed back
+     * to the engine that read it; a PdfBox page cannot.
+     */
+    val fromPlatform: Boolean = false,
 ) {
 
     init {
@@ -236,10 +242,14 @@ class PdfPageText(
          * stays hit-testable. [lineBoxes] holds one list per line of [text], or is empty when no
          * geometry is known — the text then stays searchable but not selectable.
          */
-        fun fromLines(text: String, lineBoxes: List<List<NormRect>>): PdfPageText {
+        fun fromLines(
+            text: String,
+            lineBoxes: List<List<NormRect>>,
+            fromPlatform: Boolean = false,
+        ): PdfPageText {
             val breaks = BitSet()
             for (i in text.indices) if (text[i] == '\n') breaks.set(i)
-            if (lineBoxes.isEmpty()) return PdfPageText(text, FloatArray(0), breaks)
+            if (lineBoxes.isEmpty()) return PdfPageText(text, FloatArray(0), breaks, fromPlatform)
             val boxes = FloatArray(text.length * 4) { Float.NaN }
             var lineIndex = 0
             var start = 0
@@ -250,7 +260,7 @@ class PdfPageText(
                 if (end == text.length) break
                 start = end + 1
             }
-            return PdfPageText(text, boxes, breaks)
+            return PdfPageText(text, boxes, breaks, fromPlatform)
         }
 
         /** Splits one line's union box evenly across its characters; a line with no span gets none. */
