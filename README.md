@@ -340,7 +340,7 @@ after the last keystroke before it queries, and a search that fails is reported 
   handled, and links between chapters stay plain text.
 - Password-protected documents open when they are a PDF, a `.docx` (ECMA-376 Agile) or an `.odt` (ODF 1.2
   AES-256-CBC). Newer ODF 1.3 packages and the legacy binary schemes are reported as protected but not opened.
-- A PDF over 64 MB gets no outline, because PdfBox would hold a second copy of it in memory next to the renderer's.
+- A PDF over 128 MB gets no outline, because PdfBox would hold a second copy of it in memory next to the renderer's.
 - Markdown shows an image only when the document carries it as a `data:` URI; the app never touches the network, so
   every other image falls back to its alt text.
 - CSV and TSV tables are not read aloud.

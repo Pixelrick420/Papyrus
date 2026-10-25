@@ -279,4 +279,67 @@ class PdfOutlineReaderTest {
         assertEquals(pages, entries.size)
         entries.forEachIndexed { position, e -> assertEquals(position, e.index) }
     }
+
+    @Test
+    fun `a long outline is handed over as it is read`() {
+        val doc = document(2)
+        doc.withOutline(*(0 until 200).map { bookmark("Chapter $it", doc.to(0)) }.toTypedArray())
+        val snapshots = ArrayList<List<OutlineEntry>>()
+
+        val entries = PdfOutlineReader.read(doc) { snapshots += it }
+
+        // More than one hand-over, each the whole outline so far, and the last one the outline itself.
+        assertTrue("read in one go: ${snapshots.size}", snapshots.size > 1)
+        snapshots.forEach { assertEquals(it, entries.take(it.size)) }
+        assertEquals(entries, snapshots.last())
+    }
+
+    @Test
+    fun `a short outline is handed over once, when it is complete`() {
+        val doc = document(1)
+        doc.withOutline(bookmark("Only", doc.to(0)))
+        val snapshots = ArrayList<List<OutlineEntry>>()
+
+        val entries = PdfOutlineReader.read(doc) { snapshots += it }
+
+        assertEquals(listOf(entries), snapshots)
+    }
+
+    @Test
+    fun `an outline that reads as empty is never handed over`() {
+        val doc = document(1).withOutline(bookmark("Nowhere"))
+        val snapshots = ArrayList<List<OutlineEntry>>()
+
+        assertTrue(PdfOutlineReader.read(doc) { snapshots += it }.isEmpty())
+        assertTrue(snapshots.isEmpty())
+    }
+
+    @Test
+    fun `a handed-over snapshot keeps a group before the sections below it`() {
+        val doc = document(4)
+        // Enough groups to force more than one hand-over, each with only an untargeted heading.
+        doc.withOutline(
+            *(0 until 100).map { group ->
+                bookmark("Part $group", null, bookmark("Section $group", doc.to(group % 4)))
+            }.toTypedArray(),
+        )
+        val snapshots = ArrayList<List<OutlineEntry>>()
+
+        val entries = PdfOutlineReader.read(doc) { snapshots += it }
+
+        assertTrue(snapshots.size > 1)
+        assertEquals(200, entries.size)
+        // A hand-over lands only between top-level groups, never inside one, so each snapshot is a
+        // whole number of heading-then-section pairs.
+        snapshots.forEach { snapshot ->
+            assertEquals(0, snapshot.size % 2)
+            snapshot.chunked(2).forEach { pair ->
+                val heading = pair[0]
+                val section = pair[1]
+                assertEquals(heading.title.substringAfter(' '), section.title.substringAfter(' '))
+                assertEquals(0, heading.depth)
+                assertEquals(1, section.depth)
+            }
+        }
+    }
 }
