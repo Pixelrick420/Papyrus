@@ -29,6 +29,8 @@ internal class EpubPackage(
     val tocId: String?,
     /** `<meta name="cover" content="id">`: the EPUB 2 way to name the cover image. */
     val coverMetaId: String?,
+    /** `spine@page-progression-direction`: `rtl` for a book that is turned from the right. */
+    val pageProgression: String? = null,
 ) {
     /** The EPUB 3 navigation document, or null. */
     fun navItem(): ManifestItem? = manifest.values.firstOrNull { "nav" in it.properties && it.path != null }
@@ -93,6 +95,7 @@ internal object EpubPackageReader {
         val spine = ArrayList<SpineItem>()
         var tocId: String? = null
         var coverMetaId: String? = null
+        var pageProgression: String? = null
         val parser = factory(opf.inputStream())
         var event = parser.eventType
         while (event != XmlPullParser.END_DOCUMENT) {
@@ -112,7 +115,10 @@ internal object EpubPackageReader {
                             )
                         }
                     }
-                    "spine" -> tocId = parser.getAttributeValue(null, "toc")
+                    "spine" -> {
+                        tocId = parser.getAttributeValue(null, "toc")
+                        pageProgression = parser.getAttributeValue(null, "page-progression-direction")
+                    }
                     "itemref" -> parser.getAttributeValue(null, "idref")?.let {
                         spine += SpineItem(it, parser.getAttributeValue(null, "linear")?.trim()?.lowercase() != "no")
                     }
@@ -124,7 +130,7 @@ internal object EpubPackageReader {
             event = parser.next()
         }
         if (manifest.isEmpty() || spine.isEmpty()) throw XmlPullParserException("package has no manifest or spine")
-        return EpubPackage(opfPath, manifest, spine, tocId, coverMetaId)
+        return EpubPackage(opfPath, manifest, spine, tocId, coverMetaId, pageProgression)
     }
 
     /**

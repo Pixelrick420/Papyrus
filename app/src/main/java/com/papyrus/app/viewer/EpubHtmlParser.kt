@@ -95,6 +95,8 @@ internal class EpubHtmlParser(
     private class Frame(val tag: String) {
         var restore: CharFormat? = null
         var previousHeading = 0
+        var setsDirection = false
+        var previousDirection: BlockDirection? = null
     }
 
     private class ListFrame(val ordered: Boolean, var next: Int, val numberFormat: String)
@@ -130,6 +132,7 @@ internal class EpubHtmlParser(
     private var table: TableState? = null
     private var cell: CellState? = null
     private var chapter = ""
+    private var direction: BlockDirection? = null
 
     /** Reads [bytes], a chapter at [chapterPath], whose relative references resolve against its own directory. */
     fun parse(bytes: ByteArray, chapterPath: String) {
@@ -186,6 +189,23 @@ internal class EpubHtmlParser(
                 captureAnchor(p, tag)
             }
         }
+        // After the branch, which may have ended the block before this element: that one is not in it.
+        applyDirection(p, frame)
+    }
+
+    /**
+     * `dir` on any element (`html`, a `div`, a `bdo`) sets the direction of the blocks inside it until the
+     * element ends; `auto` would need a look at the text, so it leaves what was inherited alone.
+     */
+    private fun applyDirection(p: XmlPullParser, frame: Frame) {
+        val next = when (p.getAttributeValue(null, "dir")?.trim()?.lowercase()) {
+            "rtl" -> BlockDirection.RTL
+            "ltr" -> BlockDirection.LTR
+            else -> return
+        }
+        frame.setsDirection = true
+        frame.previousDirection = direction
+        direction = next
     }
 
     /**
@@ -255,6 +275,8 @@ internal class EpubHtmlParser(
             tag in BLOCKS -> flushBlock()
             else -> endOther(tag)
         }
+        // Last: the block this element closed is emitted above, still in this element's direction.
+        if (frame.setsDirection) direction = frame.previousDirection
     }
 
     private fun endOther(tag: String) {
@@ -365,13 +387,18 @@ internal class EpubHtmlParser(
         if (snapshot.text.isBlank()) return
         val item = items.lastOrNull()
         val block = when {
-            headingLevel > 0 -> OfficeBlock.Heading(snapshot.text, headingLevel, snapshot.spans)
+            headingLevel > 0 -> OfficeBlock.Heading(snapshot.text, headingLevel, snapshot.spans, direction = direction)
             item != null -> {
                 val marker = item.marker.orEmpty()
                 item.marker = null
-                OfficeBlock.ListItem(snapshot.text, marker, item.level, snapshot.spans)
+                OfficeBlock.ListItem(snapshot.text, marker, item.level, snapshot.spans, direction = direction)
             }
-            else -> OfficeBlock.Paragraph(snapshot.text, snapshot.spans, indent = quoteDepth.coerceAtMost(MAX_QUOTE_INDENT))
+            else -> OfficeBlock.Paragraph(
+                snapshot.text,
+                snapshot.spans,
+                indent = quoteDepth.coerceAtMost(MAX_QUOTE_INDENT),
+                direction = direction,
+            )
         }
         sink.add(block)
     }

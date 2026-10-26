@@ -12,12 +12,15 @@ import java.io.InputStream
  * contents (null when it has none the reader can use, so the headings stand in), and whether anything was
  * left out ([incomplete]): a chapter that could not be read, or a limit that was reached. [anchors] maps every
  * place a link inside the book can name (a chapter, or an element of it by `id`) to the block it lands on.
+ * [direction] is the book's own: right to left when its spine says pages turn from the right, which is what a
+ * block that says nothing of its own is set in.
  */
 class EpubBook(
     val blocks: List<OfficeBlock>,
     val outline: List<OutlineEntry>?,
     val incomplete: Boolean,
     val anchors: Map<BookLink, Int> = emptyMap(),
+    val direction: BlockDirection = BlockDirection.LTR,
 )
 
 /**
@@ -118,8 +121,13 @@ class EpubExtractor(
 
         if (previewChapters != null) return EpubBook(blocks, null, incomplete)
         val anchors = anchorsOf(sink, starts, spelledAs, media, blocks.size)
-        return EpubBook(blocks, outlineOf(pkg, names, factory, starts, anchors, media, blocks.size), incomplete, anchors)
+        val outline = outlineOf(pkg, names, factory, starts, anchors, media, blocks.size)
+        return EpubBook(blocks, outline, incomplete, anchors, bookDirection(pkg))
     }
+
+    /** The order pages turn is a hint about the book, not a reason to reorder what scrolls: only the layout follows it. */
+    private fun bookDirection(pkg: EpubPackage): BlockDirection =
+        if (pkg.pageProgression?.trim()?.lowercase() == "rtl") BlockDirection.RTL else BlockDirection.LTR
 
     /**
      * Every place a link can name, as the block it lands on once the images are in: each `id` the chapters

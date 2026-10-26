@@ -36,6 +36,7 @@ import com.papyrus.app.tts.TtsSession
 import com.papyrus.app.tts.TtsUnit
 import com.papyrus.app.ui.UiText
 import com.papyrus.app.ui.navigation.Routes
+import com.papyrus.app.viewer.BlockDirection
 import com.papyrus.app.viewer.BookLink
 import com.papyrus.app.viewer.CodeLanguage
 import com.papyrus.app.viewer.CodeLanguages
@@ -143,6 +144,8 @@ sealed interface ViewerContent {
         val encoding: TextEncoding? = null,
         /** Where a link inside an EPUB lands, as a block index; empty for every other format. */
         val bookLinks: Map<BookLink, Int> = emptyMap(),
+        /** What a block that says nothing of its own is set in; right to left for some EPUBs. */
+        val direction: BlockDirection = BlockDirection.LTR,
     ) : ViewerContent
     /** A document waiting on its password; [incorrect] flags a rejected attempt, [checking] one in flight. */
     data class NeedsPassword(val incorrect: Boolean = false, val checking: Boolean = false) : ViewerContent
@@ -872,7 +875,7 @@ class ViewerViewModel(
                 if (book.blocks.isEmpty()) {
                     ViewerContent.Failed(UiText(R.string.viewer_error_empty))
                 } else {
-                    ViewerContent.Office(book.blocks, book.outline, book.incomplete, bookLinks = book.anchors)
+                    ViewerContent.Office(book.blocks, book.outline, book.incomplete, bookLinks = book.anchors, direction = book.direction)
                 }
             } catch (expected: EpubProtectedException) {
                 ViewerContent.Failed(UiText(R.string.viewer_error_epub_protected))
