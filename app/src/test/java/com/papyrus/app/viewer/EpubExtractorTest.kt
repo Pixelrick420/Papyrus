@@ -143,11 +143,171 @@ class EpubExtractorTest {
     }
 
     @Test
-    fun `only safe links survive and internal ones stay plain`() {
+    fun `only safe links survive and internal ones become book links`() {
         val body = """<p><a href="https://example.org/x">web</a> <a href="javascript:alert(1)">js</a> <a href="chapter2.xhtml#top">inside</a> <a href="mailto:a@b.c">mail</a></p>"""
         val block = read(EpubFixtures.epub(listOf(chapter(body)))).blocks.single() as OfficeBlock.Paragraph
         val links = block.spans.mapNotNull { it.format.link }
         assertEquals(listOf("https://example.org/x", "mailto:a@b.c"), links)
+        val inside = block.spans.single { it.format.bookLink != null }
+        assertEquals(BookLink("OEBPS/chapter2.xhtml", "top"), inside.format.bookLink)
+        assertNull(inside.format.link)
+        assertEquals("inside", block.text.substring(inside.start, inside.end))
+        // The unsafe scheme is neither: its words are plain text.
+        assertNull(block.spans.firstOrNull { block.text.substring(it.start, it.end) == "js" })
+        assertTrue(block.spans.none { it.format.link != null && it.format.bookLink != null })
+    }
+
+    @Test
+    fun `a link to the same chapter names the chapter it is in`() {
+        val body = """<p><a href="#note-1">see note</a></p><p id="note-1">the note</p>"""
+        val book = read(EpubFixtures.epub(listOf(chapter(body))))
+        val link = (book.blocks[0] as OfficeBlock.Paragraph).spans.single().format.bookLink
+        assertEquals(BookLink("OEBPS/c.xhtml", "note-1"), link)
+        assertEquals("the note", (book.blocks[book.anchors.getValue(link!!)] as OfficeBlock.Paragraph).text)
+    }
+
+    @Test
+    fun `an element with an id or an anchor with a name is a place a link can name`() {
+        val body = """
+            <h1 id="top">Title</h1>
+            <p id="p1">first</p>
+            <p><a name="legacy"></a>second</p>
+            <div id="wrap"><p>inside the wrapper</p></div>
+            <p>before <span id="mid">span</span> after</p>
+            <ul><li id="item">listed</li></ul>
+        """.trimIndent()
+        val book = read(EpubFixtures.epub(listOf(chapter(body))))
+        fun textAt(id: String): String? =
+            book.anchors[BookLink("OEBPS/c.xhtml", id)]?.let { (book.blocks[it] as? OfficeBlock.Paragraph)?.text ?: (book.blocks[it] as? OfficeBlock.Heading)?.text ?: (book.blocks[it] as? OfficeBlock.ListItem)?.text }
+        assertEquals("Title", textAt("top"))
+        assertEquals("first", textAt("p1"))
+        assertEquals("second", textAt("legacy"))
+        assertEquals("inside the wrapper", textAt("wrap"))
+        assertEquals("before span after", textAt("mid"))
+        assertEquals("listed", textAt("item"))
+        assertNull(book.anchors[BookLink("OEBPS/c.xhtml", "nope")])
+    }
+
+    @Test
+    fun `the first of two equal ids wins and a hidden element names nothing`() {
+        val body = """<p id="dup">one</p><p id="dup">two</p><p id="ghost" hidden="">gone</p><p style="display:none"><span id="ghost2">x</span></p><p>last</p>"""
+        val book = read(EpubFixtures.epub(listOf(chapter(body))))
+        assertEquals(0, book.anchors[BookLink("OEBPS/c.xhtml", "dup")])
+        assertNull(book.anchors[BookLink("OEBPS/c.xhtml", "ghost")])
+        assertNull(book.anchors[BookLink("OEBPS/c.xhtml", "ghost2")])
+    }
+
+    @Test
+    fun `a chapter is a place of its own at its first block`() {
+        val book = read(EpubFixtures.epub(threeChapters))
+        assertEquals(0, book.anchors[BookLink("OEBPS/one.xhtml")])
+        assertEquals(3, book.anchors[BookLink("OEBPS/two.xhtml")])
+        assertEquals(5, book.anchors[BookLink("OEBPS/three.xhtml")])
+    }
+
+    @Test
+    fun `a link into another chapter resolves to the paragraph it names`() {
+        val chapters = listOf(
+            chapter("""<p><a href="two.xhtml#deep">go</a></p>""", "one.xhtml"),
+            chapter("""<h1>Two</h1><p>a</p><p id="deep">the deep one</p><p>z</p>""", "two.xhtml"),
+        )
+        val book = read(EpubFixtures.epub(chapters))
+        val link = (book.blocks[0] as OfficeBlock.Paragraph).spans.single().format.bookLink!!
+        val target = book.blocks[book.anchors.getValue(link)] as OfficeBlock.Paragraph
+        assertEquals("the deep one", target.text)
+    }
+
+    @Test
+    fun `an anchor at the very end of the book is dropped`() {
+        val book = read(EpubFixtures.epub(listOf(chapter("""<p>text</p><div id="tail"></div>"""))))
+        assertNull(book.anchors[BookLink("OEBPS/c.xhtml", "tail")])
+        assertEquals(0, book.anchors[BookLink("OEBPS/c.xhtml")])
+    }
+
+    @Test
+    fun `an anchor of a chapter that fails to read is not kept`() {
+        val chapters = listOf(
+            chapter("""<p id="ok">fine</p>""", "a.xhtml"),
+            chapter("""<p id="lost">broken <b>text</p></b>""", "b.xhtml"),
+        )
+        val book = read(EpubFixtures.epub(chapters))
+        assertEquals(0, book.anchors[BookLink("OEBPS/a.xhtml", "ok")])
+        assertNull(book.anchors[BookLink("OEBPS/b.xhtml", "lost")])
+        assertNull(book.anchors[BookLink("OEBPS/b.xhtml")])
+    }
+
+    @Test
+    fun `ids past the limit are not kept`() {
+        val body = (1..20).joinToString("") { """<p id="i$it">p$it</p>""" }
+        val book = read(EpubFixtures.epub(listOf(chapter(body))), limits = EpubLimits(maxAnchors = 5))
+        assertEquals(5, book.anchors.keys.count { it.fragment != null })
+        assertEquals(0, book.anchors[BookLink("OEBPS/c.xhtml", "i1")])
+    }
+
+    @Test
+    fun `an image before the anchor does not move it off its block`() {
+        val dir = temp.newFolder("media")
+        val body = """<img src="a.png"/><p id="x">anchored</p><p>after</p>"""
+        val bytes = EpubFixtures.epub(listOf(chapter(body)), media = mapOf("a.png" to OfficeFixtures.PNG_1X1))
+        val book = read(bytes, dir)
+        assertTrue(book.blocks[0] is OfficeBlock.Image)
+        val at = book.anchors.getValue(BookLink("OEBPS/c.xhtml", "x"))
+        assertEquals("anchored", (book.blocks[at] as OfficeBlock.Paragraph).text)
+        // The chapter itself still starts with its picture.
+        assertEquals(0, book.anchors[BookLink("OEBPS/c.xhtml")])
+    }
+
+    @Test
+    fun `an id on an image names the image and an earlier chapter's image shifts a later anchor`() {
+        val dir = temp.newFolder("media")
+        val chapters = listOf(
+            chapter("""<p>lead</p><img src="a.png"/><p>tail</p>""", "one.xhtml"),
+            chapter("""<p>x</p><img id="pic" src="a.png"/><p id="after">y</p>""", "two.xhtml"),
+        )
+        val book = read(EpubFixtures.epub(chapters, media = mapOf("a.png" to OfficeFixtures.PNG_1X1)), dir)
+        assertTrue(book.blocks[book.anchors.getValue(BookLink("OEBPS/two.xhtml", "pic"))] is OfficeBlock.Image)
+        assertEquals("y", (book.blocks[book.anchors.getValue(BookLink("OEBPS/two.xhtml", "after"))] as OfficeBlock.Paragraph).text)
+    }
+
+    @Test
+    fun `an outline entry naming an element lands on it for both nav and ncx`() {
+        val chapters = listOf(
+            chapter("<h1>One</h1><p>a</p>", "one.xhtml"),
+            chapter("""<h1>Two</h1><p>b</p><p id="deep">the deep one</p>""", "two.xhtml"),
+        )
+        val nav = EpubFixtures.navDoc("""<li><a href="two.xhtml#deep">Deep</a></li><li><a href="two.xhtml#missing">Stale</a></li>""")
+        val fromNav = read(EpubFixtures.epub(chapters, nav = nav))
+        assertEquals(listOf(OutlineEntry(4, 0, "Deep"), OutlineEntry(2, 0, "Stale")), fromNav.outline)
+        assertEquals("the deep one", (fromNav.blocks[4] as OfficeBlock.Paragraph).text)
+
+        val ncx = EpubFixtures.ncxDoc(EpubFixtures.ncxPoint("Deep", "two.xhtml#deep") + EpubFixtures.ncxPoint("First", "one.xhtml"))
+        val fromNcx = read(EpubFixtures.epub(chapters, ncx = ncx))
+        assertEquals(listOf(OutlineEntry(4, 0, "Deep"), OutlineEntry(0, 0, "First")), fromNcx.outline)
+    }
+
+    @Test
+    fun `an outline fragment is case sensitive though the path is not`() {
+        val chapters = listOf(chapter("""<h1>One</h1><p id="Deep">d</p>""", "one.xhtml"))
+        val nav = EpubFixtures.navDoc("""<li><a href="ONE.xhtml#Deep">Right</a></li><li><a href="ONE.xhtml#deep">Wrong case</a></li>""")
+        assertEquals(listOf(OutlineEntry(1, 0, "Right"), OutlineEntry(0, 0, "Wrong case")), read(EpubFixtures.epub(chapters, nav = nav)).outline)
+    }
+
+    @Test
+    fun `an outline entry after an image still lands on the element it names`() {
+        val dir = temp.newFolder("media")
+        val chapters = listOf(
+            chapter("""<h1>One</h1><img src="a.png"/><p>a</p>""", "one.xhtml"),
+            chapter("""<img src="a.png"/><h2 id="sec">Section</h2><p>c</p>""", "two.xhtml"),
+        )
+        val nav = EpubFixtures.navDoc("""<li><a href="two.xhtml#sec">Section</a></li>""")
+        val book = read(EpubFixtures.epub(chapters, nav = nav, media = mapOf("a.png" to OfficeFixtures.PNG_1X1)), dir)
+        assertEquals(OfficeBlock.Heading("Section", 2), book.blocks[book.outline!!.single().index])
+    }
+
+    @Test
+    fun `a preview carries no anchors`() {
+        val bytes = EpubFixtures.epub(listOf(chapter("""<p id="x">first</p>""", "a.xhtml")))
+        assertTrue(extractor().extract(OfficeFixtures.streamFactory(bytes), previewChapters = 1).anchors.isEmpty())
     }
 
     @Test

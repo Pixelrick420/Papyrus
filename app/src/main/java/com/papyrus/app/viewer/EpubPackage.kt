@@ -52,8 +52,11 @@ internal class EpubPackage(
     }
 }
 
-/** An entry of the table of contents: a [title], where it points ([path] in the archive, null for a heading that links nowhere) and its nesting. */
-internal class NavPoint(val title: String, val path: String?, val depth: Int)
+/**
+ * An entry of the table of contents: a [title], where it points ([path] in the archive, null for a heading that
+ * links nowhere, and the [fragment] naming an element in it, when the entry did) and its nesting.
+ */
+internal class NavPoint(val title: String, val path: String?, val depth: Int, val fragment: String? = null)
 
 /** Reads the parts of an EPUB that say what is in it and in what order. */
 internal object EpubPackageReader {
@@ -177,7 +180,12 @@ internal object EpubPackageReader {
                         captureTag != null && name == captureTag -> {
                             val label = cleanOutlineTitle(title.toString())
                             if (label.isNotEmpty()) {
-                                val point = NavPoint(label, captureHref?.let { resolveEpubPath(base, it) }, listDepth - 1)
+                                val point = NavPoint(
+                                    label,
+                                    captureHref?.let { resolveEpubPath(base, it) },
+                                    listDepth - 1,
+                                    captureHref?.let { splitHref(it).fragment },
+                                )
                                 if (inToc) found += point else tentative += point
                             }
                             captureTag = null
@@ -238,7 +246,11 @@ internal object EpubPackageReader {
         }
         return order.mapNotNull { open ->
             val label = cleanOutlineTitle(open.title)
-            if (label.isEmpty()) null else NavPoint(label, open.src?.let { resolveEpubPath(base, it) }, open.depth)
+            if (label.isEmpty()) {
+                null
+            } else {
+                NavPoint(label, open.src?.let { resolveEpubPath(base, it) }, open.depth, open.src?.let { splitHref(it).fragment })
+            }
         }
     }
 }

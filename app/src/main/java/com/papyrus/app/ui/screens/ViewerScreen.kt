@@ -99,6 +99,7 @@ import com.papyrus.app.ui.viewer.EncodingDialog
 import com.papyrus.app.ui.viewer.FileInfoSheet
 import com.papyrus.app.ui.viewer.FindInFileBar
 import com.papyrus.app.ui.viewer.GoToDialog
+import com.papyrus.app.ui.viewer.LocalBookLinkOpener
 import com.papyrus.app.ui.viewer.LocalLinkOpener
 import com.papyrus.app.ui.viewer.MarkdownViewer
 import com.papyrus.app.ui.viewer.OfficeViewer
@@ -121,6 +122,7 @@ import com.papyrus.app.ui.viewer.copyToClipboard
 import com.papyrus.app.ui.viewer.openLink
 import com.papyrus.app.ui.viewer.rememberLingerVisible
 import com.papyrus.app.ui.viewer.rememberZoomState
+import com.papyrus.app.viewer.BookLink
 import com.papyrus.app.viewer.PdfLinkTarget
 import com.papyrus.app.viewer.officeOutline
 import kotlinx.coroutines.launch
@@ -172,6 +174,18 @@ fun ViewerScreen(
     val followLink: (String) -> Unit = remember(context) {
         { url ->
             if (!openLink(context, url)) Toast.makeText(context, R.string.viewer_link_failed, Toast.LENGTH_SHORT).show()
+        }
+    }
+    // A link inside a book is a block of this document: the one jump mechanism takes the reader there.
+    val followBookLink: (BookLink) -> Unit = remember(state.content, context) {
+        { link ->
+            val target = (state.content as? ViewerContent.Office)?.bookLinks?.get(link)
+            if (target == null) {
+                Toast.makeText(context, R.string.viewer_link_failed, Toast.LENGTH_SHORT).show()
+            } else {
+                viewModel.ttsReleaseScroll()
+                jump = ViewerJump(ReadingLocation(LocationKind.BLOCK, target))
+            }
         }
     }
     // A link to another page of the PDF only reveals it: nothing moves if it is already on screen.
@@ -484,7 +498,7 @@ fun ViewerScreen(
                     .padding(start = ViewerContentMargin, top = ViewerContentMargin, end = ViewerContentMargin)
                     .clipToBounds(),
             ) {
-                CompositionLocalProvider(LocalLinkOpener provides followLink) {
+                CompositionLocalProvider(LocalLinkOpener provides followLink, LocalBookLinkOpener provides followBookLink) {
                     when (val content = state.content) {
                         ViewerContent.Loading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
                         is ViewerContent.Pdf -> PdfViewer(

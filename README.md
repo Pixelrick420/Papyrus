@@ -361,8 +361,9 @@ after the last keystroke before it queries, and a search that fails is reported 
 
 - DOC files carry paragraphs and tables only: no images, and headings arrive as plain paragraphs. Encrypted and Word
   6/95 files are rejected.
-- Fixed-layout EPUB books reflow as plain text; there is no EPUB-specific typography, right-to-left layout is not
-  handled, and links between chapters stay plain text.
+- Fixed-layout EPUB books reflow as plain text, and there is no EPUB-specific typography; right-to-left layout is not
+  handled. Links between chapters and from the table of contents open the place they name; a link to a missing place
+  says so.
 - Password-protected documents open when they are a PDF, a `.docx` (ECMA-376 Agile) or an `.odt` (ODF 1.2
   AES-256-CBC). Newer ODF 1.3 packages and the legacy binary schemes are reported as protected but not opened.
 - A PDF over 128 MB is not read for an outline, because PdfBox would hold a second copy of it in memory next to the

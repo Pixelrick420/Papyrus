@@ -7,9 +7,16 @@ import java.io.IOException
 internal class EpubChapterException(message: String) : IOException(message)
 
 /**
+ * Where a link's target sits: the block that was next to be emitted when the element began ([block], before
+ * any image went in), and whether the element is itself an image, which the media pass places differently.
+ */
+internal class Anchor(val block: Int, val onImage: Boolean)
+
+/**
  * Where chapters put what they read. [blocks] is the book's one list, [pending] the images seen, to be
- * placed by the shared media pass. A block past [EpubLimits.maxBlocks] is dropped and [truncated] set, which
- * is how a limit reaches the reader as the incomplete-document notice instead of silence.
+ * placed by the shared media pass, [anchors] the places a link can name. A block past
+ * [EpubLimits.maxBlocks] is dropped and [truncated] set, which is how a limit reaches the reader as the
+ * incomplete-document notice instead of silence.
  */
 internal class EpubSink(
     val blocks: MutableList<OfficeBlock>,
@@ -18,7 +25,25 @@ internal class EpubSink(
 ) {
     var truncated = false
 
+    val anchors = HashMap<BookLink, Anchor>()
+
+    /** The anchors in the order they were added, so a chapter that fails can take its own back out. */
+    private val anchorTrail = ArrayList<BookLink>()
+
     val full: Boolean get() = blocks.size >= limits.maxBlocks
+
+    /** The first element to name a place wins, as in a browser; past [EpubLimits.maxAnchors] none is kept. */
+    fun anchor(link: BookLink, onImage: Boolean = false) {
+        if (anchors.size >= limits.maxAnchors || link in anchors) return
+        anchors[link] = Anchor(blocks.size, onImage)
+        anchorTrail += link
+    }
+
+    fun anchorMark(): Int = anchorTrail.size
+
+    fun rollBackAnchors(mark: Int) {
+        while (anchorTrail.size > mark) anchors.remove(anchorTrail.removeAt(anchorTrail.lastIndex))
+    }
 
     fun add(block: OfficeBlock) {
         if (full) {
@@ -60,7 +85,8 @@ private val LIST_TYPES = mapOf("a" to "lowerLetter", "A" to "upperLetter", "i" t
  * (so it must be well formed; HTML's named entities are taught to it first, see [EpubEntities]) and this
  * class keeps every stack it needs by hand, so a hostile nesting costs memory it bounds and never the call
  * stack. Reading is for text: the document's own stylesheet is never read, nothing is fetched, and scripts,
- * players, frames and hidden elements are skipped as whole subtrees. One instance reads one chapter.
+ * players, frames and hidden elements are skipped as whole subtrees. A link to another place in the book
+ * becomes a [BookLink], and every element with an `id` is noted in [EpubSink.anchors]. One instance reads one chapter.
  */
 internal class EpubHtmlParser(
     private val factory: ParserFactory,
@@ -103,9 +129,11 @@ internal class EpubHtmlParser(
     private var tableDepth = 0
     private var table: TableState? = null
     private var cell: CellState? = null
+    private var chapter = ""
 
     /** Reads [bytes], a chapter at [chapterPath], whose relative references resolve against its own directory. */
     fun parse(bytes: ByteArray, chapterPath: String) {
+        chapter = chapterPath
         val dir = dirOf(chapterPath)
         val parser = factory(bytes.inputStream())
         EpubEntities.defineAll(parser)
@@ -147,9 +175,29 @@ internal class EpubHtmlParser(
                 flushBlock()
                 frame.previousHeading = headingLevel
                 headingLevel = HEADING_LEVEL.getValue(tag)
+                captureAnchor(p, tag)
             }
-            tag in BLOCKS -> flushBlock()
-            else -> startOther(p, tag, frame, dir)
+            tag in BLOCKS -> {
+                flushBlock()
+                captureAnchor(p, tag)
+            }
+            else -> {
+                startOther(p, tag, frame, dir)
+                captureAnchor(p, tag)
+            }
+        }
+    }
+
+    /**
+     * Notes the place this element names with its `id` (an `<a>` may use `name` as well) as the block about to
+     * be emitted, which is where what the element opens will land: the paragraph around a `span`, the first
+     * block of a `div`, an image's own slot. An element in a skipped subtree never gets here.
+     */
+    private fun captureAnchor(p: XmlPullParser, tag: String) {
+        val names = if (tag == "a") listOf("id", "name") else listOf("id")
+        for (name in names) {
+            val value = p.getAttributeValue(null, name)?.trim().orEmpty()
+            if (value.isNotEmpty()) sink.anchor(BookLink(chapter, value), onImage = tag == "img")
         }
     }
 
@@ -185,7 +233,7 @@ internal class EpubHtmlParser(
             "table" -> startTable()
             "tr" -> startRow()
             "td", "th" -> startCell(p, tag == "th", frame)
-            else -> inlineFormat(tag, p)?.let { pushFormat(frame, it) }
+            else -> inlineFormat(tag, p, dir)?.let { pushFormat(frame, it) }
         }
     }
 
@@ -273,7 +321,7 @@ internal class EpubHtmlParser(
         format = next
     }
 
-    private fun inlineFormat(tag: String, p: XmlPullParser): CharFormat? = when (tag) {
+    private fun inlineFormat(tag: String, p: XmlPullParser, dir: String): CharFormat? = when (tag) {
         "b", "strong" -> format.copy(bold = true)
         "i", "em", "cite", "dfn", "var" -> format.copy(italic = true)
         "u", "ins" -> format.copy(underline = true)
@@ -282,9 +330,17 @@ internal class EpubHtmlParser(
         "sub" -> format.copy(script = ScriptShift.SUB)
         "code", "kbd", "samp", "tt" -> format.copy(mono = true)
         "mark" -> format.copy(background = MARK_BACKGROUND)
-        // A link only if it goes somewhere safe; a link inside the book stays plain text in this version.
-        "a" -> safeLink(p.getAttributeValue(null, "href"))?.let { format.copy(link = it) }
+        "a" -> linkFormat(p.getAttributeValue(null, "href"), dir)
         else -> null
+    }
+
+    /**
+     * A link opens the app's own handlers, so it is one of two things only: a web, mail or phone address that
+     * [safeLink] lets through, or a place in this book. The two are never both set; anything else is plain text.
+     */
+    private fun linkFormat(href: String?, dir: String): CharFormat? {
+        safeLink(href)?.let { return format.copy(link = it, bookLink = null) }
+        return bookLinkOf(dir, href, chapter)?.let { format.copy(link = null, bookLink = it) }
     }
 
     /** What to cut from the ends of a paragraph: all whitespace, except in `pre`, where only line breaks go. */

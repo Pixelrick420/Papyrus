@@ -10,9 +10,15 @@ import java.io.InputStream
 /**
  * An EPUB as the Office viewer shows it: [blocks] in reading order, an [outline] from the book's own table of
  * contents (null when it has none the reader can use, so the headings stand in), and whether anything was
- * left out ([incomplete]): a chapter that could not be read, or a limit that was reached.
+ * left out ([incomplete]): a chapter that could not be read, or a limit that was reached. [anchors] maps every
+ * place a link inside the book can name (a chapter, or an element of it by `id`) to the block it lands on.
  */
-class EpubBook(val blocks: List<OfficeBlock>, val outline: List<OutlineEntry>?, val incomplete: Boolean)
+class EpubBook(
+    val blocks: List<OfficeBlock>,
+    val outline: List<OutlineEntry>?,
+    val incomplete: Boolean,
+    val anchors: Map<BookLink, Int> = emptyMap(),
+)
 
 /**
  * EPUB extraction with the platform XML parser and `java.util.zip`: the container names the package, the
@@ -60,6 +66,8 @@ class EpubExtractor(
         val sink = EpubSink(blocks, pending, limits)
         // Where each chapter's first block is, before any image goes in; the table of contents jumps there.
         val starts = HashMap<String, Int>()
+        // The archive's own spelling of each chapter's path, which the parser records its anchors under.
+        val spelledAs = HashMap<String, String>()
         for (item in toRead) {
             if (sink.full) {
                 incomplete = true
@@ -80,20 +88,22 @@ class EpubExtractor(
             }
             val blockMark = blocks.size
             val pendingMark = pending.size
+            val anchorMark = sink.anchorMark()
             try {
                 EpubHtmlParser(factory, sink).parse(bytes, key)
                 starts[path] = blockMark
+                spelledAs[key] = path
             } catch (_: XmlPullParserException) {
                 incomplete = true
-                rollBack(blocks, pending, blockMark, pendingMark)
+                rollBack(sink, blockMark, pendingMark, anchorMark)
             } catch (_: IOException) {
                 incomplete = true
-                rollBack(blocks, pending, blockMark, pendingMark)
+                rollBack(sink, blockMark, pendingMark, anchorMark)
             } catch (_: RuntimeException) {
                 // A parser can fail in ways of its own on bytes that are not markup (a bad numeric reference);
                 // whatever the cause, the chapter is lost and the book is not.
                 incomplete = true
-                rollBack(blocks, pending, blockMark, pendingMark)
+                rollBack(sink, blockMark, pendingMark, anchorMark)
             }
         }
 
@@ -106,8 +116,31 @@ class EpubExtractor(
         if (mediaDir != null && media.dropped > 0) incomplete = true
         if (sink.truncated) incomplete = true
 
-        val outline = if (previewChapters == null) outlineOf(pkg, names, factory, starts, media, blocks.size) else null
-        return EpubBook(blocks, outline, incomplete)
+        if (previewChapters != null) return EpubBook(blocks, null, incomplete)
+        val anchors = anchorsOf(sink, starts, spelledAs, media, blocks.size)
+        return EpubBook(blocks, outlineOf(pkg, names, factory, starts, anchors, media, blocks.size), incomplete, anchors)
+    }
+
+    /**
+     * Every place a link can name, as the block it lands on once the images are in: each `id` the chapters
+     * noted, and each chapter's own start. An anchor at the very end of the book names no block and is dropped.
+     */
+    private fun anchorsOf(
+        sink: EpubSink,
+        starts: Map<String, Int>,
+        spelledAs: Map<String, String>,
+        media: OfficeMedia.Result,
+        blockCount: Int,
+    ): Map<BookLink, Int> {
+        val out = HashMap<BookLink, Int>()
+        for ((link, anchor) in sink.anchors) {
+            // An element lands after the pictures that came before it; a picture lands on itself.
+            val index = if (anchor.onImage) media.shifted(anchor.block) else media.shiftedPast(anchor.block)
+            out.putIfAbsent(BookLink(spelledAs[link.path] ?: link.path, link.fragment), index)
+        }
+        for ((path, start) in starts) out[BookLink(path, null)] = media.shifted(start)
+        out.values.removeAll { it >= blockCount }
+        return out
     }
 
     /**
@@ -123,9 +156,11 @@ class EpubExtractor(
         null
     }
 
-    private fun rollBack(blocks: MutableList<OfficeBlock>, pending: MutableList<PendingImage>, blockMark: Int, pendingMark: Int) {
-        blocks.subList(blockMark, blocks.size).clear()
-        pending.subList(pendingMark, pending.size).clear()
+    /** Takes back everything a chapter that failed part way had already put in the sink. */
+    private fun rollBack(sink: EpubSink, blockMark: Int, pendingMark: Int, anchorMark: Int) {
+        sink.blocks.subList(blockMark, sink.blocks.size).clear()
+        sink.pending.subList(pendingMark, sink.pending.size).clear()
+        sink.rollBackAnchors(anchorMark)
     }
 
     private fun newParser(stream: InputStream): XmlPullParser =
@@ -164,6 +199,7 @@ class EpubExtractor(
         names: EpubNames,
         factory: ParserFactory,
         starts: Map<String, Int>,
+        anchors: Map<BookLink, Int>,
         media: OfficeMedia.Result,
         blockCount: Int,
     ): List<OutlineEntry>? {
@@ -171,10 +207,16 @@ class EpubExtractor(
         val points = readPoints(pkg, names, factory)
         if (points.isEmpty()) return null
         val folded = starts.mapKeys { it.key.lowercase() }
+        // XML ids are case-sensitive, a file name may not be: only the path is folded.
+        val foldedAnchors = anchors.mapKeys { BookLink(it.key.path.lowercase(), it.key.fragment) }
         val entries = points.mapNotNull { point ->
             val path = point.path ?: return@mapNotNull OutlineEntry(NO_OUTLINE_TARGET, point.depth, point.title)
-            val start = starts[path] ?: folded[path.lowercase()] ?: return@mapNotNull null
-            OutlineEntry(media.shifted(start).coerceAtMost(blockCount - 1), point.depth, point.title)
+            // An entry that names an element lands on it; one whose element is gone lands on its chapter.
+            val named = point.fragment?.let { anchors[BookLink(path, it)] ?: foldedAnchors[BookLink(path.lowercase(), it)] }
+            val index = named
+                ?: (starts[path] ?: folded[path.lowercase()])?.let(media::shifted)
+                ?: return@mapNotNull null
+            OutlineEntry(index.coerceAtMost(blockCount - 1), point.depth, point.title)
         }
         // A list of headings that go nowhere is no outline: the headings of the text are better.
         if (entries.none { it.index != NO_OUTLINE_TARGET }) return null

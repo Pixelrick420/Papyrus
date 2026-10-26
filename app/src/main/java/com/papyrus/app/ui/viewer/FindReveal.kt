@@ -63,11 +63,12 @@ internal fun FindText(
     // A tapped link goes back to the viewer screen, which owns the failure message; the default
     // opener does nothing, so a surface outside a viewer keeps working.
     val opener = LocalLinkOpener.current
-    val annotated = remember(text, spans, highlight, palette, syntax, opener, baseTextColor) {
+    val bookOpener = LocalBookLinkOpener.current
+    val annotated = remember(text, spans, highlight, palette, syntax, opener, bookOpener, baseTextColor) {
         when {
             syntax != null -> syntaxHighlightedText(text, syntax, highlight, baseTextColor)
             spans.isEmpty() -> highlightedText(text, highlight, baseTextColor)
-            else -> formattedText(text, spans, highlight, palette, opener, baseTextColor)
+            else -> formattedText(text, spans, highlight, palette, opener, baseTextColor, onBookLink = bookOpener)
         }
     }
     val activeRange = remember(text, highlight) { highlight?.activeRange(text) }
