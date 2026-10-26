@@ -22,6 +22,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -34,14 +35,17 @@ import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.layoutId
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.papyrus.app.R
 import com.papyrus.app.viewer.BlockAlign
+import com.papyrus.app.viewer.BlockDirection
 import com.papyrus.app.viewer.OfficeBlock
 import com.papyrus.app.viewer.OfficeCell
 import kotlinx.coroutines.Dispatchers
@@ -57,28 +61,33 @@ internal fun OfficeBlockView(
     highlight: FindHighlight? = null,
     reveal: RevealTicket? = null,
     speaking: SpokenRange? = null,
+    /** The direction this block is set in, already resolved against the document's; tables ignore it. */
+    direction: BlockDirection = BlockDirection.LTR,
 ) {
     when (block) {
         is OfficeBlock.Heading -> FindText(
             text = block.text,
             highlight = highlight,
-            style = headingStyle(block.level).withAlign(block.align),
+            style = headingStyle(block.level).withLayout(block.align, direction),
             modifier = modifier.padding(top = 16.dp, bottom = 4.dp),
             reveal = reveal,
             spans = block.spans,
             speaking = speaking,
         )
-        is OfficeBlock.Paragraph -> FindText(
-            text = block.text,
-            highlight = highlight,
-            style = MaterialTheme.typography.bodyLarge.withAlign(block.align),
-            modifier = modifier.padding(start = INDENT_STEP * block.indent, top = 4.dp, bottom = 4.dp),
-            reveal = reveal,
-            spans = block.spans,
-            speaking = speaking,
-        )
-        is OfficeBlock.ListItem -> OfficeListItemView(block, modifier, highlight, reveal, speaking)
-        is OfficeBlock.Note -> OfficeNoteView(block, modifier, highlight, reveal, speaking)
+        is OfficeBlock.Paragraph -> WithLayoutDirection(direction) {
+            // An indent is on the side the text starts from, so it moves to the right in a right-to-left block.
+            FindText(
+                text = block.text,
+                highlight = highlight,
+                style = MaterialTheme.typography.bodyLarge.withLayout(block.align, direction),
+                modifier = modifier.padding(start = INDENT_STEP * block.indent, top = 4.dp, bottom = 4.dp),
+                reveal = reveal,
+                spans = block.spans,
+                speaking = speaking,
+            )
+        }
+        is OfficeBlock.ListItem -> OfficeListItemView(block, direction, modifier, highlight, reveal, speaking)
+        is OfficeBlock.Note -> OfficeNoteView(block, direction, modifier, highlight, reveal, speaking)
         is OfficeBlock.Divider -> HorizontalDivider(modifier.padding(vertical = 12.dp))
         is OfficeBlock.Table -> OfficeTableView(
             block,
@@ -111,69 +120,91 @@ private val INDENT_STEP = 16.dp
 private val LIST_INDENT = 20.dp
 private val MARKER_WIDTH = 20.dp
 
-private fun TextStyle.withAlign(align: BlockAlign): TextStyle =
-    if (align == BlockAlign.START) this else copy(textAlign = align.toTextAlign())
+/**
+ * [align] is the side the paragraph starts on, not a physical one: Start and End already follow the text
+ * direction, so a right-to-left block only needs its direction set, and a left-to-right one is untouched.
+ */
+internal fun TextStyle.withLayout(align: BlockAlign, direction: BlockDirection): TextStyle {
+    val aligned = if (align == BlockAlign.START) this else copy(textAlign = align.toTextAlign())
+    return if (direction == BlockDirection.RTL) aligned.copy(textDirection = direction.toTextDirection()) else aligned
+}
+
+/**
+ * Lays [content] out from the right for a right-to-left block, so a marker, a label and an indent land on the
+ * right edge as `dir=rtl` would put them; any other block keeps the layout direction it is already in.
+ */
+@Composable
+private fun WithLayoutDirection(direction: BlockDirection, content: @Composable () -> Unit) {
+    val layoutDirection = if (direction == BlockDirection.RTL) LayoutDirection.Rtl else LocalLayoutDirection.current
+    CompositionLocalProvider(LocalLayoutDirection provides layoutDirection, content = content)
+}
 
 /** Marker sits beside the text, not in it, so find offsets stay on the document's own words. */
 @Composable
 private fun OfficeListItemView(
     block: OfficeBlock.ListItem,
+    direction: BlockDirection,
     modifier: Modifier,
     highlight: FindHighlight?,
     reveal: RevealTicket?,
     speaking: SpokenRange?,
 ) {
-    Row(modifier.padding(start = LIST_INDENT * block.level, top = 2.dp, bottom = 2.dp)) {
-        Text(
-            block.marker,
-            style = MaterialTheme.typography.bodyLarge,
-            modifier = Modifier.widthIn(min = MARKER_WIDTH).padding(end = 8.dp),
-        )
-        FindText(
-            text = block.text,
-            highlight = highlight,
-            style = MaterialTheme.typography.bodyLarge.withAlign(block.align),
-            modifier = Modifier.weight(1f),
-            reveal = reveal,
-            spans = block.spans,
-            speaking = speaking,
-        )
+    WithLayoutDirection(direction) {
+        Row(modifier.padding(start = LIST_INDENT * block.level, top = 2.dp, bottom = 2.dp)) {
+            Text(
+                block.marker,
+                style = MaterialTheme.typography.bodyLarge,
+                modifier = Modifier.widthIn(min = MARKER_WIDTH).padding(end = 8.dp),
+            )
+            FindText(
+                text = block.text,
+                highlight = highlight,
+                style = MaterialTheme.typography.bodyLarge.withLayout(block.align, direction),
+                modifier = Modifier.weight(1f),
+                reveal = reveal,
+                spans = block.spans,
+                speaking = speaking,
+            )
+        }
     }
 }
 
 @Composable
 private fun OfficeNoteView(
     note: OfficeBlock.Note,
+    direction: BlockDirection,
     modifier: Modifier,
     highlight: FindHighlight?,
     reveal: RevealTicket?,
     speaking: SpokenRange?,
 ) {
-    Row(modifier.padding(vertical = 2.dp)) {
-        Text(
-            note.label,
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.widthIn(min = MARKER_WIDTH).padding(end = 6.dp),
-        )
-        // A comment says who wrote it and when, above its words; a footnote has no byline.
-        Column(Modifier.weight(1f)) {
-            note.byline?.let { byline ->
-                Text(
-                    byline,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+    WithLayoutDirection(direction) {
+        Row(modifier.padding(vertical = 2.dp)) {
+            Text(
+                note.label,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.widthIn(min = MARKER_WIDTH).padding(end = 6.dp),
+            )
+            // A comment says who wrote it and when, above its words; a footnote has no byline.
+            Column(Modifier.weight(1f)) {
+                note.byline?.let { byline ->
+                    Text(
+                        byline,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                FindText(
+                    text = note.text,
+                    highlight = highlight,
+                    style = MaterialTheme.typography.bodySmall.withLayout(BlockAlign.START, direction),
+                    modifier = Modifier.fillMaxWidth(),
+                    reveal = reveal,
+                    spans = note.spans,
+                    speaking = speaking,
                 )
             }
-            FindText(
-                text = note.text,
-                highlight = highlight,
-                style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.fillMaxWidth(),
-                reveal = reveal,
-                spans = note.spans,
-                speaking = speaking,
-            )
         }
     }
 }

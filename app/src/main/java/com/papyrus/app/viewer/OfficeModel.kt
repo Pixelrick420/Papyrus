@@ -8,6 +8,12 @@ import java.io.File
  */
 enum class BlockAlign { START, CENTER, END }
 
+/**
+ * Which way a block's text runs. A model enum of its own, not the UI toolkit's: extraction must not depend on it.
+ * A block that says nothing (null where it is held) inherits the document's.
+ */
+enum class BlockDirection { LTR, RTL }
+
 enum class ScriptShift { NONE, SUPER, SUB }
 
 /**
@@ -68,6 +74,7 @@ sealed interface OfficeBlock {
         val level: Int,
         val spans: List<TextSpan> = emptyList(),
         val align: BlockAlign = BlockAlign.START,
+        val direction: BlockDirection? = null,
     ) : OfficeBlock
 
     /** [indent] is in steps (see [indentLevel]), not twips: the renderer picks the step width. */
@@ -76,6 +83,7 @@ sealed interface OfficeBlock {
         val spans: List<TextSpan> = emptyList(),
         val align: BlockAlign = BlockAlign.START,
         val indent: Int = 0,
+        val direction: BlockDirection? = null,
     ) : OfficeBlock
 
     /**
@@ -88,6 +96,7 @@ sealed interface OfficeBlock {
         val level: Int,
         val spans: List<TextSpan> = emptyList(),
         val align: BlockAlign = BlockAlign.START,
+        val direction: BlockDirection? = null,
     ) : OfficeBlock
 
     /**
@@ -119,8 +128,19 @@ sealed interface OfficeBlock {
         val text: String,
         val spans: List<TextSpan> = emptyList(),
         val byline: String? = null,
+        val direction: BlockDirection? = null,
     ) : OfficeBlock
 }
+
+/** The direction a block asked for, or null when it says nothing (and for a block that has none: a table, a picture). */
+internal val OfficeBlock.direction: BlockDirection?
+    get() = when (this) {
+        is OfficeBlock.Heading -> this.direction
+        is OfficeBlock.Paragraph -> this.direction
+        is OfficeBlock.ListItem -> this.direction
+        is OfficeBlock.Note -> this.direction
+        is OfficeBlock.Table, is OfficeBlock.Image, OfficeBlock.Divider -> null
+    }
 
 /** One drawn line of text with the spans that fall inside it, re-based to the line's own start. */
 data class LineText(val text: String, val spans: List<TextSpan>)

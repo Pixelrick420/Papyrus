@@ -576,6 +576,7 @@ fun ViewerScreen(
                             incomplete = content.incomplete,
                             highlightAlpha = highlightAlpha,
                             onlyActive = arrival != null,
+                            direction = content.direction,
                         )
                         // The dialog covers the page; only an in-flight retry is worth showing behind it.
                         is ViewerContent.NeedsPassword ->

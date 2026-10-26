@@ -12,9 +12,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.BaselineShift
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.em
 import com.papyrus.app.viewer.BlockAlign
+import com.papyrus.app.viewer.BlockDirection
 import com.papyrus.app.viewer.BookLink
 import com.papyrus.app.viewer.CharFormat
 import com.papyrus.app.viewer.ScriptShift
@@ -57,6 +59,11 @@ internal fun BlockAlign.toTextAlign(): TextAlign = when (this) {
     BlockAlign.START -> TextAlign.Start
     BlockAlign.CENTER -> TextAlign.Center
     BlockAlign.END -> TextAlign.End
+}
+
+internal fun BlockDirection.toTextDirection(): TextDirection = when (this) {
+    BlockDirection.LTR -> TextDirection.Ltr
+    BlockDirection.RTL -> TextDirection.Rtl
 }
 
 private fun spanStyleFor(format: CharFormat, palette: FormatPalette): SpanStyle {

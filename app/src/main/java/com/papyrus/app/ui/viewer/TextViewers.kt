@@ -67,6 +67,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.papyrus.app.R
 import com.papyrus.app.data.LocationKind
+import com.papyrus.app.viewer.BlockDirection
 import com.papyrus.app.viewer.CodeLanguage
 import com.papyrus.app.viewer.LexStates
 import com.papyrus.app.viewer.MARKDOWN_BASE_TEXT_SP
@@ -75,6 +76,7 @@ import com.papyrus.app.viewer.OfficeBlock
 import com.papyrus.app.viewer.OfficeCell
 import com.papyrus.app.viewer.SyntaxHighlighter
 import com.papyrus.app.viewer.TEXT_LINES_PER_CHUNK
+import com.papyrus.app.viewer.direction
 import io.noties.markwon.Markwon
 import io.noties.markwon.ext.tables.TableRowSpan
 import kotlinx.coroutines.flow.first
@@ -809,6 +811,8 @@ fun OfficeViewer(
     highlightAlpha: Float = 1f,
     /** Only the current match is painted: an arrival lights the one place it landed on. */
     onlyActive: Boolean = false,
+    /** What a block that says nothing of its own is set in: a right-to-left book, say. */
+    direction: BlockDirection = BlockDirection.LTR,
 ) {
     val units = remember(blocks) { officeUnits(blocks) }
     // One sideways scroll per table, shared by every band of it, so dragging any band moves the
@@ -932,6 +936,7 @@ fun OfficeViewer(
                                 highlight = highlight,
                                 reveal = reveal.takeIf { isActive },
                                 speaking = spokenText,
+                                direction = block.direction ?: direction,
                             )
                         }
                     }
