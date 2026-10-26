@@ -15,6 +15,7 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.em
 import com.papyrus.app.viewer.BlockAlign
+import com.papyrus.app.viewer.BookLink
 import com.papyrus.app.viewer.CharFormat
 import com.papyrus.app.viewer.ScriptShift
 import com.papyrus.app.viewer.TextSpan
@@ -66,14 +67,14 @@ private fun spanStyleFor(format: CharFormat, palette: FormatPalette): SpanStyle 
     val requested = format.color?.let(::rgbColor)
         ?.takeIf { abs(it.luminance() - surface.luminance()) >= MIN_CONTRAST_GAP }
     val color = when {
-        format.link != null -> palette.link
+        format.link != null || format.bookLink != null -> palette.link
         requested != null -> requested
         // A highlighter mark is painted under text whose own colour is the theme's, often pale.
         background != null -> readableOn(background)
         else -> Color.Unspecified
     }
     val decorations = ArrayList<TextDecoration>(2)
-    if (format.underline || format.link != null) decorations += TextDecoration.Underline
+    if (format.underline || format.link != null || format.bookLink != null) decorations += TextDecoration.Underline
     if (format.strike) decorations += TextDecoration.LineThrough
     return SpanStyle(
         color = color,
@@ -97,7 +98,8 @@ private fun spanStyleFor(format: CharFormat, palette: FormatPalette): SpanStyle 
 
 /**
  * [text] with the document's [spans], find highlights added last so a match wins over formatting.
- * [onLink] handles a tapped link itself, so an unopenable scheme is reported instead of throwing.
+ * [onLink] handles a tapped link itself, so an unopenable scheme is reported instead of throwing, and
+ * [onBookLink] a tapped link to a place in the same book, which is never handed to the framework.
  */
 internal fun formattedText(
     text: String,
@@ -107,6 +109,7 @@ internal fun formattedText(
     onLink: (String) -> Unit = {},
     /** The colour a fading match returns to; unspecified leaves the text to inherit. */
     baseTextColor: Color = Color.Unspecified,
+    onBookLink: (BookLink) -> Unit = {},
 ): AnnotatedString {
     val ranges = if (highlight == null) emptyList() else findMatchRanges(text, spans, highlight.query)
     if (spans.isEmpty() && ranges.isEmpty()) return AnnotatedString(text)
@@ -122,6 +125,12 @@ internal fun formattedText(
             val target = span.format.link
             if (target != null) {
                 addLink(LinkAnnotation.Url(url = target, linkInteractionListener = { onLink(target) }), start, end)
+            }
+            // A Clickable, not a Url: there is no address to give the framework, only a place to scroll to.
+            val place = span.format.bookLink
+            if (place != null) {
+                val tag = "book:" + place.path + "#" + place.fragment.orEmpty()
+                addLink(LinkAnnotation.Clickable(tag = tag, linkInteractionListener = { onBookLink(place) }), start, end)
             }
         }
         ranges.forEachIndexed { index, range ->

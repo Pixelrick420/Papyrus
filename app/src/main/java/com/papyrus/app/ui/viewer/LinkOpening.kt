@@ -9,6 +9,7 @@ import android.text.method.LinkMovementMethod
 import android.view.MotionEvent
 import android.widget.TextView
 import androidx.compose.runtime.staticCompositionLocalOf
+import com.papyrus.app.viewer.BookLink
 import com.papyrus.app.viewer.resolvedLink
 import io.noties.markwon.core.spans.LinkSpan
 
@@ -17,6 +18,12 @@ import io.noties.markwon.core.spans.LinkSpan
  * reports an unhandled link the same way; the default does nothing.
  */
 internal val LocalLinkOpener = staticCompositionLocalOf<(String) -> Unit> { { _ -> } }
+
+/**
+ * The same for a link to a place inside the open book, which the viewer scrolls to itself and never hands
+ * to the system; the default does nothing, so a surface outside a viewer keeps working.
+ */
+internal val LocalBookLinkOpener = staticCompositionLocalOf<(BookLink) -> Unit> { { _ -> } }
 
 /**
  * Opens [url] in whichever app handles it, `false` when none did. Filtered through [resolvedLink] first

@@ -34,6 +34,8 @@ data class EpubLimits(
     val maxTableRows: Int = OfficeTextExtractor.MAX_TABLE_ROWS,
     /** Element nesting in one chapter; the parser keeps its own stacks, so this is about memory, not the call stack. */
     val maxDepth: Int = 200,
+    /** Places in the text a link can name (elements with an `id`), across the whole book. */
+    val maxAnchors: Int = 100_000,
 )
 
 /** What one pass over the archive kept, and how many wanted parts it had to leave out. */

@@ -28,6 +28,12 @@ internal class OfficeMedia(
     class Result(val at: List<Int>, val dropped: Int) {
         /** [index] moved down by the images that went in before it, in the list as it is now. */
         fun shifted(index: Int): Int = index + at.count { it < index }
+
+        /**
+         * Where the block that was at [index] is now: a picture recorded at the same position came before it,
+         * so it moves down past those too. [shifted] is for a place that starts with such a picture.
+         */
+        fun shiftedPast(index: Int): Int = index + at.count { it <= index }
     }
 
     /**

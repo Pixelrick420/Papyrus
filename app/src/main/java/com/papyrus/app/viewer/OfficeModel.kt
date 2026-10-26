@@ -25,6 +25,8 @@ data class CharFormat(
     val background: Int? = null,
     /** Only ever http(s), mailto or tel: see [safeLink]. */
     val link: String? = null,
+    /** A place inside the same book (an EPUB's chapter link); never set together with [link]. */
+    val bookLink: BookLink? = null,
 ) {
     val isPlain: Boolean get() = this == PLAIN
 
@@ -310,6 +312,12 @@ internal fun safeLink(url: String?): String? {
     val lower = trimmed.lowercase()
     return if (SAFE_SCHEMES.any { lower.startsWith(it) }) trimmed else null
 }
+
+/**
+ * A destination inside the book: the archive [path] of a chapter and, when the link named one, the
+ * [fragment] (an element's `id`). It never leaves the app, so it needs no scheme check of its own.
+ */
+data class BookLink(val path: String, val fragment: String? = null)
 
 /**
  * Left-indent in twips (1/1440 inch) to a quarter-inch step, so a block quote and a deeper one differ.
