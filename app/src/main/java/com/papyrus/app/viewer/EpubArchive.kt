@@ -36,6 +36,10 @@ data class EpubLimits(
     val maxDepth: Int = 200,
     /** Places in the text a link can name (elements with an `id`), across the whole book. */
     val maxAnchors: Int = 100_000,
+    /** Elements of one SVG, drawn or not. */
+    val maxSvgElements: Int = 20_000,
+    /** Path operations of one SVG, over all its shapes. */
+    val maxSvgOps: Int = 50_000,
 )
 
 /** What one pass over the archive kept, and how many wanted parts it had to leave out. */

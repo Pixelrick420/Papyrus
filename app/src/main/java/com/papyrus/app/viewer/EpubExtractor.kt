@@ -35,6 +35,8 @@ class EpubExtractor(
     private val newParserFactory: () -> XmlPullParser = { Xml.newPullParser() },
     private val limits: EpubLimits = EpubLimits(),
     private val blockBudget: Int = OfficeTextExtractor.MAX_BLOCKS,
+    /** Draws an SVG's scene as a PNG; a test can hand in one of its own. */
+    private val rasteriser: SvgRasteriser = EpubSvgRaster,
 ) {
 
     /**
@@ -55,7 +57,7 @@ class EpubExtractor(
         var names = EpubNames(first.parts)
         checkNotProtected(names, factory)
         val pkg = readPackage(names, factory)
-        val chapters = pkg.readingOrder().filter { (it.isDocument || it.isRasterImage) && it.path != null }
+        val chapters = pkg.readingOrder().filter { (it.isDocument || it.isImage) && it.path != null }
 
         val toRead = if (previewChapters == null) chapters else chapters.take(previewChapters)
         if (previewChapters != null) {
@@ -78,7 +80,7 @@ class EpubExtractor(
                 break
             }
             val path = item.path ?: continue
-            if (item.isRasterImage) {
+            if (item.isImage) {
                 // A spine item that is a picture alone (a cover page): it is the chapter.
                 starts.putIfAbsent(path, blocks.size)
                 pending += PendingImage(path, blocks.size, null, null)
@@ -112,7 +114,15 @@ class EpubExtractor(
         }
 
         val media = if (previewChapters == null) {
-            OfficeMedia(mediaDir, mimeByName).insertImages(openStream, pending, blocks, blockBudget)
+            val svgPaths = pkg.manifest.values.filter { it.mediaType == SVG_MEDIA_TYPE }.mapNotNullTo(HashSet()) { it.path }
+            OfficeMedia(mediaDir, mimeByName).insertImages(
+                openStream,
+                pending,
+                blocks,
+                blockBudget,
+                transform = { zipName, bytes -> prepareImage(zipName, bytes, zipName in svgPaths, factory) },
+                rasterise = rasteriser,
+            )
         } else {
             OfficeMedia.Result(emptyList(), 0)
         }
@@ -124,6 +134,23 @@ class EpubExtractor(
         val anchors = anchorsOf(sink, starts, spelledAs, media, blocks.size)
         val outline = outlineOf(pkg, names, factory, starts, anchors, media, blocks.size)
         return EpubBook(blocks, outline, incomplete, anchors, bookDirection(pkg))
+    }
+
+    /**
+     * An archive entry as it is stored: a picture as it is, an SVG drawn once into a PNG (null when it cannot be
+     * read or drawn, which drops that picture and nothing else).
+     */
+    private fun prepareImage(zipName: String, bytes: ByteArray, listedAsSvg: Boolean, factory: ParserFactory): PreparedImage? {
+        if (!listedAsSvg && !zipName.lowercase().endsWith(".svg")) return PreparedImage(bytes, mimeByName(zipName))
+        val scene = try {
+            parseSvg(bytes, factory, limits)
+        } catch (_: XmlPullParserException) {
+            null
+        } catch (_: IOException) {
+            null
+        } ?: return null
+        val png = rasteriser.rasterise(scene) ?: return null
+        return PreparedImage(png, "image/png", tintable = scene.tintable)
     }
 
     /**
@@ -270,6 +297,7 @@ class EpubExtractor(
         private const val CONTAINER = "META-INF/container.xml"
         private const val ENCRYPTION = "META-INF/encryption.xml"
         private const val RIGHTS = "META-INF/rights.xml"
+        private const val SVG_MEDIA_TYPE = "image/svg+xml"
 
         private val TEXT_SUFFIXES = listOf(".xhtml", ".html", ".htm", ".xml", ".opf", ".ncx", ".css")
 

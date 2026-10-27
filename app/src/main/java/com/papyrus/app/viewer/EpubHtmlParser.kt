@@ -126,6 +126,7 @@ internal class EpubHtmlParser(
     private val frames = ArrayList<Frame>()
     private var ignoreDepth = 0
     private var ignoringSvg = false
+    private var svg: SvgSceneBuilder? = null
     private var lastSpace = true
     private var headingLevel = 0
     private var quoteDepth = 0
@@ -153,7 +154,7 @@ internal class EpubHtmlParser(
             }
             when (event) {
                 XmlPullParser.START_TAG -> start(parser, dir)
-                XmlPullParser.END_TAG -> end()
+                XmlPullParser.END_TAG -> end(parser.name)
                 XmlPullParser.TEXT -> text(parser.text)
             }
             event = parser.next()
@@ -168,11 +169,18 @@ internal class EpubHtmlParser(
         if (ignoreDepth > 0) {
             ignoreDepth++
             if (ignoringSvg && tag == "image") image(attribute(p, "href"), null, null, dir)
+            svg?.start(p.name) { name -> p.getAttributeValue(null, name) }
             return
         }
         if (tag in IGNORED || isHidden(p)) {
             ignoreDepth = 1
             ignoringSvg = tag == "svg"
+            if (ignoringSvg && !isHidden(p)) {
+                val limits = sink.limits
+                svg = SvgSceneBuilder(limits.maxSvgElements, limits.maxSvgOps, limits.maxDepth).also {
+                    it.start(p.name) { name -> p.getAttributeValue(null, name) }
+                }
+            }
             return
         }
         if (frames.size >= sink.limits.maxDepth) throw EpubChapterException("nested too deeply")
@@ -287,10 +295,11 @@ internal class EpubHtmlParser(
         }
     }
 
-    private fun end() {
+    private fun end(name: String) {
         if (ignoreDepth > 0) {
             ignoreDepth--
-            if (ignoreDepth == 0) ignoringSvg = false
+            svg?.end(name)
+            if (ignoreDepth == 0) endSvg()
             return
         }
         if (frames.isEmpty()) return
@@ -308,6 +317,17 @@ internal class EpubHtmlParser(
         // Last: the block this element closed is emitted above, still in this element's direction.
         if (frame.setsDirection) direction = frame.previousDirection
         frame.cssRestore?.let { css = it }
+    }
+
+    /** A drawing that came to something is a picture where it stood, placed by the media pass like an `<img>`. */
+    private fun endSvg() {
+        val scene = svg?.scene()
+        svg = null
+        ignoringSvg = false
+        // A cell holds text only, and a full book has no room: the drawing is simply not shown.
+        if (scene == null || cell != null || sink.full) return
+        flushBlock()
+        sink.pending += PendingImage("inline-${sink.blocks.size}.svg", sink.blocks.size, null, null, scene = scene)
     }
 
     private fun endOther(tag: String) {

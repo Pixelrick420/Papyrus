@@ -114,6 +114,10 @@ sealed interface OfficeBlock {
         val mimeType: String,
         val widthDp: Float? = null,
         val altText: String? = null,
+        /** Line art with no colours of its own (a drawn SVG): the viewer paints it in the text colour. */
+        val tintable: Boolean = false,
+        /** Width over height of a page-sized picture, which then keeps its shape; null for any other image. */
+        val aspectRatio: Float? = null,
     ) : OfficeBlock
 
     /** A rule: separates the notes from the body. */

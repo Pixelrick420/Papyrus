@@ -45,6 +45,10 @@ internal class PendingImage(
     val index: Int,
     val widthDp: Float?,
     var altText: String?,
+    /** A drawing found inline in the markup rather than a file of the archive; drawn by the media pass. */
+    val scene: SvgScene? = null,
+    /** Width over height of the page this picture is, for a fixed-layout book. */
+    var pageAspect: Float? = null,
 )
 
 internal class CellContent(
