@@ -29,6 +29,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.Layout
@@ -433,6 +434,8 @@ private fun OfficeImageView(block: OfficeBlock.Image, modifier: Modifier = Modif
                     bitmap = remember(current.bitmap) { current.bitmap.asImageBitmap() },
                     contentDescription = block.altText,
                     contentScale = ContentScale.FillWidth,
+                    // Line art that names no colour is drawn black: in the dark theme it takes the text colour.
+                    colorFilter = if (block.tintable) ColorFilter.tint(MaterialTheme.colorScheme.onSurface) else null,
                     modifier = if (declared != null) Modifier.widthIn(max = declared.dp).fillMaxWidth() else Modifier.fillMaxWidth(),
                 )
             }

@@ -9,7 +9,10 @@ internal class ManifestItem(val id: String, val path: String?, val mediaType: St
         get() = mediaType == "application/xhtml+xml" || mediaType == "text/html" ||
             (mediaType.isEmpty() && path?.substringAfterLast('.', "")?.lowercase() in DOCUMENT_EXTENSIONS)
 
-    /** A raster picture BitmapFactory can read; SVG is not one. */
+    /** Any picture: a spine item that is one alone (a cover page) is a chapter of its own. */
+    val isImage: Boolean get() = mediaType.startsWith("image/")
+
+    /** A raster picture BitmapFactory can read; SVG is not one, and is drawn by [EpubSvgRaster] instead. */
     val isRasterImage: Boolean get() = mediaType.startsWith("image/") && mediaType != "image/svg+xml"
 
     private companion object {

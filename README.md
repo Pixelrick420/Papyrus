@@ -363,7 +363,9 @@ after the last keystroke before it queries, and a search that fails is reported 
   6/95 files are rejected.
 - Fixed-layout EPUB books reflow as plain text. A book's styles are read for bold, italic and text alignment only,
   through simple selectors (a type, an id and classes) and with every `.css` part merged into one sheet; colours,
-  fonts and sizes stay the app's. Links between chapters and
+  fonts and sizes stay the app's. SVG pictures are drawn once into a PNG from straight shapes only (rectangles,
+  lines, polygons, circles and `M L H V Z` paths): curves, text, gradients, clipping and any transform but a translate
+  are left out, and an SVG cover is not used as the book's thumbnail. Links between chapters and
   from the table of contents open the place they name; a link to a missing place says so. Right-to-left books (a `dir`
   attribute, or the spine's page progression) set paragraphs, lists and notes from the right, but a table keeps its
   left-to-right column order.

@@ -94,6 +94,21 @@ internal object EpubFixtures {
             }
         }</encryption>"""
 
+    /** A whole `.svg` document; [attrs] go on the root, [inner] is what it draws. */
+    fun svg(inner: String, attrs: String = "viewBox=\"0 0 100 50\"") =
+        "<?xml version=\"1.0\"?><svg xmlns=\"http://www.w3.org/2000/svg\" $attrs>$inner</svg>"
+
+    /** Stands in for the Android rasteriser: records the scenes it is asked for and answers with [result] or throws. */
+    class FakeRasteriser(private val result: ByteArray? = OfficeFixtures.PNG_1X1, private val fails: Boolean = false) : SvgRasteriser {
+        val scenes = ArrayList<SvgScene>()
+
+        override fun rasterise(scene: SvgScene): ByteArray? {
+            scenes += scene
+            if (fails) throw IllegalStateException("cannot draw")
+            return result
+        }
+    }
+
     const val IDPF_FONT = "http://www.idpf.org/2008/embedding"
     const val ADOBE_FONT = "http://ns.adobe.com/pdf/enc#RC"
     const val AES = "http://www.w3.org/2001/04/xmlenc#aes128-cbc"

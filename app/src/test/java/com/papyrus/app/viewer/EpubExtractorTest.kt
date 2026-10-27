@@ -18,11 +18,11 @@ class EpubExtractorTest {
     @get:Rule
     val temp = TemporaryFolder()
 
-    private fun extractor(mediaDir: File? = null, limits: EpubLimits = EpubLimits()) =
-        EpubExtractor(mediaDir = mediaDir, newParserFactory = OfficeFixtures::parser, limits = limits)
+    private fun extractor(mediaDir: File? = null, limits: EpubLimits = EpubLimits(), rasteriser: SvgRasteriser = EpubFixtures.FakeRasteriser()) =
+        EpubExtractor(mediaDir = mediaDir, newParserFactory = OfficeFixtures::parser, limits = limits, rasteriser = rasteriser)
 
-    private fun read(bytes: ByteArray, mediaDir: File? = null, limits: EpubLimits = EpubLimits()) =
-        extractor(mediaDir, limits).extract(OfficeFixtures.streamFactory(bytes))
+    private fun read(bytes: ByteArray, mediaDir: File? = null, limits: EpubLimits = EpubLimits(), rasteriser: SvgRasteriser = EpubFixtures.FakeRasteriser()) =
+        extractor(mediaDir, limits, rasteriser).extract(OfficeFixtures.streamFactory(bytes))
 
     private fun texts(book: EpubBook) = book.blocks.map {
         when (it) {
@@ -929,5 +929,139 @@ class EpubExtractorTest {
         val sink = EpubSink(ArrayList(), ArrayList(), EpubLimits())
         EpubHtmlParser({ stream -> OfficeFixtures.parser().apply { setInput(stream, null) } }, sink).parse(xhtml, "c.xhtml")
         assertEquals(listOf<OfficeBlock>(OfficeBlock.Paragraph("x")), sink.blocks)
+    }
+
+    private val art = EpubFixtures.svg("""<rect width="10" height="10"/>""").toByteArray()
+
+    private fun images(book: EpubBook) = book.blocks.filterIsInstance<OfficeBlock.Image>()
+
+    @Test
+    fun `an inline svg becomes one tintable png image where it stood`() {
+        val dir = temp.newFolder("media")
+        val fake = EpubFixtures.FakeRasteriser()
+        val body = """<p>before</p><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10"/></svg><p>after</p>"""
+        val book = read(EpubFixtures.epub(listOf(chapter(body))), dir, rasteriser = fake)
+        assertEquals(3, book.blocks.size)
+        val image = book.blocks[1] as OfficeBlock.Image
+        assertEquals("image/png", image.mimeType)
+        assertTrue(image.tintable)
+        assertTrue(image.file.exists())
+        assertTrue(image.file.canonicalPath.startsWith(dir.canonicalPath))
+        assertEquals(1, fake.scenes.size)
+        assertFalse(book.incomplete)
+    }
+
+    @Test
+    fun `an inline svg that draws nothing or only wraps a picture adds no drawing`() {
+        val dir = temp.newFolder("media")
+        val fake = EpubFixtures.FakeRasteriser()
+        val body = """<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"><text>words</text></svg><svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"><image xlink:href="a.png"/></svg>"""
+        val book = read(EpubFixtures.epub(listOf(chapter(body)), media = mapOf("a.png" to OfficeFixtures.PNG_1X1)), dir, rasteriser = fake)
+        assertEquals(1, images(book).size)
+        assertEquals("image/png", images(book).single().mimeType)
+        assertFalse(images(book).single().tintable)
+        assertTrue(fake.scenes.isEmpty())
+    }
+
+    @Test
+    fun `two inline drawings back to back are both kept`() {
+        val dir = temp.newFolder("media")
+        val one = """<svg xmlns="http://www.w3.org/2000/svg"><rect width="3" height="3"/></svg>"""
+        val book = read(EpubFixtures.epub(listOf(chapter(one + one))), dir)
+        assertEquals(2, images(book).size)
+        assertTrue(images(book).map { it.file }.distinct().size == 2)
+    }
+
+    @Test
+    fun `an img pointing at an svg is drawn the same way`() {
+        val dir = temp.newFolder("media")
+        val fake = EpubFixtures.FakeRasteriser()
+        val bytes = EpubFixtures.epub(listOf(chapter("""<p>t</p><img src="art.svg"/>""")), media = mapOf("art.svg" to art))
+        val book = read(bytes, dir, rasteriser = fake)
+        val image = images(book).single()
+        assertEquals("image/png", image.mimeType)
+        assertTrue(image.tintable)
+        assertEquals(1, fake.scenes.size)
+        assertFalse(book.incomplete)
+    }
+
+    @Test
+    fun `an svg that names colours is not tintable`() {
+        val dir = temp.newFolder("media")
+        val coloured = EpubFixtures.svg("""<rect width="10" height="10" fill="#f00"/>""").toByteArray()
+        val book = read(EpubFixtures.epub(listOf(chapter("""<img src="art.svg"/>""")), media = mapOf("art.svg" to coloured)), dir)
+        assertFalse(images(book).single().tintable)
+    }
+
+    @Test
+    fun `an svg spine item is a picture chapter instead of nothing`() {
+        val dir = temp.newFolder("media")
+        val opf = """<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="id">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>T</dc:title></metadata>
+  <manifest><item id="cover" href="cover.svg" media-type="image/svg+xml"/><item id="ch0" href="c.xhtml" media-type="application/xhtml+xml"/></manifest>
+  <spine><itemref idref="cover"/><itemref idref="ch0"/></spine>
+</package>"""
+        val bytes = EpubFixtures.epub(listOf(chapter("<p>text</p>")), media = mapOf("cover.svg" to art), opfOverride = opf)
+        val book = read(bytes, dir)
+        assertEquals(2, book.blocks.size)
+        assertTrue(book.blocks[0] is OfficeBlock.Image)
+        assertEquals(OfficeBlock.Paragraph("text"), book.blocks[1])
+        assertEquals(0, book.anchors[BookLink("OEBPS/cover.svg")])
+    }
+
+    @Test
+    fun `a rasteriser that fails or answers nothing costs only that picture`() {
+        for (fake in listOf(EpubFixtures.FakeRasteriser(fails = true), EpubFixtures.FakeRasteriser(result = null))) {
+            val dir = temp.newFolder()
+            val body = """<p>keep</p><svg xmlns="http://www.w3.org/2000/svg"><rect width="3" height="3"/></svg><img src="art.svg"/><img src="a.png"/><p>also</p>"""
+            val bytes = EpubFixtures.epub(listOf(chapter(body)), media = mapOf("art.svg" to art, "a.png" to OfficeFixtures.PNG_1X1))
+            val book = read(bytes, dir, rasteriser = fake)
+            assertEquals(listOf("keep", "also"), book.blocks.filterIsInstance<OfficeBlock.Paragraph>().map { it.text })
+            assertEquals(1, images(book).size)
+            assertTrue(book.incomplete)
+        }
+    }
+
+    @Test
+    fun `an svg file that is not well formed is dropped and reported`() {
+        val dir = temp.newFolder("media")
+        val bytes = EpubFixtures.epub(listOf(chapter("""<p>t</p><img src="bad.svg"/>""")), media = mapOf("bad.svg" to "<svg><g></svg>".toByteArray()))
+        val book = read(bytes, dir)
+        assertEquals(listOf("t"), texts(book))
+        assertTrue(book.incomplete)
+    }
+
+    @Test
+    fun `a drawing larger than the image limit is dropped and leaves no file`() {
+        val big = ByteArray(OfficeTextExtractor.MAX_IMAGE_BYTES + 1)
+        for (body in listOf("""<img src="art.svg"/>""", """<svg xmlns="http://www.w3.org/2000/svg"><rect width="3" height="3"/></svg>""")) {
+            val dir = temp.newFolder()
+            val bytes = EpubFixtures.epub(listOf(chapter(body)), media = mapOf("art.svg" to art))
+            val book = read(bytes, dir, rasteriser = EpubFixtures.FakeRasteriser(result = big))
+            assertTrue(images(book).isEmpty())
+            assertTrue(book.incomplete)
+            assertEquals(0, dir.listFiles()!!.size)
+        }
+    }
+
+    @Test
+    fun `a preview draws nothing and reads no images`() {
+        val fake = EpubFixtures.FakeRasteriser()
+        val body = """<p>first</p><svg xmlns="http://www.w3.org/2000/svg"><rect width="3" height="3"/></svg><img src="a.png"/>"""
+        val bytes = EpubFixtures.epub(listOf(chapter(body)), media = mapOf("a.png" to OfficeFixtures.PNG_1X1))
+        val book = extractor(temp.newFolder("media"), rasteriser = fake).extract(OfficeFixtures.streamFactory(bytes), previewChapters = 1)
+        assertEquals(listOf("first"), texts(book))
+        assertTrue(images(book).isEmpty())
+        assertTrue(fake.scenes.isEmpty())
+    }
+
+    @Test
+    fun `a drawing is charged to the same image budget as a picture`() {
+        val dir = temp.newFolder("media")
+        val one = """<svg xmlns="http://www.w3.org/2000/svg"><rect width="3" height="3"/></svg>"""
+        val book = read(EpubFixtures.epub(listOf(chapter(one.repeat(OfficeTextExtractor.MAX_IMAGES + 5)))), dir)
+        assertEquals(OfficeTextExtractor.MAX_IMAGES, images(book).size)
+        assertTrue(book.incomplete)
     }
 }
