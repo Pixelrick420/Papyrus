@@ -84,19 +84,23 @@ private val LIST_TYPES = mapOf("a" to "lowerLetter", "A" to "upperLetter", "i" t
  * One XHTML chapter as [OfficeBlock]s, appended to a sink. The platform pull parser reads the markup as XML
  * (so it must be well formed; HTML's named entities are taught to it first, see [EpubEntities]) and this
  * class keeps every stack it needs by hand, so a hostile nesting costs memory it bounds and never the call
- * stack. Reading is for text: the document's own stylesheet is never read, nothing is fetched, and scripts,
- * players, frames and hidden elements are skipped as whole subtrees. A link to another place in the book
- * becomes a [BookLink], and every element with an `id` is noted in [EpubSink.anchors]. One instance reads one chapter.
+ * stack. Reading is for text: nothing is fetched, and scripts, players, frames and hidden elements are skipped
+ * as whole subtrees. Of the styles only bold, italic and alignment are read, from the [sheet] and an element's
+ * `style`; colours and fonts stay the app's. A link to another place in the book becomes a [BookLink], and every
+ * element with an `id` is noted in [EpubSink.anchors]. One instance reads one chapter.
  */
 internal class EpubHtmlParser(
     private val factory: ParserFactory,
     private val sink: EpubSink,
+    /** The chapter's styles; null reads the markup alone, as before. */
+    private val sheet: CssSheet? = null,
 ) {
     private class Frame(val tag: String) {
         var restore: CharFormat? = null
         var previousHeading = 0
         var setsDirection = false
         var previousDirection: BlockDirection? = null
+        var cssRestore: CssDecl? = null
     }
 
     private class ListFrame(val ordered: Boolean, var next: Int, val numberFormat: String)
@@ -133,6 +137,7 @@ internal class EpubHtmlParser(
     private var cell: CellState? = null
     private var chapter = ""
     private var direction: BlockDirection? = null
+    private var css = CssDecl.EMPTY
 
     /** Reads [bytes], a chapter at [chapterPath], whose relative references resolve against its own directory. */
     fun parse(bytes: ByteArray, chapterPath: String) {
@@ -191,6 +196,31 @@ internal class EpubHtmlParser(
         }
         // After the branch, which may have ended the block before this element: that one is not in it.
         applyDirection(p, frame)
+        pushCss(p, tag, frame)
+    }
+
+    /**
+     * Lays this element's styles over what it inherits (bold, italic and alignment all pass down). An element
+     * that is bold or italic in its own markup (`b`, `th`) keeps that against a style it only inherited; one
+     * the style names itself says what it says.
+     */
+    private fun pushCss(p: XmlPullParser, tag: String, frame: Frame) {
+        val rules = sheet ?: return
+        val classes = p.getAttributeValue(null, "class")?.split(' ', '\t', '\n', '\r')?.filter { it.isNotEmpty() }?.toSet().orEmpty()
+        val own = rules.declFor(tag, p.getAttributeValue(null, "id"), classes)
+        val inline = p.getAttributeValue(null, "style")?.let(::parseDeclarations)
+        val decl = (inline ?: CssDecl.EMPTY).mergeOver(own ?: CssDecl.EMPTY)
+        val before = frame.restore
+        val markupBold = before != null && format.bold && !before.bold && decl.bold == null
+        val markupItalic = before != null && format.italic && !before.italic && decl.italic == null
+        if (decl.isEmpty && !markupBold && !markupItalic) return
+        frame.cssRestore = css
+        val merged = decl.mergeOver(css)
+        css = CssDecl(
+            bold = if (markupBold) null else merged.bold,
+            italic = if (markupItalic) null else merged.italic,
+            align = merged.align,
+        )
     }
 
     /**
@@ -277,6 +307,7 @@ internal class EpubHtmlParser(
         }
         // Last: the block this element closed is emitted above, still in this element's direction.
         if (frame.setsDirection) direction = frame.previousDirection
+        frame.cssRestore?.let { css = it }
     }
 
     private fun endOther(tag: String) {
@@ -309,7 +340,7 @@ internal class EpubHtmlParser(
         val target = currentCell?.builder ?: builder
         if (preDepth > 0) {
             val kept = raw.replace("\r\n", "\n").replace('\r', '\n')
-            target.append(kept, format)
+            target.append(kept, format.withCss(css))
             lastSpace = false
             currentCell?.atLineStart = kept.endsWith('\n')
             return
@@ -327,13 +358,13 @@ internal class EpubHtmlParser(
             }
         }
         if (run.isEmpty()) return
-        target.append(run.toString(), format)
+        target.append(run.toString(), format.withCss(css))
         if (!(run.length == 1 && run[0] == ' ')) currentCell?.atLineStart = false
     }
 
     private fun lineBreak() {
         val currentCell = cell
-        (currentCell?.builder ?: builder).append("\n", format)
+        (currentCell?.builder ?: builder).append("\n", format.withCss(css))
         currentCell?.atLineStart = true
         lastSpace = true
     }
@@ -386,16 +417,19 @@ internal class EpubHtmlParser(
         lastSpace = true
         if (snapshot.text.isBlank()) return
         val item = items.lastOrNull()
+        // The style in force as the block ends is the one of the element that holds its words.
+        val align = css.align ?: BlockAlign.START
         val block = when {
-            headingLevel > 0 -> OfficeBlock.Heading(snapshot.text, headingLevel, snapshot.spans, direction = direction)
+            headingLevel > 0 -> OfficeBlock.Heading(snapshot.text, headingLevel, snapshot.spans, align, direction)
             item != null -> {
                 val marker = item.marker.orEmpty()
                 item.marker = null
-                OfficeBlock.ListItem(snapshot.text, marker, item.level, snapshot.spans, direction = direction)
+                OfficeBlock.ListItem(snapshot.text, marker, item.level, snapshot.spans, align, direction)
             }
             else -> OfficeBlock.Paragraph(
                 snapshot.text,
                 snapshot.spans,
+                align,
                 indent = quoteDepth.coerceAtMost(MAX_QUOTE_INDENT),
                 direction = direction,
             )

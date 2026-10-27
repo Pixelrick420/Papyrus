@@ -67,6 +67,7 @@ class EpubExtractor(
         val blocks = ArrayList<OfficeBlock>()
         val pending = ArrayList<PendingImage>()
         val sink = EpubSink(blocks, pending, limits)
+        val bookRules = bookStyles(names)
         // Where each chapter's first block is, before any image goes in; the table of contents jumps there.
         val starts = HashMap<String, Int>()
         // The archive's own spelling of each chapter's path, which the parser records its anchors under.
@@ -93,7 +94,7 @@ class EpubExtractor(
             val pendingMark = pending.size
             val anchorMark = sink.anchorMark()
             try {
-                EpubHtmlParser(factory, sink).parse(bytes, key)
+                EpubHtmlParser(factory, sink, sheetFor(bookRules, bytes)).parse(bytes, key)
                 starts[path] = blockMark
                 spelledAs[key] = path
             } catch (_: XmlPullParserException) {
@@ -123,6 +124,17 @@ class EpubExtractor(
         val anchors = anchorsOf(sink, starts, spelledAs, media, blocks.size)
         val outline = outlineOf(pkg, names, factory, starts, anchors, media, blocks.size)
         return EpubBook(blocks, outline, incomplete, anchors, bookDirection(pkg))
+    }
+
+    /**
+     * The rules of every `.css` in the archive, whether or not the package lists it, read in name order so the
+     * cascade does not depend on how the ZIP was packed. A part is not scoped to the chapters that link it.
+     */
+    private fun bookStyles(names: EpubNames): List<CssRule> {
+        val sheets = names.names.filter { it.lowercase().endsWith(".css") }.sorted()
+        if (sheets.isEmpty()) return emptyList()
+        val text = sheets.joinToString("\n") { name -> names.bytes(name)?.let { String(it, Charsets.UTF_8) }.orEmpty() }
+        return parseCss(text)
     }
 
     /** The order pages turn is a hint about the book, not a reason to reorder what scrolls: only the layout follows it. */
@@ -259,9 +271,9 @@ class EpubExtractor(
         private const val ENCRYPTION = "META-INF/encryption.xml"
         private const val RIGHTS = "META-INF/rights.xml"
 
-        private val TEXT_SUFFIXES = listOf(".xhtml", ".html", ".htm", ".xml", ".opf", ".ncx")
+        private val TEXT_SUFFIXES = listOf(".xhtml", ".html", ".htm", ".xml", ".opf", ".ncx", ".css")
 
-        /** The parts read into memory for a whole book: markup of every kind, never pictures or fonts. */
+        /** The parts read into memory for a whole book: markup and styles of every kind, never pictures or fonts. */
         internal fun isTextPart(name: String): Boolean {
             val lower = name.lowercase()
             return TEXT_SUFFIXES.any { lower.endsWith(it) }

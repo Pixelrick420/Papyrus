@@ -828,4 +828,106 @@ class EpubExtractorTest {
         )
         assertEquals(emptyList<OutlineEntry>(), explicitOutline(emptyList()))
     }
+
+    // CSS travels in the chapter's head through xhtml(head = ...), and as a .css part through `extra`.
+    private fun styled(body: String, css: String = "", head: String = "", href: String = "c.xhtml") =
+        EpubFixtures.Chapter(href, EpubFixtures.xhtml(body, head = "<title>t</title>" + if (css.isEmpty()) "" else "<style>$css</style>" + head))
+
+    private fun paragraph(book: EpubBook, index: Int = 0) = book.blocks[index] as OfficeBlock.Paragraph
+
+    private fun isBold(block: OfficeBlock.Paragraph) = block.spans.any { it.format.bold && it.end - it.start == block.text.length }
+
+    @Test
+    fun `a style after the paragraph it styles still applies`() {
+        val xhtml = EpubFixtures.xhtml("<p class=\"b\">late</p><style>.b { font-weight: bold }</style>")
+        val book = read(EpubFixtures.epub(listOf(EpubFixtures.Chapter("c.xhtml", xhtml))))
+        assertTrue(isBold(paragraph(book)))
+    }
+
+    @Test
+    fun `a css part styles a chapter whether or not the package lists it`() {
+        val css = "p.b { font-weight: bold; text-align: center }"
+        val book = read(EpubFixtures.epub(listOf(chapter("<p class=\"b\">x</p><p>y</p>")), extra = mapOf("OEBPS/styles/book.css" to css.toByteArray())))
+        assertTrue(isBold(paragraph(book, 0)))
+        assertEquals(BlockAlign.CENTER, paragraph(book, 0).align)
+        assertEquals(OfficeBlock.Paragraph("y"), book.blocks[1])
+        assertFalse(book.incomplete)
+    }
+
+    @Test
+    fun `css parts apply in name order whatever the archive order`() {
+        val extra = linkedMapOf("OEBPS/b.css" to "p { font-weight: bold }".toByteArray(), "OEBPS/a.css" to "p { font-weight: normal }".toByteArray())
+        assertTrue(isBold(paragraph(read(EpubFixtures.epub(listOf(chapter("<p>x</p>")), extra = extra)))))
+    }
+
+    @Test
+    fun `a chapter's own style beats the book's sheet on a tie`() {
+        val book = read(
+            EpubFixtures.epub(
+                listOf(styled("<p>x</p>", css = "p { font-weight: bold }")),
+                extra = mapOf("OEBPS/book.css" to "p { font-weight: normal }".toByteArray()),
+            ),
+        )
+        assertTrue(isBold(paragraph(book)))
+    }
+
+    @Test
+    fun `an inline style beats a class`() {
+        val book = read(EpubFixtures.epub(listOf(styled("""<p class="b" style="font-weight: normal">x</p>""", css = ".b { font-weight: bold }"))))
+        assertEquals(emptyList<TextSpan>(), paragraph(book).spans)
+    }
+
+    @Test
+    fun `font weight normal clears a bold from the markup`() {
+        val book = read(EpubFixtures.epub(listOf(styled("""<p>a <b class="n">b</b> c</p>""", css = ".n { font-weight: normal }"))))
+        assertEquals(emptyList<TextSpan>(), paragraph(book).spans)
+    }
+
+    @Test
+    fun `markup bold is not cleared by a style it only inherits`() {
+        val book = read(EpubFixtures.epub(listOf(styled("<p>a <b>bold</b> c</p>", css = "body { font-weight: normal }"))))
+        val block = paragraph(book)
+        assertEquals(listOf(TextSpan(2, 6, CharFormat(bold = true))), block.spans)
+    }
+
+    @Test
+    fun `an inherited bold and italic reach the text inside`() {
+        val book = read(EpubFixtures.epub(listOf(styled("""<div class="x"><p>in <span>deep</span></p></div><p>out</p>""", css = ".x { font-weight: bold; font-style: italic }"))))
+        val inner = paragraph(book, 0)
+        assertEquals(listOf(TextSpan(0, inner.text.length, CharFormat(bold = true, italic = true))), inner.spans)
+        assertEquals(OfficeBlock.Paragraph("out"), book.blocks[1])
+    }
+
+    @Test
+    fun `text align reaches the blocks and an unaligned one stays at the start`() {
+        val body = """<p class="c">mid</p><p>plain</p><div class="r"><p>right</p>loose</div><h2 class="c">head</h2><ul class="c"><li>item</li></ul>"""
+        val book = read(EpubFixtures.epub(listOf(styled(body, css = ".c { text-align: center } .r { text-align: right }"))))
+        assertEquals(
+            listOf(BlockAlign.CENTER, BlockAlign.START, BlockAlign.END, BlockAlign.END),
+            book.blocks.take(4).map { (it as? OfficeBlock.Paragraph)?.align ?: BlockAlign.START },
+        )
+        assertEquals(BlockAlign.CENTER, (book.blocks[4] as OfficeBlock.Heading).align)
+        assertEquals(BlockAlign.CENTER, (book.blocks[5] as OfficeBlock.ListItem).align)
+    }
+
+    @Test
+    fun `a broken stylesheet loses no chapter`() {
+        val garbage = "p { font-weight: bold ; } } {{{ /* unterminated"
+        val book = read(
+            EpubFixtures.epub(
+                listOf(styled("<p>one</p>", css = "@media {"), chapter("<p>two</p>", "d.xhtml")),
+                extra = mapOf("OEBPS/bad.css" to garbage.toByteArray(), "OEBPS/binary.css" to byteArrayOf(0, -1, -2, 0x7B)),
+            ),
+        )
+        assertEquals(listOf("one", "two"), texts(book))
+        assertFalse(book.incomplete)
+    }
+
+    @Test
+    fun `without a sheet the markup alone is read`() {
+        val xhtml = EpubFixtures.xhtml("""<p style="font-weight: bold; text-align: center">x</p>""").toByteArray()
+        val sink = EpubSink(ArrayList(), ArrayList(), EpubLimits())
+        EpubHtmlParser({ stream -> OfficeFixtures.parser().apply { setInput(stream, null) } }, sink).parse(xhtml, "c.xhtml")
+        assertEquals(listOf<OfficeBlock>(OfficeBlock.Paragraph("x")), sink.blocks)
+    }
 }
