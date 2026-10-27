@@ -190,6 +190,9 @@ private const val HEX = 16
 
 /** A zip lookup that forgives a difference of case, as readers do, but prefers the exact name. */
 internal class EpubNames(private val parts: Map<String, ByteArray>) {
+    /** The archive name of every part that was kept. */
+    val names: Set<String> get() = parts.keys
+
     private val folded: Map<String, String> by lazy { parts.keys.associateBy { it.lowercase() } }
 
     fun find(path: String): String? = if (path in parts) path else folded[path.lowercase()]
