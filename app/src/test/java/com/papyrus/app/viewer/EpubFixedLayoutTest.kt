@@ -16,7 +16,10 @@ class EpubFixedLayoutTest {
     val temp = TemporaryFolder()
 
     private fun read(bytes: ByteArray, withMedia: Boolean = false): EpubBook {
-        val dir = if (withMedia) temp.newFolder("media") else null
+        val dir = if (withMedia) {
+            val existing = java.io.File(temp.root, "media")
+            if (existing.exists()) existing else temp.newFolder("media")
+        } else null
         return EpubExtractor(
             mediaDir = dir,
             newParserFactory = OfficeFixtures::parser,
