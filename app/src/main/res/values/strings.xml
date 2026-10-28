@@ -208,6 +208,8 @@ access</string>
     <string name="settings_line_numbers_desc">Show a line-number gutter beside plain text, logs and code.</string>
     <string name="settings_wrap_lines">Wrap long lines</string>
     <string name="settings_wrap_lines_desc">Turn off to keep each line on one row and scroll sideways. Applies to plain text, logs and code.</string>
+    <string name="settings_hyphenation">Hyphenation</string>
+    <string name="settings_hyphenation_desc">Split long words at syllables where plain text wraps. Logs and code are never hyphenated.</string>
     <string name="settings_pretty_print">Pretty print structured files</string>
     <string name="settings_pretty_print_desc">Indent JSON, XML, HTML and SVG files as they open. The stored file is never changed.</string>
     <string name="settings_tab_size">Tab size</string>

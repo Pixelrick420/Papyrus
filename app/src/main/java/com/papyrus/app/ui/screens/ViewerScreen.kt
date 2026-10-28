@@ -538,10 +538,12 @@ fun ViewerScreen(
                             // Keyed on the fields, not the content: comparing two contents would walk every chunk.
                             val options = remember(
                                 content.language, content.lexStates, content.lineCount, content.maxLineColumns, content.truncated,
-                                settings.wrapLines, settings.showLineNumbers, settings.syntaxHighlighting,
+                                content.prose, settings.wrapLines, settings.hyphenation, settings.showLineNumbers,
+                                settings.syntaxHighlighting,
                             ) {
                                 PlainTextOptions(
                                     wrapLines = settings.wrapLines,
+                                    hyphenate = settings.hyphenation && content.prose,
                                     showLineNumbers = settings.showLineNumbers,
                                     language = content.language.takeIf { settings.syntaxHighlighting },
                                     lexStates = content.lexStates,

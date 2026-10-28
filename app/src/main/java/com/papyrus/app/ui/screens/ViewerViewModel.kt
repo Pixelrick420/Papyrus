@@ -72,6 +72,7 @@ import com.papyrus.app.viewer.TextEncoding
 import com.papyrus.app.viewer.TextEncodings
 import com.papyrus.app.viewer.TextSniffer
 import com.papyrus.app.viewer.chunkText
+import com.papyrus.app.viewer.isProse
 import com.papyrus.app.viewer.readTextChunks
 import com.papyrus.app.viewer.readTextString
 import com.papyrus.app.ui.viewer.ARRIVAL_FADE_MILLIS
@@ -122,7 +123,8 @@ sealed interface ViewerContent {
     data class Markdown(val markwon: Markwon, val source: String, val text: Spanned, val encoding: TextEncoding? = null) : ViewerContent
 
     /** Forty lines to a chunk. [language]/[lexStates] are set only for source files: the states say
-     * where each chunk's scan starts, so a block comment crossing a boundary still colours as one. */
+     * where each chunk's scan starts, so a block comment crossing a boundary still colours as one.
+     * [prose] is set for running text, the only kind that hyphenates: not a log, and not source. */
     data class PlainText(
         val chunks: List<String>,
         val encoding: TextEncoding? = null,
@@ -131,6 +133,7 @@ sealed interface ViewerContent {
         val lineCount: Int = 0,
         val maxLineColumns: Int = 0,
         val truncated: Boolean = false,
+        val prose: Boolean = false,
     ) : ViewerContent
     /**
      * [outline] is a document's own table of contents (an EPUB's), or null to derive one from the headings;
@@ -920,6 +923,7 @@ class ViewerViewModel(
             lineCount = read.lineCount,
             maxLineColumns = read.maxLineColumns,
             truncated = read.truncated,
+            prose = isProse(doc.title, isCode = codeOnly),
         )
     }
 
