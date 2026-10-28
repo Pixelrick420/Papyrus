@@ -63,12 +63,14 @@ object CodeLanguages {
 
     private val CPP = CodeLanguage(
         id = "cpp",
-        keywords = "alignas alignof and asm auto bool break case catch char class concept const consteval constexpr " +
-            "constinit const_cast continue co_await co_return co_yield decltype default delete do double " +
-            "dynamic_cast else enum explicit export extern float for friend goto if inline int long mutable " +
-            "namespace new noexcept not operator or private protected public register reinterpret_cast requires " +
-            "return short signed sizeof static static_assert static_cast struct switch template this thread_local " +
-            "throw try typedef typeid typename union unsigned using virtual void volatile wchar_t while xor",
+        keywords = "alignas alignof and and_eq asm auto bitand bitor bool break case catch char char8_t char16_t " +
+            "char32_t class compl concept const consteval constexpr constinit const_cast continue co_await " +
+            "co_return co_yield decltype default delete do double dynamic_cast else enum explicit export extern " +
+            "final float for friend goto if inline int long mutable namespace new noexcept not not_eq operator or " +
+            "or_eq override private protected public register reinterpret_cast requires return short signed " +
+            "sizeof static static_assert static_cast struct switch template this thread_local throw try typedef " +
+            "typeid typename union unsigned using virtual void volatile wchar_t while xor xor_eq _Alignas " +
+            "_Alignof _Atomic _Bool _Complex _Generic _Imaginary _Noreturn _Static_assert _Thread_local",
         literals = "true false nullptr NULL",
         lineComments = SLASH_COMMENTS,
         multiline = listOf(BLOCK_COMMENT),
@@ -77,12 +79,13 @@ object CodeLanguages {
 
     private val CSHARP = CodeLanguage(
         id = "csharp",
-        keywords = "abstract as async await base bool break byte case catch char checked class const continue decimal " +
-            "default delegate do double dynamic else enum event explicit extern finally fixed float for foreach get " +
-            "goto if implicit in init int interface internal is lock long namespace new nameof object operator out " +
-            "override params partial private protected public readonly record ref return sbyte sealed set short " +
-            "sizeof stackalloc static string struct switch this throw try typeof uint ulong unchecked unsafe ushort " +
-            "using var virtual void volatile when where while with yield",
+        keywords = "abstract and as async await base bool break byte case catch char checked class const continue " +
+            "decimal default delegate do double dynamic else enum event explicit extern finally fixed float for " +
+            "foreach get goto if implicit in init int interface internal is lock long namespace new nameof nint " +
+            "not nuint object operator or out override params partial private protected public readonly record " +
+            "ref return sbyte sealed set short sizeof stackalloc static string struct switch this throw try " +
+            "typeof uint ulong unchecked unsafe ushort using var virtual void volatile when where while with " +
+            "yield",
         literals = "true false null",
         lineComments = SLASH_COMMENTS,
         multiline = listOf(BLOCK_COMMENT),
@@ -91,9 +94,9 @@ object CodeLanguages {
 
     private val JAVASCRIPT = CodeLanguage(
         id = "javascript",
-        keywords = "async await break case catch class const continue debugger default delete do else export extends " +
-            "finally for from function get if import in instanceof let new of return set static super switch this " +
-            "throw try typeof var void while with yield",
+        keywords = "as async await break case catch class const continue debugger default delete do else export " +
+            "extends finally for from function get if import in instanceof let new of return set static super " +
+            "switch this throw try typeof var void while with yield",
         literals = "true false null undefined NaN Infinity",
         lineComments = SLASH_COMMENTS,
         multiline = listOf(BLOCK_COMMENT, BACKTICK),
@@ -101,11 +104,11 @@ object CodeLanguages {
 
     private val TYPESCRIPT = CodeLanguage(
         id = "typescript",
-        keywords = "abstract any as async await boolean break case catch class const continue debugger declare default " +
-            "delete do else enum export extends finally for from function get if implements import in infer " +
-            "instanceof interface is keyof let module namespace never new number object of override private " +
-            "protected public readonly return satisfies set static string super switch symbol this throw try type " +
-            "typeof unique unknown var void while with yield",
+        keywords = "abstract any as asserts async await bigint boolean break case catch class const continue " +
+            "debugger declare default delete do else enum export extends finally for from function get if " +
+            "implements import in infer instanceof interface is keyof let module namespace never new number " +
+            "object of override private protected public readonly return satisfies set static string super switch " +
+            "symbol this throw try type typeof unique unknown var void while with yield",
         literals = "true false null undefined NaN Infinity",
         lineComments = SLASH_COMMENTS,
         multiline = listOf(BLOCK_COMMENT, BACKTICK),
@@ -124,8 +127,9 @@ object CodeLanguages {
 
     private val RUBY = CodeLanguage(
         id = "ruby",
-        keywords = "alias and begin break case class def do else elsif end ensure for if in module next not or redo " +
-            "rescue retry return self super then undef unless until when while yield",
+        keywords = "alias and begin break case class def defined do else elsif end ensure for if in module next " +
+            "not or redo rescue retry return self super then undef unless until when while yield __ENCODING__ " +
+            "__FILE__ __LINE__",
         literals = "true false nil",
         lineComments = listOf("#"),
     )
@@ -141,8 +145,9 @@ object CodeLanguages {
 
     private val RUST = CodeLanguage(
         id = "rust",
-        keywords = "as async await break const continue crate dyn else enum extern fn for if impl in let loop match mod " +
-            "move mut pub ref return self Self static struct super trait type unsafe use where while",
+        keywords = "as async await break const continue crate dyn else enum extern fn for if impl in let loop " +
+            "macro_rules match mod move mut pub ref return self Self static struct super trait type unsafe use " +
+            "where while",
         literals = "true false",
         lineComments = SLASH_COMMENTS,
         multiline = listOf(BLOCK_COMMENT),
@@ -153,10 +158,11 @@ object CodeLanguages {
 
     private val SWIFT = CodeLanguage(
         id = "swift",
-        keywords = "actor any as associatedtype async await break case catch class continue default defer deinit do " +
-            "else enum extension fallthrough fileprivate for func guard if import in init inout internal is let " +
-            "nonisolated open operator private protocol public repeat rethrows return self Self static struct " +
-            "subscript super switch throw throws try typealias var where while",
+        keywords = "actor any as associatedtype async await break case catch class continue convenience default " +
+            "defer deinit didSet do dynamic else enum extension fallthrough fileprivate final for func guard if " +
+            "import in indirect init inout internal is lazy let mutating nonisolated nonmutating open operator " +
+            "override precedencegroup private protocol public repeat rethrows return self Self some static struct " +
+            "subscript super switch throw throws try typealias unowned var weak where while willSet",
         literals = "true false nil",
         lineComments = SLASH_COMMENTS,
         multiline = listOf(BLOCK_COMMENT, TRIPLE_DOUBLE),
@@ -177,10 +183,11 @@ object CodeLanguages {
 
     private val PHP = CodeLanguage(
         id = "php",
-        keywords = "abstract and array as break callable case catch class clone const continue declare default do echo " +
-            "else elseif empty enum extends final finally fn for foreach function global goto if implements include " +
-            "include_once instanceof insteadof interface isset list match namespace new or print private protected " +
-            "public readonly require require_once return static switch throw trait try unset use var while xor yield",
+        keywords = "abstract and array as break callable case catch class clone const continue declare default die " +
+            "do echo else elseif empty enddeclare endfor endforeach endif endswitch endwhile enum eval exit " +
+            "extends final finally fn for foreach function global goto if implements include include_once " +
+            "instanceof insteadof interface isset list match namespace new or print private protected public " +
+            "readonly require require_once return static switch throw trait try unset use var while xor yield",
         literals = "true false null",
         caseInsensitive = true,
         lineComments = listOf("//", "#"),
@@ -203,10 +210,10 @@ object CodeLanguages {
 
     private val GROOVY = CodeLanguage(
         id = "groovy",
-        keywords = "abstract as assert boolean break byte case catch char class const continue def default do double " +
-            "else enum extends final finally float for goto if implements import in instanceof int interface long " +
-            "native new package private protected public return short static strictfp super switch synchronized " +
-            "this throw throws trait transient try var void volatile while",
+        keywords = "abstract as assert boolean break byte case catch char class const continue def default do " +
+            "double else enum extends final finally float for goto if implements import in instanceof int " +
+            "interface long native new package permits private protected public return sealed short static " +
+            "strictfp super switch synchronized this throw throws trait transient try var void volatile while",
         literals = "true false null",
         lineComments = SLASH_COMMENTS,
         multiline = listOf(BLOCK_COMMENT, TRIPLE_DOUBLE, TRIPLE_SINGLE),
@@ -215,9 +222,10 @@ object CodeLanguages {
 
     private val SCALA = CodeLanguage(
         id = "scala",
-        keywords = "abstract case catch class def do else enum export extends final finally for forSome given if " +
-            "implicit import lazy match new object override package private protected return sealed super then " +
-            "this throw trait try type using val var while with yield",
+        keywords = "abstract case catch class def derives do else enum export extends final finally for forSome " +
+            "given if implicit import infix inline lazy match new object opaque override package private " +
+            "protected return sealed super then this throw trait transparent try type using val var while with " +
+            "yield",
         literals = "true false null",
         lineComments = SLASH_COMMENTS,
         multiline = listOf(BLOCK_COMMENT, TRIPLE_DOUBLE),
@@ -229,7 +237,8 @@ object CodeLanguages {
     private val SHELL = CodeLanguage(
         id = "shell",
         keywords = "if then else elif fi case esac for select while until do done in function time coproc echo cd " +
-            "export local read return exit set unset shift source alias eval exec test trap",
+            "export local read return exit set unset shift source alias eval exec test trap break continue " +
+            "declare readonly typeset printf let getopts",
         literals = "true false",
         lineComments = listOf("#"),
         rawQuotes = "'",
@@ -240,9 +249,9 @@ object CodeLanguages {
 
     private val POWERSHELL = CodeLanguage(
         id = "powershell",
-        keywords = "begin break catch class continue data do dynamicparam else elseif end enum exit filter finally for " +
-            "foreach from function hidden if in param process return static switch throw trap try until using var " +
-            "while workflow",
+        keywords = "begin break catch class configuration continue data default do dynamicparam else elseif end " +
+            "enum exit filter finally for foreach from function hidden if in param process return static switch " +
+            "throw trap try until using var while workflow",
         literals = "true false null",
         caseInsensitive = true,
         lineComments = listOf("#"),
@@ -259,12 +268,13 @@ object CodeLanguages {
 
     private val SQL = CodeLanguage(
         id = "sql",
-        keywords = "add all alter and any as asc backup begin between by cascade case check column commit constraint " +
-            "create cross database declare default delete desc distinct drop else end exec exists fetch foreign " +
-            "from full function grant group having if in index inner insert into is join key left like limit " +
-            "materialized natural next not offset on only or order outer over partition primary procedure " +
-            "recursive references replace restrict return returns revoke right rollback rows select set table " +
-            "temp temporary top transaction trigger truncate union unique update using values view where while " +
+        keywords = "add all alter analyze and any as asc backup begin between by cascade case cast check column " +
+            "commit constraint create cross database declare default delete desc distinct drop else end except " +
+            "exec exists explain fetch foreign from full function grant group having if in index inner insert " +
+            "intersect into is join key lateral left like limit materialized natural next not offset on only or " +
+            "order outer over partition primary procedure recursive references rename replace restrict return " +
+            "returning returns revoke right rollback rows savepoint schema select set table temp temporary then " +
+            "top transaction trigger truncate union unique update using vacuum values view when where while " +
             "window with int integer bigint smallint tinyint decimal numeric float real double precision varchar " +
             "char text boolean bool date time timestamp datetime blob serial",
         literals = "true false null",
@@ -292,7 +302,7 @@ object CodeLanguages {
     private val R = CodeLanguage(
         id = "r",
         keywords = "if else repeat while function for next break in",
-        literals = "TRUE FALSE NULL NA NA_integer_ NA_real_ NA_character_ Inf NaN",
+        literals = "TRUE FALSE NULL NA NA_integer_ NA_real_ NA_complex_ NA_character_ Inf NaN",
         lineComments = listOf("#"),
         quotes = "\"'`",
         capitalizedTypes = false,
@@ -322,7 +332,7 @@ object CodeLanguages {
 
     private val TOML = CodeLanguage(
         id = "toml",
-        literals = "true false",
+        literals = "true false inf nan",
         lineComments = listOf("#"),
         multiline = listOf(TRIPLE_DOUBLE, TRIPLE_SINGLE),
         rawQuotes = "'",
@@ -381,7 +391,8 @@ object CodeLanguages {
 
     private val MAKEFILE = CodeLanguage(
         id = "makefile",
-        keywords = "ifeq ifneq ifdef ifndef else endif include define endef export override unexport vpath",
+        keywords = "ifeq ifneq ifdef ifndef else endif include define endef export override unexport vpath " +
+            "sinclude undefine",
         lineComments = listOf("#"),
         dollarVariables = true,
         parenVariables = true,
