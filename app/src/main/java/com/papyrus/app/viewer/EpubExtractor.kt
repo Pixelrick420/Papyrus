@@ -13,7 +13,8 @@ import java.io.InputStream
  * left out ([incomplete]): a chapter that could not be read, or a limit that was reached. [anchors] maps every
  * place a link inside the book can name (a chapter, or an element of it by `id`) to the block it lands on.
  * [direction] is the book's own: right to left when its spine says pages turn from the right, which is what a
- * block that says nothing of its own is set in.
+ * block that says nothing of its own is set in. A [fixedLayout] book has one page per spine item that is one, and
+ * [pageStarts] holds the first block of each: the same place [outline] and [anchors] take a chapter's start to be.
  */
 class EpubBook(
     val blocks: List<OfficeBlock>,
@@ -21,6 +22,8 @@ class EpubBook(
     val incomplete: Boolean,
     val anchors: Map<BookLink, Int> = emptyMap(),
     val direction: BlockDirection = BlockDirection.LTR,
+    val fixedLayout: Boolean = false,
+    val pageStarts: Set<Int> = emptySet(),
 )
 
 /**
@@ -57,11 +60,11 @@ class EpubExtractor(
         var names = EpubNames(first.parts)
         checkNotProtected(names, factory)
         val pkg = readPackage(names, factory)
-        val chapters = pkg.readingOrder().filter { (it.isDocument || it.isImage) && it.path != null }
+        val chapters = pkg.readingItems().filter { (it.item.isDocument || it.item.isImage) && it.item.path != null }
 
         val toRead = if (previewChapters == null) chapters else chapters.take(previewChapters)
         if (previewChapters != null) {
-            val wanted = toRead.mapNotNullTo(HashSet()) { it.path }
+            val wanted = toRead.mapNotNullTo(HashSet()) { it.item.path }
             val more = archive.scan(wanted = { it in wanted }, done = { parts -> wanted.all { it in parts } })
             names = EpubNames(first.parts + more.parts)
         }
@@ -74,12 +77,17 @@ class EpubExtractor(
         val starts = HashMap<String, Int>()
         // The archive's own spelling of each chapter's path, which the parser records its anchors under.
         val spelledAs = HashMap<String, String>()
-        for (item in toRead) {
+        // The chapters that are a page of their own, in a fixed-layout book.
+        val pagePaths = HashSet<String>()
+        for (entry in toRead) {
+            val item = entry.item
             if (sink.full) {
                 incomplete = true
                 break
             }
             val path = item.path ?: continue
+            val fixedPage = pkg.isFixedPage(entry.ref)
+            if (fixedPage) pagePaths += path
             if (item.isImage) {
                 // A spine item that is a picture alone (a cover page): it is the chapter.
                 starts.putIfAbsent(path, blocks.size)
@@ -99,6 +107,10 @@ class EpubExtractor(
                 EpubHtmlParser(factory, sink, sheetFor(bookRules, bytes)).parse(bytes, key)
                 starts[path] = blockMark
                 spelledAs[key] = path
+                // A page that is one picture and no words keeps the shape its viewport gives it.
+                if (fixedPage && blocks.size == blockMark && pending.size == pendingMark + 1) {
+                    pending[pendingMark].pageAspect = pageAspect(bytes)
+                }
             } catch (_: XmlPullParserException) {
                 incomplete = true
                 rollBack(sink, blockMark, pendingMark, anchorMark)
@@ -133,7 +145,9 @@ class EpubExtractor(
         if (previewChapters != null) return EpubBook(blocks, null, incomplete)
         val anchors = anchorsOf(sink, starts, spelledAs, media, blocks.size)
         val outline = outlineOf(pkg, names, factory, starts, anchors, media, blocks.size)
-        return EpubBook(blocks, outline, incomplete, anchors, bookDirection(pkg))
+        val fixed = pkg.hasFixedLayout
+        val pageStarts = if (fixed) pageStartsOf(pagePaths, starts, media, blocks.size) else emptySet()
+        return EpubBook(blocks, outline, incomplete, anchors, bookDirection(pkg), fixed, pageStarts)
     }
 
     /**
@@ -163,6 +177,10 @@ class EpubExtractor(
         val text = sheets.joinToString("\n") { name -> names.bytes(name)?.let { String(it, Charsets.UTF_8) }.orEmpty() }
         return parseCss(text)
     }
+
+    /** The first block of each page, as the chapter starts everything else jumps to are, shifted past the images. */
+    private fun pageStartsOf(pages: Set<String>, starts: Map<String, Int>, media: OfficeMedia.Result, blockCount: Int): Set<Int> =
+        pages.mapNotNull { starts[it] }.map(media::shifted).filterTo(HashSet()) { it < blockCount }
 
     /** The order pages turn is a hint about the book, not a reason to reorder what scrolls: only the layout follows it. */
     private fun bookDirection(pkg: EpubPackage): BlockDirection =

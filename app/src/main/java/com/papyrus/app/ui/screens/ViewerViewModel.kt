@@ -146,6 +146,8 @@ sealed interface ViewerContent {
         val bookLinks: Map<BookLink, Int> = emptyMap(),
         /** What a block that says nothing of its own is set in; right to left for some EPUBs. */
         val direction: BlockDirection = BlockDirection.LTR,
+        /** The first block of each page of a fixed-layout EPUB; empty for any other document. */
+        val pageStarts: Set<Int> = emptySet(),
     ) : ViewerContent
     /** A document waiting on its password; [incorrect] flags a rejected attempt, [checking] one in flight. */
     data class NeedsPassword(val incorrect: Boolean = false, val checking: Boolean = false) : ViewerContent
@@ -875,7 +877,14 @@ class ViewerViewModel(
                 if (book.blocks.isEmpty()) {
                     ViewerContent.Failed(UiText(R.string.viewer_error_empty))
                 } else {
-                    ViewerContent.Office(book.blocks, book.outline, book.incomplete, bookLinks = book.anchors, direction = book.direction)
+                    ViewerContent.Office(
+                        book.blocks,
+                        book.outline,
+                        book.incomplete,
+                        bookLinks = book.anchors,
+                        direction = book.direction,
+                        pageStarts = book.pageStarts,
+                    )
                 }
             } catch (expected: EpubProtectedException) {
                 ViewerContent.Failed(UiText(R.string.viewer_error_epub_protected))
