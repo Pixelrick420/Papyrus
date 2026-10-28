@@ -83,7 +83,7 @@ on-device. The manifest declares no network or storage permissions; the only two
 | **DOCX / ODT**        | Headings, lists, tables, images, footnotes, reviewer comments, DOCX equations as text     |
 | **DOC**               | Paragraphs and tables                                                                     |
 | **EPUB**              | A reflowed book, its own table of contents as the **Outline**, its cover as the thumbnail |
-| **Markdown**          | Tables, task lists, maths, autolinks, coloured code fences, `data:` URI images            |
+| **Markdown**          | Tables, task lists, maths, footnotes, autolinks, coloured code fences, `data:` URI images |
 | **Text / Logs**       | 40-line chunks, selectable text, optional line numbers, no-wrap mode, hyphenated prose    |
 | **Code / Config**     | The same text pipeline, with syntax colour for 30+ languages                              |
 | **CSV  / TSV**        | A header row in bold, wrapping cells, sideways scroll for wide tables                     |
@@ -382,6 +382,8 @@ after the last keystroke before it queries, and a search that fails is reported 
 - Notes are stored, drawn and read in Papyrus only. A saved copy of the PDF carries plain highlights, not notes.
 - Markdown shows an image only when the document carries it as a `data:` URI; the app never touches the network, so
   every other image falls back to its alt text.
+- Markdown footnotes are gathered into a **Footnotes** list at the end of the document, numbered in the order they are
+  first cited, and a tap on a marker or its way back scrolls there.
 - CSV and TSV tables are not read aloud.
 - Content search only finds text that is in the index. Encrypted and DRM-protected documents are not indexed, nor are
   files over 64 MB, and a document is indexed up to its first 1,000,000 characters. A scanned PDF with no text layer is

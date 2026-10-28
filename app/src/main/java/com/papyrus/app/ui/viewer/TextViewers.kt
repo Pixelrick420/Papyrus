@@ -73,6 +73,7 @@ import com.papyrus.app.viewer.BlockDirection
 import com.papyrus.app.viewer.CodeLanguage
 import com.papyrus.app.viewer.LexStates
 import com.papyrus.app.viewer.MARKDOWN_BASE_TEXT_SP
+import com.papyrus.app.viewer.MarkdownFootnotes
 import com.papyrus.app.viewer.MarkdownStylePlugin
 import com.papyrus.app.viewer.OfficeBlock
 import com.papyrus.app.viewer.OfficeCell
@@ -80,6 +81,7 @@ import com.papyrus.app.viewer.SyntaxHighlighter
 import com.papyrus.app.viewer.TEXT_LINES_PER_CHUNK
 import com.papyrus.app.viewer.direction
 import io.noties.markwon.Markwon
+import io.noties.markwon.core.spans.LinkSpan
 import io.noties.markwon.ext.tables.TableRowSpan
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -213,8 +215,22 @@ fun MarkdownViewer(
     }
     // Markwon leaves the TextView without a movement method, so its links do nothing; this one routes the
     // tap through the viewer's own opener instead of the resolver that turns a `file://` link into a crash.
+    // A footnote marker or its way back is an anchor inside this text, which `resolvedLink` would refuse: it scrolls
+    // to the link that answers it, and every other link goes to the opener as before.
     val opener = LocalLinkOpener.current
-    val movement = remember(opener) { GuardedLinkMovementMethod(opener) }
+    val movement = remember(opener, scroll, contentTopPx, followMarginPx) {
+        GuardedLinkMovementMethod { url ->
+            val offset = textState.text?.footnoteOffset(url)
+            val layout = textState.view?.layout
+            if (offset == null || layout == null) {
+                opener(url)
+            } else {
+                val line = layout.getLineForOffset(offset.coerceIn(0, layout.text.length))
+                val target = (contentTopPx + layout.getLineTop(line) - followMarginPx).roundToInt().coerceIn(0, scroll.maxValue)
+                followScope.launch { scroll.animateScrollTo(target, spring(stiffness = Spring.StiffnessMediumLow)) }
+            }
+        }
+    }
 
     // A commit re-wraps the text, so the anchor pins the paragraph at the commit; the text reaches its
     // new height a measure later, so the scroll follows and the bridge paints between.
@@ -272,6 +288,10 @@ fun MarkdownViewer(
         }
     }
 }
+
+/** Where a tap on the footnote link [url] scrolls to in this text, or null if it is not one or nothing answers it. */
+private fun Spanned.footnoteOffset(url: String): Int? =
+    MarkdownFootnotes.target(getSpans(0, length, LinkSpan::class.java).map { getSpanStart(it) to it.link }, url)
 
 /**
  * Plain fields, not Compose state: the update block runs during layout, and state would recompose

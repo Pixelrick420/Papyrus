@@ -60,6 +60,7 @@ import com.papyrus.app.viewer.PdfFormField
 import com.papyrus.app.viewer.PdfPageSource
 import com.papyrus.app.viewer.PdfPageText
 import com.papyrus.app.viewer.PdfPageLink
+import com.papyrus.app.viewer.MarkdownFootnotes
 import com.papyrus.app.viewer.MarkdownRenderer
 import com.papyrus.app.viewer.PdfPageTextSource
 import com.papyrus.app.viewer.PdfPasswordException
@@ -840,7 +841,9 @@ class ViewerViewModel(
             DocumentFormat.MARKDOWN -> {
                 // Markwon takes the whole text and builds one Spanned for one TextView, so it keeps the small limit.
                 val decoded = openStream(uri).use { readTextString(it, MAX_MARKDOWN_BYTES, forcedCharset(), StatisticalCharsetGuesser) }
-                val source = if (decoded.truncated) decoded.text + "\n\n" + app.getString(R.string.viewer_truncated) else decoded.text
+                // Footnotes move to a list at the end before anything else reads the text; the truncation notice goes after it.
+                val footnoted = MarkdownFootnotes.transform(decoded.text, app.getString(R.string.viewer_footnotes))
+                val source = if (decoded.truncated) footnoted + "\n\n" + app.getString(R.string.viewer_truncated) else footnoted
                 // Built after the read: which plugins a document needs depends on what it contains.
                 val markwon = MarkdownRenderer.create(app, source)
                 ViewerContent.Markdown(markwon, source, markwon.toMarkdown(source), decoded.encoding)
