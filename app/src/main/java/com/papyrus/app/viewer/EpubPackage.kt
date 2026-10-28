@@ -20,8 +20,18 @@ internal class ManifestItem(val id: String, val path: String?, val mediaType: St
     }
 }
 
-/** An `itemref` of the spine; [linear] false marks auxiliary content (a footnote page, an alternate cover). */
-internal class SpineItem(val idref: String, val linear: Boolean)
+/**
+ * An `itemref` of the spine; [linear] false marks auxiliary content (a footnote page, an alternate cover).
+ * [properties] are the itemref's own (`rendition:layout-pre-paginated`, say).
+ */
+internal class SpineItem(val idref: String, val linear: Boolean, val properties: Set<String> = emptySet())
+
+/** A spine entry with the manifest item it names, in reading order. */
+internal class ReadingItem(val item: ManifestItem, val ref: SpineItem)
+
+private const val PRE_PAGINATED = "pre-paginated"
+private const val ITEM_PRE_PAGINATED = "rendition:layout-pre-paginated"
+private const val ITEM_REFLOWABLE = "rendition:layout-reflowable"
 
 /** The reading order of an EPUB and what points at its table of contents and cover. */
 internal class EpubPackage(
@@ -34,7 +44,22 @@ internal class EpubPackage(
     val coverMetaId: String?,
     /** `spine@page-progression-direction`: `rtl` for a book that is turned from the right. */
     val pageProgression: String? = null,
+    /** `<meta property="rendition:layout">`: `pre-paginated` for a book whose every page is laid out by its maker. */
+    val renditionLayout: String? = null,
 ) {
+    private val bookIsFixed: Boolean get() = renditionLayout?.trim() == PRE_PAGINATED
+
+    /** Whether any linear page of the book is fixed: the book as a whole counts as fixed-layout then. */
+    val hasFixedLayout: Boolean
+        get() = bookIsFixed || spine.any { it.linear && ITEM_PRE_PAGINATED in it.properties }
+
+    /** Whether [ref] is a page of its own: its itemref says so, or says nothing and the book does. */
+    fun isFixedPage(ref: SpineItem): Boolean = when {
+        ITEM_REFLOWABLE in ref.properties -> false
+        ITEM_PRE_PAGINATED in ref.properties -> true
+        else -> bookIsFixed
+    }
+
     /** The EPUB 3 navigation document, or null. */
     fun navItem(): ManifestItem? = manifest.values.firstOrNull { "nav" in it.properties && it.path != null }
 
@@ -51,9 +76,12 @@ internal class EpubPackage(
     }
 
     /** The reading order: linear items as written, then the non-linear ones, which are kept rather than lost. */
-    fun readingOrder(): List<ManifestItem> {
-        val items = spine.mapNotNull { ref -> manifest[ref.idref]?.let { ref.linear to it } }
-        return items.filter { it.first }.map { it.second } + items.filterNot { it.first }.map { it.second }
+    fun readingOrder(): List<ManifestItem> = readingItems().map { it.item }
+
+    /** [readingOrder] with each item's spine entry, which says how it is laid out. */
+    fun readingItems(): List<ReadingItem> {
+        val items = spine.mapNotNull { ref -> manifest[ref.idref]?.let { ReadingItem(it, ref) } }
+        return items.filter { it.ref.linear } + items.filterNot { it.ref.linear }
     }
 }
 
@@ -99,6 +127,8 @@ internal object EpubPackageReader {
         var tocId: String? = null
         var coverMetaId: String? = null
         var pageProgression: String? = null
+        var renditionLayout: String? = null
+        var layoutMetaOpen = false
         val parser = factory(opf.inputStream())
         var event = parser.eventType
         while (event != XmlPullParser.END_DOCUMENT) {
@@ -123,17 +153,25 @@ internal object EpubPackageReader {
                         pageProgression = parser.getAttributeValue(null, "page-progression-direction")
                     }
                     "itemref" -> parser.getAttributeValue(null, "idref")?.let {
-                        spine += SpineItem(it, parser.getAttributeValue(null, "linear")?.trim()?.lowercase() != "no")
+                        val properties = parser.getAttributeValue(null, "properties").orEmpty()
+                            .split(' ', '\t', '\n').filter { p -> p.isNotEmpty() }.toSet()
+                        spine += SpineItem(it, parser.getAttributeValue(null, "linear")?.trim()?.lowercase() != "no", properties)
                     }
                     "meta" -> if (parser.getAttributeValue(null, "name") == "cover") {
                         coverMetaId = parser.getAttributeValue(null, "content")
+                    } else if (parser.getAttributeValue(null, "property")?.trim() == "rendition:layout") {
+                        layoutMetaOpen = true
                     }
                 }
+            } else if (event == XmlPullParser.TEXT && layoutMetaOpen) {
+                renditionLayout = parser.text.trim()
+            } else if (event == XmlPullParser.END_TAG) {
+                layoutMetaOpen = false
             }
             event = parser.next()
         }
         if (manifest.isEmpty() || spine.isEmpty()) throw XmlPullParserException("package has no manifest or spine")
-        return EpubPackage(opfPath, manifest, spine, tocId, coverMetaId, pageProgression)
+        return EpubPackage(opfPath, manifest, spine, tocId, coverMetaId, pageProgression, renditionLayout)
     }
 
     /**

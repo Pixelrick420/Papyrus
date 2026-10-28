@@ -813,6 +813,8 @@ fun OfficeViewer(
     onlyActive: Boolean = false,
     /** What a block that says nothing of its own is set in: a right-to-left book, say. */
     direction: BlockDirection = BlockDirection.LTR,
+    /** The first block of each page of a fixed-layout book: it is drawn with room above it. */
+    pageStarts: Set<Int> = emptySet(),
 ) {
     val units = remember(blocks) { officeUnits(blocks) }
     // One sideways scroll per table, shared by every band of it, so dragging any band moves the
@@ -892,6 +894,13 @@ fun OfficeViewer(
                             onlyActive = onlyActive,
                         )
                         val band = unit.rows
+                        // A page boundary is room above the page's first item, never an item of its own: the maps
+                        // find, speech, bookmarks and a restore use to name blocks stay exactly as they were.
+                        val pageBreak = if (unit.block in pageStarts && unitIndex == units.firstUnitOfBlock[unit.block]) {
+                            Modifier.padding(top = PAGE_BREAK_SPACING)
+                        } else {
+                            Modifier
+                        }
                         // The voice is in this block; a table's bands all belong to it, but only the first is followed.
                         val spokenHere = speaking?.takeIf { it.anchor == unit.block }
                         if (band != null && block is OfficeBlock.Table) {
@@ -905,7 +914,7 @@ fun OfficeViewer(
                                     firstRow = band.first,
                                     rowCount = band.last - band.first + 1,
                                     hScroll = tableScrolls[unit.block] ?: rememberScrollState(),
-                                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                                    modifier = pageBreak.fillMaxWidth().padding(vertical = 8.dp),
                                     highlight = highlight,
                                     reveal = reveal.takeIf { isActive },
                                 )
@@ -918,7 +927,7 @@ fun OfficeViewer(
                             ) {
                                 OfficeBlockView(
                                     block,
-                                    Modifier.fillMaxWidth(),
+                                    pageBreak.fillMaxWidth(),
                                     highlight = highlight,
                                     reveal = reveal.takeIf { isActive },
                                 )
@@ -932,7 +941,7 @@ fun OfficeViewer(
                             )
                             OfficeBlockView(
                                 block,
-                                Modifier.fillMaxWidth(),
+                                pageBreak.fillMaxWidth(),
                                 highlight = highlight,
                                 reveal = reveal.takeIf { isActive },
                                 speaking = spokenText,
@@ -957,13 +966,13 @@ fun OfficeViewer(
 }
 
 /** One lazy item: the block it draws, or a table band — the rows of its slice. */
-private class OfficeUnit(val block: Int, val rows: IntRange?)
+internal class OfficeUnit(val block: Int, val rows: IntRange?)
 
 /**
  * The items OfficeViewer lays out, plus the maps every block-index consumer jumps through: the
  * outline, a restored position and the find reveal all name blocks, and one table is several units.
  */
-private class OfficeUnits(
+internal class OfficeUnits(
     val units: List<OfficeUnit>,
     /** First unit of each block, so a jump to a block lands on the band that starts it. */
     val firstUnitOfBlock: IntArray,
@@ -1007,7 +1016,7 @@ private class OfficeUnits(
 }
 
 /** A table splits into band units; every other block is one unit. */
-private fun officeUnits(blocks: List<OfficeBlock>): OfficeUnits {
+internal fun officeUnits(blocks: List<OfficeBlock>): OfficeUnits {
     val units = ArrayList<OfficeUnit>()
     val firstUnit = IntArray(blocks.size)
     val bandCounts = IntArray(blocks.size)
@@ -1048,6 +1057,7 @@ private fun rowOfOccurrence(rows: List<List<OfficeCell>>, occurrence: Int, query
 
 /** Scroll speed (dp/s) revealing the knob on text surfaces; the PDF viewer keeps its 880 default. */
 private val TEXT_SHOW_VELOCITY = 1600.dp
+private val PAGE_BREAK_SPACING = 24.dp
 private const val HIGHLIGHT_DEBOUNCE_MS = 150L
 private val MARKDOWN_BASE_SP = MARKDOWN_BASE_TEXT_SP.sp
 private const val LINE_SPACING_MULTIPLIER = 1.25f

@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
@@ -433,10 +434,15 @@ private fun OfficeImageView(block: OfficeBlock.Image, modifier: Modifier = Modif
                     // No recycle: Compose may still be drawing this bitmap when the composition leaves.
                     bitmap = remember(current.bitmap) { current.bitmap.asImageBitmap() },
                     contentDescription = block.altText,
-                    contentScale = ContentScale.FillWidth,
+                    // A page scan keeps its shape: it fits its width at its own aspect instead of being stretched.
+                    contentScale = if (block.aspectRatio != null) ContentScale.Fit else ContentScale.FillWidth,
                     // Line art that names no colour is drawn black: in the dark theme it takes the text colour.
                     colorFilter = if (block.tintable) ColorFilter.tint(MaterialTheme.colorScheme.onSurface) else null,
-                    modifier = if (declared != null) Modifier.widthIn(max = declared.dp).fillMaxWidth() else Modifier.fillMaxWidth(),
+                    modifier = when {
+                        block.aspectRatio != null -> Modifier.fillMaxWidth().aspectRatio(block.aspectRatio)
+                        declared != null -> Modifier.widthIn(max = declared.dp).fillMaxWidth()
+                        else -> Modifier.fillMaxWidth()
+                    },
                 )
             }
             ImageState.Failed -> Surface(
