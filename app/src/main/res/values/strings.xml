@@ -101,6 +101,7 @@ access</string>
     <string name="viewer_error_epub_protected">This book is protected by DRM and can\'t be opened here.</string>
     <string name="viewer_incomplete">… (part of this document couldn\'t be shown)</string>
     <string name="viewer_truncated">… (file truncated for display)</string>
+    <string name="viewer_footnotes">Footnotes</string>
     <string name="viewer_encoding_title">Text encoding</string>
     <string name="viewer_encoding_auto_plain">Auto-detect</string>
     <string name="viewer_page_indicator">%1$d / %2$d</string>

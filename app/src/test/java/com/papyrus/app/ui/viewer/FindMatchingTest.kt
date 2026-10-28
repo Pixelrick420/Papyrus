@@ -82,6 +82,28 @@ class FindMatchingTest {
     }
 
     @Test
+    fun `a footnote anchor is not searchable text, so a label in a query does not light up its markers`() {
+        val theme = io.noties.markwon.core.MarkwonTheme.emptyBuilder().build()
+        val marker = io.noties.markwon.core.spans.LinkSpan(theme, "#fn-note") { _, _ -> }
+        val back = io.noties.markwon.core.spans.LinkSpan(theme, "#fnref-note") { _, _ -> }
+        val spanned = FakeSpanned("Text\u00B9 and a note.\n\n1. Body \u2191", listOf(Triple(marker, 4, 5), Triple(back, 27, 28)))
+
+        // "note" is in the text once, and in both anchors, which are not the author's words.
+        assertEquals(listOf(12..15), findMatchRanges(spanned, "note"))
+        assertEquals(1, countOccurrences(spanned, "note"))
+        assertEquals(0, countOccurrences(spanned, "fnref"))
+    }
+
+    @Test
+    fun `an ordinary link to a fragment is still searchable by its destination`() {
+        val theme = io.noties.markwon.core.MarkwonTheme.emptyBuilder().build()
+        val link = io.noties.markwon.core.spans.LinkSpan(theme, "#heading-note") { _, _ -> }
+        val spanned = FakeSpanned("see here", listOf(Triple(link, 4, 8)))
+
+        assertEquals(listOf(4..7), findMatchRanges(spanned, "heading-note"))
+    }
+
+    @Test
     fun `office text spans with link match destination and highlight text`() {
         val span = com.papyrus.app.viewer.TextSpan(7, 24, com.papyrus.app.viewer.CharFormat(link = "https://example.com/target"))
         val text = "before example-link-text after"

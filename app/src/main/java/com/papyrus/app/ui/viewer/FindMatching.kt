@@ -3,6 +3,7 @@ package com.papyrus.app.ui.viewer
 import android.text.Spanned
 import android.text.style.URLSpan
 import com.papyrus.app.viewer.LineText
+import com.papyrus.app.viewer.MarkdownFootnotes
 import com.papyrus.app.viewer.OfficeBlock
 import com.papyrus.app.viewer.OfficeCell
 import com.papyrus.app.viewer.TextSpan
@@ -86,7 +87,9 @@ private fun findHiddenSpanMatches(
 }
 
 internal fun extractSpanHiddenText(span: Any): String? {
-    if (span is LinkSpan) return span.link
+    // A footnote's anchor is made up by the preprocessor, not written by the author: searching for "note" must not
+    // light up every marker whose label was `[^note]`.
+    if (span is LinkSpan) return span.link.takeUnless { MarkdownFootnotes.isAnchor(it) }
     if (span is AsyncDrawableSpan) return span.drawable?.destination
     if (span is URLSpan) {
         return try {
