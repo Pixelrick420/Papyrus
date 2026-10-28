@@ -60,6 +60,8 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.style.Hyphens
+import androidx.compose.ui.text.style.LineBreak
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -438,6 +440,8 @@ private fun Spanned.withHighlight(query: String): Spanned {
 class PlainTextOptions(
     /** Off, each line stays on one row and the whole list scrolls sideways together. */
     val wrapLines: Boolean = true,
+    /** Splits a long word at a syllable where a line wraps. Set for prose only, and moot while [wrapLines] is off. */
+    val hyphenate: Boolean = false,
     val showLineNumbers: Boolean = false,
     /** Colours the text as source; null for plain text, or when highlighting is switched off. */
     val language: CodeLanguage? = null,
@@ -545,6 +549,10 @@ private fun PlainTextList(
     val colors = MaterialTheme.colorScheme
     val density = LocalDensity.current
     val textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace)
+    // Hyphenation needs the paragraph break strategy. Only the text gets it: the gutter's numbers never wrap.
+    val bodyStyle = remember(textStyle, options.hyphenate) {
+        if (options.hyphenate) textStyle.copy(lineBreak = LineBreak.Paragraph, hyphens = Hyphens.Auto) else textStyle
+    }
     val measurer = rememberTextMeasurer(cacheSize = NUMBER_LAYOUT_CACHE)
     // Monospace, so one measured run gives the width of every column, in the pixels of the
     // current zoom.
@@ -611,7 +619,7 @@ private fun PlainTextList(
                         onlyActive = onlyActive,
                     ),
                     reveal = reveal.takeIf { isActive },
-                    style = textStyle,
+                    style = bodyStyle,
                     options = options,
                     syntaxPalette = syntaxPalette,
                     gutter = gutter,

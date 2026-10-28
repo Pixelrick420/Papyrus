@@ -81,6 +81,8 @@ class SettingsViewModel(private val repository: SettingsRepository) : ViewModel(
 
     fun setWrapLines(enabled: Boolean) = repository.setWrapLines(enabled)
 
+    fun setHyphenation(enabled: Boolean) = repository.setHyphenation(enabled)
+
     fun setPrettyPrint(enabled: Boolean) = repository.setPrettyPrint(enabled)
 
     fun setTabSize(spaces: Int) = repository.setTabSize(spaces)
@@ -183,6 +185,13 @@ fun SettingsScreen(
                         description = stringResource(R.string.settings_wrap_lines_desc),
                         checked = settings.wrapLines,
                         onCheckedChange = viewModel::setWrapLines,
+                    )
+                    CardDivider()
+                    SwitchRow(
+                        title = stringResource(R.string.settings_hyphenation),
+                        description = stringResource(R.string.settings_hyphenation_desc),
+                        checked = settings.hyphenation,
+                        onCheckedChange = viewModel::setHyphenation,
                     )
                     CardDivider()
                     SwitchRow(

@@ -84,7 +84,7 @@ on-device. The manifest declares no network or storage permissions; the only two
 | **DOC**               | Paragraphs and tables                                                                     |
 | **EPUB**              | A reflowed book, its own table of contents as the **Outline**, its cover as the thumbnail |
 | **Markdown**          | Tables, task lists, maths, autolinks, coloured code fences, `data:` URI images            |
-| **Text / Logs**       | 40-line chunks, selectable text, optional line numbers, no-wrap mode                      |
+| **Text / Logs**       | 40-line chunks, selectable text, optional line numbers, no-wrap mode, hyphenated prose    |
 | **Code / Config**     | The same text pipeline, with syntax colour for 30+ languages                              |
 | **CSV  / TSV**        | A header row in bold, wrapping cells, sideways scroll for wide tables                     |
 
@@ -169,6 +169,7 @@ automatically and can be changed from the viewer menu.
 - **Syntax highlighting** colours comments, strings, keywords and numbers in source and config files.
 - **Line numbers** adds a gutter beside plain text, logs and code.
 - **Wrap long lines** wraps at the screen edge. Off, each line stays on one row and the view scrolls sideways.
+- **Hyphenation** splits long words at syllables where a `.txt` file wraps. Logs and code are never hyphenated.
 - **Pretty print structured files** indents JSON, XML, HTML and SVG as they open, at the chosen tab size. The stored
   file is never changed.
 - **Tab size** sets the indent for pretty printing: 2, 3, 4 or 8 spaces.

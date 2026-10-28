@@ -31,6 +31,8 @@ data class AppSettings(
     val rememberPosition: Boolean = true,
     /** Text, logs and code wrap at the screen's edge; off, lines stay on one row and the view scrolls sideways. */
     val wrapLines: Boolean = false,
+    /** Plain-text prose splits a long word at a syllable where it wraps; logs and code never do, whatever this says. */
+    val hyphenation: Boolean = true,
     val showLineNumbers: Boolean = false,
     /** Colour for comments, strings and keywords in source files that have a language definition. */
     val syntaxHighlighting: Boolean = true,
@@ -82,6 +84,11 @@ class SettingsRepository(context: Context) {
         _settings.update { it.copy(wrapLines = enabled) }
     }
 
+    fun setHyphenation(enabled: Boolean) {
+        prefs.edit { putBoolean(KEY_HYPHENATION, enabled) }
+        _settings.update { it.copy(hyphenation = enabled) }
+    }
+
     fun setShowLineNumbers(enabled: Boolean) {
         prefs.edit { putBoolean(KEY_LINE_NUMBERS, enabled) }
         _settings.update { it.copy(showLineNumbers = enabled) }
@@ -129,6 +136,7 @@ class SettingsRepository(context: Context) {
             autosaveEncrypted = prefs.getBoolean(KEY_AUTOSAVE_ENCRYPTED, defaults.autosaveEncrypted),
             rememberPosition = prefs.getBoolean(KEY_REMEMBER_POSITION, defaults.rememberPosition),
             wrapLines = prefs.getBoolean(KEY_WRAP_LINES, defaults.wrapLines),
+            hyphenation = prefs.getBoolean(KEY_HYPHENATION, defaults.hyphenation),
             showLineNumbers = prefs.getBoolean(KEY_LINE_NUMBERS, defaults.showLineNumbers),
             syntaxHighlighting = prefs.getBoolean(KEY_SYNTAX_HIGHLIGHTING, defaults.syntaxHighlighting),
             prettyPrint = prefs.getBoolean(KEY_PRETTY_PRINT, defaults.prettyPrint),
@@ -146,6 +154,7 @@ class SettingsRepository(context: Context) {
         const val KEY_AUTOSAVE_ENCRYPTED = "autosave_encrypted"
         const val KEY_REMEMBER_POSITION = "remember_position"
         const val KEY_WRAP_LINES = "wrap_lines"
+        const val KEY_HYPHENATION = "hyphenation"
         const val KEY_LINE_NUMBERS = "line_numbers"
         const val KEY_SYNTAX_HIGHLIGHTING = "syntax_highlighting"
         const val KEY_PRETTY_PRINT = "pretty_print"
