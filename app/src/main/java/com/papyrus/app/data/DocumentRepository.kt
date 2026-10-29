@@ -206,6 +206,10 @@ class DocumentRepository(
             return@withContext existing.id
         }
         val file = LibraryImport.copyToImports(context, source.uri.toUri())
+        // A row can already stand on the URI this copy came from, with a grant that has since lapsed.
+        // Saving re-points that row at the copy instead of adding a second entry, so the save outlives
+        // the grant and the row keeps its id, star, position and bookmarks.
+        val indexedOnSource = dao.getByUri(source.uri)
         val row = source.copy(
             id = 0,
             uri = file.toUri().toString(),
@@ -215,21 +219,36 @@ class DocumentRepository(
         )
         var indexed = false
         try {
-            dao.upsertByUri(row).also { indexed = true }
+            if (indexedOnSource != null) {
+                dao.update(
+                    indexedOnSource.copy(
+                        uri = row.uri,
+                        title = row.title,
+                        format = row.format,
+                        sizeBytes = row.sizeBytes,
+                        lastOpenedAt = now,
+                    ),
+                )
+                SafStorage.releasePermission(resolver, source.uri.toUri())
+                indexed = true
+                indexedOnSource.id
+            } else {
+                dao.upsertByUri(row).also { indexed = true }
+            }
         } finally {
             if (!indexed) file.delete()
         }
     }
 
     /**
-     * The library row already holding the document behind [source]: a row on the source URI itself,
-     * else a same-title row whose app-owned copy holds the same bytes. Null when nothing matches or
+     * The library row already holding the document behind [source]: a same-title row whose app-owned
+     * copy holds the same bytes. A row only on [source]'s own URI is not a match — it holds no copy,
+     * so the save would not outlive the grant the document arrived with. Null when nothing matches or
      * the source cannot be read, so the save falls through to copy-and-insert.
      */
     private suspend fun findSavedDuplicate(source: DocumentEntity): DocumentEntity? {
         val sourceUri = source.uri.toUri()
         for (row in dao.getByTitle(source.title)) {
-            if (row.uri == source.uri) return row
             val candidate = ownedCopy(row.uri) ?: continue
             if (LibraryImport.sameContent(candidate, source.sizeBytes) { openStream(sourceUri) }) return row
         }
