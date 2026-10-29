@@ -57,8 +57,8 @@ android {
         applicationId = "com.papyrus.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 13
-        versionName = "0.14"
+        versionCode = 14
+        versionName = "0.15"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
