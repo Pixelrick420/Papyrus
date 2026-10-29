@@ -98,7 +98,7 @@ internal fun FindText(
     LaunchedEffect(following, spokenLine) {
         val spoken = speaking
         val laidOut = layout
-        if (!following || spoken == null || laidOut == null || spokenLine == null) return@LaunchedEffect
+        if (!following || laidOut == null || spokenLine == null) return@LaunchedEffect
         val top = laidOut.getLineTop(spokenLine)
         val bottom = laidOut.getLineBottom(spokenLine)
         val window = followWindow(bottom - top, spoken.viewportHeight().toFloat(), followMargin)
