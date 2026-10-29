@@ -279,7 +279,12 @@ class ViewerViewModel(
 ) : ViewModel() {
 
     private val repository = app.repository
-    private val documentId: Long = savedState[Routes.ARG_DOCUMENT_ID] ?: -1L
+
+    /** The row this viewer resolves. A handover starts at a negative in-memory id; saving moves it to
+     *  the library row, and that id is kept in the saved-state handle so a restore after process death
+     *  finds the copy instead of an in-memory entry the new process never had. */
+    private var documentId: Long =
+        savedState[KEY_SAVED_DOCUMENT_ID] ?: savedState[Routes.ARG_DOCUMENT_ID] ?: -1L
 
     private val _state = MutableStateFlow(ViewerUiState())
     val state: StateFlow<ViewerUiState> = _state.asStateFlow()
@@ -1001,7 +1006,7 @@ class ViewerViewModel(
         }
     }
 
-    /** Copies a handed-over document into the library while the viewer keeps the in-memory entry for the intent.
+    /** Copies a handed-over document into the library, then moves the viewer onto the app-owned copy.
      *  [notify] is false for the autosave path, which saves silently; the manual "save to library" keeps the snackbar. */
     fun saveToLibrary(notify: Boolean = true) {
         val doc = _state.value.document ?: return
@@ -1021,9 +1026,28 @@ class ViewerViewModel(
                 // position reached before the save is written now.
                 persistedId = savedId
                 scheduleSave()
+                adoptSavedCopy(savedId)
             }
             _state.update { it.copy(savingToLibrary = false, savedToLibrary = saved) }
             if (notify) _messages.value = UiText(if (saved) R.string.viewer_save_done else R.string.viewer_save_failed)
+        }
+    }
+
+    /**
+     * Points the open viewer at the copy the handover was just saved into. Its in-memory id stays: that
+     * is what read-aloud is keyed on, and it is the id this process opened the document under. The URI
+     * does move, so find, links, share and the info sheet read the app-owned file from now on and stop
+     * depending on the external app's grant. The library id goes into the saved-state handle for the one
+     * case the open viewer cannot cover: a restore after process death, where the route still names the
+     * negative handover id and the map that resolved it is gone.
+     */
+    private suspend fun adoptSavedCopy(savedId: Long) {
+        val saved = repository.getById(savedId) ?: return
+        documentId = savedId
+        savedState[KEY_SAVED_DOCUMENT_ID] = savedId
+        _state.update { current ->
+            val shown = current.document ?: return@update current
+            current.copy(document = saved.copy(id = shown.id), canSaveToLibrary = false)
         }
     }
 
@@ -1425,6 +1449,9 @@ class ViewerViewModel(
         const val MAX_TEXT_FIND_HITS = 100_000
         const val FIND_DEBOUNCE_MILLIS = 200L
         const val KEY_ENCODING = "encoding"
+
+        /** The library row a saved handover moved to, so a restore after process death opens the copy. */
+        const val KEY_SAVED_DOCUMENT_ID = "savedDocumentId"
         const val NANOS_PER_MILLI = 1_000_000L
         const val STOP_TIMEOUT_MILLIS = 5_000L
 
