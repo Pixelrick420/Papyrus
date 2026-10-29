@@ -1,6 +1,6 @@
 package com.papyrus.app.viewer
 
-/** Which [CodeLanguage] a file's name selects; the content is never sniffed for a language. */
+/** Which [CodeLanguage] a file selects: its name decides, and its content only where the name cannot. */
 object CodeLanguages {
 
     /** Null for anything without a definition, which then shows as plain text. */
@@ -9,8 +9,45 @@ object CodeLanguages {
         if (name.isEmpty()) return null
         // Dockerfile.dev, Dockerfile-prod: the name leads, the extension is a suffix of it.
         if (name.startsWith("dockerfile")) return DOCKERFILE
-        val extension = if (name.contains('.')) name.substringAfterLast('.') else name
-        return byExtension[extension]
+        return byExtension[extensionOf(name)]
+    }
+
+    /**
+     * [forFileName], with the start of the file ([head], see [LanguageDetector.headOf]) as a second opinion for a
+     * file opened as code. The name stays authoritative: the content is read only when the name selects no
+     * definition (an unknown or missing extension) or is one of [LanguageDetector.AMBIGUOUS_EXTENSIONS], and when
+     * it says nothing the name's answer, if any, stands.
+     */
+    fun forContent(displayName: String?, head: String): CodeLanguage? {
+        val named = forFileName(displayName)
+        val extension = extensionOf(displayName?.lowercase().orEmpty())
+        if (named != null && extension !in LanguageDetector.AMBIGUOUS_EXTENSIONS) return named
+        val kind = LanguageDetector.detect(head, extension) ?: return named
+        return languageOf(kind) ?: named
+    }
+
+    /** The text after the last dot, or the whole name when it has none, which is how a name is matched everywhere. */
+    private fun extensionOf(lowerCaseName: String): String =
+        if (lowerCaseName.contains('.')) lowerCaseName.substringAfterLast('.') else lowerCaseName
+
+    /**
+     * The definition that colours [kind], or null when there is none. C, C++ and Objective-C share the one C-family
+     * definition, which is also what `.c` and `.h` get by name, so telling them apart changes no colour for now.
+     */
+    private fun languageOf(kind: ContentKind): CodeLanguage? = when (kind) {
+        ContentKind.SHELL -> SHELL
+        ContentKind.POWERSHELL -> POWERSHELL
+        ContentKind.PYTHON -> PYTHON
+        ContentKind.JAVASCRIPT -> JAVASCRIPT
+        ContentKind.RUBY -> RUBY
+        ContentKind.PHP -> PHP
+        ContentKind.LUA -> LUA
+        ContentKind.GROOVY -> GROOVY
+        ContentKind.R -> R
+        ContentKind.C, ContentKind.CPP, ContentKind.OBJC -> CPP
+        ContentKind.MARKUP -> MARKUP
+        ContentKind.JSON, ContentKind.JSONC, ContentKind.JSON5 -> JSON
+        ContentKind.PERL, ContentKind.MATLAB -> null
     }
 
     /**

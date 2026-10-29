@@ -85,11 +85,13 @@ on-device. The manifest declares no network or storage permissions; the only two
 | **EPUB**              | A reflowed book, its own table of contents as the **Outline**, its cover as the thumbnail |
 | **Markdown**          | Tables, task lists, maths, footnotes, autolinks, coloured code fences, `data:` URI images |
 | **Text / Logs**       | 40-line chunks, selectable text, optional line numbers, no-wrap mode, hyphenated prose    |
-| **Code / Config**     | The same text pipeline, with syntax colour for 30+ languages                              |
+| **Code / Config**     | The same text pipeline, with syntax colour for 30+ languages, found by name or by content |
 | **CSV  / TSV**        | A header row in bold, wrapping cells, sideways scroll for wide tables                     |
 
 The format comes from the file extension first, then the MIME type, then an 8 KB sniff. Text encodings are detected
-automatically and can be changed from the viewer menu.
+automatically and can be changed from the viewer menu. A source file's language comes from its name too; only when the
+name cannot place it (an unknown or missing extension, or `.h` and `.m`) is the start of the file read, for a shebang,
+an XML root, JSON or Objective-C.
 
 ## Features
 

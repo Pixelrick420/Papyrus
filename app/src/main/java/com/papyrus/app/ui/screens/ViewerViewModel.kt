@@ -47,6 +47,7 @@ import com.papyrus.app.viewer.EpubExtractor
 import com.papyrus.app.viewer.EpubProtectedException
 import com.papyrus.app.viewer.OutlineEntry
 import com.papyrus.app.viewer.StatisticalCharsetGuesser
+import com.papyrus.app.viewer.LanguageDetector
 import com.papyrus.app.viewer.LexStates
 import com.papyrus.app.viewer.OfficeBlock
 import com.papyrus.app.viewer.NormRect
@@ -914,10 +915,10 @@ class ViewerViewModel(
     private fun extractOffice(uri: Uri, format: DocumentFormat): List<OfficeBlock> =
         OfficeTextExtractor(mediaDir = mediaDir).extract({ openStream(uri) }, format)
 
-    /** Plain text from either read path. By name, and only for source: a .log or .txt that
-     * happens to look like code stays plain. */
+    /** Plain text from either read path. By name, and by the head of the file where the name cannot
+     * place it, and only for source: a .log or .txt that happens to look like code stays plain. */
     private fun plainText(doc: DocumentEntity, read: TextChunks, codeOnly: Boolean): ViewerContent.PlainText {
-        val language = CodeLanguages.forFileName(doc.title).takeIf { codeOnly }
+        val language = if (codeOnly) CodeLanguages.forContent(doc.title, LanguageDetector.headOf(read.chunks)) else null
         return ViewerContent.PlainText(
             chunks = read.chunks,
             encoding = read.encoding,
