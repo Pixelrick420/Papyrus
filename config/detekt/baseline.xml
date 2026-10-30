@@ -24,5 +24,7 @@
     <ID>TooGenericExceptionCaught:PdfTextExtractor.kt:PdfTextExtractor$e: Exception</ID>
     <ID>TooGenericExceptionCaught:ThumbnailLoader.kt:ThumbnailLoader$e: Exception</ID>
     <ID>TooGenericExceptionCaught:ViewerViewModel.kt:ViewerViewModel$e: Exception</ID>
+    <ID>UnusedParameter:EpubSvg.kt:SvgSceneBuilder$@Suppress("UNUSED_PARAMETER") name: String</ID>
+    <ID>UnusedParameter:EpubSvg.kt:SvgSceneBuilder$@Suppress("UNUSED_PARAMETER") value: String</ID>
   </CurrentIssues>
 </SmellBaseline>

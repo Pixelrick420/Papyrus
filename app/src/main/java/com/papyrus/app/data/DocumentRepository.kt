@@ -183,7 +183,11 @@ class DocumentRepository(
         if (entity.format in ENCRYPTABLE && !settings.current.autosaveEncrypted && isEncrypted(entity.format, uri)) {
             return@withContext handOver(entity)
         }
-        SafStorage.persistPermission(resolver, uri)
+        if (!SafStorage.persistPermission(resolver, uri)) {
+            // Grant could not be persisted (provider refused, OS cap reached). Hand over instead of
+            // indexing a row that depends on a transient grant which will lapse on reboot.
+            return@withContext handOver(entity)
+        }
         // buildEntity stamps lastOpenedAt, and upsertByUri carries it onto an existing row too.
         dao.upsertByUri(entity)
     }
@@ -314,7 +318,7 @@ class DocumentRepository(
         val meta = SafStorage.queryMetadata(context, picked)
         val pickedFormat = resolveFormat(picked, meta.displayName, meta.mimeType)
         if (!matchesRepick(expected.title, expected.format, meta.displayName, pickedFormat)) return@withContext false
-        SafStorage.persistPermission(resolver, picked)
+        if (!SafStorage.persistPermission(resolver, picked)) return@withContext false
         // A handed-over document has no row to re-point, so the in-memory entry carries the new URI.
         if (expected.id < 0) {
             handedOver[expected.id] = expected.copy(uri = picked.toString())
