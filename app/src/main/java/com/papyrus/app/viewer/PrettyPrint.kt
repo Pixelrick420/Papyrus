@@ -3,6 +3,9 @@ package com.papyrus.app.viewer
 /** Which scanner [PrettyPrint] runs; keyed off the file name, like [CodeLanguages.forFileName]. */
 enum class PrettyKind { JSON, XML, HTML }
 
+/** What [PrettyPrint.formatOnOpen] hands the viewer: the text to show, and whether it is the stored one because formatting failed. */
+class PrettyOutcome(val text: String, val failed: Boolean)
+
 /**
  * Indents structured files as they open, purely in memory: only whitespace outside strings,
  * comments and text nodes is re-laid, so the stored file's content is never changed. These are
@@ -32,6 +35,33 @@ object PrettyPrint {
             "html", "htm" -> PrettyKind.HTML
             else -> null
         }
+    }
+
+    /**
+     * The most a file may weigh and still be formatted. A scanner needs the whole file as one string and
+     * builds a second for the result, so this is what a reader pays in memory; it is the limit the
+     * plain-text reader had before it streamed, so no file that was formatted before stops being.
+     */
+    const val MAX_FORMAT_BYTES = 32L * 1024 * 1024
+
+    /**
+     * The scanner to run on a file opened as [displayName] weighing [sizeBytes], or null to show it as
+     * stored: the setting is off ([enabled]), the name is not formattable, or the file is over
+     * [MAX_FORMAT_BYTES]. A size of zero or less means unknown, which passes; the read stops at the limit.
+     */
+    fun kindToApply(displayName: String?, sizeBytes: Long, enabled: Boolean): PrettyKind? {
+        if (!enabled || sizeBytes > MAX_FORMAT_BYTES) return null
+        return kindFor(displayName)
+    }
+
+    /**
+     * Formats a file as it opens. Any failure leaves the stored text, which always opens; [truncated] is a
+     * file the read cut short, which cannot be well formed and is not the scanner's failure to report.
+     */
+    fun formatOnOpen(kind: PrettyKind, text: String, truncated: Boolean, indent: Int = DEFAULT_INDENT): PrettyOutcome {
+        if (truncated) return PrettyOutcome(text, failed = false)
+        val formatted = format(kind, text, indent) ?: return PrettyOutcome(text, failed = true)
+        return PrettyOutcome(formatted, failed = false)
     }
 
     /**

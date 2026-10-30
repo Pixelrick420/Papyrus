@@ -173,7 +173,7 @@ an XML root, JSON or Objective-C.
 - **Wrap long lines** wraps at the screen edge. Off, each line stays on one row and the view scrolls sideways.
 - **Hyphenation** splits long words at syllables where a `.txt` file wraps. Logs and code are never hyphenated.
 - **Pretty print structured files** indents JSON, XML, HTML and SVG as they open, at the chosen tab size. The stored
-  file is never changed.
+  file is never changed, and one over 32 MB opens as stored.
 - **Tab size** sets the indent for pretty printing: 2, 3, 4 or 8 spaces.
 - **Autosave external docs** adds a document another app hands over to the library as it opens. Off, the viewer's
   **Save to library** keeps a copy instead.

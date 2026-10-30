@@ -852,16 +852,16 @@ class ViewerViewModel(
             // CODE renders through the same surface as TEXT: monospace, chunked, selectable.
             DocumentFormat.TEXT, DocumentFormat.CODE -> {
                 val settings = app.settings.current
-                val prettyKind = if (settings.prettyPrint) PrettyPrint.kindFor(doc.title) else null
+                val prettyKind = PrettyPrint.kindToApply(doc.title, doc.sizeBytes, settings.prettyPrint)
                 if (prettyKind == null) {
                     val read = openStream(uri).use { readTextChunks(it, MAX_TEXT_BYTES, forcedCharset(), StatisticalCharsetGuesser) }
                     plainText(doc, read, codeOnly = format == DocumentFormat.CODE)
                 } else {
                     val read = openStream(uri).use { readTextString(it, MAX_TEXT_BYTES, forcedCharset(), StatisticalCharsetGuesser) }
-                    val formatted = PrettyPrint.format(prettyKind, read.text, settings.tabSize)
+                    val opened = PrettyPrint.formatOnOpen(prettyKind, read.text, read.truncated, settings.tabSize)
                     // Structural failure: the exact stored text always opens, with one snackbar.
-                    if (formatted == null) _messages.value = UiText(R.string.viewer_pretty_failed)
-                    val chunks = chunkText(formatted ?: read.text, read.encoding, read.truncated)
+                    if (opened.failed) _messages.value = UiText(R.string.viewer_pretty_failed)
+                    val chunks = chunkText(opened.text, read.encoding, read.truncated)
                     plainText(doc, chunks, codeOnly = format == DocumentFormat.CODE)
                 }
             }
@@ -1200,7 +1200,7 @@ class ViewerViewModel(
     private fun reloadPrettyPrintedContent() {
         val doc = _state.value.document ?: return
         if (_state.value.content !is ViewerContent.PlainText) return
-        if (PrettyPrint.kindFor(doc.title) == null) return
+        if (PrettyPrint.kindToApply(doc.title, doc.sizeBytes, enabled = true) == null) return
         reloadContent()
     }
 

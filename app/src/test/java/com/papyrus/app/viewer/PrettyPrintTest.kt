@@ -1,6 +1,7 @@
 package com.papyrus.app.viewer
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -281,5 +282,62 @@ class PrettyPrintTest {
             assertNull(PrettyPrint.format(PrettyKind.XML, "<a><b></a>", width))
             assertNull(PrettyPrint.format(PrettyKind.HTML, "<div", width))
         }
+    }
+
+    @Test
+    fun `the setting off or a name that never formats leaves the file as stored`() {
+        assertNull(PrettyPrint.kindToApply("a.json", 1_000L, enabled = false))
+        assertNull(PrettyPrint.kindToApply("a.txt", 1_000L, enabled = true))
+        assertNull(PrettyPrint.kindToApply(null, 1_000L, enabled = true))
+        assertEquals(PrettyKind.JSON, PrettyPrint.kindToApply("a.json", 1_000L, enabled = true))
+        assertEquals(PrettyKind.XML, PrettyPrint.kindToApply("a.svg", 1_000L, enabled = true))
+    }
+
+    @Test
+    fun `a file over the limit is not formatted and one at it is`() {
+        val limit = PrettyPrint.MAX_FORMAT_BYTES
+        assertEquals(PrettyKind.JSON, PrettyPrint.kindToApply("a.json", limit, enabled = true))
+        assertNull(PrettyPrint.kindToApply("a.json", limit + 1, enabled = true))
+        assertNull(PrettyPrint.kindToApply("a.html", Long.MAX_VALUE, enabled = true))
+    }
+
+    @Test
+    fun `an unknown size passes, because the read stops at the limit`() {
+        assertEquals(PrettyKind.HTML, PrettyPrint.kindToApply("a.html", 0L, enabled = true))
+        assertEquals(PrettyKind.HTML, PrettyPrint.kindToApply("a.html", -1L, enabled = true))
+    }
+
+    @Test
+    fun `opening a well-formed file formats it`() {
+        val outcome = PrettyPrint.formatOnOpen(PrettyKind.JSON, """{"a":1}""", truncated = false)
+
+        assertEquals("{\n  \"a\": 1\n}", outcome.text)
+        assertFalse(outcome.failed)
+    }
+
+    @Test
+    fun `a malformed file falls back to the stored text and says so`() {
+        for ((kind, text) in listOf(PrettyKind.JSON to "{\"a\":", PrettyKind.XML to "<a><b></a>", PrettyKind.HTML to "<div")) {
+            val outcome = PrettyPrint.formatOnOpen(kind, text, truncated = false)
+
+            assertEquals(text, outcome.text)
+            assertTrue(outcome.failed)
+        }
+    }
+
+    @Test
+    fun `a file the read cut short is shown as stored without a failure`() {
+        // Cut mid-string: the scanner would refuse it, but that is the limit's doing, not the file's.
+        val cut = """{"a":"unfinished"""
+        val outcome = PrettyPrint.formatOnOpen(PrettyKind.JSON, cut, truncated = true)
+
+        assertEquals(cut, outcome.text)
+        assertFalse(outcome.failed)
+    }
+
+    @Test
+    fun `opening honours the indent setting and repairs one that is not a choice`() {
+        assertEquals("{\n    \"a\": 1\n}", PrettyPrint.formatOnOpen(PrettyKind.JSON, """{"a":1}""", truncated = false, indent = 4).text)
+        assertEquals("{\n  \"a\": 1\n}", PrettyPrint.formatOnOpen(PrettyKind.JSON, """{"a":1}""", truncated = false, indent = 5).text)
     }
 }
