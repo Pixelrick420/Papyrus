@@ -1,5 +1,7 @@
 package com.papyrus.app.viewer
 
+import java.io.EOFException
+import java.io.FileInputStream
 import java.io.IOException
 import java.io.InputStream
 import java.nio.charset.Charset
@@ -81,6 +83,33 @@ internal fun indexChunks(
     val index = buildChunkIndex(input, encoding.charset, encoding.bomLength.toLong(), layout, ensureActive)
     val chunks = IndexedChunks(source, index, encoding.charset, layout)
     return TextChunks(chunks, index.lineCount, index.maxLineColumns, encoding, index.truncated)
+}
+
+/**
+ * Moves this stream [offset] bytes in, for a [ByteSource] over a provider that only opens from the start:
+ * a seek where it hands out a file, and reading past the bytes where it hands out a pipe, which cannot.
+ * Throws [EOFException] if the stream is shorter than [offset].
+ */
+internal fun InputStream.skipTo(offset: Long) {
+    if (offset <= 0) return
+    if (this is FileInputStream) {
+        try {
+            channel.position(offset)
+            return
+        } catch (_: IOException) {
+            // A pipe cannot seek, and nothing has been read from it: fall through to reading.
+        }
+    }
+    var left = offset
+    while (left > 0) {
+        val skipped = skip(left)
+        when {
+            skipped > 0 -> left -= skipped
+            // skip may return 0 before the end; a read tells the end from a stream that merely declines.
+            read() < 0 -> throw EOFException("${offset - left} bytes, no $offset")
+            else -> left--
+        }
+    }
 }
 
 private fun reopen(source: ByteSource, offset: Long): InputStream? = try {

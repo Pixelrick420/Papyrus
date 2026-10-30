@@ -54,12 +54,8 @@ object PrettyPrint {
         return kindFor(displayName)
     }
 
-    /**
-     * Formats a file as it opens. Any failure leaves the stored text, which always opens; [truncated] is a
-     * file the read cut short, which cannot be well formed and is not the scanner's failure to report.
-     */
-    fun formatOnOpen(kind: PrettyKind, text: String, truncated: Boolean, indent: Int = DEFAULT_INDENT): PrettyOutcome {
-        if (truncated) return PrettyOutcome(text, failed = false)
+    /** Formats a file as it opens. Any failure leaves the stored text, which always opens, and says so. */
+    fun formatOnOpen(kind: PrettyKind, text: String, indent: Int = DEFAULT_INDENT): PrettyOutcome {
         val formatted = format(kind, text, indent) ?: return PrettyOutcome(text, failed = true)
         return PrettyOutcome(formatted, failed = false)
     }

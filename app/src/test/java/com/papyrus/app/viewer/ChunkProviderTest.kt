@@ -1,6 +1,9 @@
 package com.papyrus.app.viewer
 
 import java.io.ByteArrayInputStream
+import java.io.EOFException
+import java.io.File
+import java.io.FileInputStream
 import java.io.FilterInputStream
 import java.io.IOException
 import java.io.InputStream
@@ -430,6 +433,46 @@ class ChunkProviderTest {
             fail("opened")
         } catch (expected: IOException) {
             assertEquals("no such file", expected.message)
+        }
+    }
+
+    /** Skips nothing, as a stream over a pipe may: only reading gets it anywhere. */
+    private class NoSkip(input: InputStream) : FilterInputStream(input) {
+        override fun skip(n: Long): Long = 0
+    }
+
+    @Test
+    fun `a stream is moved to an offset by a seek on a file and by reading on anything else`() {
+        val bytes = ByteArray(1000) { (it % 251).toByte() }
+        val file = File.createTempFile("skip", ".bin").apply { writeBytes(bytes); deleteOnExit() }
+
+        for (offset in listOf(0L, 1L, 499L, 999L, 1000L)) {
+            val streams = listOf(
+                FileInputStream(file),
+                ByteArrayInputStream(bytes),
+                NoSkip(ByteArrayInputStream(bytes)),
+                OneByteAtATime(ByteArrayInputStream(bytes)),
+            )
+            for (stream in streams) {
+                stream.use {
+                    it.skipTo(offset)
+                    val rest = it.readBytes()
+                    assertEquals("${it.javaClass.simpleName} at $offset", bytes.size - offset.toInt(), rest.size)
+                    if (rest.isNotEmpty()) assertEquals(bytes[offset.toInt()], rest[0])
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `a stream shorter than the offset says so`() {
+        for (stream in listOf(ByteArrayInputStream(ByteArray(10)), NoSkip(ByteArrayInputStream(ByteArray(10))))) {
+            try {
+                stream.skipTo(11)
+                fail("skipped past the end")
+            } catch (expected: EOFException) {
+                assertTrue(expected.message!!.contains("11"))
+            }
         }
     }
 

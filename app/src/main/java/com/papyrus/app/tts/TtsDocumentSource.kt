@@ -63,6 +63,10 @@ object TtsDocumentSource {
             paragraphs(chunk).map { TtsUnit(it.text, index, it.start) }
         }
 
+    /** The same units as [unitsFromPlainText], made as they are read, so a large file is not held a second time. */
+    fun unitsFromChunks(chunks: List<String>, ensureActive: () -> Unit = {}): List<TtsUnit> =
+        ChunkTtsUnits.of(chunks, ensureActive)
+
     /** Markdown: paragraph start offsets into the rendered text become the anchors. */
     fun unitsFromMarkdown(text: String): List<TtsUnit> =
         paragraphs(text).map { TtsUnit(it.text, it.start, it.start) }
@@ -95,6 +99,8 @@ object TtsDocumentSource {
      */
     fun startIndexFor(units: List<TtsUnit>, location: ReadingLocation): Int {
         if (units.isEmpty()) return 0
+        // Units made from chunks know where each chunk's own begin, so the chunks before the start are not read.
+        if (units is ChunkTtsUnits && location.kind != LocationKind.CHAR) return units.firstUnitFrom(location.unit).coerceAtMost(units.lastIndex)
         return if (location.kind == LocationKind.CHAR) {
             var index = 0
             for (i in units.indices) {

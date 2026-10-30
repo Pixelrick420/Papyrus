@@ -7,6 +7,7 @@ import com.papyrus.app.viewer.MarkdownFootnotes
 import com.papyrus.app.viewer.OfficeBlock
 import com.papyrus.app.viewer.OfficeCell
 import com.papyrus.app.viewer.TextSpan
+import com.papyrus.app.viewer.searchChunks
 import com.papyrus.app.viewer.splitLines
 import io.noties.markwon.core.spans.LinkSpan
 import io.noties.markwon.image.AsyncDrawableSpan
@@ -120,23 +121,16 @@ internal fun countOccurrences(text: String, spans: List<TextSpan>, query: String
     findMatchRanges(text, spans, query).size
 
 /**
- * One hit per match, not per chunk, so the find bar steps each match once. [limit] caps the list
- * (a short query in a 32 MB file matches millions of times); [shouldStop] is polled per chunk.
+ * One hit per match, not per chunk, so the find bar steps each match once; a hit is the chunk the match
+ * starts in. [limit] caps the list (a short query in a large file matches millions of times); [shouldStop]
+ * is polled per chunk. See [searchChunks] for matches that run over the end of a chunk.
  */
 fun findChunkHits(
     chunks: List<String>,
     query: String,
     limit: Int = Int.MAX_VALUE,
     shouldStop: () -> Boolean = { false },
-): List<Int> {
-    if (query.isBlank()) return emptyList()
-    val hits = ArrayList<Int>()
-    for (index in chunks.indices) {
-        if (hits.size >= limit || shouldStop()) break
-        repeat(minOf(countOccurrences(chunks[index], query), limit - hits.size)) { hits += index }
-    }
-    return hits
-}
+): List<Int> = searchChunks(chunks, query, limit, shouldStop).map { it.chunk }
 
 /** Same shape as [findChunkHits]: a block's index repeats once per match rendered inside it. */
 fun findBlockHits(blocks: List<OfficeBlock>, query: String): List<Int> {

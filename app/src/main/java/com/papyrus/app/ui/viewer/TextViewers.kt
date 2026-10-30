@@ -83,8 +83,10 @@ import com.papyrus.app.viewer.direction
 import io.noties.markwon.Markwon
 import io.noties.markwon.core.spans.LinkSpan
 import io.noties.markwon.ext.tables.TableRowSpan
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
 
 /** Zoom and scrollbar are overlays, so showing them never re-measures the scrollable. */
@@ -495,6 +497,16 @@ fun PlainTextViewer(
     val geometry = rememberLazyScrollGeometry(listState)
     LazyPositionEffects(listState, LocationKind.CHUNK, chunks.size, zoom, position, restoreTarget)
 
+    // A large file's chunks are decoded the first time they are asked for. Asking for the ones around the
+    // screen here, off the main thread, means a scroll finds them already held.
+    LaunchedEffect(chunks, listState) {
+        snapshotFlow { listState.firstVisibleItemIndex }.collect { first ->
+            withContext(Dispatchers.IO) {
+                for (i in (first - PREFETCH_BEHIND).coerceAtLeast(0)..(first + PREFETCH_AHEAD).coerceAtMost(chunks.lastIndex)) chunks[i]
+            }
+        }
+    }
+
     // A chunk is 40 lines, so it can be taller than the screen. This brings the chunk in; its own
     // `FindText` then scrolls to the current match inside it, once per step.
     val reveal = remember(activeHit, activeOccurrence, findQuery) { RevealTicket() }
@@ -578,9 +590,11 @@ private fun PlainTextList(
     // current zoom.
     val columnPx = remember(measurer, textStyle) { measurer.measure(COLUMN_PROBE, textStyle).size.width / COLUMN_PROBE.length.toFloat() }
 
+    // Remembered: asking a large file for its last chunk on every pass would decode it again.
+    val endsWithNewline = remember(chunks) { chunks.lastOrNull()?.endsWith('\n') == true }
     val gutter = if (options.showLineNumbers) {
         val ruleGapPx = with(density) { GutterRuleGap.toPx() }
-        val digits = gutterDigits(options.lineCount, chunks.lastOrNull()?.endsWith('\n') == true)
+        val digits = gutterDigits(options.lineCount, endsWithNewline)
         val numberFieldPx = columnPx * digits
         val numberColor = colors.onSurfaceVariant.copy(alpha = GUTTER_ALPHA)
         val dividerColor = colors.outlineVariant
@@ -1096,6 +1110,8 @@ private val ChunkVerticalPadding = 2.dp
 private const val COLUMN_PROBE = "0000000000"
 private const val GUTTER_ALPHA = 0.7f
 private const val NUMBER_LAYOUT_CACHE = 64
+private const val PREFETCH_BEHIND = 2
+private const val PREFETCH_AHEAD = 8
 private const val TRUNCATED_ITEM_KEY = "truncated"
 private const val INCOMPLETE_ITEM_KEY = "incomplete"
 private const val SIDEWAYS_SETTLE_FRAMES = 3

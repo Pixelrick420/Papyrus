@@ -390,8 +390,11 @@ after the last keystroke before it queries, and a search that fails is reported 
 - Content search only finds text that is in the index. Encrypted and DRM-protected documents are not indexed, nor are
   files over 64 MB, and a document is indexed up to its first 1,000,000 characters. A scanned PDF with no text layer is
   indexed as empty. A document is searchable by content only once the indexer has reached it.
-- Size and shape caps: Markdown up to 6 MB, plain text up to 32 MB, a table up to 8 MB and 200,000 cells. A table that
-  hits a cap ends with the viewer's incomplete-document notice instead of failing.
+- Size and shape caps: Markdown up to 6 MB, a table up to 8 MB and 200,000 cells. A table that hits a cap ends with the
+  viewer's incomplete-document notice instead of failing.
+- Plain text and code have no size cap in UTF-8 and the single-byte encodings: a large file is indexed once and decoded
+  as it is scrolled to, a few chunks at a time. One in UTF-16 or a multi-byte East Asian encoding is held in memory and
+  cut at 32 MB, as is one the file provider will not open twice.
 
 ## Contributing
 

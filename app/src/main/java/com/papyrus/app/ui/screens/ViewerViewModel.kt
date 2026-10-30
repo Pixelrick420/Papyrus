@@ -38,6 +38,8 @@ import com.papyrus.app.ui.UiText
 import com.papyrus.app.ui.navigation.Routes
 import com.papyrus.app.viewer.BlockDirection
 import com.papyrus.app.viewer.BookLink
+import com.papyrus.app.viewer.ByteSource
+import com.papyrus.app.viewer.ChunkProvider
 import com.papyrus.app.viewer.CodeLanguage
 import com.papyrus.app.viewer.CodeLanguages
 import com.papyrus.app.viewer.DelimitedFile
@@ -75,7 +77,7 @@ import com.papyrus.app.viewer.TextEncodings
 import com.papyrus.app.viewer.TextSniffer
 import com.papyrus.app.viewer.chunkText
 import com.papyrus.app.viewer.isProse
-import com.papyrus.app.viewer.readTextChunks
+import com.papyrus.app.viewer.skipTo
 import com.papyrus.app.viewer.readTextString
 import com.papyrus.app.ui.viewer.ARRIVAL_FADE_MILLIS
 import com.papyrus.app.ui.viewer.ARRIVAL_HOLD_MILLIS
@@ -107,12 +109,14 @@ import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
 import java.io.FileNotFoundException
+import java.io.IOException
 import java.io.InputStream
 import java.nio.charset.Charset
 import kotlin.coroutines.cancellation.CancellationException
@@ -676,7 +680,10 @@ class ViewerViewModel(
         viewModelScope.launch {
             val units = when (content) {
                 is ViewerContent.Pdf -> pdfTtsUnits(content.source.pageCount)
-                is ViewerContent.PlainText -> TtsDocumentSource.unitsFromPlainText(content.chunks)
+                // Counting the units reads every chunk, which for a large file is not for the main thread.
+                is ViewerContent.PlainText -> withContext(Dispatchers.IO) {
+                    TtsDocumentSource.unitsFromChunks(content.chunks) { ensureActive() }
+                }
                 is ViewerContent.Markdown -> TtsDocumentSource.unitsFromMarkdown(content.text.toString())
                 is ViewerContent.Office -> TtsDocumentSource.units(document.format, officeBlocks = content.blocks)
                 else -> emptyList()
@@ -853,16 +860,21 @@ class ViewerViewModel(
             DocumentFormat.TEXT, DocumentFormat.CODE -> {
                 val settings = app.settings.current
                 val prettyKind = PrettyPrint.kindToApply(doc.title, doc.sizeBytes, settings.prettyPrint)
-                if (prettyKind == null) {
-                    val read = openStream(uri).use { readTextChunks(it, MAX_TEXT_BYTES, forcedCharset(), StatisticalCharsetGuesser) }
-                    plainText(doc, read, codeOnly = format == DocumentFormat.CODE)
+                val whole = if (prettyKind == null) {
+                    null
                 } else {
-                    val read = openStream(uri).use { readTextString(it, MAX_TEXT_BYTES, forcedCharset(), StatisticalCharsetGuesser) }
-                    val opened = PrettyPrint.formatOnOpen(prettyKind, read.text, read.truncated, settings.tabSize)
+                    openStream(uri).use {
+                        readTextString(it, PrettyPrint.MAX_FORMAT_BYTES.toInt(), forcedCharset(), StatisticalCharsetGuesser)
+                    }
+                }
+                // Unformatted, or too big to format whatever size was recorded: indexed, and as stored.
+                if (prettyKind == null || whole == null || whole.truncated) {
+                    plainText(doc, readChunks(uri, doc), codeOnly = format == DocumentFormat.CODE)
+                } else {
+                    val opened = PrettyPrint.formatOnOpen(prettyKind, whole.text, settings.tabSize)
                     // Structural failure: the exact stored text always opens, with one snackbar.
                     if (opened.failed) _messages.value = UiText(R.string.viewer_pretty_failed)
-                    val chunks = chunkText(opened.text, read.encoding, read.truncated)
-                    plainText(doc, chunks, codeOnly = format == DocumentFormat.CODE)
+                    plainText(doc, chunkText(opened.text, whole.encoding, truncated = false), codeOnly = format == DocumentFormat.CODE)
                 }
             }
             // A table is held whole, so it reads far less than plain text; a file past that is cut and noted.
@@ -1423,6 +1435,21 @@ class ViewerViewModel(
     private fun openStream(uri: Uri): InputStream =
         app.contentResolver.openInputStream(uri) ?: throw FileNotFoundException(uri.toString())
 
+    /** The document's bytes, openable at an offset, which is how a large text file is decoded as it is scrolled to. */
+    private fun byteSource(uri: Uri) = ByteSource { offset ->
+        val stream = openStream(uri)
+        try {
+            stream.skipTo(offset)
+            stream
+        } catch (e: IOException) {
+            stream.close()
+            throw e
+        }
+    }
+
+    private suspend fun readChunks(uri: Uri, doc: DocumentEntity): TextChunks =
+        ChunkProvider.open(byteSource(uri), doc.sizeBytes, forcedCharset(), StatisticalCharsetGuesser)
+
     /** The charset picked by hand, or null to detect; an unsupported name falls back to detection. */
     private fun forcedCharset(): Charset? = encodingName?.let(TextEncodings::charsetOrNull)
 
@@ -1442,9 +1469,6 @@ class ViewerViewModel(
     }
 
     private companion object {
-        // Plain text streams into 40-line chunks, so memory is about the file's size, not several copies of it.
-        const val MAX_TEXT_BYTES = 32 * 1024 * 1024
-
         // Markdown is one Spanned in one TextView, which is far heavier per byte than a chunk of text, and
         // code colours, links and formulas each add spans to it. Raised from 4 MB with those features; if a
         // large file runs out of memory on a low-end device, this is the number to bring back down.

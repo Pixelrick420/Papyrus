@@ -309,7 +309,7 @@ class PrettyPrintTest {
 
     @Test
     fun `opening a well-formed file formats it`() {
-        val outcome = PrettyPrint.formatOnOpen(PrettyKind.JSON, """{"a":1}""", truncated = false)
+        val outcome = PrettyPrint.formatOnOpen(PrettyKind.JSON, """{"a":1}""")
 
         assertEquals("{\n  \"a\": 1\n}", outcome.text)
         assertFalse(outcome.failed)
@@ -318,7 +318,7 @@ class PrettyPrintTest {
     @Test
     fun `a malformed file falls back to the stored text and says so`() {
         for ((kind, text) in listOf(PrettyKind.JSON to "{\"a\":", PrettyKind.XML to "<a><b></a>", PrettyKind.HTML to "<div")) {
-            val outcome = PrettyPrint.formatOnOpen(kind, text, truncated = false)
+            val outcome = PrettyPrint.formatOnOpen(kind, text)
 
             assertEquals(text, outcome.text)
             assertTrue(outcome.failed)
@@ -326,18 +326,8 @@ class PrettyPrintTest {
     }
 
     @Test
-    fun `a file the read cut short is shown as stored without a failure`() {
-        // Cut mid-string: the scanner would refuse it, but that is the limit's doing, not the file's.
-        val cut = """{"a":"unfinished"""
-        val outcome = PrettyPrint.formatOnOpen(PrettyKind.JSON, cut, truncated = true)
-
-        assertEquals(cut, outcome.text)
-        assertFalse(outcome.failed)
-    }
-
-    @Test
     fun `opening honours the indent setting and repairs one that is not a choice`() {
-        assertEquals("{\n    \"a\": 1\n}", PrettyPrint.formatOnOpen(PrettyKind.JSON, """{"a":1}""", truncated = false, indent = 4).text)
-        assertEquals("{\n  \"a\": 1\n}", PrettyPrint.formatOnOpen(PrettyKind.JSON, """{"a":1}""", truncated = false, indent = 5).text)
+        assertEquals("{\n    \"a\": 1\n}", PrettyPrint.formatOnOpen(PrettyKind.JSON, """{"a":1}""", indent = 4).text)
+        assertEquals("{\n  \"a\": 1\n}", PrettyPrint.formatOnOpen(PrettyKind.JSON, """{"a":1}""", indent = 5).text)
     }
 }
