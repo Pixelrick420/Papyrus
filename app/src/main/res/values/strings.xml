@@ -147,6 +147,9 @@ access</string>
     <string name="viewer_goto_page_label">Page</string>
     <string name="viewer_goto_of">of %1$d</string>
     <string name="viewer_goto_page_error">Enter a page from 1 to %1$d</string>
+    <string name="viewer_goto_line_title">Go to line</string>
+    <string name="viewer_goto_line_label">Line</string>
+    <string name="viewer_goto_line_error">Enter a line from 1 to %1$d</string>
     <string name="viewer_goto_go">Go</string>
     <string name="viewer_outline_title">Outline</string>
     <string name="viewer_find_title">Find in file</string>

@@ -124,6 +124,8 @@ import com.papyrus.app.ui.viewer.rememberLingerVisible
 import com.papyrus.app.ui.viewer.rememberZoomState
 import com.papyrus.app.viewer.BookLink
 import com.papyrus.app.viewer.PdfLinkTarget
+import com.papyrus.app.viewer.locateLine
+import com.papyrus.app.viewer.numberedLines
 import com.papyrus.app.viewer.officeOutline
 import kotlinx.coroutines.launch
 
@@ -220,7 +222,13 @@ fun ViewerScreen(
     val outline = if (isPdf) state.pdfOutline else officeEntries
     // Go to page needs enough pages to be worth numbering; the menu item and Ctrl+G both ask this.
     val pageCount = (state.content as? ViewerContent.Pdf)?.source?.pageCount ?: 0
-    val goToAvailable = pageCount >= MIN_GO_TO_PAGES
+    // Plain text and code share a surface, so both can go to a line; a short file has no use for it.
+    val plain = state.content as? ViewerContent.PlainText
+    val lineCount = remember(plain) {
+        plain?.let { numberedLines(it.lineCount, it.chunks.lastOrNull()?.endsWith('\n') == true) } ?: 0
+    }
+    val goToLines = lineCount >= MIN_GO_TO_LINES
+    val goToAvailable = pageCount >= MIN_GO_TO_PAGES || goToLines
 
     // Held here (not in [PdfViewer]) so the header's Copy can reach it; keyed on the source.
     val selectionState = remember((state.content as? ViewerContent.Pdf)?.source) {
@@ -403,6 +411,7 @@ fun ViewerScreen(
                 findAvailable = findAvailable,
                 outlineAvailable = outline.isNotEmpty(),
                 goToAvailable = goToAvailable,
+                goToLines = goToLines,
                 bookmarkableContent = bookmarkableContent,
                 bookmarksAvailable = bookmarksAvailable,
                 formAvailable = formAvailable,
@@ -667,7 +676,23 @@ fun ViewerScreen(
         )
     }
 
-    if (goToOpen && goToAvailable) {
+    if (goToOpen && goToLines) {
+        GoToDialog(
+            title = stringResource(R.string.viewer_goto_line_title),
+            label = stringResource(R.string.viewer_goto_line_label),
+            error = stringResource(R.string.viewer_goto_line_error, lineCount),
+            max = lineCount,
+            onGo = { line ->
+                // The chunk the line is in, and how far down it: exact where lines do not wrap.
+                locateLine(line, lineCount)?.let { target ->
+                    viewModel.ttsReleaseScroll()
+                    jump = ViewerJump(ReadingLocation(LocationKind.CHUNK, target.chunk, target.fraction))
+                }
+                goToOpen = false
+            },
+            onDismiss = { goToOpen = false },
+        )
+    } else if (goToOpen && goToAvailable) {
         GoToDialog(
             title = stringResource(R.string.viewer_goto_page_title),
             label = stringResource(R.string.viewer_goto_page_label),
@@ -740,6 +765,7 @@ private fun pdfCopyFileName(title: String?, fallback: String): String {
 
 /** Below this many pages the page list is short enough to scroll, so Go to page stays out of the menu. */
 private const val MIN_GO_TO_PAGES = 6
+private const val MIN_GO_TO_LINES = 100
 
 /** Flat title row like Home's; a selection swaps the overflow menu for Copy, Highlight and dismiss. */
 @Composable
@@ -748,6 +774,7 @@ private fun ViewerHeader(
     findAvailable: Boolean,
     outlineAvailable: Boolean,
     goToAvailable: Boolean,
+    goToLines: Boolean,
     bookmarkableContent: Boolean,
     bookmarksAvailable: Boolean,
     formAvailable: Boolean,
@@ -895,10 +922,10 @@ private fun ViewerHeader(
                             onClick = { onMenuOpenChange(false); onSaveHighlightCopy() },
                         )
                     }
-                    // Only for a PDF long enough to number: [MIN_GO_TO_PAGES] or more.
+                    // Only for a PDF of [MIN_GO_TO_PAGES] pages or more, or text of [MIN_GO_TO_LINES] lines or more.
                     if (goToAvailable) {
                         DropdownMenuItem(
-                            text = { Text(stringResource(R.string.viewer_goto_page_title)) },
+                            text = { Text(stringResource(if (goToLines) R.string.viewer_goto_line_title else R.string.viewer_goto_page_title)) },
                             onClick = { onMenuOpenChange(false); onGoTo() },
                         )
                     }
