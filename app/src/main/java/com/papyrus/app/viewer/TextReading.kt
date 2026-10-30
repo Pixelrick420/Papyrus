@@ -35,7 +35,11 @@ fun readTextChunks(
     guesser: CharsetGuesser? = null,
     linesPerChunk: Int = TEXT_LINES_PER_CHUNK,
 ): TextChunks {
-    val opened = openText(input, maxBytes, forced, guesser)
+    return assembleChunks(openText(input, maxBytes, forced, guesser), linesPerChunk)
+}
+
+/** Reads [opened] to its end into chunks; [readTextChunks] and the provider's in-memory path share it. */
+internal fun assembleChunks(opened: OpenedText, linesPerChunk: Int = TEXT_LINES_PER_CHUNK): TextChunks {
     val assembler = LineAssembler(linesPerChunk)
     val buffer = CharArray(READ_BUFFER_CHARS)
     while (true) {
@@ -138,6 +142,8 @@ internal class OpenedText(
     val reader: Reader,
     val encoding: TextEncoding,
     private val limited: LimitedInputStream,
+    /** The sample took the whole file, so there is nothing after it to index. */
+    val sampleCoversFile: Boolean = false,
 ) {
     /** Only meaningful once [reader] has been read to its end. */
     val truncated: Boolean get() = limited.cutShort
@@ -158,7 +164,7 @@ internal fun openText(input: InputStream, maxBytes: Int, forced: Charset?, guess
     }
     val body = SequenceInputStream(ByteArrayInputStream(head, encoding.bomLength, got - encoding.bomLength), input)
     val limited = LimitedInputStream(body, maxBytes.toLong())
-    return OpenedText(InputStreamReader(limited, encoding.charset), encoding, limited)
+    return OpenedText(InputStreamReader(limited, encoding.charset), encoding, limited, sampleCoversFile = got < head.size)
 }
 
 /** Ends after [remaining] bytes and notes whether the source still had more: the file was cut short. */
@@ -213,7 +219,7 @@ private fun StringBuilder.dropCutCharacter() {
     if (isNotEmpty() && last() == '\uFFFD') setLength(length - 1)
 }
 
-private fun columnsOf(c: Char): Int = when {
+internal fun columnsOf(c: Char): Int = when {
     c == '\t' -> TAB_COLUMNS
     c.code < FIRST_WIDE -> 1
     isWide(c) -> 2
