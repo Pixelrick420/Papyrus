@@ -325,6 +325,25 @@ class PdfPageTextTest {
     }
 
     @Test
+    fun `a page whose boxes are all empty is not selectable`() {
+        val nan = floatArrayOf(Float.NaN, Float.NaN, Float.NaN, Float.NaN)
+        val page = page("hello", List(5) { nan })
+
+        // The box array exists, but there is no character a finger could land on.
+        assertTrue(page.hasBoxes)
+        assertFalse(page.isSelectable)
+        assertNull(page.nearestChar(0.5f, 0.5f))
+    }
+
+    @Test
+    fun `one boxed character is enough to be selectable`() {
+        val nan = floatArrayOf(Float.NaN, Float.NaN, Float.NaN, Float.NaN)
+        val boxes = listOf(nan, floatArrayOf(0.1f, 0.1f, 0.2f, 0.2f), nan)
+
+        assertTrue(page("abc", boxes).isSelectable)
+    }
+
+    @Test
     fun `a blank page is not selectable even with boxes`() {
         val text = "   "
         val page = page(text, line(text))

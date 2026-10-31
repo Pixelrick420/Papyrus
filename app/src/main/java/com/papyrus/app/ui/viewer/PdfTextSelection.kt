@@ -37,6 +37,7 @@ import com.papyrus.app.viewer.PdfPageGeometry
 import com.papyrus.app.viewer.PdfPageLink
 import com.papyrus.app.viewer.PdfPageText
 import com.papyrus.app.viewer.PdfPlatformSelection
+import com.papyrus.app.viewer.PdfPlatformText
 import com.papyrus.app.viewer.PdfSelection
 import com.papyrus.app.viewer.PdfTextPos
 import kotlinx.coroutines.CoroutineScope
@@ -188,17 +189,22 @@ internal class PdfSelectionState(
     }
 
     /**
-     * The engine's own reading of [span] on [page], or null when the page did not come from it or
-     * it cannot answer: the text model's characters are then the answer. The platform selects in
-     * the same index space as the model, because the model's text is its lines joined by newlines;
-     * a middle page's open end is clamped to the text the page actually has.
+     * The engine's own reading of [span] on [page], or null when the page did not come from it, it
+     * cannot answer, or it answered with other characters than the model holds there: the text
+     * model's characters and boxes are then the answer. A middle page's open end is clamped to the
+     * text the page actually has.
+     *
+     * The engine counts characters in its own way, which need not match the model's lines joined by
+     * newlines, so its answer is only taken when it is the very passage that was asked about. Copy
+     * and highlight both hang from this, and a shifted answer would copy and mark the wrong words.
      */
     private suspend fun platformSelection(page: Int, span: PageSpan, text: PdfPageText): PdfPlatformSelection? {
         if (!text.fromPlatform) return null
         val from = span.from.coerceIn(0, text.text.length)
         val to = span.to.coerceIn(from, text.text.length)
         if (from == to) return null
-        return loadSelection(page, from, to)
+        val answer = loadSelection(page, from, to) ?: return null
+        return answer.takeIf { PdfPlatformText.sameCharacters(it.text, text.textBetween(from, to)) }
     }
 
     private suspend fun caretAt(point: PagePoint): PdfTextPos? {

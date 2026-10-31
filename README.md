@@ -77,16 +77,16 @@ on-device. The manifest declares no network or storage permissions; the only two
 
 ## Formats
 
-| Format                | What you get                                                                              |
-| --------------------- | ----------------------------------------------------------------------------------------- |
-| **PDF**               | Zoom, links, **Outline**, **Go to page**, text selection, highlights and notes, form filling, password unlock |
-| **DOCX / ODT**        | Headings, lists, tables, images, footnotes, reviewer comments, DOCX equations as text     |
-| **DOC**               | Paragraphs and tables                                                                     |
-| **EPUB**              | A reflowed book, its own table of contents as the **Outline**, its cover as the thumbnail |
-| **Markdown**          | Tables, task lists, maths, footnotes, autolinks, coloured code fences, `data:` URI images |
-| **Text / Logs**       | 40-line chunks, selectable text, optional line numbers, no-wrap mode, hyphenated prose    |
-| **Code / Config**     | The same text pipeline, with syntax colour for 30+ languages, found by name or by content |
-| **CSV  / TSV**        | A header row in bold, wrapping cells, sideways scroll for wide tables                     |
+| Format            | What you get                                                                                                  |
+| ----------------- | ------------------------------------------------------------------------------------------------------------- |
+| **PDF**           | Zoom, links, **Outline**, **Go to page**, text selection, highlights and notes, form filling, password unlock |
+| **DOCX / ODT**    | Headings, lists, tables, images, footnotes, reviewer comments, DOCX equations as text                         |
+| **DOC**           | Paragraphs and tables                                                                                         |
+| **EPUB**          | A reflowed book, its own table of contents as the **Outline**, its cover as the thumbnail                     |
+| **Markdown**      | Tables, task lists, maths, footnotes, autolinks, coloured code fences, `data:` URI images                     |
+| **Text / Logs**   | 40-line chunks, selectable text, optional line numbers, no-wrap mode, hyphenated prose                        |
+| **Code / Config** | The same text pipeline, with syntax colour for 30+ languages, found by name or by content                     |
+| **CSV / TSV**     | A header row in bold, wrapping cells, sideways scroll for wide tables                                         |
 
 The format comes from the file extension first, then the MIME type, then an 8 KB sniff. Text encodings are detected
 automatically and can be changed from the viewer menu. A source file's language comes from its name too; only when the
@@ -127,7 +127,7 @@ an XML root, JSON or Objective-C.
   Tap a stored highlight to write or edit its note; clearing the text and saving makes it a plain highlight again. A
   note keeps the highlighter wash, adds a rule and a dot, and lives in Papyrus. Highlights and notes are kept in
   Papyrus's own database, so the PDF itself is never changed.
-  Where the device can write page annotations, **Save a copy with highlights** writes the plain highlights into a new
+  Where the device can write page annotations, **Save highlighted copy** writes the plain highlights into a new
   PDF through the system picker. The notes stay behind, since a saved copy carries highlights only.
 - **PDF form fields**: a PDF with a fillable AcroForm offers **Form fields** in the menu. Each field shows its label,
   page, value and state; text and choice fields open a dialog, while check boxes and radio buttons switch on tap.

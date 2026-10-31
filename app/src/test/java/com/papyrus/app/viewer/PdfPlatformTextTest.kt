@@ -223,4 +223,106 @@ class PdfPlatformTextTest {
         assertEquals(3, text.nearestChar(0.01f, 0.1f)?.index)
         assertEquals(1, text.selectionRects(0, 5).size)
     }
+
+    private fun usable(vararg lines: PlatformLine) = PdfPlatformText.isUsable(lines.toList(), 100f, 100f)
+
+    @Test
+    fun `a page the platform reports no text for is not usable`() {
+        assertFalse(PdfPlatformText.isUsable(emptyList(), 100f, 100f))
+        assertFalse(usable(PlatformLine("", emptyList())))
+        assertFalse(usable(PlatformLine("   ", listOf(PageRect(0f, 0f, 50f, 10f)))))
+    }
+
+    @Test
+    fun `text without a box is not usable, though the model would call it selectable`() {
+        val unbounded = listOf(PlatformLine("Hello world", emptyList()), PlatformLine("Second line", emptyList()))
+
+        assertFalse(PdfPlatformText.isUsable(unbounded, 100f, 100f))
+        // Without the check this page has a box array, all NaN: nothing to touch, and no "no text" toast.
+        val text = PdfPlatformText.from(unbounded, 100f, 100f)
+        assertTrue(text.hasBoxes)
+        assertFalse(text.isSelectable)
+        assertNull(text.nearestChar(0.5f, 0.5f))
+    }
+
+    @Test
+    fun `a rectangle with no area counts as no box`() {
+        assertFalse(usable(PlatformLine("ab", listOf(PageRect(5f, 0f, 5f, 10f)))))
+    }
+
+    @Test
+    fun `one stream wrapped over several lines is not usable`() {
+        // One content, three lines of text, one rectangle per line: the model would pair all three
+        // lines of text with the first line's boxes.
+        val stream = PlatformLine(
+            "first\nsecond\nthird",
+            listOf(PageRect(0f, 0f, 50f, 10f), PageRect(0f, 20f, 50f, 30f), PageRect(0f, 40f, 50f, 50f)),
+        )
+
+        assertFalse(usable(stream))
+    }
+
+    @Test
+    fun `stacked rectangles on one run are several lines, not one cut in pieces`() {
+        assertFalse(usable(PlatformLine("wrapped text", listOf(PageRect(0f, 0f, 50f, 10f), PageRect(0f, 20f, 50f, 30f)))))
+    }
+
+    @Test
+    fun `a line cut in two pieces on the same band is usable`() {
+        assertTrue(usable(PlatformLine("abcd", listOf(PageRect(0f, 0f, 20f, 10f), PageRect(50f, 1f, 100f, 11f)))))
+    }
+
+    @Test
+    fun `one content per line with a box each is usable`() {
+        assertTrue(
+            usable(
+                line("first", top = 0f, bottom = 10f, right = 50f),
+                line("second", top = 20f, bottom = 30f, right = 50f),
+            ),
+        )
+    }
+
+    @Test
+    fun `a blank content between lines does not spoil a usable page`() {
+        assertTrue(
+            usable(
+                line("first", top = 0f, bottom = 10f, right = 50f),
+                PlatformLine("", emptyList()),
+                line("second", top = 20f, bottom = 30f, right = 50f),
+            ),
+        )
+    }
+
+    @Test
+    fun `a line terminator ending a content keeps the lines and boxes paired`() {
+        val lines = listOf(
+            line("first\r\n", top = 0f, bottom = 10f, right = 50f),
+            line("second\n", top = 20f, bottom = 30f, right = 50f),
+        )
+
+        assertTrue(PdfPlatformText.isUsable(lines, 100f, 100f))
+        val text = PdfPlatformText.from(lines, 100f, 100f)
+        assertEquals("first\nsecond", text.text)
+        // The second line's glyphs sit on the second rectangle, not one slot late.
+        assertEquals(6, text.nearestChar(0.01f, 0.25f)?.index)
+    }
+
+    @Test
+    fun `one text with a break inside it is not usable`() {
+        assertFalse(usable(PlatformLine("first\nsecond", listOf(PageRect(0f, 0f, 50f, 10f)))))
+    }
+
+    @Test
+    fun `the same characters match whatever sits between the lines`() {
+        assertTrue(PdfPlatformText.sameCharacters("ab\ncd", "ab cd"))
+        assertTrue(PdfPlatformText.sameCharacters("ab\r\ncd ", "abcd"))
+        assertTrue(PdfPlatformText.sameCharacters("", "  "))
+    }
+
+    @Test
+    fun `a shifted or extended reading is not the same passage`() {
+        assertFalse(PdfPlatformText.sameCharacters("abcd", "abc"))
+        assertFalse(PdfPlatformText.sameCharacters("bcd", "abc"))
+        assertFalse(PdfPlatformText.sameCharacters("abc", ""))
+    }
 }

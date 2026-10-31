@@ -70,8 +70,13 @@ class PdfPageText(
     /** True when glyph boxes were kept. A page past the extractor's budget holds text without them. */
     val hasBoxes: Boolean get() = boxes.isNotEmpty()
 
-    /** A scan has no text, and a page without boxes has nowhere for a finger to land. */
-    val isSelectable: Boolean get() = boxes.isNotEmpty() && text.any { !it.isWhitespace() }
+    /**
+     * A scan has no text, and a page whose characters all lack a box has nowhere for a finger to
+     * land: having a box array is not enough, since every slot of it can be NaN.
+     */
+    val isSelectable: Boolean by lazy {
+        boxes.isNotEmpty() && text.indices.any { !text[it].isWhitespace() && !boxes[it * 4].isNaN() }
+    }
 
     /**
      * The box nearest ([x], [y]), or null when none exists; 0 inside a box, first overlap wins.

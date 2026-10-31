@@ -1358,14 +1358,14 @@ class ViewerViewModel(
     /**
      * The engine's own reading of the characters `[from, to)` of one page, or null when it has no
      * selection API or cannot answer that page; the text model's characters and boxes are then the
-     * answer. The index is the same one [pageText] reports, since the platform's lines are what its
-     * text is made of.
+     * answer. The platform's start and stop are both inclusive, so the exclusive [to] is passed as
+     * the character before it; the caller checks what came back before using it.
      */
     internal suspend fun platformSelection(page: Int, from: Int, to: Int): PdfPlatformSelection? =
         (_state.value.content as? ViewerContent.Pdf)?.source?.platformSelect(
             page,
             PlatformBoundary.Index(from),
-            PlatformBoundary.Index(to),
+            PlatformBoundary.Index((to - 1).coerceAtLeast(from)),
         )
 
     /** One page's links. Shares [pageTextSource] with [pageText], so the document is opened once. */

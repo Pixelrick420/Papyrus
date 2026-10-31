@@ -1,10 +1,12 @@
-<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8" ?>
 <resources>
     <string name="app_name">Papyrus</string>
     <string name="action_back">Back</string>
     <string name="cd_add_files">Add files</string>
     <string name="home_added_files">Added %d files</string>
-    <string name="home_skipped_encrypted">Skipped %1$d password-protected file(s)</string>
+    <string
+        name="home_skipped_encrypted"
+    >Skipped %1$d password-protected file(s)</string>
     <string name="home_menu">More options</string>
     <string name="action_share">Share</string>
     <string name="action_remove">Remove</string>
@@ -25,8 +27,12 @@
     <string name="home_share_skipped">Shared %1$d, skipped %2$d</string>
     <string name="home_share_none">Couldn\'t share those files</string>
     <string name="home_share_failed">Couldn\'t share that file</string>
-    <string name="home_share_no_access">Access to that file was lost. Open it to restore sharing.</string>
-    <string name="home_share_missing">That file has been moved or deleted.</string>
+    <string
+        name="home_share_no_access"
+    >Access to that file was lost. Open it to restore sharing.</string>
+    <string
+        name="home_share_missing"
+    >That file has been moved or deleted.</string>
     <string name="cd_pdf_page">Page %1$d</string>
     <string name="cd_pdf_page_with_text">Page %1$d. %2$s</string>
 
@@ -40,7 +46,9 @@ access</string>
 
     <string name="home_search_hint">Search files</string>
     <string name="home_search_none">No files match “%1$s”</string>
-    <string name="home_search_failed">Couldn\'t search inside your files</string>
+    <string
+        name="home_search_failed"
+    >Couldn\'t search inside your files</string>
     <string name="home_sort_cd">Sort: %1$s</string>
     <string name="home_sort_cd_with_filters">Sort: %1$s, %2$s</string>
     <string name="home_sort_section">Sort</string>
@@ -77,19 +85,37 @@ access</string>
     <string name="home_star_failed">Couldn\'t star</string>
     <string name="cd_clear_search">Clear search</string>
 
-    <string name="viewer_error_not_found">This document is no longer in your list.</string>
-    <string name="viewer_error_access">Access to this file was lost. Open it again from Home.</string>
+    <string
+        name="viewer_error_not_found"
+    >This document is no longer in your list.</string>
+    <string
+        name="viewer_error_access"
+    >Access to this file was lost. Open it again from Home.</string>
     <string name="viewer_error_missing">The file was moved or deleted.</string>
-    <string name="viewer_error_password">This document is protected and couldn\'t be opened.</string>
+    <string
+        name="viewer_error_password"
+    >This document is protected and couldn\'t be opened.</string>
     <string name="viewer_password_title">Password required</string>
-    <string name="viewer_password_message">This document is password-protected. Enter its password to open it.</string>
+    <string
+        name="viewer_password_message"
+    >This document is password-protected. Enter its password to open it.</string>
     <string name="viewer_password_hint">Password</string>
     <string name="viewer_password_unlock">Unlock</string>
-    <string name="viewer_password_incorrect">Incorrect password. Try again.</string>
-    <string name="viewer_password_cancelled">Password-protected document not opened.</string>
-    <string name="viewer_error_unsupported">This file type isn\'t supported.</string>
-    <string name="viewer_error_empty">No readable text found in this document.</string>
-    <string name="viewer_error_generic">Couldn\'t open the document: %1$s</string>
+    <string
+        name="viewer_password_incorrect"
+    >Incorrect password. Try again.</string>
+    <string
+        name="viewer_password_cancelled"
+    >Password-protected document not opened.</string>
+    <string
+        name="viewer_error_unsupported"
+    >This file type isn\'t supported.</string>
+    <string
+        name="viewer_error_empty"
+    >No readable text found in this document.</string>
+    <string
+        name="viewer_error_generic"
+    >Couldn\'t open the document: %1$s</string>
     <string name="viewer_copy">Copy</string>
     <string name="viewer_copied">Copied</string>
     <string name="viewer_copy_failed">That\'s too much text to copy.</string>
@@ -98,15 +124,21 @@ access</string>
     <string name="viewer_selection_clear">Clear selection</string>
     <string name="viewer_highlight">Highlight</string>
     <string name="viewer_highlight_remove">Remove highlight</string>
-    <string name="viewer_error_epub_protected">This book is protected by DRM and can\'t be opened here.</string>
-    <string name="viewer_incomplete">… (part of this document couldn\'t be shown)</string>
+    <string
+        name="viewer_error_epub_protected"
+    >This book is protected by DRM and can\'t be opened here.</string>
+    <string
+        name="viewer_incomplete"
+    >… (part of this document couldn\'t be shown)</string>
     <string name="viewer_truncated">… (file truncated for display)</string>
     <string name="viewer_footnotes">Footnotes</string>
     <string name="viewer_encoding_title">Text encoding</string>
     <string name="viewer_encoding_auto_plain">Auto-detect</string>
     <string name="viewer_page_indicator">%1$d / %2$d</string>
     <string name="viewer_office_image_loading">Loading image…</string>
-    <string name="viewer_office_image_failed">This image format can\'t be shown on Android.</string>
+    <string
+        name="viewer_office_image_failed"
+    >This image format can\'t be shown on Android.</string>
 
     <string name="viewer_menu">More options</string>
     <string name="viewer_outline_expand">Expand %1$s</string>
@@ -123,7 +155,9 @@ access</string>
     <string name="viewer_save_done">Saved to your library</string>
     <string name="viewer_save_failed">Couldn\'t save this document.</string>
     <string name="viewer_form_title">Form fields</string>
-    <string name="viewer_form_hint">Fill in the fields, then save a copy. The original file stays as it is.</string>
+    <string
+        name="viewer_form_hint"
+    >Fill in the fields, then save a copy. The original file stays as it is.</string>
     <string name="viewer_form_save">Save a copy</string>
     <string name="viewer_form_saved">Saved a copy</string>
     <string name="viewer_form_save_failed">Couldn\'t save a copy.</string>
@@ -135,25 +169,35 @@ access</string>
     <string name="viewer_form_read_only">Read only</string>
     <string name="viewer_form_edit">Edit field</string>
     <string name="viewer_form_copy_name">Form copy</string>
-    <string name="viewer_save_copy_with_highlights">Save a copy with highlights</string>
+    <string
+        name="viewer_save_copy_with_highlights"
+    >Save highlighted copy</string>
     <string name="viewer_highlight_copy_name">Highlight copy</string>
     <string name="viewer_highlight_saved">Saved a copy with highlights</string>
     <string name="viewer_highlight_save_failed">Couldn\'t save a copy.</string>
     <string name="viewer_annotation_title">Note</string>
     <string name="viewer_annotation_field">Your note</string>
     <string name="viewer_annotation_counter">%1$d/%2$d</string>
-    <string name="viewer_annotation_hint">Notes stay in Papyrus. A saved copy of the PDF carries highlights, not notes.</string>
+    <string
+        name="viewer_annotation_hint"
+    >Notes stay in Papyrus. A saved copy of the PDF carries highlights, not notes.</string>
     <string name="viewer_annotation_mark">Note: %1$s</string>
     <string name="viewer_annotation_edit">Open note</string>
     <string name="viewer_annotation_delete">Delete highlight</string>
-    <string name="viewer_pretty_failed">Couldn\'t format this file; showing it as stored.</string>
+    <string
+        name="viewer_pretty_failed"
+    >Couldn\'t format this file; showing it as stored.</string>
 
     <string name="bookmark_add">Add bookmark</string>
     <string name="bookmarks_title">Bookmarks</string>
-    <string name="bookmarks_unavailable">Save to your library to add bookmarks</string>
+    <string
+        name="bookmarks_unavailable"
+    >Save to your library to add bookmarks</string>
     <string name="bookmark_added">Bookmark added</string>
     <string name="bookmark_exists">Already bookmarked</string>
-    <string name="bookmark_limit">Bookmark limit reached (%1$d). Delete one to add another.</string>
+    <string
+        name="bookmark_limit"
+    >Bookmark limit reached (%1$d). Delete one to add another.</string>
     <string name="bookmark_failed">Couldn\'t add that bookmark</string>
     <string name="bookmark_deleted">Bookmark deleted</string>
     <string name="bookmark_jump">Go to bookmark</string>
@@ -166,7 +210,9 @@ access</string>
     <string name="bookmark_rename_title">Rename bookmark</string>
     <string name="bookmark_rename_label">Name</string>
     <string name="bookmarks_empty_title">No bookmarks yet</string>
-    <string name="bookmarks_empty_hint">Choose Add bookmark in the menu to mark where you are. Bookmarks keep only the place, never the text.</string>
+    <string
+        name="bookmarks_empty_hint"
+    >Choose Add bookmark in the menu to mark where you are. Bookmarks keep only the place, never the text.</string>
 
     <string name="viewer_find_hint">Find</string>
     <string name="viewer_find_close">Close find</string>
@@ -175,11 +221,17 @@ access</string>
     <string name="viewer_find_none">No matches</string>
     <string name="viewer_find_counter">%1$d of %2$d</string>
     <string name="viewer_find_total">%1$d</string>
-    <string name="viewer_find_too_large">This file is too large to search.</string>
+    <string
+        name="viewer_find_too_large"
+    >This file is too large to search.</string>
 
-    <string name="viewer_regrant_message">Access to this file was lost. Pick it again to restore it.</string>
+    <string
+        name="viewer_regrant_message"
+    >Access to this file was lost. Pick it again to restore it.</string>
     <string name="viewer_regrant_action">Pick file</string>
-    <string name="viewer_regrant_mismatch">That\'s a different file. Pick the one named in the title bar.</string>
+    <string
+        name="viewer_regrant_mismatch"
+    >That\'s a different file. Pick the one named in the title bar.</string>
 
     <string name="viewer_info_name">Name</string>
     <string name="viewer_info_type">Type</string>
@@ -200,36 +252,60 @@ access</string>
     <string name="settings_theme_dark">Dark</string>
     <string name="settings_section_text">Text and code</string>
     <string name="settings_syntax_highlighting">Syntax highlighting</string>
-    <string name="settings_syntax_highlighting_desc">Colour comments, strings, keywords and numbers in source and config files.</string>
+    <string
+        name="settings_syntax_highlighting_desc"
+    >Colour comments, strings, keywords and numbers in source and config files.</string>
     <string name="settings_colorblind">Colorblind mode</string>
-    <string name="settings_colorblind_desc">Use a colour-blind safe palette for theme colours.</string>
+    <string
+        name="settings_colorblind_desc"
+    >Use a colour-blind safe palette for theme colours.</string>
     <string name="settings_night_mode">Night mode</string>
-    <string name="settings_night_mode_desc">Invert the colours of PDF pages, so white paper reads black.</string>
+    <string
+        name="settings_night_mode_desc"
+    >Invert the colours of PDF pages, so white paper reads black.</string>
     <string name="settings_line_numbers">Line numbers</string>
-    <string name="settings_line_numbers_desc">Show a line-number gutter beside plain text, logs and code.</string>
+    <string
+        name="settings_line_numbers_desc"
+    >Show a line-number gutter beside plain text, logs and code.</string>
     <string name="settings_wrap_lines">Wrap long lines</string>
-    <string name="settings_wrap_lines_desc">Turn off to keep each line on one row and scroll sideways. Applies to plain text, logs and code.</string>
+    <string
+        name="settings_wrap_lines_desc"
+    >Turn off to keep each line on one row and scroll sideways. Applies to plain text, logs and code.</string>
     <string name="settings_hyphenation">Hyphenation</string>
-    <string name="settings_hyphenation_desc">Split long words at syllables where plain text wraps. Logs and code are never hyphenated.</string>
+    <string
+        name="settings_hyphenation_desc"
+    >Split long words at syllables where plain text wraps. Logs and code are never hyphenated.</string>
     <string name="settings_pretty_print">Pretty print structured files</string>
-    <string name="settings_pretty_print_desc">Indent JSON, XML, HTML and SVG files as they open. The stored file is never changed.</string>
+    <string
+        name="settings_pretty_print_desc"
+    >Indent JSON, XML, HTML and SVG files as they open. The stored file is never changed.</string>
     <string name="settings_tab_size">Tab size</string>
     <string name="settings_tab_size_value">%1$d spaces</string>
     <string name="settings_section_library">Library</string>
     <string name="settings_autosave_external">Autosave external docs</string>
-    <string name="settings_autosave_external_desc">Add documents opened from other apps to your library automatically.</string>
+    <string
+        name="settings_autosave_external_desc"
+    >Add documents opened from other apps to your library automatically.</string>
     <string name="settings_autosave_encrypted">Autosave encrypted docs</string>
-    <string name="settings_autosave_encrypted_desc">Add password-protected documents to your library automatically. They stay encrypted and the password is never stored.</string>
+    <string
+        name="settings_autosave_encrypted_desc"
+    >Add password-protected documents to your library automatically. They stay encrypted and the password is never stored.</string>
     <string name="settings_remember_position">Remember reading position</string>
-    <string name="settings_remember_position_desc">Reopen library documents where you stopped and show your progress on Home. Only numbers are stored, on this device.</string>
+    <string
+        name="settings_remember_position_desc"
+    >Reopen library documents where you stopped and show your progress on Home. Only numbers are stored, on this device.</string>
     <string name="settings_section_about">About</string>
     <string name="settings_about_version">Version %1$s</string>
     <string name="settings_about_source">Source code</string>
-    <string name="settings_about_source_value">github.com/Pixelrick420/Papyrus</string>
+    <string
+        name="settings_about_source_value"
+    >github.com/Pixelrick420/Papyrus</string>
     <string name="settings_about_license">License</string>
     <string name="settings_about_license_value">Apache License 2.0</string>
     <string name="settings_about_privacy">Privacy policy</string>
-    <string name="settings_about_privacy_value">Papyrus does not collect any user data</string>
+    <string
+        name="settings_about_privacy_value"
+    >Papyrus does not collect any user data</string>
 
     <string name="viewer_read_aloud">Read aloud</string>
     <string name="viewer_read_aloud_stop">Stop read aloud</string>
@@ -237,11 +313,15 @@ access</string>
     <string name="tts_pause">Pause</string>
     <string name="tts_skip_back">Skip back</string>
     <string name="tts_skip_forward">Skip forward</string>
-    <string name="tts_scroll_lock">Lock scrolling to the line being read</string>
+    <string
+        name="tts_scroll_lock"
+    >Lock scrolling to the line being read</string>
     <string name="tts_scroll_unlock">Unlock scrolling</string>
     <string name="tts_speed">Speed</string>
     <string name="tts_speed_value">%1$s×</string>
     <string name="tts_notification_channel">Read aloud</string>
-    <string name="tts_error_engine">No speech engine is available on this device</string>
+    <string
+        name="tts_error_engine"
+    >No speech engine is available on this device</string>
     <string name="tts_error_speech">Speech stopped unexpectedly</string>
 </resources>

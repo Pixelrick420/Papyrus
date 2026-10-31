@@ -82,13 +82,19 @@ class PdfPageSource private constructor(
     }
 
     /**
-     * The page's text in the viewer's model, or null when the engine has no text API or the page
-     * fails; the caller then falls back to the PDFBox reader, which every device has.
+     * The page's text in the viewer's model, or null when the engine has no text API, the page
+     * fails, or what it reports is not something a finger can select from (no text, text without
+     * boxes, a stream that wraps over several lines); the caller then falls back to the PDFBox
+     * reader, which every device has. An empty answer must be null too: a page the engine cannot
+     * read is not a blank page, and handing it back as one would never reach PDFBox.
      */
     internal suspend fun platformText(index: Int): PdfPageText? {
         if (!capabilities.text) return null
         return withPage(index) { page ->
-            PdfPlatformText.from(page.text(), page.width.toFloat(), page.height.toFloat())
+            val lines = page.text()
+            val width = page.width.toFloat()
+            val height = page.height.toFloat()
+            if (PdfPlatformText.isUsable(lines, width, height)) PdfPlatformText.from(lines, width, height) else null
         }
     }
 

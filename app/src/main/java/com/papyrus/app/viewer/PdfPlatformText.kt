@@ -36,11 +36,46 @@ internal object PdfPlatformText {
     fun from(lines: List<PlatformLine>, pageWidth: Float, pageHeight: Float): PdfPageText {
         if (lines.isEmpty()) return PdfPageText.fromLines("", emptyList(), fromPlatform = true)
         return PdfPageText.fromLines(
-            text = lines.joinToString("\n") { it.text },
+            text = lines.joinToString("\n") { it.text.trimEnd(*LINE_TERMINATORS) },
             lineBoxes = lines.map { line -> line.rects.mapNotNull { normRect(it, pageWidth, pageHeight) } },
             fromPlatform = true,
         )
     }
+
+    /**
+     * Whether [lines] can stand in for the PDFBox text model, which is exact to the glyph.
+     *
+     * The platform reports "continuous streams" of text, bounded by one rectangle per visual line,
+     * or by none at all. The model needs one band of boxes per line of text, so only a page that
+     * already has that shape is taken. Anything else — no text, text without a box, or a stream that
+     * wraps over several lines — would give a page with nothing to touch, or a selection on the
+     * wrong words, and is left to PDFBox, which is what the viewer read before the platform engine.
+     */
+    fun isUsable(lines: List<PlatformLine>, pageWidth: Float, pageHeight: Float): Boolean {
+        var found = false
+        for (line in lines) {
+            val text = line.text.trimEnd(*LINE_TERMINATORS)
+            if (text.isBlank()) continue
+            // A break inside the text is split on again, and so paired with the next run's boxes.
+            if (text.any { it in LINE_TERMINATORS }) return false
+            val boxes = line.rects.mapNotNull { normRect(it, pageWidth, pageHeight) }
+            if (boxes.isEmpty() || !onOneLine(boxes)) return false
+            found = true
+        }
+        return found
+    }
+
+    /** True when [boxes] share a horizontal band: one line cut in pieces, not several lines stacked. */
+    private fun onOneLine(boxes: List<NormRect>): Boolean =
+        boxes.minOf { it.bottom } > boxes.maxOf { it.top }
+
+    /**
+     * True when two readings of one passage hold the same characters, whatever they put between
+     * lines. The engine's selection counts characters its own way, so its answer is only taken when
+     * it turns out to be the passage the viewer asked about.
+     */
+    fun sameCharacters(first: String, second: String): Boolean =
+        first.filterNot(Char::isWhitespace) == second.filterNot(Char::isWhitespace)
 
     /**
      * One group of rectangles per match, in reading order. Like the text model's own scan, only
@@ -83,4 +118,6 @@ internal object PdfPlatformText {
         if (right <= left || bottom <= top) return null
         return NormRect(left, top, right, bottom)
     }
+
+    private val LINE_TERMINATORS = charArrayOf('\r', '\n')
 }
