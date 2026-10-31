@@ -1,0 +1,220 @@
+@import 'tailwindcss';
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  /* Colors - Papyrus Brand Palette */
+  --color-primary-50: #e8f0f8;
+  --color-primary-100: #d1e1f1;
+  --color-primary-200: #a3c3e3;
+  --color-primary-300: #75a5d5;
+  --color-primary-400: #4787c7;
+  --color-primary-500: #1e3a5f;
+  --color-primary-600: #182e4c;
+  --color-primary-700: #122239;
+  --color-primary-800: #0c1726;
+  --color-primary-900: #060b13;
+  --color-primary-950: #03060a;
+
+  --color-accent-50: #fef9eb;
+  --color-accent-100: #fdf2d1;
+  --color-accent-200: #fae5a3;
+  --color-accent-300: #f7d875;
+  --color-accent-400: #f4cb47;
+  --color-accent-500: #e8a838;
+  --color-accent-600: #d4942a;
+  --color-accent-700: #b37721;
+  --color-accent-800: #915d1d;
+  --color-accent-900: #704718;
+  --color-accent-950: #3d230c;
+
+  --color-neutral-50: #fafafa;
+  --color-neutral-100: #f5f5f5;
+  --color-neutral-200: #e5e5e5;
+  --color-neutral-300: #d4d4d4;
+  --color-neutral-400: #a3a3a3;
+  --color-neutral-500: #737373;
+  --color-neutral-600: #525252;
+  --color-neutral-700: #404040;
+  --color-neutral-800: #262626;
+  --color-neutral-900: #171717;
+  --color-neutral-950: #0a0a0a;
+
+  --color-success-500: #22c55e;
+  --color-success-600: #16a34a;
+  --color-warning-500: #facc15;
+  --color-warning-600: #eab308;
+  --color-error-500: #ef4444;
+  --color-error-600: #dc2626;
+
+  /* Typography - System Font Stack */
+  --font-sans:
+    system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
+    sans-serif;
+  --font-mono:
+    ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+
+  /* Spacing - Standard Tailwind 4px base */
+  --spacing-0: 0;
+  --spacing-1: 0.25rem;
+  --spacing-2: 0.5rem;
+  --spacing-3: 0.75rem;
+  --spacing-4: 1rem;
+  --spacing-5: 1.25rem;
+  --spacing-6: 1.5rem;
+  --spacing-7: 1.75rem;
+  --spacing-8: 2rem;
+  --spacing-9: 2.25rem;
+  --spacing-10: 2.5rem;
+  --spacing-11: 2.75rem;
+  --spacing-12: 3rem;
+  --spacing-14: 3.5rem;
+  --spacing-16: 4rem;
+  --spacing-20: 5rem;
+  --spacing-24: 6rem;
+  --spacing-28: 7rem;
+  --spacing-32: 8rem;
+
+  /* Border Radius */
+  --radius-sm: 0.25rem;
+  --radius-md: 0.375rem;
+  --radius-lg: 0.5rem;
+  --radius-xl: 0.75rem;
+  --radius-2xl: 1rem;
+  --radius-full: 9999px;
+
+  /* Shadows - Subtle Elevation System */
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+
+  /* Transitions */
+  --transition-fast: 150ms ease-out;
+  --transition-normal: 200ms ease-out;
+  --transition-slow: 300ms ease-out;
+
+  /* Z-Index Scale */
+  --z-index-dropdown: 100;
+  --z-index-sticky: 200;
+  --z-index-fixed: 300;
+  --z-index-modal-backdrop: 400;
+  --z-index-modal: 500;
+  --z-index-popover: 600;
+  --z-index-tooltip: 700;
+  --z-index-toast: 800;
+}
+
+/* Centered, padded page container (Tailwind's bare `container` is not centered) */
+@utility container {
+  margin-inline: auto;
+  width: 100%;
+  padding-inline: 1rem;
+}
+
+@layer components {
+  .h1 {
+    @apply text-4xl font-extrabold tracking-tight text-balance sm:text-5xl lg:text-6xl;
+  }
+
+  .h2 {
+    @apply text-3xl font-bold tracking-tight text-balance sm:text-4xl;
+  }
+
+  .h3 {
+    @apply text-xl font-semibold sm:text-2xl;
+  }
+
+  .h4 {
+    @apply text-lg font-semibold;
+  }
+
+  .text-body {
+    @apply text-base leading-relaxed text-neutral-600 sm:text-lg dark:text-neutral-300;
+  }
+
+  .text-body-sm {
+    @apply text-sm leading-relaxed text-neutral-600 dark:text-neutral-300;
+  }
+
+  .section {
+    @apply scroll-mt-20 py-20 md:py-28;
+  }
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+
+  body {
+    @apply bg-white text-neutral-900 dark:bg-neutral-950 dark:text-neutral-100;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+  }
+
+  ::selection {
+    @apply bg-primary-500/30 text-primary-900 dark:text-primary-100;
+  }
+
+  :focus-visible {
+    @apply ring-primary-500 ring-2 ring-offset-2 ring-offset-white outline-none dark:ring-offset-neutral-950;
+  }
+
+  /* Skip link */
+  .skip-link {
+    @apply bg-primary-600 absolute -top-10 left-4 z-1000 rounded-lg px-4 py-2 text-white transition-transform;
+  }
+
+  .skip-link:focus {
+    @apply top-4;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .animate-fade-in-up {
+    animation: fadeInUp 0.6s ease-out forwards;
+    opacity: 0;
+    transform: translateY(20px);
+  }
+
+  @keyframes fadeInUp {
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  /* Stagger delays */
+  .delay-1 {
+    animation-delay: 100ms;
+  }
+
+  /* Carousel snap */
+  .carousel-snap {
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .carousel-item {
+    scroll-snap-align: start;
+    flex-shrink: 0;
+  }
+}

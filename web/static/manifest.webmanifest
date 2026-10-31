@@ -1,0 +1,21 @@
+{
+  "name": "Papyrus",
+  "short_name": "Papyrus",
+  "description": "Offline document viewer for Android: PDF, Word, OpenDocument, EPUB, Markdown, text and code.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#1e3a5f",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["productivity", "utilities"],
+  "lang": "en",
+  "dir": "ltr"
+}

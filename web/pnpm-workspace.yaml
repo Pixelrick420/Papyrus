@@ -1,0 +1,16 @@
+# pnpm 11+ reads project settings from this file. The "pnpm" field in
+# package.json is no longer read, which is why onlyBuiltDependencies moved here.
+#
+# Only the root package is part of this workspace, so no `packages` field.
+allowBuilds:
+  esbuild: true
+  sharp: true
+
+# pnpm 12 enables a built-in 24h minimumReleaseAge (release cooldown) and
+# verifies every locked entry against it. tslib@2.9.1 is an optional,
+# wasm32-only transitive dependency of @tailwindcss/oxide-wasm32-wasi and was
+# published inside that window, which made every install fail with
+# ERR_PNPM_MINIMUM_RELEASE_AGE_VIOLATION. Exempt that one pinned version;
+# this entry can be dropped once 2.9.1 is no longer a fresh release.
+minimumReleaseAgeExclude:
+  - tslib@2.9.1

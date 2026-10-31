@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#1e3a5f" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0f1f3a" media="(prefers-color-scheme: dark)" />
+
+    <!-- Primary Meta Tags -->
+    <title>Papyrus</title>
+    <meta name="title" content="Papyrus" />
+    <meta
+      name="description"
+      content="Offline document viewer for Android: PDF, Word, OpenDocument, EPUB, Markdown, text and code. No internet permission. No ads. No accounts. No analytics."
+    />
+    <meta name="keywords" content="PDF viewer, EPUB reader, document viewer, Android app, text-to-speech, annotations, open source" />
+    <meta name="author" content="Pixelrick420" />
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href="https://papyrus.app/" />
+
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://papyrus.app/" />
+    <meta property="og:title" content="Papyrus" />
+    <meta property="og:description" content="Offline document viewer for Android: PDF, Word, OpenDocument, EPUB, Markdown, text and code. No internet permission. No ads. No accounts. No analytics." />
+    <meta property="og:image" content="/og-image.svg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:site_name" content="Papyrus" />
+    <meta property="og:locale" content="en_US" />
+
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:url" content="https://papyrus.app/" />
+    <meta name="twitter:title" content="Papyrus" />
+    <meta name="twitter:description" content="Offline document viewer for Android: PDF, Word, OpenDocument, EPUB, Markdown, text and code. No internet permission. No ads. No accounts. No analytics." />
+    <meta name="twitter:image" content="/og-image.svg" />
+
+    <!-- JSON-LD Structured Data -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "Papyrus",
+        "applicationCategory": "ProductivityApplication",
+        "operatingSystem": "Android",
+        "offers": {
+          "@type": "Offer",
+          "price": "0",
+          "priceCurrency": "USD",
+          "availability": "https://schema.org/InStock"
+        },
+        "description": "Offline document viewer for Android: PDF, Word, OpenDocument, EPUB, Markdown, text and code. No internet permission. No ads. No accounts. No analytics.",
+        "url": "https://papyrus.app/",
+        "downloadUrl": "https://github.com/Pixelrick420/Papyrus/releases/latest",
+        "author": {
+          "@type": "Person",
+          "name": "Pixelrick420"
+        },
+        "license": "https://www.apache.org/licenses/LICENSE-2.0",
+        "screenshot": "https://papyrus.app/og-image.svg"
+      }
+    </script>
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="/papyrus-logo.svg" />
+    <link rel="apple-touch-icon" href="/papyrus-icon.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+
+    %sveltekit.head%
+  </head>
+  <body class="h-full bg-white dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 antialiased">
+    <div id="svelte">%sveltekit.body%</div>
+  </body>
+</html>
