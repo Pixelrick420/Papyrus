@@ -118,4 +118,84 @@ class LineLocationTest {
         }
         assertEquals(null, parseGoToNumber("151", lines)?.let { locateLine(it, lines) })
     }
+
+    @Test
+    fun `a position is the line it was made from, for every chunk length and every line`() {
+        for (perChunk in 1..40) for (lines in listOf(1, perChunk, perChunk + 1, perChunk * 3, perChunk * 3 + perChunk / 2 + 1, 257)) {
+            for (line in 1..lines) {
+                val target = locateLine(line, lines, perChunk)!!
+
+                assertEquals(
+                    "line $line of $lines in chunks of $perChunk",
+                    line,
+                    lineAt(target.chunk, target.fraction, lines, perChunk),
+                )
+            }
+        }
+    }
+
+    @Test
+    fun `a position between lines is the line it is in, and never leaves the file`() {
+        assertEquals(1, lineAt(0, 0.0f, 100))
+        assertEquals(1, lineAt(0, 0.024f, 100))
+        assertEquals(2, lineAt(0, 0.026f, 100))
+        assertEquals(40, lineAt(0, 0.999f, 100))
+        assertEquals(41, lineAt(1, 0f, 100))
+        assertEquals(100, lineAt(2, 0.999f, 100))
+        // Past either end, and a fraction that is not one.
+        assertEquals(1, lineAt(-3, -2f, 100))
+        assertEquals(40, lineAt(0, 7f, 100))
+        assertEquals(100, lineAt(3, 0.5f, 100))
+        assertEquals(100, lineAt(Int.MAX_VALUE, 0.5f, 100))
+        assertEquals(1, lineAt(0, Float.NaN, 100))
+        assertEquals(1, lineAt(0, 0.5f, 0))
+    }
+
+    @Test
+    fun `the snippet is the line's text without its indent, short enough to read at a glance`() {
+        val chunk = "first\n    indented line\n\n\t\ttabbed\tinside\nlast"
+
+        assertEquals("first", lineSnippet(chunk, 0))
+        assertEquals("indented line", lineSnippet(chunk, 1))
+        assertEquals("", lineSnippet(chunk, 2))
+        assertEquals("tabbed inside", lineSnippet(chunk, 3))
+        assertEquals("last", lineSnippet(chunk, 4))
+    }
+
+    @Test
+    fun `a line the chunk does not have has no snippet`() {
+        assertEquals("", lineSnippet("one\ntwo", 2))
+        assertEquals("", lineSnippet("one\ntwo", 39))
+        assertEquals("", lineSnippet("", 0))
+        assertEquals("", lineSnippet("   \n  ", 0))
+        // A chunk that ends in a newline ends in an empty line.
+        assertEquals("", lineSnippet("one\n", 1))
+        assertEquals("one", lineSnippet("one", -3))
+    }
+
+    @Test
+    fun `a long line is cut with an ellipsis and a line of exactly the limit is not`() {
+        assertEquals("a".repeat(32) + "\u2026", lineSnippet("a".repeat(33), 0))
+        assertEquals("a".repeat(32), lineSnippet("a".repeat(32), 0))
+        assertEquals("a".repeat(32), lineSnippet("a".repeat(32) + "\nnext", 0))
+        assertEquals("abc\u2026", lineSnippet("abcdef", 0, max = 3))
+        // Trailing spaces before the cut do not sit in front of the ellipsis.
+        assertEquals("ab\u2026", lineSnippet("ab    cd", 0, max = 4))
+    }
+
+    @Test
+    fun `the cut never splits a character outside the basic plane`() {
+        val line = "ab" + "\uD83D\uDE00".repeat(5)
+
+        // Limit 3 would fall between the halves of the first emoji.
+        assertEquals("ab\u2026", lineSnippet(line, 0, max = 3))
+        assertEquals("ab\uD83D\uDE00\u2026", lineSnippet(line, 0, max = 4))
+    }
+
+    @Test
+    fun `a line that is a whole file costs only what is shown`() {
+        val minified = "x".repeat(50_000_000)
+
+        assertEquals("x".repeat(32) + "\u2026", lineSnippet(minified, 0))
+    }
 }

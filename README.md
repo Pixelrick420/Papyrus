@@ -123,6 +123,8 @@ an XML root, JSON or Objective-C.
   folded. A long outline appears as it is read, and is cached, so the next open shows it at once.
 - **Go to line** (Ctrl+G) in text and code of 100 lines or more: type a line number to jump to it. It lands on the line
   exactly where lines do not wrap, and within its 40-line chunk where they do.
+- **Scrub preview** in text and code: while the scroll knob is held, a readout beside it shows the line at the top of
+  the screen and the first words of it.
 - **Bookmarks** (Ctrl+D) in every format: named or positional, rename and delete with Undo, at most 200 per document.
 - **PDF text selection**: long-press to select text, then tap **Copy** to put it on the clipboard. For a library file,
   **Highlight** also saves the selection, and on a selection that touches one, **Remove highlight** takes it off.

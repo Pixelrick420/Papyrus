@@ -177,6 +177,8 @@ fun rememberScrollGeometry(state: ScrollState): State<ScrollGeometry> {
 /**
  * Fast-scroll knob, Google-Files style: hidden at rest, shown once scroll speed passes [showVelocity],
  * pinned while dragged. A zoom's reflow reads as scroll speed, so a zoom holds it hidden for a beat.
+ * [onGrab] is told when the knob is picked up (true) and let go (false), for a readout that is only wanted
+ * while it is held.
  */
 @Composable
 fun Modifier.autoHideScrollbar(
@@ -187,13 +189,16 @@ fun Modifier.autoHideScrollbar(
     topClearance: Dp = 0.dp,
     bottomClearance: Dp = 0.dp,
     zoom: ZoomState? = null,
+    onGrab: (Boolean) -> Unit = {},
 ): Modifier {
     // Wrapped so the input and draw blocks cannot act on a stale `onScrollBy`.
     val currentGeometry by rememberUpdatedState(geometry.value)
     val currentOnScrollBy by rememberUpdatedState<suspend (Float) -> Unit>(onScrollBy)
+    val currentOnGrab by rememberUpdatedState(onGrab)
 
     var visible by remember { mutableStateOf(false) }
     var dragging by remember { mutableStateOf(false) }
+    LaunchedEffect(dragging) { currentOnGrab(dragging) }
     var trackHeightPx by remember { mutableFloatStateOf(0f) }
     // Shared by the fade loop and the drag handler.
     var lastFastNs by remember { mutableLongStateOf(0L) }

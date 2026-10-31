@@ -15,6 +15,7 @@ import androidx.compose.animation.core.spring
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
@@ -79,6 +80,7 @@ import com.papyrus.app.viewer.OfficeBlock
 import com.papyrus.app.viewer.OfficeCell
 import com.papyrus.app.viewer.SyntaxHighlighter
 import com.papyrus.app.viewer.TEXT_LINES_PER_CHUNK
+import com.papyrus.app.viewer.numberedLines
 import com.papyrus.app.viewer.direction
 import io.noties.markwon.Markwon
 import io.noties.markwon.core.spans.LinkSpan
@@ -89,15 +91,20 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
 
-/** Zoom and scrollbar are overlays, so showing them never re-measures the scrollable. */
+/**
+ * Zoom and scrollbar are overlays, so showing them never re-measures the scrollable. [scrubPreview], when
+ * given, is drawn over the content and told whether the knob is held; it stays composed so it can fade out.
+ */
 @Composable
 private fun ZoomableScrollArea(
     geometry: State<ScrollGeometry>,
     onScrollBy: suspend (Float) -> Unit,
     zoom: ZoomState,
     modifier: Modifier = Modifier,
+    scrubPreview: (@Composable BoxScope.(scrubbing: Boolean) -> Unit)? = null,
     content: @Composable (Modifier) -> Unit,
 ) {
+    var scrubbing by remember { mutableStateOf(false) }
     // The preview is a graphicsLayer scale on the child, and a layer does not clip itself, so this
     // unscaled parent must clip or the page grows over the header above.
     Box(modifier.fillMaxSize().clipToBounds()) {
@@ -116,8 +123,10 @@ private fun ZoomableScrollArea(
                     topClearance = ZoomBadgeTopClearance,
                     zoom = zoom,
                     onScrollBy = onScrollBy,
+                    onGrab = { scrubbing = it },
                 ),
         )
+        scrubPreview?.invoke(this, scrubbing)
     }
 }
 
@@ -538,7 +547,14 @@ fun PlainTextViewer(
         zoom.lastCommit?.let { sidewaysAnchor.settle(zoom) }
     }
 
-    ZoomableScrollArea(geometry, { if (!ttsLocked) listState.scrollBy(it) }, zoom, modifier) { scrollModifier ->
+    // The lines the gutter numbers, which is what a position in the list is a line of.
+    val numbered = remember(chunks, options.lineCount) {
+        numberedLines(options.lineCount, chunks.lastOrNull()?.endsWith('\n') == true)
+    }
+    val scrubPreview: @Composable BoxScope.(Boolean) -> Unit = { scrubbing ->
+        LineScrubPreview(listState, chunks, numbered, scrubbing)
+    }
+    ZoomableScrollArea(geometry, { if (!ttsLocked) listState.scrollBy(it) }, zoom, modifier, scrubPreview) { scrollModifier ->
         ScaledTypography(zoom.committedScale) {
             PlainTextList(
                 chunks = chunks,

@@ -151,6 +151,8 @@ access</string>
     <string name="viewer_goto_line_label">Line</string>
     <string name="viewer_goto_line_error">Enter a line from 1 to %1$d</string>
     <string name="viewer_goto_go">Go</string>
+    <string name="viewer_scrub_line">Line %1$s</string>
+    <string name="viewer_scrub_line_text">Line %1$s · %2$s</string>
     <string name="viewer_outline_title">Outline</string>
     <string name="viewer_find_title">Find in file</string>
     <string name="viewer_info_title">File info</string>
