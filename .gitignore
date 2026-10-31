@@ -12,17 +12,17 @@
 /notes.txt
 *.json
 !app/schemas/**/*.json
+!web/**/*.json
 *.jks
 *.keystore
 key/
 *.patch
 
-
 /web/node_modules
 /web/build
 /web/.svelte-kit
-/web/pnpm-lock.yaml
-!/web/package.json
+/web/.vercel
+.vercel
 
 node_modules
 build
@@ -33,3 +33,10 @@ build
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 web/.eslintcache
+web/.prettierignore
+web/.zed/
+.zed/
+web/.vscode/
+.vscode/
+web/lighthouse-budget.json
+lighthouse-budget.json

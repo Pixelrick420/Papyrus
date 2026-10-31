@@ -36,23 +36,23 @@
 
 <header
   class={cn(
-    'fixed top-0 left-0 right-0 z-sticky transition-all duration-200 h-16',
-    'bg-white/80 backdrop-blur-md border-b border-neutral-200',
-    'dark:bg-neutral-950/80 dark:border-neutral-800',
+    'z-sticky fixed top-0 right-0 left-0 h-16 transition-all duration-200',
+    'border-b border-neutral-200 bg-white/80 backdrop-blur-md',
+    'dark:border-neutral-800 dark:bg-neutral-950/80',
     scrolled && 'shadow-sm'
   )}
 >
   <nav class="relative h-full w-full" aria-label="Main navigation">
     <a
       href="/"
-      class="absolute left-4 sm:left-6 top-1/2 -translate-y-1/2 flex items-center"
+      class="absolute top-1/2 left-4 flex -translate-y-1/2 items-center sm:left-6"
       aria-label="Papyrus Home"
     >
       <span class="text-2xl font-bold text-neutral-900 dark:text-neutral-100">Papyrus</span>
     </a>
 
     <button
-      class="absolute right-4 sm:right-6 top-1/2 -translate-y-1/2 p-2 rounded-lg text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800 transition-colors"
+      class="absolute top-1/2 right-4 -translate-y-1/2 rounded-lg p-2 text-neutral-600 transition-colors hover:bg-neutral-100 sm:right-6 dark:text-neutral-300 dark:hover:bg-neutral-800"
       onclick={toggleTheme}
       aria-label={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
       aria-pressed={darkMode}

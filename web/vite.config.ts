@@ -8,37 +8,31 @@ export default defineConfig({
   plugins: [
     tailwindcss(),
     sveltekit({
-      adapter: adapter({
-        pages: 'build',
-        assets: 'build',
-        fallback: 'index.html',
-        precompress: false,
-        strict: true
-      }),
+      adapter: adapter(),
       paths: {
-        base: ''
+        base: '',
       },
       prerender: {
         handleHttpError: 'warn',
-        handleMissingId: 'warn'
-      }
-    })
+        handleMissingId: 'warn',
+      },
+    }),
   ],
   resolve: {
     alias: {
-      '$lib': path.resolve('src/lib')
-    }
+      $lib: path.resolve('src/lib'),
+    },
   },
   build: {
     minify: 'esbuild',
     cssMinify: true,
     rollupOptions: {
       output: {
-        manualChunks: undefined
-      }
-    }
+        manualChunks: undefined,
+      },
+    },
   },
   optimizeDeps: {
-    include: ['@lucide/svelte']
-  }
+    include: ['@lucide/svelte'],
+  },
 });

@@ -8,7 +8,7 @@
     { icon: 'WifiOff', label: 'No internet permission' },
     { icon: 'Shield', label: 'No ads' },
     { icon: 'UserX', label: 'No accounts' },
-    { icon: 'EyeOff', label: 'No analytics' }
+    { icon: 'EyeOff', label: 'No analytics' },
   ];
 </script>
 
@@ -16,8 +16,8 @@
   class="relative flex min-h-svh items-center justify-center overflow-hidden pt-16"
   aria-labelledby="hero-heading"
 >
-  <div class="container relative z-10 py-16 lg:py-24">
-    <div class="mx-auto max-w-3xl text-center animate-fade-in-up">
+  <div class="relative z-10 container py-16 lg:py-24">
+    <div class="animate-fade-in-up mx-auto max-w-3xl text-center">
       <svg
         class="mx-auto mb-10 h-44 w-44 text-neutral-900 sm:h-56 sm:w-56 lg:h-64 lg:w-64 dark:text-neutral-100"
         xmlns="http://www.w3.org/2000/svg"
@@ -47,29 +47,49 @@
         </g>
       </svg>
 
-      <h1 id="hero-heading" class="h1 mb-6">
-        Papyrus
-      </h1>
+      <h1 id="hero-heading" class="h1 mb-6">Papyrus</h1>
 
-      <p class="text-body mb-10 mx-auto max-w-2xl">
+      <p class="text-body mx-auto mb-10 max-w-2xl">
         Offline document viewer for Android: PDF, Word, OpenDocument, EPUB, Markdown, text and code.
       </p>
 
       <div class="mb-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
-        <Button size="lg" class="w-full sm:w-auto" href={releasesUrl} target="_blank" rel="noopener noreferrer" aria-label="Download Papyrus for Android">
+        <Button
+          size="lg"
+          class="w-full sm:w-auto"
+          href={releasesUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label="Download Papyrus for Android"
+        >
           <Icon name="Download" size={20} aria-hidden="true" />
           Download for Android
         </Button>
-        <Button variant="secondary" size="lg" class="w-full sm:w-auto" href="https://github.com/Pixelrick420/Papyrus" target="_blank" rel="noopener noreferrer" aria-label="View Papyrus source on GitHub">
+        <Button
+          variant="secondary"
+          size="lg"
+          class="w-full sm:w-auto"
+          href="https://github.com/Pixelrick420/Papyrus"
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label="View Papyrus source on GitHub"
+        >
           <Icon name="ExternalLink" size={20} aria-hidden="true" />
           View on GitHub
         </Button>
       </div>
 
-      <div class="flex flex-wrap items-center justify-center gap-x-8 gap-y-3 text-sm text-neutral-500 dark:text-neutral-400">
-        {#each promises as promise}
+      <div
+        class="flex flex-wrap items-center justify-center gap-x-8 gap-y-3 text-sm text-neutral-500 dark:text-neutral-400"
+      >
+        {#each promises as promise (promise.label)}
           <span class="flex items-center gap-2">
-            <Icon name={promise.icon} size={16} aria-hidden="true" class="text-primary-600 dark:text-primary-300" />
+            <Icon
+              name={promise.icon}
+              size={16}
+              aria-hidden="true"
+              class="text-primary-600 dark:text-primary-300"
+            />
             <span>{promise.label}</span>
           </span>
         {/each}

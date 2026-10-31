@@ -25,7 +25,7 @@
     autoPlayInterval = 5000,
     showArrows = true,
     showDots = true,
-    class: classProp = ''
+    class: classProp = '',
   }: Props = $props();
 
   let isSmScreen = $state(false);
@@ -40,7 +40,9 @@
   let prefersReducedMotion = $state(false);
 
   const pageCount = $derived(Math.max(1, Math.ceil(items.length / effectivePerPage)));
-  const currentPage = $derived(Math.min(pageCount - 1, Math.floor(currentIndex / effectivePerPage)));
+  const currentPage = $derived(
+    Math.min(pageCount - 1, Math.floor(currentIndex / effectivePerPage))
+  );
 
   function getSlideTargetLeft(index: number): number {
     if (!carouselRef || items.length === 0) return 0;
@@ -73,7 +75,7 @@
       const targetLeft = getSlideTargetLeft(clampedIndex);
       carouselRef.scrollTo({
         left: targetLeft,
-        behavior: prefersReducedMotion ? 'auto' : 'smooth'
+        behavior: prefersReducedMotion ? 'auto' : 'smooth',
       });
     }
   }
@@ -242,11 +244,16 @@
 </script>
 
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-<div class={cn('relative', classProp)} onkeydown={handleKeyDown} role="region" aria-label="Screenshots carousel">
+<div
+  class={cn('relative', classProp)}
+  onkeydown={handleKeyDown}
+  role="region"
+  aria-label="Screenshots carousel"
+>
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div
     bind:this={carouselRef}
-    class="carousel-snap flex gap-4 overflow-x-auto pb-4 scrollbar-hide px-[10%] sm:px-0"
+    class="carousel-snap scrollbar-hide flex gap-4 overflow-x-auto px-[10%] pb-4 sm:px-0"
     onscroll={handleScroll}
     onmousedown={handleMouseDown}
     onmousemove={handleMouseMove}
@@ -256,9 +263,11 @@
     ontouchmove={handleTouchMove}
     ontouchend={handleTouchEnd}
   >
-    {#each items as item, index}
-      <div class="carousel-item w-[calc(80%-0.5rem)] sm:w-[calc(50%-0.5rem)] shrink-0">
-        <article class="overflow-hidden rounded-xl border border-neutral-200 bg-neutral-100 shadow-sm transition-shadow hover:shadow-lg dark:border-neutral-800 dark:bg-neutral-900">
+    {#each items as item, index (item.src)}
+      <div class="carousel-item w-[calc(80%-0.5rem)] shrink-0 sm:w-[calc(50%-0.5rem)]">
+        <article
+          class="overflow-hidden rounded-xl border border-neutral-200 bg-neutral-100 shadow-sm transition-shadow hover:shadow-lg dark:border-neutral-800 dark:bg-neutral-900"
+        >
           <img
             src={item.src}
             alt={item.alt}
@@ -273,7 +282,7 @@
 
   {#if showArrows && pageCount > 1}
     <button
-      class="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-3 md:-translate-x-4 z-10 p-2 rounded-full bg-white/90 dark:bg-neutral-800/90 shadow-lg text-neutral-700 dark:text-neutral-200 hover:bg-white dark:hover:bg-neutral-700 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-white/90 dark:disabled:hover:bg-neutral-800/90 transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+      class="focus-visible:ring-primary-500 absolute top-1/2 left-0 z-10 -translate-x-3 -translate-y-1/2 rounded-full bg-white/90 p-2 text-neutral-700 shadow-lg transition-all duration-200 hover:bg-white focus-visible:ring-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-white/90 md:-translate-x-4 dark:bg-neutral-800/90 dark:text-neutral-200 dark:hover:bg-neutral-700 dark:disabled:hover:bg-neutral-800/90"
       onclick={prevSlide}
       disabled={currentPage === 0}
       aria-label="Previous screenshot"
@@ -281,7 +290,7 @@
       <Icon name="ChevronLeft" size={20} />
     </button>
     <button
-      class="absolute right-0 top-1/2 -translate-y-1/2 translate-x-3 md:translate-x-4 z-10 p-2 rounded-full bg-white/90 dark:bg-neutral-800/90 shadow-lg text-neutral-700 dark:text-neutral-200 hover:bg-white dark:hover:bg-neutral-700 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-white/90 dark:disabled:hover:bg-neutral-800/90 transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+      class="focus-visible:ring-primary-500 absolute top-1/2 right-0 z-10 translate-x-3 -translate-y-1/2 rounded-full bg-white/90 p-2 text-neutral-700 shadow-lg transition-all duration-200 hover:bg-white focus-visible:ring-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-white/90 md:translate-x-4 dark:bg-neutral-800/90 dark:text-neutral-200 dark:hover:bg-neutral-700 dark:disabled:hover:bg-neutral-800/90"
       onclick={nextSlide}
       disabled={currentPage === pageCount - 1}
       aria-label="Next screenshot"
@@ -291,14 +300,14 @@
   {/if}
 
   {#if showDots && pageCount > 1}
-    <div class="flex justify-center gap-2 mt-6" role="tablist" aria-label="Screenshot pages">
-      {#each Array(pageCount) as _, page}
+    <div class="mt-6 flex justify-center gap-2" role="tablist" aria-label="Screenshot pages">
+      {#each Array(pageCount) as _, page (page)}
         <button
           class={cn(
-            'w-2 h-2 rounded-full transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500',
+            'focus-visible:ring-primary-500 h-2 w-2 rounded-full transition-all duration-200 focus-visible:ring-2 focus-visible:outline-none',
             page === currentPage
               ? 'bg-primary-600 w-6'
-              : 'bg-neutral-300 dark:bg-neutral-600 hover:bg-neutral-400 dark:hover:bg-neutral-500'
+              : 'bg-neutral-300 hover:bg-neutral-400 dark:bg-neutral-600 dark:hover:bg-neutral-500'
           )}
           onclick={() => goToPage(page)}
           role="tab"

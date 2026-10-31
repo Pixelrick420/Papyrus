@@ -5,7 +5,9 @@ import prettierConfig from 'eslint-config-prettier';
 import globals from 'globals';
 
 export default typescriptEslint.config(
-  { ignores: ['build/', 'node_modules/', '.svelte-kit/', '*.config.js', '*.config.ts'] },
+  {
+    ignores: ['build/', 'node_modules/', '.svelte-kit/', '.vercel/', '*.config.js', '*.config.ts'],
+  },
   js.configs.recommended,
   ...typescriptEslint.configs.recommended,
   ...svelte.configs['flat/recommended'],
@@ -16,24 +18,25 @@ export default typescriptEslint.config(
       globals: {
         ...globals.browser,
         ...globals.es2022,
-        ...globals.node
-      }
-    }
+        ...globals.node,
+      },
+    },
   },
   {
     files: ['**/*.svelte'],
     languageOptions: {
       parserOptions: {
-        parser: typescriptEslint.parser
-      }
-    }
+        parser: typescriptEslint.parser,
+      },
+    },
   },
   {
     rules: {
       'svelte/no-at-html-tags': 'off',
+      'svelte/no-navigation-without-resolve': 'off',
       'svelte/valid-compile': ['error', { ignoreWarnings: true }],
       '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
-      '@typescript-eslint/no-explicit-any': 'warn'
-    }
+      '@typescript-eslint/no-explicit-any': 'warn',
+    },
   }
 );

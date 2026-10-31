@@ -14,7 +14,7 @@
     SunMoon,
     UserX,
     Volume2,
-    WifiOff
+    WifiOff,
   } from '@lucide/svelte';
   import type { Component } from 'svelte';
 
@@ -33,7 +33,7 @@
     SunMoon,
     UserX,
     Volume2,
-    WifiOff
+    WifiOff,
   };
 
   interface Props {

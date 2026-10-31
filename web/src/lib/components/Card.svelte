@@ -25,21 +25,24 @@
   }: Props = $props();
 
   const variantClasses: Record<CardVariant, string> = {
-    default: 'rounded-2xl bg-white shadow-sm transition-all duration-200 dark:bg-neutral-900 dark:border dark:border-neutral-800',
-    feature: 'rounded-2xl bg-white p-6 shadow-sm transition-all duration-200 dark:bg-neutral-900 dark:border dark:border-neutral-800',
-    screenshot: 'rounded-xl bg-neutral-100 overflow-hidden transition-all duration-200 dark:bg-neutral-800'
+    default:
+      'rounded-2xl bg-white shadow-sm transition-all duration-200 dark:bg-neutral-900 dark:border dark:border-neutral-800',
+    feature:
+      'rounded-2xl bg-white p-6 shadow-sm transition-all duration-200 dark:bg-neutral-900 dark:border dark:border-neutral-800',
+    screenshot:
+      'rounded-xl bg-neutral-100 overflow-hidden transition-all duration-200 dark:bg-neutral-800',
   };
 
   const hoverClasses: Record<CardVariant, string> = {
     default: 'hover:shadow-lg hover:-translate-y-1',
     feature: 'hover:shadow-lg',
-    screenshot: 'hover:shadow-xl hover:-translate-y-1'
+    screenshot: 'hover:shadow-xl hover:-translate-y-1',
   };
 
   const paddingClasses: Record<CardVariant, string> = {
     default: '',
     feature: '',
-    screenshot: 'p-0'
+    screenshot: 'p-0',
   };
 </script>
 
@@ -50,7 +53,7 @@
     padded && paddingClasses[variant],
     classProp
   )}
-  role={role}
+  {role}
   {...rest}
 >
   {#if children}
