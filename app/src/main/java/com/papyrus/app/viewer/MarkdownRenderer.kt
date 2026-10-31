@@ -18,6 +18,7 @@ import io.noties.markwon.ext.tables.TablePlugin
 import io.noties.markwon.ext.tasklist.TaskListPlugin
 import io.noties.markwon.image.DefaultDownScalingMediaDecoder
 import io.noties.markwon.image.ImagesPlugin
+import io.noties.markwon.image.data.DataUriSchemeHandler
 import io.noties.markwon.inlineparser.MarkwonInlineParserPlugin
 import io.noties.markwon.syntax.SyntaxHighlight
 import org.commonmark.node.Node
@@ -59,6 +60,9 @@ internal object MarkdownRenderer {
                     // INTERNET permission, so no build of this app can fetch from a document.
                     images.removeSchemeHandler("http")
                     images.removeSchemeHandler("https")
+                    // A drawing is a `data:image/svg+xml` URI. Markwon decodes bitmaps and has no SVG, so the subset
+                    // renderer the EPUB reader draws with draws it; every other `data:` URI is Markwon's.
+                    images.addSchemeHandler(SvgDataUriSchemeHandler(DataUriSchemeHandler.create()))
                     images.defaultMediaDecoder(DefaultDownScalingMediaDecoder.create(context.resources, MAX_IMAGE_PX, MAX_IMAGE_PX))
                     images.errorHandler { _, _ -> null }
                 },

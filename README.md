@@ -388,6 +388,10 @@ after the last keystroke before it queries, and a search that fails is reported 
 - Notes are stored, drawn and read in Papyrus only. A saved copy of the PDF carries plain highlights, not notes.
 - Markdown shows an image only when the document carries it as a `data:` URI; the app never touches the network, so
   every other image falls back to its alt text.
+- A `data:image/svg+xml` image, in its base64 or its percent-escaped form, is drawn by the same SVG subset the EPUB
+  reader uses: shapes, straight paths, fill and stroke, `viewBox` and plain `translate`. What the subset cannot draw is
+  left out, a drawing over 1 MB or one that is not well formed falls back to its alt text, and a script in one is never
+  run.
 - Markdown footnotes are gathered into a **Footnotes** list at the end of the document, numbered in the order they are
   first cited, and a tap on a marker or its way back scrolls there.
 - CSV and TSV tables are not read aloud.
