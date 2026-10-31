@@ -1,5 +1,8 @@
 package com.papyrus.app.viewer
 
+import com.papyrus.app.viewer.svg.SvgRasteriser
+import com.papyrus.app.viewer.svg.SvgScene
+
 /** EPUBs are built in memory, like [OfficeFixtures]'s Word files: a binary fixture cannot be reviewed in a diff. */
 internal object EpubFixtures {
 

@@ -1,5 +1,7 @@
-package com.papyrus.app.viewer
+package com.papyrus.app.viewer.svg
 
+import com.papyrus.app.viewer.EpubFixtures
+import com.papyrus.app.viewer.OfficeFixtures
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -8,9 +10,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /** The SVG subset on its own: what becomes geometry, what is dropped, and the caps. */
-class EpubSvgTest {
+class SvgSceneTest {
 
-    private fun scene(inner: String, attrs: String = "viewBox=\"0 0 100 50\"", limits: EpubLimits = EpubLimits()): SvgScene? =
+    private fun scene(inner: String, attrs: String = "viewBox=\"0 0 100 50\"", limits: SvgLimits = SvgLimits()): SvgScene? =
         parseSvg(EpubFixtures.svg(inner, attrs).toByteArray(), { stream -> OfficeFixtures.parser().apply { setInput(stream, null) } }, limits)
 
     private fun ops(inner: String) = scene(inner)!!.shapes.single().ops
@@ -185,10 +187,10 @@ class EpubSvgTest {
     @Test
     fun `element and op caps stop growth without throwing`() {
         val many = (1..50).joinToString("") { "<rect width=\"1\" height=\"1\"/>" }
-        assertEquals(10, scene(many, limits = EpubLimits(maxSvgElements = 11))!!.shapes.size)
+        assertEquals(10, scene(many, limits = SvgLimits(maxElements = 11))!!.shapes.size)
         // 5 ops per rectangle: 12 ops fit two of them.
-        assertEquals(2, scene(many, limits = EpubLimits(maxSvgOps = 12))!!.shapes.size)
-        assertEquals(1, scene("<g><g><g><rect width=\"1\" height=\"1\"/></g></g></g><g><g><g><g><rect width=\"1\" height=\"1\"/></g></g></g></g>", limits = EpubLimits(maxDepth = 5))!!.shapes.size)
+        assertEquals(2, scene(many, limits = SvgLimits(maxOps = 12))!!.shapes.size)
+        assertEquals(1, scene("<g><g><g><rect width=\"1\" height=\"1\"/></g></g></g><g><g><g><g><rect width=\"1\" height=\"1\"/></g></g></g></g>", limits = SvgLimits(maxDepth = 5))!!.shapes.size)
     }
 
     @Test
@@ -215,7 +217,7 @@ class EpubSvgTest {
     @Test
     fun `a file that is not well formed throws for the caller to drop`() {
         try {
-            parseSvg("<svg><g></svg>".toByteArray(), { stream -> OfficeFixtures.parser().apply { setInput(stream, null) } }, EpubLimits())
+            parseSvg("<svg><g></svg>".toByteArray(), { stream -> OfficeFixtures.parser().apply { setInput(stream, null) } }, SvgLimits())
             throw AssertionError("expected a parse error")
         } catch (_: org.xmlpull.v1.XmlPullParserException) {
             // expected

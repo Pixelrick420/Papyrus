@@ -1,5 +1,7 @@
 package com.papyrus.app.viewer
 
+import com.papyrus.app.viewer.svg.SvgRaster
+import com.papyrus.app.viewer.svg.SvgRasteriser
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.IOException
@@ -55,7 +57,7 @@ internal class OfficeMedia(
         blocks: MutableList<OfficeBlock>,
         blockBudget: Int,
         transform: (zipName: String, bytes: ByteArray) -> PreparedImage? = { name, bytes -> PreparedImage(bytes, mimeByName(name)) },
-        rasterise: SvgRasteriser = EpubSvgRaster,
+        rasterise: SvgRasteriser = SvgRaster,
     ): Result {
         if (pending.isEmpty() || mediaDir == null) return Result(emptyList(), if (mediaDir == null) pending.size else 0)
         val wanted = pending.filter { it.scene == null }.mapTo(HashSet()) { it.zipName }

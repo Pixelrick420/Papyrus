@@ -1,5 +1,6 @@
 package com.papyrus.app.viewer
 
+import com.papyrus.app.viewer.svg.SvgLimits
 import org.xmlpull.v1.XmlPullParser
 import org.xmlpull.v1.XmlPullParserException
 import java.io.ByteArrayOutputStream
@@ -37,10 +38,13 @@ data class EpubLimits(
     /** Places in the text a link can name (elements with an `id`), across the whole book. */
     val maxAnchors: Int = 100_000,
     /** Elements of one SVG, drawn or not. */
-    val maxSvgElements: Int = 20_000,
+    val maxSvgElements: Int = SvgLimits().maxElements,
     /** Path operations of one SVG, over all its shapes. */
-    val maxSvgOps: Int = 50_000,
-)
+    val maxSvgOps: Int = SvgLimits().maxOps,
+) {
+    /** The bounds an SVG in this book is read under. */
+    val svgLimits: SvgLimits get() = SvgLimits(maxSvgElements, maxSvgOps, maxDepth)
+}
 
 /** What one pass over the archive kept, and how many wanted parts it had to leave out. */
 internal class EpubScan(val parts: Map<String, ByteArray>, val skippedParts: Int)

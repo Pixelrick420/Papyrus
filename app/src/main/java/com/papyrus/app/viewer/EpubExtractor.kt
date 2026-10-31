@@ -1,6 +1,9 @@
 package com.papyrus.app.viewer
 
 import android.util.Xml
+import com.papyrus.app.viewer.svg.SvgRaster
+import com.papyrus.app.viewer.svg.SvgRasteriser
+import com.papyrus.app.viewer.svg.parseSvg
 import org.xmlpull.v1.XmlPullParser
 import org.xmlpull.v1.XmlPullParserException
 import java.io.File
@@ -39,7 +42,7 @@ class EpubExtractor(
     private val limits: EpubLimits = EpubLimits(),
     private val blockBudget: Int = OfficeTextExtractor.MAX_BLOCKS,
     /** Draws an SVG's scene as a PNG; a test can hand in one of its own. */
-    private val rasteriser: SvgRasteriser = EpubSvgRaster,
+    private val rasteriser: SvgRasteriser = SvgRaster,
 ) {
 
     /**
@@ -157,7 +160,7 @@ class EpubExtractor(
     private fun prepareImage(zipName: String, bytes: ByteArray, listedAsSvg: Boolean, factory: ParserFactory): PreparedImage? {
         if (!listedAsSvg && !zipName.lowercase().endsWith(".svg")) return PreparedImage(bytes, mimeByName(zipName))
         val scene = try {
-            parseSvg(bytes, factory, limits)
+            parseSvg(bytes, factory, limits.svgLimits)
         } catch (_: XmlPullParserException) {
             null
         } catch (_: IOException) {

@@ -12,7 +12,7 @@ internal class ManifestItem(val id: String, val path: String?, val mediaType: St
     /** Any picture: a spine item that is one alone (a cover page) is a chapter of its own. */
     val isImage: Boolean get() = mediaType.startsWith("image/")
 
-    /** A raster picture BitmapFactory can read; SVG is not one, and is drawn by [EpubSvgRaster] instead. */
+    /** A raster picture BitmapFactory can read; SVG is not one, and is drawn by [com.papyrus.app.viewer.svg.SvgRaster] instead. */
     val isRasterImage: Boolean get() = mediaType.startsWith("image/") && mediaType != "image/svg+xml"
 
     private companion object {

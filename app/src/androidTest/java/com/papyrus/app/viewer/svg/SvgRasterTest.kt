@@ -1,4 +1,4 @@
-package com.papyrus.app.viewer
+package com.papyrus.app.viewer.svg
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -13,7 +13,7 @@ import org.junit.runner.RunWith
 
 /** The real rasteriser, on a device: Bitmap and Canvas are only real there. */
 @RunWith(AndroidJUnit4::class)
-class EpubSvgRasterTest {
+class SvgRasterTest {
 
     private fun square(x: Float, y: Float, size: Float) = listOf(
         PathOp.MoveTo(x, y),
@@ -42,7 +42,7 @@ class EpubSvgRasterTest {
             tintable = false,
         )
 
-        val png = EpubSvgRaster.rasterise(scene)
+        val png = SvgRaster.rasterise(scene)
         assertNotNull(png)
         val bitmap = decode(png!!)
 
@@ -59,7 +59,7 @@ class EpubSvgRasterTest {
             tintable = true,
         )
 
-        val bitmap = decode(EpubSvgRaster.rasterise(scene)!!)
+        val bitmap = decode(SvgRaster.rasterise(scene)!!)
 
         assertTrue(maxOf(bitmap.width, bitmap.height) <= SVG_RASTER_MAX_EDGE)
     }
@@ -73,7 +73,7 @@ class EpubSvgRasterTest {
             tintable = true,
         )
 
-        val bitmap = decode(EpubSvgRaster.rasterise(scene)!!)
+        val bitmap = decode(SvgRaster.rasterise(scene)!!)
 
         assertTrue(maxOf(bitmap.width, bitmap.height) >= SVG_RASTER_MIN_EDGE)
     }
@@ -87,18 +87,18 @@ class EpubSvgRasterTest {
             tintable,
         )
 
-        assertTrue(hasInk(decode(EpubSvgRaster.rasterise(scene(0x000000, tintable = true))!!)))
-        assertTrue(hasInk(decode(EpubSvgRaster.rasterise(scene(0x33AA55, tintable = false))!!)))
+        assertTrue(hasInk(decode(SvgRaster.rasterise(scene(0x000000, tintable = true))!!)))
+        assertTrue(hasInk(decode(SvgRaster.rasterise(scene(0x33AA55, tintable = false))!!)))
     }
 
     @Test
     fun a_scene_with_no_shapes_is_null_not_an_empty_bitmap() {
-        assertNull(EpubSvgRaster.rasterise(SvgScene(10f, 10f, emptyList(), tintable = true)))
+        assertNull(SvgRaster.rasterise(SvgScene(10f, 10f, emptyList(), tintable = true)))
     }
 
     @Test
     fun a_scene_with_no_size_is_null() {
         val shape = SvgShape(square(0f, 0f, 1f), closed = true, fill = 0, stroke = null, strokeWidth = 1f)
-        assertNull(EpubSvgRaster.rasterise(SvgScene(0f, 10f, listOf(shape), tintable = true)))
+        assertNull(SvgRaster.rasterise(SvgScene(0f, 10f, listOf(shape), tintable = true)))
     }
 }

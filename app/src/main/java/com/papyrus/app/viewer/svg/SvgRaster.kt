@@ -1,4 +1,4 @@
-package com.papyrus.app.viewer
+package com.papyrus.app.viewer.svg
 
 import android.graphics.Bitmap
 import android.graphics.Canvas
@@ -19,7 +19,7 @@ private const val PNG_QUALITY = 100
  * transparent bitmap, and encoded as a PNG. Nothing is parsed here and nothing is kept: the bitmap lives only
  * as long as the encode, and any failure is a null, which the caller turns into one dropped picture.
  */
-internal object EpubSvgRaster : SvgRasteriser {
+internal object SvgRaster : SvgRasteriser {
 
     override fun rasterise(scene: SvgScene): ByteArray? {
         if (scene.shapes.isEmpty() || scene.width <= 0f || scene.height <= 0f) return null

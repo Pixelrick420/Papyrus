@@ -2,6 +2,7 @@ package com.papyrus.app.viewer
 
 import com.papyrus.app.viewer.EpubFixtures.Chapter
 import com.papyrus.app.viewer.EpubFixtures.chapter
+import com.papyrus.app.viewer.svg.SvgRasteriser
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull

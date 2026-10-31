@@ -1,10 +1,20 @@
-package com.papyrus.app.viewer
+package com.papyrus.app.viewer.svg
 
+import com.papyrus.app.viewer.ParserFactory
 import org.xmlpull.v1.XmlPullParser
 import org.xmlpull.v1.XmlPullParserException
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
+
+/** What one drawing may cost: elements read, path operations kept, and how deeply its groups nest. */
+data class SvgLimits(
+    /** Elements of one SVG, drawn or not. */
+    val maxElements: Int = 20_000,
+    /** Path operations of one SVG, over all its shapes. */
+    val maxOps: Int = 50_000,
+    val maxDepth: Int = 200,
+)
 
 /** Reads attributes by name, so one builder serves both the pull parser inside a chapter and an `.svg` file. */
 internal fun interface SvgAttributeReader {
@@ -72,9 +82,9 @@ private val NAMED_COLORS = mapOf(
  * never half drawn. Past [maxElements] or [maxOps] it stops growing; nothing throws.
  */
 internal class SvgSceneBuilder(
-    private val maxElements: Int = EpubLimits().maxSvgElements,
-    private val maxOps: Int = EpubLimits().maxSvgOps,
-    private val maxDepth: Int = EpubLimits().maxDepth,
+    private val maxElements: Int = SvgLimits().maxElements,
+    private val maxOps: Int = SvgLimits().maxOps,
+    private val maxDepth: Int = SvgLimits().maxDepth,
 ) {
     private val stack = ArrayList<SvgFrame>()
     private val shapes = ArrayList<SvgShape>()
@@ -385,9 +395,9 @@ internal class SvgSceneBuilder(
  * [XmlPullParserException], which the caller treats as an image that cannot be shown.
  */
 @Throws(XmlPullParserException::class)
-internal fun parseSvg(bytes: ByteArray, factory: ParserFactory, limits: EpubLimits): SvgScene? {
+internal fun parseSvg(bytes: ByteArray, factory: ParserFactory, limits: SvgLimits = SvgLimits()): SvgScene? {
     val parser = factory(bytes.inputStream())
-    val builder = SvgSceneBuilder(limits.maxSvgElements, limits.maxSvgOps, limits.maxDepth)
+    val builder = SvgSceneBuilder(limits.maxElements, limits.maxOps, limits.maxDepth)
     var event = parser.eventType
     while (event != XmlPullParser.END_DOCUMENT) {
         when (event) {

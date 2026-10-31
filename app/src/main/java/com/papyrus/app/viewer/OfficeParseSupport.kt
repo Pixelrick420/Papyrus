@@ -1,5 +1,6 @@
 package com.papyrus.app.viewer
 
+import com.papyrus.app.viewer.svg.SvgScene
 import org.xmlpull.v1.XmlPullParser
 import java.io.InputStream
 
