@@ -125,6 +125,16 @@ class SettingsRepository(context: Context) {
         _settings.update { it.copy(librarySort = sort) }
     }
 
+    /**
+     * Whether the read-aloud notification permission has already been asked for. Asked once, at the
+     * first Read aloud; a refusal is an answer, and the system settings remain the way to change it.
+     */
+    fun notificationPromptShown(): Boolean = prefs.getBoolean(KEY_NOTIFICATION_PROMPT_SHOWN, false)
+
+    fun markNotificationPromptShown() {
+        prefs.edit { putBoolean(KEY_NOTIFICATION_PROMPT_SHOWN, true) }
+    }
+
     private fun read(): AppSettings {
         val defaults = AppSettings()
         val storedTheme = prefs.getString(KEY_THEME_MODE, null)
@@ -162,5 +172,6 @@ class SettingsRepository(context: Context) {
         const val KEY_COLORBLIND_MODE = "colorblind_mode"
         const val KEY_NIGHT_MODE = "night_mode"
         const val KEY_LIBRARY_SORT = "library_sort"
+        const val KEY_NOTIFICATION_PROMPT_SHOWN = "notification_prompt_shown"
     }
 }

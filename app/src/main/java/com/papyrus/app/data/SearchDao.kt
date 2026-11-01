@@ -4,11 +4,24 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.Query
 import androidx.room.Transaction
+import kotlinx.coroutines.flow.Flow
 
 /** One FTS candidate: the document and the raw `matchinfo` blob used to rank it. */
 data class RawContentMatch(
     val documentId: Long,
     val matchInfo: ByteArray,
+)
+
+/**
+ * One document's place in the index, without its text: how extraction ended and how much it left.
+ * The viewer asks this to know whether a document has words at all (see
+ * `DocumentRepository.observeTextSummary`), so it never has to read a whole PDF to find out.
+ */
+data class TextSummaryRow(
+    val state: TextIndexState,
+    val charCount: Int,
+    /** The file's size when its text was read: a different size means the row is for an older copy. */
+    val sourceSize: Long,
 )
 
 /**
@@ -42,6 +55,14 @@ interface SearchDao {
     /** The row again if it is still in the library; the indexer re-checks before writing. */
     @Query("SELECT id FROM documents WHERE id = :id")
     suspend fun existingId(id: Long): Long?
+
+    /**
+     * How [id] stands in the index, observed: at most one row, and none while the document has not
+     * been indexed yet. Reads only the summary columns, never the text, so asking costs nothing even
+     * for a document at the character cap.
+     */
+    @Query("SELECT state, charCount, sourceSize FROM document_text WHERE rowid = :id")
+    fun observeTextSummary(id: Long): Flow<List<TextSummaryRow>>
 
     @Insert
     suspend fun insertText(row: DocumentTextEntity)

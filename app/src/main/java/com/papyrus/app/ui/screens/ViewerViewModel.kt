@@ -1,12 +1,16 @@
 package com.papyrus.app.ui.screens
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.provider.DocumentsContract
 import android.text.Spanned
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import com.papyrus.app.MainApplication
 import com.papyrus.app.R
@@ -29,6 +33,7 @@ import com.papyrus.app.data.ReadingLocation
 import com.papyrus.app.data.LocationKind
 import com.papyrus.app.data.RestoreRequest
 import com.papyrus.app.data.SafAccess
+import com.papyrus.app.data.TextIndexState
 import com.papyrus.app.data.shareIntent
 import com.papyrus.app.tts.TtsDocumentSource
 import com.papyrus.app.tts.TtsPlaybackService
@@ -254,6 +259,12 @@ data class ViewerUiState(
     val pdfOutline: List<OutlineEntry> = emptyList(),
     /** An AcroForm's widgets, once read; empty for a document without a fillable form. */
     val formFields: List<PdfFormField> = emptyList(),
+    /**
+     * Whether the loaded document has anything to read aloud: false when it has none, null while
+     * that is not known yet. Most formats answer from their own content; a PDF's answer comes from
+     * the search index, which may not have reached it yet.
+     */
+    val speakableText: Boolean? = null,
 ) {
     /**
      * Bookmarks hang from a library row, so a transient document has none until it is saved; from then on
@@ -280,6 +291,20 @@ internal fun ViewerContent.unitCount(): Int = when (this) {
     is ViewerContent.PlainText -> chunks.size
     is ViewerContent.Office -> blocks.size
     else -> 0
+}
+
+/**
+ * Whether the content itself has words to read aloud, for every format whose text is already in
+ * memory: false when the voice would have nothing to say. Null when the content cannot answer — a
+ * PDF's text is read a page at a time and never whole, so the search index answers for those instead.
+ */
+internal fun ViewerContent.hasSpeakableText(): Boolean? = when (this) {
+    // A blank line speaks nothing, so any line with a character on it is the whole answer.
+    is ViewerContent.PlainText -> chunks.any { it.isNotBlank() }
+    is ViewerContent.Markdown -> text.isNotBlank()
+    // The same units the voice is made of, so a document of images with no alt text says no.
+    is ViewerContent.Office -> TtsDocumentSource.unitsFromOffice(blocks).isNotEmpty()
+    else -> null
 }
 
 class ViewerViewModel(
@@ -324,6 +349,9 @@ class ViewerViewModel(
 
     /** Holds the arrival mark lit and then fades it; cancelled when the reader takes over with find. */
     private var arrivalJob: Job? = null
+
+    /** Watches the search index for this document's text, so Read aloud is not offered with nothing to say. */
+    private var speakableJob: Job? = null
 
     /** Cancelled per reload, so a quick encoding pick and a settings toggle leave the later one on screen. */
     private var reloadJob: Job? = null
@@ -439,6 +467,7 @@ class ViewerViewModel(
         repository.markOpened(doc.id)
         val content = loadContentSafely(doc)
         _state.update { it.copy(content = content) }
+        loadSpeakableText(content, doc)
         loadPdfOutline()
         loadPdfForm()
         autosaveIfEnabled()
@@ -538,6 +567,30 @@ class ViewerViewModel(
             val fields = shown.formFields()
             // A re-grant may have replaced the document while this was reading.
             _state.update { if ((it.content as? ViewerContent.Pdf)?.source === shown) it.copy(formFields = fields) else it }
+        }
+    }
+
+    /**
+     * Works out whether there is anything to read aloud, so the option is not offered for a document
+     * with nothing speakable in it. Every format but a PDF answers from the content already on
+     * screen. A PDF cannot: its text is read a page at a time and never whole, so this asks the
+     * search index instead — it already holds what the document's text extraction found — and keeps
+     * watching, so a document indexed while it is open hides the option the moment the row lands.
+     * Until the index has an answer, nothing is hidden: an unknown answer is not a "no".
+     */
+    private fun loadSpeakableText(content: ViewerContent, document: DocumentEntity) {
+        speakableJob?.cancel()
+        _state.update { it.copy(speakableText = content.hasSpeakableText()) }
+        if (content !is ViewerContent.Pdf) return
+        speakableJob = viewModelScope.launch {
+            repository.observeTextSummary(document).collect { summary ->
+                // Only an index that read the text and found it empty says no; a skipped, failed or
+                // too-large extraction said nothing about the document.
+                val speakable = summary
+                    ?.takeIf { it.state == TextIndexState.INDEXED }
+                    ?.let { it.charCount > 0 }
+                _state.update { if (it.document?.id == document.id) it.copy(speakableText = speakable) else it }
+            }
         }
     }
 
@@ -709,6 +762,20 @@ class ViewerViewModel(
 
     /** Stop reading aloud and clear the session, hiding the control bar. */
     fun stopReadAloud() = tts.stop()
+
+    /**
+     * Whether the read-aloud notification permission still has to be asked for: Android 13+ only,
+     * once only, and never when it is already granted. A refusal is remembered like a grant, so the
+     * reader is not asked again — the system settings remain the way to change the answer.
+     */
+    fun needsNotificationPrompt(): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return false
+        val granted = ContextCompat.checkSelfPermission(app, Manifest.permission.POST_NOTIFICATIONS) ==
+            PackageManager.PERMISSION_GRANTED
+        return !granted && !app.settings.notificationPromptShown()
+    }
+
+    fun markNotificationPromptShown() = app.settings.markNotificationPromptShown()
 
     fun ttsPlayPause() {
         when {
@@ -1223,7 +1290,7 @@ class ViewerViewModel(
         reloadJob?.cancel()
         reloadJob = viewModelScope.launch {
             val reloaded = loadContentSafely(doc)
-            _state.update { it.copy(content = reloaded) }
+            _state.update { it.copy(content = reloaded, speakableText = reloaded.hasSpeakableText() ?: it.speakableText) }
             val query = _state.value.find.query
             if (query.isNotBlank()) updateFindQuery(query)
         }

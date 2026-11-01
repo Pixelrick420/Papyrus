@@ -1,5 +1,8 @@
 package com.papyrus.app.data
 
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
+
 /**
  * A [SearchDao] with no database behind it: the queue and the two read phases are lists the test
  * fills in, and every call is recorded so a test can assert what the indexer or the repository
@@ -25,6 +28,10 @@ internal class FakeSearchDao : SearchDao {
     /** Ids deleted with [deleteText], the delete half of [replace]. */
     val deleted = mutableListOf<Long>()
 
+    /** What [observeTextSummary] answers with, and the ids it was asked. */
+    var textSummaryRows = listOf<TextSummaryRow>()
+    val textSummaryQueries = mutableListOf<Long>()
+
     /** What [candidates] answers with, and the MATCH expressions it was asked. */
     var candidateRows = listOf<RawContentMatch>()
     val candidateQueries = mutableListOf<String>()
@@ -48,6 +55,11 @@ internal class FakeSearchDao : SearchDao {
 
     override suspend fun deleteText(id: Long) {
         deleted += id
+    }
+
+    override fun observeTextSummary(id: Long): Flow<List<TextSummaryRow>> {
+        textSummaryQueries += id
+        return flowOf(textSummaryRows)
     }
 
     override suspend fun candidates(match: String): List<RawContentMatch> {

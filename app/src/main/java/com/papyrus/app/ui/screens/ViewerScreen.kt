@@ -1,5 +1,6 @@
 package com.papyrus.app.ui.screens
 
+import android.Manifest
 import android.content.Intent
 import android.content.res.Configuration
 import android.widget.Toast
@@ -283,10 +284,12 @@ fun ViewerScreen(
     val formAvailable = state.formFields.isNotEmpty()
 
     // Read aloud is offered whenever find is (the same speakable formats), except for a table, which
-    // has no reading order to speak; and the bar shows only while *this* document is the one being
-    // read. An engine failure counts, so the reason stays on screen and the bar's close button can
-    // clear it.
-    val readAloudAvailable = findAvailable && state.document?.format != DocumentFormat.CSV
+    // has no reading order to speak, and never for a document with nothing speakable in it; and the
+    // bar shows only while *this* document is the one being read. An engine failure counts, so the
+    // reason stays on screen and the bar's close button can clear it.
+    val readAloudAvailable = findAvailable &&
+        state.document?.format != DocumentFormat.CSV &&
+        state.speakableText != false
     val ttsDocumentId = state.document?.id?.toString().orEmpty()
     val ttsActive = tts.documentId == ttsDocumentId && ttsDocumentId.isNotEmpty() &&
         (tts.isPlaying || tts.isPaused || tts.hasError)
@@ -320,6 +323,12 @@ fun ViewerScreen(
     val regrantFile = rememberLauncherForActivityResult(OpenPersistableDocument()) { uri ->
         if (uri != null) viewModel.regrant(uri) else viewModel.consumeRegrantRequest()
     }
+
+    // The read-aloud notification is optional: asked once, at the first Read aloud on Android 13+,
+    // and the voice starts either way — a refusal only leaves out the system notification.
+    val requestNotifications = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { viewModel.startReadAloud() }
 
     // A filled form, or a set of highlights, is only ever saved as a copy, so the picker chooses
     // where. A cancelled pick leaves the sheet open; a chosen one closes it, so the save's own
@@ -440,7 +449,16 @@ fun ViewerScreen(
                 onInfo = { infoOpen = true },
                 onShare = shareDocument,
                 onSaveToLibrary = viewModel::saveToLibrary,
-                onReadAloud = { if (ttsActive) viewModel.stopReadAloud() else viewModel.startReadAloud() },
+                onReadAloud = {
+                    if (ttsActive) {
+                        viewModel.stopReadAloud()
+                    } else if (viewModel.needsNotificationPrompt()) {
+                        viewModel.markNotificationPromptShown()
+                        requestNotifications.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    } else {
+                        viewModel.startReadAloud()
+                    }
+                },
                 onCopySelection = {
                     selectionScope.launch {
                         selectionState.selectedText()?.let { copyToClipboard(context, it) }
@@ -891,18 +909,21 @@ private fun ViewerHeader(
                         enabled = findAvailable,
                         onClick = { onMenuOpenChange(false); onFind() },
                     )
-                    // Read aloud needs the same speakable formats find does; active always shows the stop label.
-                    DropdownMenuItem(
-                        text = {
-                            Text(
-                                stringResource(
-                                    if (readAloudActive) R.string.viewer_read_aloud_stop else R.string.viewer_read_aloud,
-                                ),
-                            )
-                        },
-                        enabled = readAloudAvailable || readAloudActive,
-                        onClick = { onMenuOpenChange(false); onReadAloud() },
-                    )
+                    // Read aloud needs the same speakable formats find does, and is hidden rather than
+                    // greyed when the document has nothing to speak: an option whose only outcome is
+                    // "no selectable text" is not an option. A live session always offers its stop.
+                    if (readAloudAvailable || readAloudActive) {
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    stringResource(
+                                        if (readAloudActive) R.string.viewer_read_aloud_stop else R.string.viewer_read_aloud,
+                                    ),
+                                )
+                            },
+                            onClick = { onMenuOpenChange(false); onReadAloud() },
+                        )
+                    }
                     if (outlineAvailable) {
                         DropdownMenuItem(
                             text = { Text(stringResource(R.string.viewer_outline_title)) },

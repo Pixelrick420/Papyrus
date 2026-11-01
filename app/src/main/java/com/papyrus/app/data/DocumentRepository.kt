@@ -12,6 +12,7 @@ import com.papyrus.app.viewer.TextSniffer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileNotFoundException
@@ -155,6 +156,20 @@ class DocumentRepository(
             ),
         )
     }
+
+    /**
+     * How the search index sees [document]'s text, observed: null for a handed-over document, one
+     * that has not been indexed yet, or a row written for an older copy of the file. Read aloud asks
+     * this for a PDF, whose pages are read one at a time and never whole, so the viewer cannot tell
+     * from its own content whether there is anything to speak.
+     */
+    fun observeTextSummary(document: DocumentEntity): Flow<TextSummaryRow?> =
+        if (document.id <= 0) {
+            flowOf(null)
+        } else {
+            searchDao.observeTextSummary(document.id)
+                .map { rows -> rows.firstOrNull()?.takeIf { it.sourceSize == document.sizeBytes } }
+        }
 
     private fun handOver(entity: DocumentEntity): Long {
         val id = nextHandedOverId--
