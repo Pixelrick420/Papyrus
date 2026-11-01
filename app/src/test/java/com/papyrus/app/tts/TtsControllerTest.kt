@@ -392,7 +392,7 @@ class TtsControllerTest {
     }
 
     @Test
-    fun `pausing keeps the word, and resuming re-speaks the unit from its start`() {
+    fun `pausing keeps the word, and resuming speaks only the rest of the unit`() {
         val engine = FakeEngine()
         val controller = TtsController(engine)
         controller.setUnits(listOf(TtsUnit("one two three", 0)))
@@ -403,7 +403,44 @@ class TtsControllerTest {
         assertEquals(4, controller.playback.value.progress.word!!.first)
 
         controller.play()
-        assertNull(controller.playback.value.progress.word)
+        assertEquals(listOf("one two three", "two three"), engine.spoken)
+        assertEquals(0, controller.playback.value.unitIndex)
+        assertTrue(controller.playback.value.isPlaying)
+        assertFalse(controller.playback.value.isPaused)
+        // The paused word stays marked until the resumed rest reports its first word.
+        assertEquals(4, controller.playback.value.progress.word!!.first)
+    }
+
+    @Test
+    fun `resuming a paused unit with no reported word re-speaks it from its start`() {
+        val engine = FakeEngine()
+        val controller = TtsController(engine)
+        controller.setUnits(listOf(TtsUnit("one two three", 0)))
+        controller.playFrom(0)
+
+        controller.pause()
+        controller.play()
+
+        assertEquals(listOf("one two three", "one two three"), engine.spoken)
+        assertEquals(0, controller.playback.value.unitIndex)
+        assertTrue(controller.playback.value.isPlaying)
+    }
+
+    @Test
+    fun `resuming after a skip speaks the unit it landed on from its start`() {
+        val engine = FakeEngine()
+        val controller = TtsController(engine)
+        controller.setUnits(listOf(TtsUnit("one two three", 0), TtsUnit("four five", 1)))
+        controller.playFrom(0)
+        controller.onRangeStart(engine.currentUtteranceId, 4, 7)
+
+        controller.pause()
+        controller.skipForward()
+        controller.play()
+
+        assertEquals(listOf("one two three", "four five"), engine.spoken)
+        assertEquals(1, controller.playback.value.unitIndex)
+        assertTrue(controller.playback.value.isPlaying)
     }
 
     @Test

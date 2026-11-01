@@ -120,14 +120,53 @@ class TtsController(
         speakAt(index.coerceIn(0, units.lastIndex))
     }
 
-    /** Resume the current unit, or start at the beginning; a paused unit is re-spoken, not skipped. */
+    /**
+     * Resume where the voice left off in the current unit, or speak that unit from its start when the
+     * engine reported no word; nothing played yet starts at the beginning. A paused session never falls
+     * back to the first unit.
+     */
     fun play() {
         if (units.isEmpty()) return
-        val current = _playback.value.unitIndex
-        speakAt(if (current in units.indices) current else 0)
+        val state = _playback.value
+        val current = state.unitIndex
+        if (current !in units.indices) {
+            if (!state.isPaused) speakAt(0)
+            return
+        }
+        if (state.isPaused && rangeReported) {
+            resumeRemainder()
+            return
+        }
+        speakAt(current)
     }
 
-    /** Stop the engine and remember where we were, so [play] resumes the same unit. */
+    /**
+     * Resume the paused unit from the last word the engine reported, the same way a speed change
+     * re-queues only the rest of a unit. A paused word that was the unit's last means the unit is done:
+     * advance as a completion would instead of speaking it again.
+     */
+    private fun resumeRemainder() {
+        val spoken = spokenOffset.coerceIn(0, currentText.length)
+        val remaining = currentText.substring(spoken)
+        if (remaining.isBlank()) {
+            val next = _playback.value.unitIndex + 1
+            if (next > units.lastIndex) {
+                _playback.update { it.copy(isPlaying = false, isPaused = false) }
+            } else {
+                speakAt(next)
+            }
+            return
+        }
+        engine.stop()
+        spokenBase += spoken
+        currentText = remaining
+        spokenOffset = 0
+        rangeReported = false
+        _playback.update { it.copy(isPlaying = true, isPaused = false) }
+        speak(remaining)
+    }
+
+    /** Stop the engine and remember where we were, so [play] resumes the same unit where it stopped. */
     fun pause() {
         if (!_playback.value.isPlaying) return
         engine.stop()
@@ -283,6 +322,8 @@ class TtsController(
     private fun moveTo(index: Int) {
         val unit = units[index]
         val progress = progressAtStartOf(unit)
+        // The old unit's remainder must not be resumed: play from here speaks this one from its start.
+        resetPosition()
         _playback.update { it.copy(unitIndex = index, anchor = unit.anchor, progress = progress) }
     }
 

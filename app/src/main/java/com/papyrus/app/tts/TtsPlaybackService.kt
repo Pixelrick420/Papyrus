@@ -140,6 +140,7 @@ class TtsPlaybackService : Service(), TextToSpeech.OnInitListener {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
+            ACTION_PLAY -> session.play()
             ACTION_PAUSE -> session.pause()
             ACTION_STOP -> {
                 stopPlayback()
