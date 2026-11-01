@@ -68,6 +68,7 @@ import com.papyrus.app.viewer.PdfFormField
 import com.papyrus.app.viewer.PdfPageSource
 import com.papyrus.app.viewer.PdfPageText
 import com.papyrus.app.viewer.PdfPageLink
+import com.papyrus.app.viewer.LatexSpanFactory
 import com.papyrus.app.viewer.MarkdownFootnotes
 import com.papyrus.app.viewer.MarkdownRenderer
 import com.papyrus.app.viewer.PdfPageTextSource
@@ -131,7 +132,13 @@ sealed interface ViewerContent {
     data class Pdf(val source: PdfPageSource, val aspectRatios: List<Float>) : ViewerContent
     /** [text] for find and render; [source] lets a table re-snapshot force a fresh render.
      * [encoding] is what the file was decoded as. */
-    data class Markdown(val markwon: Markwon, val source: String, val text: Spanned, val encoding: TextEncoding? = null) : ViewerContent
+    data class Markdown(
+        val markwon: Markwon,
+        val source: String,
+        val text: Spanned,
+        val encoding: TextEncoding? = null,
+        val latexFactory: LatexSpanFactory? = null,
+    ) : ViewerContent
 
     /** Forty lines to a chunk. [language]/[lexStates] are set only for source files: the states say
      * where each chunk's scan starts, so a block comment crossing a boundary still colours as one.
@@ -925,9 +932,15 @@ class ViewerViewModel(
                 // Footnotes move to a list at the end before anything else reads the text; the truncation notice goes after it.
                 val footnoted = MarkdownFootnotes.transform(decoded.text, app.getString(R.string.viewer_footnotes))
                 val source = if (decoded.truncated) footnoted + "\n\n" + app.getString(R.string.viewer_truncated) else footnoted
-                // Built after the read: which plugins a document needs depends on what it contains.
-                val markwon = MarkdownRenderer.create(app, source)
-                ViewerContent.Markdown(markwon, source, markwon.toMarkdown(source), decoded.encoding)
+                // Markwon renders synchronously; RaTeX spans are created asynchronously by LatexSpanFactory.
+                val renderResult = MarkdownRenderer.create(app, source)
+                ViewerContent.Markdown(
+                    markwon = renderResult.markwon,
+                    source = source,
+                    text = renderResult.markwon.toMarkdown(source),
+                    encoding = decoded.encoding,
+                    latexFactory = renderResult.latexFactory,
+                )
             }
             // CODE renders through the same surface as TEXT: monospace, chunked, selectable.
             DocumentFormat.TEXT, DocumentFormat.CODE -> {
@@ -1544,8 +1557,8 @@ class ViewerViewModel(
 
     private companion object {
         // Markdown is one Spanned in one TextView, which is far heavier per byte than a chunk of text, and
-        // code colours, links and formulas each add spans to it. Raised from 4 MB with those features; if a
-        // large file runs out of memory on a low-end device, this is the number to bring back down.
+        // code colours each add spans to it. Raised from 4 MB with those features; if a large file runs out
+        // of memory on a low-end device, this is the number to bring back down.
         const val MAX_MARKDOWN_BYTES = 6 * 1024 * 1024
 
         // The cell limit (see `DelimitedFile`) is reached long before this in any file but one of very wide cells.

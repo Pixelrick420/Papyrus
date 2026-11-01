@@ -430,3 +430,5 @@ detekt, and lint and detekt are not part of CI. The screenshots this README show
 ## License
 
 [Apache-2.0](LICENSE)
+
+Third-party components bundled with the app are listed in [NOTICE](NOTICE).

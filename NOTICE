@@ -1,0 +1,76 @@
+Papyrus - Apache License 2.0
+============================
+
+Copyright 2026 Pixelrick420
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+----------------------------------------------------------------------
+Third-party components bundled with Papyrus
+----------------------------------------------------------------------
+
+The following third-party software is included in Papyrus. Each component is
+made available under its own license; those licenses, not the Apache License,
+govern the component itself.
+
+1. io.github.erweixin:ratex-android:0.1.15
+   License: MIT
+   Bundled component: yes
+   Used for $$...$$ LaTeX math rendering in Markdown documents, replacing the removed GPL JLatexMath.
+   Block formulas ($$...$$ on their own line) and inline formulas ($$...$$ within text) both render,
+   with graceful fallback to plain text if RaTeX span creation fails.
+
+2. com.tom-roush:pdfbox-android:2.0.27.0
+   License: Apache License, Version 2.0
+   Bundled component: yes
+   Used for PDF text extraction (find-in-file) and page geometry; pages themselves are drawn by the platform's PdfRenderer.
+
+3. androidx.* / Jetpack Compose / Room / Navigation / Lifecycle
+   License: Apache License, Version 2.0
+
+4. ch.acra:acra-core:5.12.0
+   License: Apache License, Version 2.0 / MIT
+   Bundled component: yes
+   Local-only crash reporting (replaces Crashlytics). `auto-service` is excluded at build time.
+
+5. io.noties.markwon core + ext-* (strikethrough, tables, tasklist, image): 4.6.2
+   License: MIT
+   Bundled component: yes
+   The Markdown renderer: Spannable output, no WebView or network. Only `data:` URI images are loaded;
+   the http/https scheme handlers are removed at build time so no build can fetch from a document.
+
+6. org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2
+   License: Apache License, Version 2.0
+   Bundled component: yes
+   Coroutines on Android, used throughout the ViewModel and viewer for asynchronous work.
+
+7. com.android.tools:desugar_jdk_libs:2.1.5
+   License: Apache License, Version 2.0
+   Bundled component: yes
+   Java 8+ API desugaring baked into the APK so newer JDK APIs run on minSdk 26.
+
+8. KaTeX font assets (fonts/*.ttf in app/src/main/assets/fonts/)
+   License: SIL Open Font License 1.1
+   Bundled component: yes
+   Bundled math fonts loaded by RaTeX at render time for $$...$$ formulas.
+
+9. junit:junit:4.13.2 (test scope only, not distributed)
+   License: Eclipse Public License 1.0
+
+10. net.sf.kxml:kxml2:2.3.0 (test scope only, not distributed)
+    License: BSD style / Public Domain (CC0)
+    A reference XmlPullParser used by the extractor/sniffer unit tests in place of the platform stub.
+
+----------------------------------------------------------------------
+End of third-party notices
+----------------------------------------------------------------------

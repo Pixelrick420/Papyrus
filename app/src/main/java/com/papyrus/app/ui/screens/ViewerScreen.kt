@@ -553,6 +553,7 @@ fun ViewerScreen(
                             markwon = content.markwon,
                             source = content.source,
                             text = content.text,
+                            latexFactory = content.latexFactory,
                             // Empty during an arrival: the mark below is the only one it may light.
                             findQuery = if (arrival != null) "" else find.query,
                             zoom = zoom,

@@ -1,8 +1,9 @@
 package com.papyrus.app.ui.viewer
 
 import android.text.Spannable
-import android.text.Spanned
 import android.text.SpannableString
+import android.text.SpannableStringBuilder
+import android.text.Spanned
 import android.text.TextPaint
 import android.text.style.BackgroundColorSpan
 import android.text.style.CharacterStyle
@@ -10,6 +11,9 @@ import android.text.style.ForegroundColorSpan
 import android.text.style.UpdateAppearance
 import android.util.TypedValue
 import android.widget.TextView
+import com.papyrus.app.viewer.LatexRange
+import com.papyrus.app.viewer.LatexSpanFactory
+import io.ratex.RaTeXSpan
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.ScrollState
@@ -160,6 +164,8 @@ fun MarkdownViewer(
     arrival: ArrivalHighlight? = null,
     /** 1 at full strength, 0 gone: the animated fade of [arrival]. */
     highlightAlpha: Float = 1f,
+    /** The LaTeX span factory with detected $$...$$ ranges, or null when the document has no math. */
+    latexFactory: LatexSpanFactory? = null,
 ) {
     val scroll = rememberScrollState()
     val geometry = rememberScrollGeometry(scroll)
@@ -172,7 +178,7 @@ fun MarkdownViewer(
     // Pixels, not sp: `TextView.textSize` reads sp, so handing it `toPx()` scaled the body by the
     // density twice.
     val textPx = baseTextPx * zoom.committedScale
-    val rendered = rememberRenderedMarkdown(markwon, source, text, textPx, textColor, linkColor)
+    val rendered = rememberRenderedMarkdown(markwon, source, text, textPx, textColor, linkColor, latexFactory)
     val highlighted = rememberHighlightedText(rendered, findQuery)
     // The one match an arrival landed on. Markdown has no hits to reveal, so this is the only mark
     // it gets; the viewer screen scrolls to the same offset.
@@ -279,7 +285,7 @@ fun MarkdownViewer(
                             // Committed scale, not live: the preview layer paints the in-flight gesture, and
                             // resizing per frame relaid out the whole document.
                             view.setTextSize(TypedValue.COMPLEX_UNIT_PX, textPx)
-                            // Code colours and formula colours follow the theme, which can change while the text stays.
+                            // Code colours follow the theme, which can change while the text stays.
                             markwon.getPlugin(MarkdownStylePlugin::class.java)?.applyTheme(view, codeStyles)
                             // Only on a change: setting text kills a copy in progress; the view too, since
                             // `ScaledTypography` composes differently at 1x.
@@ -295,6 +301,42 @@ fun MarkdownViewer(
                         },
                     )
                 }
+            }
+        }
+    }
+
+    // Async LaTeX span creation: replace each placeholder with a real RaTeXSpan when ready.
+    // Re-runs when the factory, rendered text, font size, or theme colour changes.
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(latexFactory, highlighted, textPx, textColor) {
+        val factory = latexFactory ?: return@LaunchedEffect
+        if (factory.ranges.isEmpty()) return@LaunchedEffect
+
+        val deferreds = factory.createSpans(scope, textPx, textColor)
+        for (deferred in deferreds) {
+            val (range, span) = deferred.await()
+            val view = textState.view ?: continue
+            // view.text may be an immutable SpannableString; build a mutable copy so we can swap
+            // the placeholder for the RaTeXSpan, then set it back on the view.
+            val viewText = SpannableStringBuilder(view.text as Spanned)
+            val placeholders = viewText.getSpans(0, viewText.length, LatexPlaceholderSpan::class.java)
+            var applied = false
+            for (placeholder in placeholders) {
+                if (placeholder.range == range) {
+                    val start = viewText.getSpanStart(placeholder)
+                    val end = viewText.getSpanEnd(placeholder)
+                    viewText.removeSpan(placeholder)
+                    if (span != null) {
+                        // Replace the placeholder with the real RaTeXSpan over the same $$...$$ range.
+                        viewText.setSpan(span, start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                    }
+                    applied = true
+                    break
+                }
+            }
+            if (applied) {
+                view.setText(viewText)
+                view.postInvalidate()
             }
         }
     }
@@ -406,6 +448,10 @@ private class ArrivalSpans {
     }
 }
 
+/** A zero-width, invisible marker placed where a $$...$$ formula is stripped out of the text.
+ * Replaced by the real [RaTeXSpan] once async creation completes. */
+private class LatexPlaceholderSpan(val range: LatexRange)
+
 // Table row spans freeze the paint at first draw, so a document with tables gets a fresh `Spanned`
 // whenever the paint changes; one without tables keeps the shared parse and pays nothing.
 @Composable
@@ -416,13 +462,40 @@ private fun rememberRenderedMarkdown(
     textPx: Float,
     textColor: Int,
     linkColor: Int,
-): Spanned {
+    latexFactory: LatexSpanFactory?,
+): SpannableStringBuilder {
     val hasTables = remember(parsed) { parsed.getSpans(0, parsed.length, TableRowSpan::class.java).isNotEmpty() }
-    return if (hasTables) {
+    val base = if (hasTables) {
         remember(markwon, source, textPx, textColor, linkColor) { markwon.toMarkdown(source) }
     } else {
         parsed
     }
+    // Convert to a mutable builder. The $$...$$ text is kept in place and covered by a placeholder
+    // span; the real RaTeXSpan replaces it once async creation completes.
+    //
+    // Source offsets from [LatexSpanFactory.ranges] do not align with Markwon's rendered output
+    // (length can differ), so scan the rendered text itself for $$...$$ and zip occurrences with
+    // the factory ranges in order — the factory range supplies only latex content and isBlock.
+    val builder = SpannableStringBuilder(base)
+    val renderedText = builder.toString()
+    val renderedRanges = Regex("(?s)\\$\\$(.+?)\\$\\$").findAll(renderedText).map { match ->
+        match.range.first to (match.range.last + 1)
+    }.toList()
+    val factoryRanges = latexFactory?.ranges ?: emptyList()
+    // Zip in order; iterate in reverse so edits do not shift offsets of earlier ranges.
+    renderedRanges.zip(factoryRanges).reversed().forEach { pair ->
+        val (renderedPos, factoryRange) = pair
+        val (renderedStart, renderedEnd) = renderedPos
+        if (renderedEnd > builder.length) return@forEach
+        // Placeholder covers the $$...$$ text so the ReplacementSpan has a visible range to draw over.
+        builder.setSpan(
+            LatexPlaceholderSpan(factoryRange),
+            renderedStart,
+            renderedEnd,
+            Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+        )
+    }
+    return builder
 }
 
 /** Debounced: applying spans walks the whole document, which a fast typist would feel. */

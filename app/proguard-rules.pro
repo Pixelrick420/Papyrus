@@ -21,7 +21,4 @@
 -dontwarn pl.droidsonroids.gif.**
 -dontwarn okhttp3.**
 -dontwarn okio.**
-# JLatexMath (Markdown math) looks up its macro classes, their methods and the constants named in its XML
-# assets by name, and ships no rules of its own, so a minified build would lose every `\frac` and `\sum`.
--keep class org.scilab.forge.jlatexmath.** { *; }
--keep class ru.noties.jlatexmath.awt.Color { *; }
+# No Markdown math renderer is bundled any more. No proguard keep rules are needed for math rendering.
