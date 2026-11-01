@@ -40,6 +40,9 @@ internal class AppDriver {
 
     fun field(): BySelector = By.pkg(packageName).clazz(EDIT_TEXT)
 
+    /** Anything at all of the app's: gone once its last screen has closed. */
+    fun anything(): BySelector = By.pkg(packageName)
+
     fun launchHome() = launch(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER))
 
     /** Another app handing Papyrus a document: the intent a file manager sends. */
