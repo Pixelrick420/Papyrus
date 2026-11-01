@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="fastlane/metadata/android/en-US/images/icon.png" width="192" alt="Papyrus app icon">
+  <img src="fastlane/metadata/android/en-US/images/icon.png" width="256" alt="Papyrus app icon">
 </p>
 
 <h1 align="center">Papyrus</h1>
