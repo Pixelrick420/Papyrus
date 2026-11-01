@@ -59,12 +59,14 @@ android {
         targetSdk = 36
         versionCode = 14
         versionName = "0.15"
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk {
             // RaTeX ships native libs for 3 ABIs; keep only arm64-v8a (x86_64 is emulator-only,
             // armeabi-v7a is 32-bit ARM). Users' device is arm64-v8a.
             abiFilters.add("arm64-v8a")
         }
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        // Read by the orchestrator (see testOptions): the app's data is cleared before every test.
+        testInstrumentationRunnerArguments["clearPackageData"] = "true"
     }
 
     signingConfigs {
@@ -116,6 +118,13 @@ android {
         // Cert-path-validator i18n bundles; no bundled class references them.
         resources.excludes += "org/bouncycastle/x509/**"
         jniLibs.useLegacyPackaging = false // keep any .so page-aligned for 16 KB devices
+    }
+
+    testOptions {
+        // The library, the settings and the documents other apps handed over all live in the app's process and
+        // data, so tests sharing one run would depend on the order they happen to run in. The orchestrator gives
+        // each test its own run, and clearPackageData (above) its own empty install.
+        execution = "ANDROIDX_TEST_ORCHESTRATOR"
     }
 }
 
@@ -179,6 +188,7 @@ dependencies {
     androidTestImplementation("androidx.test:rules:1.6.1")
     androidTestImplementation(platform("androidx.compose:compose-bom:2026.09.00"))
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
+    androidTestUtil("androidx.test:orchestrator:1.6.1")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
 }
 
