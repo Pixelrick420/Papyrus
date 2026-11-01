@@ -243,9 +243,7 @@ class DocumentRepository(
             return@withContext existing.id
         }
         val file = LibraryImport.copyToImports(context, source.uri.toUri())
-        // A row can already stand on the URI this copy came from, with a grant that has since lapsed.
-        // Saving re-points that row at the copy instead of adding a second entry, so the save outlives
-        // the grant and the row keeps its id, star, position and bookmarks.
+        // Re-points existing row at the copied file so ID, star, bookmarks and progress survive lapsed grants.
         val indexedOnSource = dao.getByUri(source.uri)
         val row = source.copy(
             id = 0,

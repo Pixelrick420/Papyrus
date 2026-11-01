@@ -283,10 +283,7 @@ fun ViewerScreen(
     // never gets any, so the menu item stays away.
     val formAvailable = state.formFields.isNotEmpty()
 
-    // Read aloud is offered whenever find is (the same speakable formats), except for a table, which
-    // has no reading order to speak, and never for a document with nothing speakable in it; and the
-    // bar shows only while *this* document is the one being read. An engine failure counts, so the
-    // reason stays on screen and the bar's close button can clear it.
+    // Read aloud is offered for speakable non-table formats with text; error state keeps the bar visible.
     val readAloudAvailable = findAvailable &&
         state.document?.format != DocumentFormat.CSV &&
         state.speakableText != false
@@ -330,9 +327,7 @@ fun ViewerScreen(
         ActivityResultContracts.RequestPermission(),
     ) { viewModel.startReadAloud() }
 
-    // A filled form, or a set of highlights, is only ever saved as a copy, so the picker chooses
-    // where. A cancelled pick leaves the sheet open; a chosen one closes it, so the save's own
-    // message is not lost behind it.
+    // Only successful copy creation closes the sheet, preserving error messages on cancellation.
     val formCopyName = pdfCopyFileName(state.document?.title, stringResource(R.string.viewer_form_copy_name))
     val saveFormCopy = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument(PDF_MIME_TYPE),
@@ -805,7 +800,6 @@ private fun ViewerHeader(
     highlightAvailable: Boolean,
     canRemoveHighlight: Boolean,
     showShare: Boolean,
-    showMenu: Boolean = true,
     showSaveToLibrary: Boolean,
     savingToLibrary: Boolean,
     savedToLibrary: Boolean,
@@ -830,6 +824,7 @@ private fun ViewerHeader(
     onRemoveHighlight: () -> Unit,
     onClearSelection: () -> Unit,
     modifier: Modifier = Modifier,
+    showMenu: Boolean = true,
 ) {
     Row(
         modifier = modifier
@@ -913,9 +908,7 @@ private fun ViewerHeader(
                             enabled = findAvailable,
                             onClick = { onMenuOpenChange(false); onFind() },
                         )
-                        // Read aloud needs the same speakable formats find does, and is hidden rather than
-                        // greyed when the document has nothing to speak: an option whose only outcome is
-                        // "no selectable text" is not an option. A live session always offers its stop.
+                        // Hidden when document has no speakable text; active sessions always show stop.
                         if (readAloudAvailable || readAloudActive) {
                             DropdownMenuItem(
                                 text = {

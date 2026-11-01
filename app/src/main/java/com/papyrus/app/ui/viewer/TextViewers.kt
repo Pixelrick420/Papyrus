@@ -203,9 +203,7 @@ fun MarkdownViewer(
     val spokenSpans = remember { SpokenSpans() }
     val sentenceColor = spokenSentenceColor().toArgb()
     val wordColor = spokenWordColor().toArgb()
-    // With the lock on, scroll to keep the spoken line on screen, waiting out the first measure exactly
-    // as the restore path does. The scroll runs in its own scope and only when the voice reaches a new
-    // line: a word that stays on its line must not cancel the scroll already under way.
+    // Scroll only when the voice reaches a new line so same-line words don't cancel active scrolls.
     val followScope = rememberCoroutineScope()
     val followMemo = remember { MarkdownFollowMemo() }
     val followMarginPx = with(LocalDensity.current) { FollowTopMargin.toPx() }
@@ -230,10 +228,7 @@ fun MarkdownViewer(
             followScope.launch { scroll.animateScrollTo(target, spring(stiffness = Spring.StiffnessMediumLow)) }
         }
     }
-    // Markwon leaves the TextView without a movement method, so its links do nothing; this one routes the
-    // tap through the viewer's own opener instead of the resolver that turns a `file://` link into a crash.
-    // A footnote marker or its way back is an anchor inside this text, which `resolvedLink` would refuse: it scrolls
-    // to the link that answers it, and every other link goes to the opener as before.
+    // Routes taps through viewer opener (avoiding file:// crashes) or scrolls internal footnote anchors.
     val opener = LocalLinkOpener.current
     val movement = remember(opener, scroll, contentTopPx, followMarginPx) {
         GuardedLinkMovementMethod { url ->
@@ -470,12 +465,7 @@ private fun rememberRenderedMarkdown(
     } else {
         parsed
     }
-    // Convert to a mutable builder. The $$...$$ text is kept in place and covered by a placeholder
-    // span; the real RaTeXSpan replaces it once async creation completes.
-    //
-    // Source offsets from [LatexSpanFactory.ranges] do not align with Markwon's rendered output
-    // (length can differ), so scan the rendered text itself for $$...$$ and zip occurrences with
-    // the factory ranges in order — the factory range supplies only latex content and isBlock.
+    // Scans rendered $$...$$ ranges because Markwon output offsets diverge from raw source offsets.
     val builder = SpannableStringBuilder(base)
     val renderedText = builder.toString()
     val renderedRanges = Regex("(?s)\\$\\$(.+?)\\$\\$").findAll(renderedText).map { match ->
@@ -805,9 +795,7 @@ private fun TextChunk(
         if (gutter == null) NO_LINES else lineStartOffsets(text, dropEmptyTail = isLast)
     }
     val firstLine = index * TEXT_LINES_PER_CHUNK + 1
-    // Measured once per layout, not per frame: which row each line starts on and what its number
-    // measures to, keyed on exactly what already drives lineStarts (plus the layout itself, which
-    // arrives after). Drawing then only reads the marks and paints them.
+    // Precomputed once per layout to keep the draw pass free of text measurement allocations.
     val marks = remember(layout, lineStarts, firstLine, gutter) {
         val laidOut = layout
         if (laidOut == null || gutter == null) {
@@ -964,9 +952,7 @@ fun OfficeViewer(
             ?: 0,
     )
     val geometry = rememberLazyScrollGeometry(listState)
-    // A stored location names a block; a table is several band units, so restore splits one stored
-    // fraction across the bands and sampling folds the visible band back. Identity for every other
-    // block, so the mapping round-trips exactly and plain viewers pass no hooks at all.
+    // Tables split fractions across band units so multi-band tables round-trip stored block locations.
     LazyPositionEffects(
         listState,
         LocationKind.BLOCK,

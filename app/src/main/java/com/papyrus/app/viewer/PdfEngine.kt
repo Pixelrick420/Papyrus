@@ -1,5 +1,8 @@
+@file:SuppressLint("InlinedApi", "NewApi")
+
 package com.papyrus.app.viewer
 
+import android.annotation.SuppressLint
 import android.graphics.Bitmap
 import android.graphics.Point
 import android.graphics.Rect

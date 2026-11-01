@@ -437,9 +437,7 @@ class ViewerViewModel(
             }
         }
         viewModelScope.launch { load() }
-        // A pretty-print toggle or a new tab size re-reads a formattable plain-text document, like an
-        // encoding change; the initial value is what the first load already applied, so it is
-        // skipped. Off is 0: the tab size changes nothing on screen while nothing is formatted.
+        // Initial value is skipped (applied on load); off is mapped to 0 to avoid no-op reloads.
         viewModelScope.launch {
             app.settings.settings
                 .map { if (it.prettyPrint) it.tabSize else 0 }
@@ -1395,9 +1393,7 @@ class ViewerViewModel(
             }
         }
         if (source == null || missed.isNotEmpty()) {
-            // Parsing the whole file is exactly what the budget exists to avoid, so a page the
-            // platform could not scan is scanned from the model only while it fits; past that the
-            // platform's own answers are all there is, and the reader is told once why.
+            // Scans fallback PDFBox text only within memory budget when platform search misses pages.
             if (overFindBudget(warnOverBudget)) {
                 if (source == null) return FindResult()
             } else {
@@ -1541,9 +1537,7 @@ class ViewerViewModel(
     private fun forcedCharset(): Charset? = encodingName?.let(TextEncodings::charsetOrNull)
 
     override fun onCleared() {
-        // Leaving the viewer page ends read-aloud: the page is gone, so the voice goes with it. This runs
-        // when the nav entry is destroyed (back, or the app finishing), not when the app is merely
-        // backgrounded — the entry stays then, and the foreground service keeps playing.
+        // Stops TTS on nav destruction (back/finish); backgrounding preserves the foreground service.
         tts.stopFor(ttsDocumentId())
         // viewModelScope is already cancelled here; the outbox writer is not, and drains this last position.
         commitPosition(force = true)
@@ -1556,9 +1550,7 @@ class ViewerViewModel(
     }
 
     private companion object {
-        // Markdown is one Spanned in one TextView, which is far heavier per byte than a chunk of text, and
-        // code colours each add spans to it. Raised from 4 MB with those features; if a large file runs out
-        // of memory on a low-end device, this is the number to bring back down.
+        // Bounds TextView memory: Markwon Spanned instances allocate heavily per byte for code/math styling.
         const val MAX_MARKDOWN_BYTES = 6 * 1024 * 1024
 
         // The cell limit (see `DelimitedFile`) is reached long before this in any file but one of very wide cells.

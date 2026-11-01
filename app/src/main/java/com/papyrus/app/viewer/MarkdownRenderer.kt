@@ -60,9 +60,7 @@ internal object MarkdownRenderer {
                 .usePlugin(AutolinkPlugin())
                 .usePlugin(
                     ImagesPlugin.create { images ->
-                        // The reader is offline: an image is shown only when the document carries it as a `data:` URI.
-                        // Anything else shows its alt text. The handlers are removed, not left to fail for want of the
-                        // INTERNET permission, so no build of this app can fetch from a document.
+                        // Offline security constraint: handlers are stripped so no build can fetch remote images.
                         images.removeSchemeHandler("http")
                         images.removeSchemeHandler("https")
                         // A drawing is a `data:image/svg+xml` URI. Markwon decodes bitmaps and has no SVG, so the subset

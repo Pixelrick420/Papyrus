@@ -86,9 +86,7 @@ internal fun FindText(
         requester.bringIntoView(Rect(box.left - margin, box.top - margin, box.right + margin, box.bottom + margin))
     }
 
-    // Follow the voice: the line it is on is brought into view when it moves to a new one, and again
-    // when the lock is pressed back on. Keyed on the line, not the word, so a word that stays on its
-    // line never interrupts the scroll already under way.
+    // Keyed on line rather than word so same-line words never interrupt active scrolling.
     val spokenOffset = speaking?.let { it.word?.first ?: it.sentence?.first }
     val spokenLine = layout?.let { laidOut ->
         spokenOffset?.let { laidOut.getLineForOffset(it.coerceIn(0, laidOut.layoutInput.text.length)) }

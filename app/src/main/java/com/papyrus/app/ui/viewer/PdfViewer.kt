@@ -368,9 +368,7 @@ private fun PdfPage(
     LaunchedEffect(selectionState, index, span != null) {
         if (span != null) selectionState.ensureText(index)
     }
-    // With an accessibility service running, a shown page reads its text too: a rendered bitmap is
-    // otherwise one bare "Page N" stop. The same cache feeds it, so a page listened to costs nothing
-    // extra to select from.
+    // Accessibility needs page text so TalkBack reads content rather than a bare "Page N" bitmap stop.
     LaunchedEffect(selectionState, index, readsPages) {
         if (readsPages) selectionState.ensureText(index)
     }
@@ -387,9 +385,7 @@ private fun PdfPage(
     val spokenRects = remember(spokenRange, pageText) {
         if (spokenRange != null && pageText != null) spokenRange.rectsOn(pageText) else null
     }
-    // The line is followed when the voice reaches a new one, keyed on the line's top and not the word,
-    // so a word that stays on its line never interrupts the scroll already under way. Until the page's
-    // text arrives the page's top stands in for the line.
+    // Keyed on line top rather than word to prevent same-line speech from interrupting active scrolls.
     val spokenLine = spokenRects?.let { it.word.firstOrNull() ?: it.sentence.firstOrNull() }
     val followMargin = with(LocalDensity.current) { FollowTopMargin.toPx() }
     LaunchedEffect(followVoice && speaking != null, spokenLine?.top) {

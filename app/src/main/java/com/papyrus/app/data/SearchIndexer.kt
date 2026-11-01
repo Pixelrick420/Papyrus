@@ -46,10 +46,7 @@ class SearchIndexer(
         if (!started.compareAndSet(false, true)) return
         scope.launch {
             indexPending()
-            // Conflated on purpose: the signal only says "look at the library again", and a pass
-            // that is already running re-reads the queue, so a burst of imports costs one extra
-            // pass instead of one per document. The delay lets an import finish registering its
-            // row before an extraction is started for it.
+            // Conflated with a settle delay so bursts of file imports coalesce into a single indexing pass.
             library.conflate().collect {
                 delay(IMPORT_SETTLE_MILLIS)
                 indexPending()

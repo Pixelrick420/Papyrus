@@ -179,9 +179,7 @@ class TtsPlaybackService : Service(), TextToSpeech.OnInitListener {
                 .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
                 .build(),
         )
-        // The device's default locale may have no TTS voice. Fall back to English so read-aloud
-        // still works instead of silently speaking the wrong language or not at all; only surface
-        // an error when even the fallback has no voice.
+        // Falls back to English if device locale lacks TTS data; errors only if English is also missing.
         val defaultResult = runCatching { tts.language = Locale.getDefault() }.getOrDefault(-1)
         if (defaultResult == TextToSpeech.LANG_MISSING_DATA || defaultResult == TextToSpeech.LANG_NOT_SUPPORTED) {
             val fallbackResult = runCatching { tts.language = Locale.ENGLISH }.getOrDefault(-1)
@@ -332,8 +330,7 @@ class TtsPlaybackService : Service(), TextToSpeech.OnInitListener {
         /** Bring the service up and let it consume whatever the viewer prepared. */
         fun start(context: Context, action: String = ACTION_PLAY) {
             val intent = Intent(context, TtsPlaybackService::class.java).setAction(action)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) context.startForegroundService(intent)
-            else context.startService(intent)
+            context.startForegroundService(intent)
         }
     }
 }

@@ -836,9 +836,7 @@ fun HomeScreen(
                     }
                 }
 
-                // Overlaid, not swapped with the list, so the last row can fade out inside it; no exit animation —
-                // the message goes at once and the rows fade in, which reads cleaner than a cross-fade.
-                // Held back while a content search runs: its rows may still be on the way.
+                // Overlaid to allow row fade-outs; held back during content search until search completes.
                 EmptyStateOverlay(
                     visible = state.loaded && state.results.isEmpty() && !state.searching,
                     libraryEmpty = state.libraryEmpty && state.query.isEmpty(),
@@ -1081,8 +1079,8 @@ private fun DocumentRow(
     onRemove: () -> Unit,
     onShare: () -> Unit,
     onToggleStarred: () -> Unit,
-    searchQuery: String = "",
     modifier: Modifier = Modifier,
+    searchQuery: String = "",
 ) {
     val context = LocalContext.current
     // Remembered so a row that is merely re-placed by the list animation does not re-format its text.

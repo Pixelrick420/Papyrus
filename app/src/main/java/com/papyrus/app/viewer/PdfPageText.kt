@@ -89,9 +89,7 @@ class PdfPageText(
         var bestSquared = Float.MAX_VALUE
         for (line in lines) {
             if (best >= 0 && line.skippable) {
-                // A char in the line sits at least as far in y as the line's band does, so once
-                // the band is no closer than the best hit so far, no char in the line can beat it —
-                // or tie it: lines are scanned in order and the tie always belongs to the earlier index.
+                // Skips lines whose vertical band distance already exceeds the closest char distance.
                 val dy = distanceToSpan(y, line.top, line.bottom)
                 if (dy * dy >= bestSquared) continue
             }

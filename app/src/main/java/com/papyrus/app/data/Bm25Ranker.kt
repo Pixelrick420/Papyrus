@@ -60,9 +60,7 @@ object Bm25Ranker {
                 if (termFrequency <= 0 || documentFrequency <= 0) continue
                 val length = ints.getOrElse(LEADING_COUNT + columns + column) { 0 }.toDouble()
                 val average = ints.getOrElse(LEADING_COUNT + column) { 0 }.coerceAtLeast(1).toDouble()
-                // The +1 inside the logarithm keeps the idf positive for a phrase that appears in
-                // most documents, where the classical formula would go negative and rank the
-                // commonest word below the rarest.
+                // The +1 inside the logarithm keeps IDF positive even for terms appearing in most documents.
                 val idf = ln(1.0 + (rows - documentFrequency + 0.5) / (documentFrequency + 0.5))
                 val normalisation = K1 * (1 - B + B * length / average)
                 total += idf * (termFrequency * (K1 + 1)) / (termFrequency + normalisation)

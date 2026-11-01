@@ -50,9 +50,7 @@ class DocumentTextExtractor(
         } catch (expectedDrm: EpubProtectedException) {
             ExtractedText("", TextIndexState.SKIPPED)
         } catch (ignored: Exception) {
-            // Malformed file, provider died, a parser that gave up: terminal, so the queue moves on.
-            // An Error (an actual OutOfMemoryError) is deliberately not caught: it says nothing
-            // about this document and the process state is no longer trustworthy.
+            // Catches document parsing failures; JVM Errors (like OOM) are uncaught to avoid corrupted state.
             ExtractedText("", TextIndexState.FAILED)
         }
     }

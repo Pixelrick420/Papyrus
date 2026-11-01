@@ -55,7 +55,6 @@
     if (effectivePerPage === 2 && clampedIndex + 1 < carouselRef.children.length) {
       const el2 = carouselRef.children[clampedIndex + 1] as HTMLElement | undefined;
       if (el2) {
-        // Midpoint between el1 and el2
         const start = el1.offsetLeft;
         const end = el2.offsetLeft + el2.clientWidth;
         const midpoint = (start + end) / 2;
@@ -63,7 +62,6 @@
       }
     }
 
-    // 1 item in focus: center el1
     const itemCenter = el1.offsetLeft + el1.clientWidth / 2;
     return itemCenter - containerWidth / 2;
   }

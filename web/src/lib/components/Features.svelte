@@ -11,7 +11,7 @@
     {
       icon: 'Volume2',
       title: 'Read aloud',
-      description: 'Text-to-speech in every format.',
+      description: 'Text-to-speech for speakable documents.',
     },
     {
       icon: 'Search',

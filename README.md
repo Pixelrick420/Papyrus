@@ -257,7 +257,7 @@ flowchart LR
   D --> E["Viewer"]
   E --> F["PDF"]
   E --> G["Markdown"]
-  E --> H["Office<br/>DOCX, ODT, DOC, EPUB, CSV"]
+  E --> H["Office<br/>DOCX, ODT, DOC, EPUB, CSV, TSV"]
   E --> I["Text and code<br/>40 lines at a time"]
   E --> J["Read aloud<br/>system speech engine"]
 ```
