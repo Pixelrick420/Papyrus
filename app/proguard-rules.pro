@@ -1,4 +1,7 @@
 # PdfBox-Android: optional JPX / crypto providers are not bundled
+# JPXFilter references the optional com.gemalto.jp2.JP2Decoder. Keep JPXFilter so R8 does not
+# strip it and later throw NoClassDefFoundError when a PDF contains a JPX image.
+-keep class com.tom_roush.pdfbox.filter.JPXFilter { *; }
 -dontwarn com.gemalto.jp2.**
 -dontwarn org.bouncycastle.**
 -dontwarn org.spongycastle.**

@@ -179,7 +179,16 @@ class TtsPlaybackService : Service(), TextToSpeech.OnInitListener {
                 .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
                 .build(),
         )
-        runCatching { tts.language = Locale.getDefault() }
+        // The device's default locale may have no TTS voice. Fall back to English so read-aloud
+        // still works instead of silently speaking the wrong language or not at all; only surface
+        // an error when even the fallback has no voice.
+        val defaultResult = runCatching { tts.language = Locale.getDefault() }.getOrDefault(-1)
+        if (defaultResult == TextToSpeech.LANG_MISSING_DATA || defaultResult == TextToSpeech.LANG_NOT_SUPPORTED) {
+            val fallbackResult = runCatching { tts.language = Locale.ENGLISH }.getOrDefault(-1)
+            if (fallbackResult == TextToSpeech.LANG_MISSING_DATA || fallbackResult == TextToSpeech.LANG_NOT_SUPPORTED) {
+                controller?.onError(getString(R.string.tts_error_locale))
+            }
+        }
         tts.setSpeechRate(pendingRate)
         // The first play was queued before the engine was listening; speak it now.
         pendingSpeak?.let { (text, id) ->

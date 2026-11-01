@@ -337,5 +337,6 @@ access</string>
     <string
         name="tts_error_engine"
     >No speech engine is available on this device</string>
+    <string name="tts_error_locale">No voice is available for the default language</string>
     <string name="tts_error_speech">Speech stopped unexpectedly</string>
 </resources>

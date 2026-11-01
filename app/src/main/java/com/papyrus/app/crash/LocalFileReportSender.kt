@@ -10,16 +10,30 @@ import org.acra.sender.ReportSenderFactory
 import java.io.File
 import java.io.IOException
 import java.util.UUID
+import java.util.regex.Pattern
 
 class LocalFileReportSender : ReportSender {
     override fun send(context: Context, errorContent: CrashReportData) {
         try {
             val dir = CrashReportStore.directory(context).apply { mkdirs() }
             val id = errorContent.getString(ReportField.REPORT_ID) ?: UUID.randomUUID().toString()
+            // Stack traces can embed absolute file paths (e.g. in an exception message), which would
+            // reveal which documents the user had open. Redact app-internal paths before persisting.
+            redactDocumentPaths(errorContent, context.filesDir)
             File(dir, "crash-${System.currentTimeMillis()}-$id.json").writeText(errorContent.toJSON())
             CrashReportStore.prune(context)
         } catch (e: IOException) {
             throw ReportSenderException("Unable to store crash report locally", e)
+        }
+    }
+
+    /** Replaces app-internal absolute paths in the stack trace so crash reports never name the user's documents. */
+    private fun redactDocumentPaths(errorContent: CrashReportData, filesDir: File) {
+        val stackTrace = errorContent.getString(ReportField.STACK_TRACE) ?: return
+        val root = filesDir.absolutePath
+        val sanitized = stackTrace.replace(Regex(Pattern.quote(root)), "[redacted]")
+        if (sanitized != stackTrace) {
+            errorContent.put(ReportField.STACK_TRACE, sanitized)
         }
     }
 }
