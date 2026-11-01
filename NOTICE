@@ -26,14 +26,14 @@ govern the component itself.
 1. io.github.erweixin:ratex-android:0.1.15
    License: MIT
    Bundled component: yes
-   Used for $$...$$ LaTeX math rendering in Markdown documents, replacing the removed GPL JLatexMath.
-   Block formulas ($$...$$ on their own line) and inline formulas ($$...$$ within text) both render,
-   with graceful fallback to plain text if RaTeX span creation fails.
+   Used for $$...$$ LaTeX math rendering in Markdown documents, Block formulas 
+   and inline formulas both render, with graceful fallback to plain text
+   if RaTeX span creation fails.
 
 2. com.tom-roush:pdfbox-android:2.0.27.0
    License: Apache License, Version 2.0
    Bundled component: yes
-   Used for PDF text extraction (find-in-file) and page geometry; pages themselves are drawn by the platform's PdfRenderer.
+   Used for PDF text extraction and page geometry; pages themselves are drawn by the platform's PdfRenderer.
 
 3. androidx.* / Jetpack Compose / Room / Navigation / Lifecycle
    License: Apache License, Version 2.0
@@ -41,9 +41,9 @@ govern the component itself.
 4. ch.acra:acra-core:5.12.0
    License: Apache License, Version 2.0 / MIT
    Bundled component: yes
-   Local-only crash reporting (replaces Crashlytics). `auto-service` is excluded at build time.
+   Local-only crash reporting. `auto-service` is excluded at build time.
 
-5. io.noties.markwon core + ext-* (strikethrough, tables, tasklist, image): 4.6.2
+5. io.noties.markwon core + ext-* : 4.6.2
    License: MIT
    Bundled component: yes
    The Markdown renderer: Spannable output, no WebView or network. Only `data:` URI images are loaded;
