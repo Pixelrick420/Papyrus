@@ -188,6 +188,8 @@ dependencies {
     androidTestImplementation("androidx.test:rules:1.6.1")
     androidTestImplementation(platform("androidx.compose:compose-bom:2026.09.00"))
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
+    // The end-to-end tests drive the installed app through its accessibility tree, so they never call into its code.
+    androidTestImplementation("androidx.test.uiautomator:uiautomator:2.3.0")
     androidTestUtil("androidx.test:orchestrator:1.6.1")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
 }

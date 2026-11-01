@@ -1,0 +1,153 @@
+package com.papyrus.app.e2e
+
+import android.content.Context
+import android.content.Intent
+import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.uiautomator.By
+import androidx.test.uiautomator.BySelector
+import androidx.test.uiautomator.Direction
+import androidx.test.uiautomator.StaleObjectException
+import androidx.test.uiautomator.UiDevice
+import androidx.test.uiautomator.UiObject2
+import androidx.test.uiautomator.Until
+import kotlin.math.abs
+
+/**
+ * Drives the installed app the way a person does: by what is on the screen, with taps and typed text.
+ *
+ * Nothing here calls into the app. UI Automator reads the accessibility tree, so the same tests run against
+ * the minified release build, where R8 has renamed or removed whatever an in-process test would have named
+ * (Compose's own test rule included). Selectors are the words on screen, which is also what TalkBack reads.
+ */
+internal class AppDriver {
+    private val instrumentation = InstrumentationRegistry.getInstrumentation()
+    private val device: UiDevice = UiDevice.getInstance(instrumentation)
+    val context: Context = instrumentation.targetContext
+    private val packageName: String = context.packageName
+
+    // Every selector is scoped to the app's package, so nothing the system draws can match.
+
+    fun text(value: String): BySelector = By.pkg(packageName).text(value)
+
+    fun textContains(value: String): BySelector = By.pkg(packageName).textContains(value)
+
+    fun desc(value: String): BySelector = By.pkg(packageName).desc(value)
+
+    fun descStartsWith(value: String): BySelector = By.pkg(packageName).descStartsWith(value)
+
+    /** Words drawn by a `Text`, as opposed to a field that is holding the same words. */
+    fun label(value: String): BySelector = By.pkg(packageName).clazz(TEXT_VIEW).textContains(value)
+
+    fun field(): BySelector = By.pkg(packageName).clazz(EDIT_TEXT)
+
+    fun launchHome() = launch(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER))
+
+    /** Another app handing Papyrus a document: the intent a file manager sends. */
+    fun openFromAnotherApp(file: Fixture) =
+        launch(Intent(Intent.ACTION_VIEW, file.uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
+
+    private fun launch(intent: Intent) {
+        intent.setClassName(packageName, MAIN_ACTIVITY)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+        context.startActivity(intent)
+        if (device.wait(Until.hasObject(By.pkg(packageName).depth(0)), LAUNCH_TIMEOUT_MS) != true) {
+            throw AssertionError("Papyrus did not come to the front within ${LAUNCH_TIMEOUT_MS}ms")
+        }
+    }
+
+    /** The first node matching [selector], waiting for it to appear. */
+    fun find(selector: BySelector, timeoutMs: Long = UI_TIMEOUT_MS): UiObject2 =
+        device.wait(Until.findObject(selector), timeoutMs)
+            ?: throw AssertionError("Nothing matched $selector within ${timeoutMs}ms. On screen: ${onScreen()}")
+
+    fun waitGone(selector: BySelector, timeoutMs: Long = UI_TIMEOUT_MS): Boolean =
+        device.wait(Until.gone(selector), timeoutMs) == true
+
+    fun assertShown(selector: BySelector, timeoutMs: Long = UI_TIMEOUT_MS) {
+        find(selector, timeoutMs)
+    }
+
+    /** Fails unless [selector] is, or soon is, off the screen: the app may take a frame to take something away. */
+    fun assertGone(selector: BySelector, timeoutMs: Long = SETTLE_TIMEOUT_MS) {
+        if (!waitGone(selector, timeoutMs)) throw AssertionError("Still on screen: $selector. On screen: ${onScreen()}")
+    }
+
+    fun tap(selector: BySelector) = retryStale { find(selector).click() }
+
+    fun longPress(selector: BySelector) = retryStale { find(selector).longClick() }
+
+    /** Sets a field's text in one step, which is how an accessibility service types. */
+    fun typeInto(selector: BySelector, value: String) = retryStale { find(selector).setText(value) }
+
+    fun back() {
+        device.pressBack()
+    }
+
+    /** Scrolls the screen's list down until [selector] is on it; a screen that fits needs no scrolling. */
+    fun scrollTo(selector: BySelector): UiObject2 {
+        repeat(MAX_SCROLLS) {
+            device.findObject(selector)?.let { return it }
+            device.findObject(By.pkg(packageName).scrollable(true))?.scroll(Direction.DOWN, SCROLL_FRACTION)
+        }
+        return find(selector)
+    }
+
+    /** The "More options" button of the Home row titled [title]: the one nearest it, as every row has one. */
+    fun rowMenu(title: String): UiObject2 {
+        val titleY = find(text(title)).visibleCenter.y
+        return device.findObjects(desc("More options")).minByOrNull { abs(it.visibleCenter.y - titleY) }
+            ?: throw AssertionError("No row menu next to \"$title\". On screen: ${onScreen()}")
+    }
+
+    /** The viewer's overflow menu, then [item] from it. */
+    fun chooseFromViewerMenu(item: String) {
+        tap(desc("More options"))
+        tap(text(item))
+    }
+
+    /** Everything the app is showing, as the message of a test that failed: the screen it was looking at. */
+    fun onScreen(): String = runCatching {
+        device.findObjects(By.pkg(packageName))
+            .mapNotNull { node -> (node.text ?: node.contentDescription)?.takeIf { it.isNotBlank() }?.take(MAX_WORDS_SHOWN) }
+            .joinToString(" | ")
+    }.getOrElse { "(the screen could not be read: ${it.message})" }
+
+    // A node can be replaced between finding it and acting on it, as Compose recomposes.
+    private fun <T> retryStale(action: () -> T): T {
+        var stale: StaleObjectException? = null
+        repeat(STALE_RETRIES) {
+            try {
+                return action()
+            } catch (e: StaleObjectException) {
+                stale = e
+            }
+        }
+        throw requireNotNull(stale)
+    }
+
+    companion object {
+        /** What Compose reports for a `Text` and for a text field; the platform class names TalkBack reads. */
+        private const val TEXT_VIEW = "android.widget.TextView"
+        private const val EDIT_TEXT = "android.widget.EditText"
+
+        // By name, never by class: the activity is kept under its own name in every build, and this file
+        // must not reference anything R8 is free to rename.
+        private const val MAIN_ACTIVITY = "com.papyrus.app.MainActivity"
+
+        const val LAUNCH_TIMEOUT_MS = 15_000L
+
+        /** Most things settle well inside this, on a slow emulator too. */
+        const val UI_TIMEOUT_MS = 10_000L
+
+        /** Opening a document: a PDF is rendered, a book unpacked, and the first run has nothing warm. */
+        const val LOAD_TIMEOUT_MS = 20_000L
+
+        /** How long to wait for something that should already be on its way out. */
+        const val SETTLE_TIMEOUT_MS = 3_000L
+
+        private const val MAX_SCROLLS = 8
+        private const val SCROLL_FRACTION = 0.8f
+        private const val STALE_RETRIES = 3
+        private const val MAX_WORDS_SHOWN = 80
+    }
+}
