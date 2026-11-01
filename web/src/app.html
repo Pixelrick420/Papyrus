@@ -6,7 +6,18 @@
     <meta name="theme-color" content="#1e3a5f" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#0f1f3a" media="(prefers-color-scheme: dark)" />
 
-    <!-- Primary Meta Tags -->
+    <script>
+      (function () {
+        var stored = localStorage.getItem('theme');
+        var prefersDark =
+          window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+        var shouldBeDark = stored === 'dark' || (!stored && prefersDark);
+        if (shouldBeDark) {
+          document.documentElement.classList.add('dark');
+        }
+      })();
+    </script>
+
     <title>Papyrus</title>
     <meta name="title" content="Papyrus" />
     <meta
@@ -21,7 +32,6 @@
     <meta name="robots" content="index, follow" />
     <link rel="canonical" href="https://papyrus.app/" />
 
-    <!-- Open Graph / Facebook -->
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://papyrus.app/" />
     <meta property="og:title" content="Papyrus" />
@@ -35,7 +45,6 @@
     <meta property="og:site_name" content="Papyrus" />
     <meta property="og:locale" content="en_US" />
 
-    <!-- Twitter -->
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:url" content="https://papyrus.app/" />
     <meta name="twitter:title" content="Papyrus" />

@@ -16,11 +16,7 @@
 
   onMount(() => {
     if (typeof window !== 'undefined') {
-      const stored = localStorage.getItem('theme');
-      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-      const shouldBeDark = stored === 'dark' || (!stored && prefersDark);
-      document.documentElement.classList.toggle('dark', shouldBeDark);
-      darkMode = shouldBeDark;
+      darkMode = document.documentElement.classList.contains('dark');
 
       window.addEventListener('scroll', handleScroll, { passive: true });
       return () => window.removeEventListener('scroll', handleScroll);
