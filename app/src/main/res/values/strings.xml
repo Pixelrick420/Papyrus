@@ -299,6 +299,15 @@ access</string>
     <string
         name="settings_remember_position_desc"
     >Reopen library documents where you stopped and show your progress on Home. Only numbers are stored, on this device.</string>
+    <string name="settings_section_crash_reports">Crash Reports</string>
+    <string name="settings_crash_reports_title">Crash Reports</string>
+    <string name="settings_crash_reports_desc">View, share, and manage crash logs</string>
+    <string name="crash_reports_title">Crash reports</string>
+    <string name="crash_reports_empty">No crash reports</string>
+    <string name="crash_reports_delete">Delete</string>
+    <string name="crash_reports_delete_confirm_title">Delete crash report?</string>
+    <string name="crash_reports_delete_confirm_message">This crash report will be permanently deleted.</string>
+
     <string name="settings_section_about">About</string>
     <string name="settings_about_version">Version %1$s</string>
     <string name="settings_about_source">Source code</string>

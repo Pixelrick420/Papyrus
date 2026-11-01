@@ -431,6 +431,7 @@ fun ViewerScreen(
                 highlightAvailable = state.highlightsAvailable,
                 canRemoveHighlight = touchedHighlights.isNotEmpty(),
                 showShare = state.document != null,
+                showMenu = !state.isCrashReport,
                 showSaveToLibrary = state.canSaveToLibrary,
                 savingToLibrary = state.savingToLibrary,
                 savedToLibrary = state.savedToLibrary,
@@ -803,6 +804,7 @@ private fun ViewerHeader(
     highlightAvailable: Boolean,
     canRemoveHighlight: Boolean,
     showShare: Boolean,
+    showMenu: Boolean = true,
     showSaveToLibrary: Boolean,
     savingToLibrary: Boolean,
     savedToLibrary: Boolean,
@@ -895,89 +897,91 @@ private fun ViewerHeader(
                     )
                 }
             }
-            Box {
-                IconButton(onClick = { onMenuOpenChange(true) }) {
-                    Icon(
-                        Icons.Default.MoreVert,
-                        contentDescription = stringResource(R.string.viewer_menu),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                DropdownMenu(expanded = menuOpen, onDismissRequest = { onMenuOpenChange(false) }) {
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.viewer_find_title)) },
-                        enabled = findAvailable,
-                        onClick = { onMenuOpenChange(false); onFind() },
-                    )
-                    // Read aloud needs the same speakable formats find does, and is hidden rather than
-                    // greyed when the document has nothing to speak: an option whose only outcome is
-                    // "no selectable text" is not an option. A live session always offers its stop.
-                    if (readAloudAvailable || readAloudActive) {
-                        DropdownMenuItem(
-                            text = {
-                                Text(
-                                    stringResource(
-                                        if (readAloudActive) R.string.viewer_read_aloud_stop else R.string.viewer_read_aloud,
-                                    ),
-                                )
-                            },
-                            onClick = { onMenuOpenChange(false); onReadAloud() },
+            if (showMenu) {
+                Box {
+                    IconButton(onClick = { onMenuOpenChange(true) }) {
+                        Icon(
+                            Icons.Default.MoreVert,
+                            contentDescription = stringResource(R.string.viewer_menu),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                    if (outlineAvailable) {
+                    DropdownMenu(expanded = menuOpen, onDismissRequest = { onMenuOpenChange(false) }) {
                         DropdownMenuItem(
-                            text = { Text(stringResource(R.string.viewer_outline_title)) },
-                            onClick = { onMenuOpenChange(false); onOutline() },
+                            text = { Text(stringResource(R.string.viewer_find_title)) },
+                            enabled = findAvailable,
+                            onClick = { onMenuOpenChange(false); onFind() },
                         )
-                    }
-                    if (formAvailable) {
+                        // Read aloud needs the same speakable formats find does, and is hidden rather than
+                        // greyed when the document has nothing to speak: an option whose only outcome is
+                        // "no selectable text" is not an option. A live session always offers its stop.
+                        if (readAloudAvailable || readAloudActive) {
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        stringResource(
+                                            if (readAloudActive) R.string.viewer_read_aloud_stop else R.string.viewer_read_aloud,
+                                        ),
+                                    )
+                                },
+                                onClick = { onMenuOpenChange(false); onReadAloud() },
+                            )
+                        }
+                        if (outlineAvailable) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.viewer_outline_title)) },
+                                onClick = { onMenuOpenChange(false); onOutline() },
+                            )
+                        }
+                        if (formAvailable) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.viewer_form_title)) },
+                                onClick = { onMenuOpenChange(false); onForm() },
+                            )
+                        }
+                        // Only when there is a plain highlight to write and the engine can annotate.
+                        if (highlightCopyAvailable) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.viewer_save_copy_with_highlights)) },
+                                onClick = { onMenuOpenChange(false); onSaveHighlightCopy() },
+                            )
+                        }
+                        // Only for a PDF of [MIN_GO_TO_PAGES] pages or more, or text of [MIN_GO_TO_LINES] lines or more.
+                        if (goToAvailable) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(if (goToLines) R.string.viewer_goto_line_title else R.string.viewer_goto_page_title)) },
+                                onClick = { onMenuOpenChange(false); onGoTo() },
+                            )
+                        }
+                        // A handed-over document gets no bookmark rows at all: no library row to hang one from.
+                        if (bookmarkableContent && bookmarksAvailable) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.bookmark_add)) },
+                                onClick = { onMenuOpenChange(false); onAddBookmark() },
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.bookmarks_title)) },
+                                onClick = { onMenuOpenChange(false); onBookmarks() },
+                            )
+                        }
                         DropdownMenuItem(
-                            text = { Text(stringResource(R.string.viewer_form_title)) },
-                            onClick = { onMenuOpenChange(false); onForm() },
+                            text = { Text(stringResource(R.string.viewer_info_title)) },
+                            onClick = { onMenuOpenChange(false); onInfo() },
                         )
-                    }
-                    // Only when there is a plain highlight to write and the engine can annotate.
-                    if (highlightCopyAvailable) {
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.viewer_save_copy_with_highlights)) },
-                            onClick = { onMenuOpenChange(false); onSaveHighlightCopy() },
-                        )
-                    }
-                    // Only for a PDF of [MIN_GO_TO_PAGES] pages or more, or text of [MIN_GO_TO_LINES] lines or more.
-                    if (goToAvailable) {
-                        DropdownMenuItem(
-                            text = { Text(stringResource(if (goToLines) R.string.viewer_goto_line_title else R.string.viewer_goto_page_title)) },
-                            onClick = { onMenuOpenChange(false); onGoTo() },
-                        )
-                    }
-                    // A handed-over document gets no bookmark rows at all: no library row to hang one from.
-                    if (bookmarkableContent && bookmarksAvailable) {
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.bookmark_add)) },
-                            onClick = { onMenuOpenChange(false); onAddBookmark() },
-                        )
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.bookmarks_title)) },
-                            onClick = { onMenuOpenChange(false); onBookmarks() },
-                        )
-                    }
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.viewer_info_title)) },
-                        onClick = { onMenuOpenChange(false); onInfo() },
-                    )
-                    if (encodingAvailable) {
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.viewer_encoding_title)) },
-                            onClick = { onMenuOpenChange(false); onEncoding() },
-                        )
-                    }
-                    // Only for a handed-over document: library rows are already saved.
-                    if (showSaveToLibrary) {
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.viewer_save_library)) },
-                            enabled = !savingToLibrary && !savedToLibrary,
-                            onClick = { onMenuOpenChange(false); onSaveToLibrary() },
-                        )
+                        if (encodingAvailable) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.viewer_encoding_title)) },
+                                onClick = { onMenuOpenChange(false); onEncoding() },
+                            )
+                        }
+                        // Only for a handed-over document: library rows are already saved.
+                        if (showSaveToLibrary) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.viewer_save_library)) },
+                                enabled = !savingToLibrary && !savedToLibrary,
+                                onClick = { onMenuOpenChange(false); onSaveToLibrary() },
+                            )
+                        }
                     }
                 }
             }

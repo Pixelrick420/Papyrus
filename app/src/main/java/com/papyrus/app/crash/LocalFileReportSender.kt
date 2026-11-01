@@ -34,8 +34,29 @@ object CrashReportStore {
 
     fun directory(context: Context): File = File(context.filesDir, "crash-reports")
 
-    fun list(context: Context): List<File> =
-        directory(context).listFiles { f -> f.extension == "json" }?.sortedByDescending { it.name }.orEmpty()
+    fun list(context: Context): List<File> = list(directory(context))
 
-    fun prune(context: Context) = list(context).drop(MAX_REPORTS).forEach { it.delete() }
+    internal fun list(dir: File): List<File> =
+        dir.listFiles { f -> f.extension == "json" }?.sortedByDescending { it.name }.orEmpty()
+
+    fun prune(context: Context) = prune(directory(context))
+
+    internal fun prune(dir: File) = list(dir).drop(MAX_REPORTS).forEach { it.delete() }
+
+    fun isInside(context: Context, file: File): Boolean = isInside(directory(context), file)
+
+    internal fun isInside(dir: File, file: File): Boolean = runCatching {
+        file.canonicalFile.parentFile == dir.canonicalFile
+    }.getOrDefault(false)
+
+    fun delete(file: File): Boolean = file.delete()
+
+    fun timestamp(file: File): Long {
+        val name = file.name
+        if (name.startsWith("crash-")) {
+            val parts = name.removePrefix("crash-").split("-")
+            parts.firstOrNull()?.toLongOrNull()?.let { return it }
+        }
+        return file.lastModified()
+    }
 }

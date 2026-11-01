@@ -113,6 +113,7 @@ private fun ThemeMode.label(): Int = when (this) {
 @Composable
 fun SettingsScreen(
     onBack: () -> Unit,
+    onOpenCrashReports: () -> Unit = {},
     viewModel: SettingsViewModel = viewModel(factory = AppViewModelProvider.Factory),
 ) {
     val settings by viewModel.settings.collectAsStateWithLifecycle()
@@ -229,6 +230,15 @@ fun SettingsScreen(
                         description = stringResource(R.string.settings_remember_position_desc),
                         checked = settings.rememberPosition,
                         onCheckedChange = viewModel::setRememberPosition,
+                    )
+                }
+
+                SectionLabel(stringResource(R.string.settings_section_crash_reports))
+                SettingsCard {
+                    SettingsRow(
+                        title = stringResource(R.string.settings_crash_reports_title),
+                        value = stringResource(R.string.settings_crash_reports_desc),
+                        modifier = Modifier.clickable(role = Role.Button) { onOpenCrashReports() },
                     )
                 }
 

@@ -265,12 +265,13 @@ data class ViewerUiState(
      * the search index, which may not have reached it yet.
      */
     val speakableText: Boolean? = null,
+    val isCrashReport: Boolean = false,
 ) {
     /**
      * Bookmarks hang from a library row, so a transient document has none until it is saved; from then on
      * they are kept under the new row, like the reading position.
      */
-    val bookmarksAvailable: Boolean get() = (document?.id ?: 0L) > 0L || savedToLibrary
+    val bookmarksAvailable: Boolean get() = !isCrashReport && ((document?.id ?: 0L) > 0L || savedToLibrary)
 
     /** Highlights hang from a library row for the same reason bookmarks do. */
     val highlightsAvailable: Boolean get() = bookmarksAvailable
@@ -319,6 +320,9 @@ class ViewerViewModel(
      *  finds the copy instead of an in-memory entry the new process never had. */
     private var documentId: Long =
         savedState[KEY_SAVED_DOCUMENT_ID] ?: savedState[Routes.ARG_DOCUMENT_ID] ?: -1L
+
+    private val isCrashReport: Boolean =
+        savedState.get<Boolean>(Routes.ARG_CRASH_REPORT) == true || documentId <= -1000000L
 
     private val _state = MutableStateFlow(ViewerUiState())
     val state: StateFlow<ViewerUiState> = _state.asStateFlow()
@@ -460,9 +464,10 @@ class ViewerViewModel(
         tracker.beginLoad(restorePending = restore != null)
         _state.value = ViewerUiState(
             document = doc,
-            canSaveToLibrary = doc.id < 0,
+            canSaveToLibrary = if (isCrashReport) false else doc.id < 0,
             encodingOverride = encodingName,
             restore = restore,
+            isCrashReport = isCrashReport,
         )
         repository.markOpened(doc.id)
         val content = loadContentSafely(doc)
@@ -873,6 +878,7 @@ class ViewerViewModel(
     // Saves a handed-over document once it opens, if its setting is on. An encrypted document waits
     // for the unlock, and content that failed to load is never saved.
     private fun autosaveIfEnabled() {
+        if (isCrashReport) return
         val current = _state.value
         if (!current.canSaveToLibrary || current.savingToLibrary || current.savedToLibrary) return
         val opened = when (current.content) {
@@ -1096,6 +1102,7 @@ class ViewerViewModel(
     /** Copies a handed-over document into the library, then moves the viewer onto the app-owned copy.
      *  [notify] is false for the autosave path, which saves silently; the manual "save to library" keeps the snackbar. */
     fun saveToLibrary(notify: Boolean = true) {
+        if (isCrashReport) return
         val doc = _state.value.document ?: return
         if (_state.value.savingToLibrary || _state.value.savedToLibrary) return
         _state.update { it.copy(savingToLibrary = true) }

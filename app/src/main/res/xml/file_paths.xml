@@ -1,7 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- The FileProvider's only path; keep in sync with LibraryImport.importsDir. -->
+<!-- The FileProvider paths; keep in sync with LibraryImport.importsDir and CrashReportStore.directory. -->
 <paths>
     <files-path
         name="imports"
         path="imports/" />
+    <files-path
+        name="crash_reports"
+        path="crash-reports/" />
 </paths>

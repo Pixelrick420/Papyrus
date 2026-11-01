@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import androidx.core.content.FileProvider
 import androidx.core.net.toUri
+import com.papyrus.app.crash.CrashReportStore
 import com.papyrus.app.viewer.NormRect
 import com.papyrus.app.viewer.OfficeEncryption
 import com.papyrus.app.viewer.OutlineEntry
@@ -34,6 +35,8 @@ class DocumentRepository(
     /** In-memory only; ids are negative (Room's positive), -1 the viewer's sentinel, so counting starts at -2. */
     private val handedOver = mutableMapOf<Long, DocumentEntity>()
     private var nextHandedOverId = -2L
+    private val crashReports = mutableMapOf<Long, DocumentEntity>()
+    private var nextCrashReportId = -1000000L
 
     /**
      * Encryption verdict [register] reached for a PDF it handed over, so the next viewer skips the
@@ -178,8 +181,23 @@ class DocumentRepository(
         return id
     }
 
+    fun openCrashReport(file: File): Long {
+        val id = nextCrashReportId--
+        val entity = DocumentEntity(
+            id = id,
+            uri = Uri.fromFile(file).toString(),
+            title = file.name,
+            format = DocumentFormat.CODE,
+            sizeBytes = file.length(),
+            createdAt = file.lastModified(),
+            lastOpenedAt = System.currentTimeMillis(),
+        )
+        crashReports[id] = entity
+        return id
+    }
+
     suspend fun getById(id: Long): DocumentEntity? =
-        if (id < 0) handedOver[id] else dao.getById(id)
+        crashReports[id] ?: if (id < 0) handedOver[id] else dao.getById(id)
     suspend fun markOpened(id: Long) = dao.touch(id, System.currentTimeMillis())
     suspend fun updateFormat(id: Long, format: DocumentFormat) = dao.updateFormat(id, format)
 
@@ -302,7 +320,9 @@ class DocumentRepository(
         if (uri.scheme != "file") return@withContext uri
         val path = uri.path ?: return@withContext uri
         val file = File(path)
-        if (!LibraryImport.isInside(LibraryImport.importsDir(context), file)) return@withContext uri
+        val isImport = LibraryImport.isInside(LibraryImport.importsDir(context), file)
+        val isCrashReport = CrashReportStore.isInside(context, file)
+        if (!isImport && !isCrashReport) return@withContext uri
         FileProvider.getUriForFile(context, "${context.packageName}$FILE_PROVIDER_SUFFIX", file)
     }
 
@@ -322,8 +342,11 @@ class DocumentRepository(
         withContext(Dispatchers.IO) { SafStorage.queryMimeType(resolver, document.uri.toUri()) }
 
     /** Type the share declares: the provider's live answer resolved against the detected format. */
-    suspend fun shareTypeFor(document: DocumentEntity): String =
-        shareMimeType(document.format, mimeTypeOf(document))
+    suspend fun shareTypeFor(document: DocumentEntity): String {
+        val reported = mimeTypeOf(document)
+            ?: if (document.title.endsWith(".json", ignoreCase = true)) "application/json" else null
+        return shareMimeType(document.format, reported)
+    }
 
     /**
      * A SAF grant can only come from the user picking the file again, so the re-pick must match
