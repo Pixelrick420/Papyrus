@@ -72,8 +72,10 @@
 Offline document viewer for Android built with Kotlin, Jetpack Compose and Room.
 
 Documents open through the Storage Access Framework, get indexed in a local Room database, and render entirely
-on-device. The manifest declares no network or storage permissions; the only two it asks for,
-`FOREGROUND_SERVICE` and `FOREGROUND_SERVICE_MEDIA_PLAYBACK`, let read-aloud keep speaking with the screen off.
+on-device. The manifest declares no network or storage permissions; the only ones it asks for,
+`FOREGROUND_SERVICE` and `FOREGROUND_SERVICE_MEDIA_PLAYBACK`, let read-aloud keep speaking with the screen off,
+and `POST_NOTIFICATIONS` lets read-aloud show its playback notification (asked the first time read-aloud is used,
+on Android 13 and up).
 
 ## Formats
 
@@ -141,6 +143,7 @@ an XML root, JSON or Objective-C.
   Settings turns it off.
 - **Read aloud** speaks the page, chunk, block or paragraph, shades the sentence being read (and the word, where the
   engine reports timing), and keeps going with the screen off. Play/pause, skip, lock, speed and close are on the bar.
+  It is offered only when the document has selectable text; a document with nothing speakable hides it.
 - **Zoom** with a pinch or a double-tap, from 0.5x to 3x.
 - **Links** open on tap for `http`, `https`, `mailto` and `tel`. A PDF's internal link scrolls to its page.
 
@@ -185,6 +188,9 @@ an XML root, JSON or Objective-C.
   encrypted and the password is never stored.
 - **Remember reading position** reopens a library document where you stopped and shows progress on Home. Off, no
   position is read or written, and the stored ones apply again when it goes back on.
+- **Crash Reports** lists local crash logs by date and size, lets you open one in the viewer (read only, share
+  button only), and deletes one after a confirmation dialog. Reports are ACRA JSON stored in app storage and
+  nothing leaves the device.
 - **About** shows the version and links to release notes, source code, the Apache 2.0 license and the privacy policy.
 
 ### Privacy & safety

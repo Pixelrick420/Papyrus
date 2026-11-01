@@ -66,7 +66,9 @@ device face down if you want to remove visual cues.
 2. **Read aloud bar:** play/pause is labelled with the action it will take ("Play" or "Pause"). Skip
    back, skip forward and stop are labelled. The scroll lock label changes between "Lock scrolling
    to the line being read" and "Unlock scrolling". The speed chip reads "Speed 1.5×, button" and a
-   double tap cycles the speed.
+   double tap cycles the speed. The bar appears only when the document has selectable text. On Android 13
+   and up, using read aloud for the first time asks to show the playback notification; a denial is remembered
+   so it is not asked again.
 3. **Find in file:** the field is one stop: "Find, edit box". The match counter announces changes on
    its own. Previous match, next match and close find are labelled; the arrows read as disabled when
    there is nothing to step to.
