@@ -79,6 +79,19 @@ internal class AppDriver {
 
     fun longPress(selector: BySelector) = retryStale { find(selector).longClick() }
 
+    /**
+     * Taps the lowest match. A sheet slides up over the list it was opened from, and the list's thumbnails
+     * can carry the same words as the sheet's chips; the sheet is the one lower on the screen.
+     */
+    fun tapLowest(selector: BySelector) {
+        assertShown(selector)
+        retryStale {
+            val lowest = device.findObjects(selector).maxByOrNull { it.visibleCenter.y }
+                ?: throw AssertionError("Nothing matched $selector. On screen: ${onScreen()}")
+            lowest.click()
+        }
+    }
+
     /** Sets a field's text in one step, which is how an accessibility service types. */
     fun typeInto(selector: BySelector, value: String) = retryStale { find(selector).setText(value) }
 
@@ -95,17 +108,29 @@ internal class AppDriver {
         return find(selector)
     }
 
-    /** The "More options" button of the Home row titled [title]: the one nearest it, as every row has one. */
-    fun rowMenu(title: String): UiObject2 {
+    /** Opens the "More options" menu of the Home row titled [title]: the button nearest it, as every row has one. */
+    fun openRowMenu(title: String) = retryStale {
         val titleY = find(text(title)).visibleCenter.y
-        return device.findObjects(desc("More options")).minByOrNull { abs(it.visibleCenter.y - titleY) }
+        val button = device.findObjects(desc("More options")).minByOrNull { abs(it.visibleCenter.y - titleY) }
             ?: throw AssertionError("No row menu next to \"$title\". On screen: ${onScreen()}")
+        button.click()
     }
 
     /** The viewer's overflow menu, then [item] from it. */
     fun chooseFromViewerMenu(item: String) {
         tap(desc("More options"))
         tap(text(item))
+    }
+
+    /**
+     * Another app hands over [file] and the reader saves it to the library, which leaves that document open.
+     * Launching Home afterwards shows it in the list.
+     */
+    fun addToLibrary(file: Fixture) {
+        openFromAnotherApp(file)
+        assertShown(text(file.name), LOAD_TIMEOUT_MS)
+        chooseFromViewerMenu("Save to library")
+        assertShown(text("Saved to your library"))
     }
 
     /** Everything the app is showing, as the message of a test that failed: the screen it was looking at. */
