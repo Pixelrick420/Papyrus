@@ -227,20 +227,27 @@ Google Play Services, Firebase, ML Kit or Play dependency, so F-Droid compliance
 
 ## Test
 
-| Task                                  | What it runs                |
-| ------------------------------------- | --------------------------- |
-| `./gradlew check`                     | unit tests, lint and detekt |
-| `./gradlew testDebugUnitTest`         | unit tests alone            |
-| `./gradlew connectedDebugAndroidTest` | semantics tests on a device |
+| Task                                                                    | What it runs                                       |
+| ----------------------------------------------------------------------- | -------------------------------------------------- |
+| `./gradlew check`                                                       | unit tests, lint and detekt                        |
+| `./gradlew testDebugUnitTest`                                           | unit tests alone                                   |
+| `./gradlew connectedDebugAndroidTest`                                   | semantics and end-to-end tests on a device         |
+| `./gradlew -Ppapyrus.testBuildType=release connectedReleaseAndroidTest` | the end-to-end tests on the minified release build |
 
 The semantics suite needs a device or emulator kept awake and unlocked; [ACCESSIBILITY.md](ACCESSIBILITY.md) covers
 that and the manual TalkBack script.
 
+The end-to-end tests are in `app/src/androidTest/java/com/papyrus/app/e2e`. They launch the installed app, hand it
+documents the way a file manager does, and drive it through the accessibility tree with UI Automator, so they call
+nothing inside the app. That is what lets the same suite run on the release build, where R8 has renamed and removed what
+an in-process test would name. A release only installs once signed, so that run needs the four `PAPYRUS_*` signing
+properties; any keystore will do. An orchestrator clears the app's data before each test, so none depends on another.
+
 The DOCX/ODT, EPUB and DOC extractors run against archives the tests build in memory (kxml2 stands in for the platform's
 `XmlPullParser`, and the `.doc` fixtures assemble the OLE2 container and piece table from scratch). detekt is scoped to
 dead code and correctness, with the deliberate broad catches baselined so they stay visible. CI runs the unit tests and
-`assembleRelease` on every push to `main`, and the same emulator suite on every `v*` tag before publishing; lint and
-detekt remain local gates.
+`assembleRelease` on every push to `main`, and the emulator suite on every `v*` tag before publishing, on the debug build
+and then on the release build; lint and detekt remain local gates.
 
 ## Architecture
 
@@ -419,8 +426,9 @@ detekt, and lint and detekt are not part of CI. The screenshots this README show
 ## Releases
 
 - Every push to `main` runs the unit tests and assembles an unsigned release APK, uploaded as a build artifact.
-- Pushing a `v*` tag runs the emulator suite first, then publishes a signed APK to [Releases](../../releases). A
-  failing emulator test stops the release before anything is published.
+- Pushing a `v*` tag runs the emulator suite first, on the debug build and then on the minified release build, then
+  publishes a signed APK to [Releases](../../releases). A failing emulator test stops the release before anything is
+  published.
 - The tag must match `versionName` in `app/build.gradle.kts`, and `versionCode` must exceed the previous release tag's,
   since that value alone orders the upgrades.
 - The job fails if the APK comes out unsigned or carries the Android debug certificate.
