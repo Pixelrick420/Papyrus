@@ -113,6 +113,23 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
+      # The release build only installs once signed, and its real key lives in the release job's secrets, which a
+      # test run has no use for. This one is made here, never leaves the runner and signs nothing that is published.
+      - name: Create a throwaway key for the release build
+        run: |
+          set -euo pipefail
+          password="$(openssl rand -hex 16)"
+          echo "::add-mask::$password"
+          keytool -genkeypair -keystore "$RUNNER_TEMP/emulator-tests.jks" -storetype PKCS12 \
+            -storepass "$password" -alias emulator-tests -keyalg RSA -keysize 2048 -validity 2 \
+            -dname "CN=Papyrus emulator tests"
+          {
+            echo "PAPYRUS_STORE_FILE=$RUNNER_TEMP/emulator-tests.jks"
+            echo "PAPYRUS_STORE_PASSWORD=$password"
+            echo "PAPYRUS_KEY_ALIAS=emulator-tests"
+            echo "PAPYRUS_KEY_PASSWORD=$password"
+          } >> "$GITHUB_ENV"
+
       - name: Run emulator tests
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -123,7 +140,11 @@ jobs:
           force-avd-creation: true
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
-          script: ./gradlew --no-daemon connectedDebugAndroidTest
+          # Every test on the debug build, then the end-to-end suite on the minified release build that ships.
+          # They install under different package ids, so one emulator serves both.
+          script: |
+            ./gradlew --no-daemon connectedDebugAndroidTest
+            ./gradlew --no-daemon -Ppapyrus.testBuildType=release connectedReleaseAndroidTest
 
       - name: Upload emulator test results
         if: always()

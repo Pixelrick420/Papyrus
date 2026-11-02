@@ -46,12 +46,25 @@ val releaseSigning = listOf(
 
 val hasReleaseSigning = releaseSigning.values.all { it != null }
 
+// Instrumented tests run against `debug`. -Ppapyrus.testBuildType=release points them at the minified build that
+// ships instead. A release only installs once it is signed, so that run needs the PAPYRUS_* values too; any keystore will do.
+val testBuildTypeName = providers.gradleProperty("papyrus.testBuildType").getOrElse("debug")
+val testsReleaseBuild = testBuildTypeName == "release"
+if (testsReleaseBuild && !hasReleaseSigning) {
+    throw GradleException(
+        "Testing the release build needs it signed: set the ${releaseSigning.keys.joinToString()} " +
+            "properties or environment variables, with any keystore."
+    )
+}
+
 android {
     namespace = "com.papyrus.app"
     compileSdk = 37
 
     // Pinned so `stripReleaseDebugSymbols` finds a strip tool; AGP's NDK default (27.0.120779) isn't installed here.
     ndkVersion = "28.2.13676358"
+
+    testBuildType = testBuildTypeName
 
     defaultConfig {
         applicationId = "com.papyrus.app"
@@ -67,6 +80,10 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // Read by the orchestrator (see testOptions): the app's data is cleared before every test.
         testInstrumentationRunnerArguments["clearPackageData"] = "true"
+        // R8 is never told what test code calls, so a minified build lacks whatever a test reaches into by name.
+        // The end-to-end tests drive the app from outside, which is why they are the ones that run on it; the
+        // component tests that call composables directly stay on debug.
+        if (testsReleaseBuild) testInstrumentationRunnerArguments["package"] = "com.papyrus.app.e2e"
     }
 
     signingConfigs {
