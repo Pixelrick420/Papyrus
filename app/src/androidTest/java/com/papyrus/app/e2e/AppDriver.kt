@@ -99,13 +99,21 @@ internal class AppDriver {
         device.pressBack()
     }
 
-    /** Scrolls the screen's list down until [selector] is on it; a screen that fits needs no scrolling. */
+    /**
+     * Scrolls the screen's list down until [selector] is on it; a screen that fits needs no scrolling. A column
+     * keeps the rows it has scrolled past, so a match only counts once some of it is inside the screen.
+     */
     fun scrollTo(selector: BySelector): UiObject2 {
         repeat(MAX_SCROLLS) {
-            device.findObject(selector)?.let { return it }
+            device.findObject(selector)?.takeIf { !it.visibleBounds.isEmpty }?.let { return it }
             device.findObject(By.pkg(packageName).scrollable(true))?.scroll(Direction.DOWN, SCROLL_FRACTION)
         }
         return find(selector)
+    }
+
+    fun scrollToAndTap(selector: BySelector) {
+        scrollTo(selector)
+        tap(selector)
     }
 
     /** Opens the "More options" menu of the Home row titled [title]: the button nearest it, as every row has one. */
