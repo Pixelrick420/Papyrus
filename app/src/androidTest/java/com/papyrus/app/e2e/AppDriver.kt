@@ -116,9 +116,10 @@ internal class AppDriver {
         device.findObject(selector)?.takeIf { !it.visibleBounds.isEmpty }
 
     /**
-     * Drags the list up by less than its own height, ending with the finger held still. A fling carried the screen
-     * past the row a test was looking for: it was checked for before the scroll and again after, and by then it was
-     * behind the screen. A drag that stops before it lifts has no momentum to overshoot with.
+     * Drags the list up by a quarter of its height, then lets it come to rest before returning. The check that
+     * follows runs after the swipe has settled: a fling kept travelling while the next swipe was issued, so on a
+     * busy run the list moved more than a screen per step and a row could pass through unseen. A smaller, slower
+     * drag has little momentum to carry, and waiting for idle means the next step starts from where this one ended.
      */
     private fun scrollDown(): Boolean {
         val list = device.findObject(By.pkg(packageName).scrollable(true)) ?: return false
@@ -129,6 +130,7 @@ internal class AppDriver {
         val to = Point(x, bounds.top + (bounds.height() * SCROLL_TO).toInt())
         // The last two points are the same place: the gesture holds there and so ends at rest.
         device.swipe(arrayOf(from, to, to), DRAG_STEPS)
+        device.waitForIdle()
         return true
     }
 
@@ -203,9 +205,9 @@ internal class AppDriver {
         const val SETTLE_TIMEOUT_MS = 3_000L
 
         private const val MAX_SCROLLS = 15
-        private const val SCROLL_FROM = 0.75f
-        private const val SCROLL_TO = 0.35f
-        private const val DRAG_STEPS = 25
+        private const val SCROLL_FROM = 0.70f
+        private const val SCROLL_TO = 0.45f
+        private const val DRAG_STEPS = 80
         private const val STALE_RETRIES = 3
         private const val MAX_WORDS_SHOWN = 80
     }
