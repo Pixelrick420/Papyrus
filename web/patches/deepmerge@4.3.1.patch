@@ -1,0 +1,93 @@
+diff --git a/dist/cjs.js b/dist/cjs.js
+index 7c36cbdd06cc22c92d590be3f87a08a91ca06b40..0f76533873aaef93d292ccfbd5d458a15b2e4c86 100644
+--- a/dist/cjs.js
++++ b/dist/cjs.js
+@@ -76,15 +76,25 @@ function propertyIsUnsafe(target, key) {
+ 			&& Object.propertyIsEnumerable.call(target, key)) // and also unsafe if they're nonenumerable.
+ }
+ 
++// Writing any of these through `destination[key]` reaches Object.prototype
++// instead of the result, which is what CVE-2026-93753 poisons.
++function keyIsForbidden(key) {
++	return key === '__proto__' || key === 'constructor' || key === 'prototype'
++}
++
+ function mergeObject(target, source, options) {
+ 	var destination = {};
+ 	if (options.isMergeableObject(target)) {
+ 		getKeys(target).forEach(function(key) {
++			if (keyIsForbidden(key)) {
++				return
++			}
++
+ 			destination[key] = cloneUnlessOtherwiseSpecified(target[key], options);
+ 		});
+ 	}
+ 	getKeys(source).forEach(function(key) {
+-		if (propertyIsUnsafe(target, key)) {
++		if (keyIsForbidden(key) || propertyIsUnsafe(target, key)) {
+ 			return
+ 		}
+ 
+diff --git a/dist/umd.js b/dist/umd.js
+index 4071e7c56ec8e5273fe166f6e723ac460fab8b72..11912f53f23b6d671ddbaae836d949b09f336e4b 100644
+--- a/dist/umd.js
++++ b/dist/umd.js
+@@ -80,15 +80,25 @@
+ 				&& Object.propertyIsEnumerable.call(target, key)) // and also unsafe if they're nonenumerable.
+ 	}
+ 
++	// Writing any of these through `destination[key]` reaches Object.prototype
++	// instead of the result, which is what CVE-2026-93753 poisons.
++	function keyIsForbidden(key) {
++		return key === '__proto__' || key === 'constructor' || key === 'prototype'
++	}
++
+ 	function mergeObject(target, source, options) {
+ 		var destination = {};
+ 		if (options.isMergeableObject(target)) {
+ 			getKeys(target).forEach(function(key) {
++				if (keyIsForbidden(key)) {
++					return
++				}
++
+ 				destination[key] = cloneUnlessOtherwiseSpecified(target[key], options);
+ 			});
+ 		}
+ 		getKeys(source).forEach(function(key) {
+-			if (propertyIsUnsafe(target, key)) {
++			if (keyIsForbidden(key) || propertyIsUnsafe(target, key)) {
+ 				return
+ 			}
+ 
+diff --git a/index.js b/index.js
+index 77968aed5d456cccc294f60912ef381fa1e52a7b..db21535faf9188b217f8568647069ab8c0f0c86b 100644
+--- a/index.js
++++ b/index.js
+@@ -51,15 +51,25 @@ function propertyIsUnsafe(target, key) {
+ 			&& Object.propertyIsEnumerable.call(target, key)) // and also unsafe if they're nonenumerable.
+ }
+ 
++// Writing any of these through `destination[key]` reaches Object.prototype
++// instead of the result, which is what CVE-2026-93753 poisons.
++function keyIsForbidden(key) {
++	return key === '__proto__' || key === 'constructor' || key === 'prototype'
++}
++
+ function mergeObject(target, source, options) {
+ 	var destination = {}
+ 	if (options.isMergeableObject(target)) {
+ 		getKeys(target).forEach(function(key) {
++			if (keyIsForbidden(key)) {
++				return
++			}
++
+ 			destination[key] = cloneUnlessOtherwiseSpecified(target[key], options)
+ 		})
+ 	}
+ 	getKeys(source).forEach(function(key) {
+-		if (propertyIsUnsafe(target, key)) {
++		if (keyIsForbidden(key) || propertyIsUnsafe(target, key)) {
+ 			return
+ 		}
+ 

@@ -17,6 +17,7 @@
 *.keystore
 key/
 *.patch
+!web/patches/*.patch
 
 /web/node_modules
 /web/build

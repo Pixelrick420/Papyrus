@@ -14,3 +14,13 @@ allowBuilds:
 # this entry can be dropped once 2.9.1 is no longer a fresh release.
 minimumReleaseAgeExclude:
   - tslib@2.9.1
+
+# Dependabot advisories. minimatch: CVE-2026-118764 is patched only in 11.0.1+, while eslint
+# and typescript-eslint ask for ^10.2.x; the glob API used here is unchanged in 11.
+overrides:
+  minimatch: ^11.0.1
+
+# deepmerge has no fixed release upstream -- 4.1.2, the last version the advisory does not
+# flag, carries the same unguarded mergeObject -- so patches/ adds the missing key check.
+patchedDependencies:
+  deepmerge@4.3.1: patches/deepmerge@4.3.1.patch
