@@ -64,9 +64,8 @@ android {
             // armeabi-v7a is 32-bit ARM). Users' device is arm64-v8a.
             abiFilters.add("arm64-v8a")
         }
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        // Read by the orchestrator (see testOptions): the app's data is cleared before every test.
-        testInstrumentationRunnerArguments["clearPackageData"] = "true"
+        // Clears the app's data before each test, which the orchestrator's own clearing does not do here.
+        testInstrumentationRunner = "com.papyrus.app.e2e.PapyrusTestRunner"
     }
 
     signingConfigs {
@@ -121,9 +120,9 @@ android {
     }
 
     testOptions {
-        // The library, the settings and the documents other apps handed over all live in the app's process and
-        // data, so tests sharing one run would depend on the order they happen to run in. The orchestrator gives
-        // each test its own run, and clearPackageData (above) its own empty install.
+        // The library, the settings and the documents other apps handed over all live in the app's data, so
+        // tests sharing one process would depend on the order they happen to run in. The orchestrator gives
+        // each test its own process, and PapyrusTestRunner (above) its own empty data directory.
         execution = "ANDROIDX_TEST_ORCHESTRATOR"
     }
 }
