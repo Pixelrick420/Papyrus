@@ -2,7 +2,8 @@ package com.papyrus.app.e2e
 
 import android.content.Context
 import android.content.Intent
-import android.graphics.Point
+import android.os.SystemClock
+import android.view.accessibility.AccessibilityNodeInfo
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.BySelector
@@ -107,31 +108,46 @@ internal class AppDriver {
         findVisible(selector)?.let { return it }
         repeat(MAX_SCROLLS) {
             if (!scrollDown()) return find(selector)
-            findVisible(selector)?.let { return it }
+            findVisible(selector, SCROLL_SETTLE_MS)?.let { return it }
         }
         return find(selector)
     }
 
-    private fun findVisible(selector: BySelector): UiObject2? =
-        device.findObject(selector)?.takeIf { !it.visibleBounds.isEmpty }
+    /**
+     * The first match that is inside the screen. The tree is rebuilt after a scroll, so it can be
+     * missing or unreadable for a moment; [timeoutMs] keeps looking until it settles.
+     */
+    private fun findVisible(selector: BySelector, timeoutMs: Long = 0L): UiObject2? {
+        val until = SystemClock.uptimeMillis() + timeoutMs
+        while (true) {
+            val match = runCatching { device.findObject(selector) }.getOrNull()
+            if (match != null && !match.visibleBounds.isEmpty) return match
+            if (SystemClock.uptimeMillis() >= until) return null
+            Thread.sleep(FIND_POLL_MS)
+        }
+    }
 
     /**
-     * Drags the list up by a quarter of its height, then lets it come to rest before returning. The check that
-     * follows runs after the swipe has settled: a fling kept travelling while the next swipe was issued, so on a
-     * busy run the list moved more than a screen per step and a row could pass through unseen. A smaller, slower
-     * drag has little momentum to carry, and waiting for idle means the next step starts from where this one ended.
+     * Scrolls the list down one step through its own scroll action, the way an accessibility service does,
+     * instead of injecting a drag. An injected drag whose fling outlasts the wait leaves its pointer held
+     * down, and the system then rejects every later touch on the device.
      */
     private fun scrollDown(): Boolean {
-        val list = device.findObject(By.pkg(packageName).scrollable(true)) ?: return false
-        val bounds = list.visibleBounds
-        if (bounds.height() <= 0) return false
-        val x = bounds.centerX()
-        val from = Point(x, bounds.top + (bounds.height() * SCROLL_FROM).toInt())
-        val to = Point(x, bounds.top + (bounds.height() * SCROLL_TO).toInt())
-        // The last two points are the same place: the gesture holds there and so ends at rest.
-        device.swipe(arrayOf(from, to, to), DRAG_STEPS)
-        device.waitForIdle()
+        val root = instrumentation.uiAutomation.rootInActiveWindow ?: return false
+        val list = findScrollable(root) ?: return false
+        if (!list.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)) return false
+        device.waitForIdle(SCROLL_SETTLE_MS)
         return true
+    }
+
+    /** The first scrollable node of the app's, wherever it sits below [node]. */
+    private fun findScrollable(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        if (node.isScrollable && node.packageName?.toString() == packageName) return node
+        for (index in 0 until node.childCount) {
+            val child = node.getChild(index) ?: continue
+            findScrollable(child)?.let { return it }
+        }
+        return null
     }
 
     fun scrollToAndTap(selector: BySelector) {
@@ -205,9 +221,12 @@ internal class AppDriver {
         const val SETTLE_TIMEOUT_MS = 3_000L
 
         private const val MAX_SCROLLS = 15
-        private const val SCROLL_FROM = 0.70f
-        private const val SCROLL_TO = 0.45f
-        private const val DRAG_STEPS = 80
+
+        /** Covers the list settling between one scroll step and the next. */
+        private const val SCROLL_SETTLE_MS = 1_000L
+
+        /** Poll interval while waiting for the accessibility tree to rebuild after a scroll. */
+        private const val FIND_POLL_MS = 100L
         private const val STALE_RETRIES = 3
         private const val MAX_WORDS_SHOWN = 80
     }

@@ -34,14 +34,17 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.getScrollViewportLength
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -120,6 +123,7 @@ fun SettingsScreen(
     val context = LocalContext.current
     var themeDialogOpen by remember { mutableStateOf(false) }
     var tabSizeDialogOpen by remember { mutableStateOf(false) }
+    var viewportHeightPx by remember { mutableIntStateOf(0) }
 
     // Opened in the person's browser; Papyrus itself still never touches the network. The viewer's
     // opener is reused so every link opens the same way and refuses any scheme but http(s), mailto, tel.
@@ -139,7 +143,11 @@ fun SettingsScreen(
                 Modifier
                     .weight(1f)
                     .fillMaxWidth()
+                    .onSizeChanged { viewportHeightPx = it.height }
                     .verticalScroll(rememberScrollState())
+                    // An accessibility "scroll forward" moves by this much; without it Compose falls back
+                    // to the whole column, so one scroll lands on the last row, not the next screenful.
+                    .semantics { getScrollViewportLength { viewportHeightPx.toFloat() } }
                     .padding(start = ScreenPadding, end = ScreenPadding, bottom = 24.dp),
             ) {
                 SectionLabel(stringResource(R.string.settings_section_appearance), first = true)
