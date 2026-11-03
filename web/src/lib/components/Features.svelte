@@ -6,7 +6,7 @@
     {
       icon: 'FileText',
       title: 'Every format',
-      description: 'PDF, Word, ODT, EPUB, MD, Text, CSV and Code',
+      description: 'PDF, Word, ODT, EPUB, Markdown, text, CSV/TSV and code',
     },
     {
       icon: 'Volume2',
@@ -26,7 +26,7 @@
     {
       icon: 'SunMoon',
       title: 'Themes',
-      description: 'Light, Dark, Colourblind and night modes.',
+      description: 'System, Light, Dark, colourblind and night modes.',
     },
     {
       icon: 'WifiOff',

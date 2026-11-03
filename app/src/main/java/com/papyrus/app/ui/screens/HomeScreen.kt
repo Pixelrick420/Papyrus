@@ -878,7 +878,6 @@ fun HomeScreen(
     }
 
     if (sheetOpen) {
-        // The sheet holds sort order and every filter.
         FilterSortSheet(
             sort = state.sort,
             filter = state.filter,

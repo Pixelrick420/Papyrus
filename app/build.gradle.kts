@@ -120,9 +120,8 @@ android {
     }
 
     testOptions {
-        // The library, the settings and the documents other apps handed over all live in the app's data, so
-        // tests sharing one process would depend on the order they happen to run in. The orchestrator gives
-        // each test its own process, and PapyrusTestRunner (above) its own empty data directory.
+        // The library, the settings and the documents handed over all outlive a process, so each test
+        // gets its own run and PapyrusTestRunner (above) its own empty data directory.
         execution = "ANDROIDX_TEST_ORCHESTRATOR"
     }
 }
@@ -149,7 +148,6 @@ dependencies {
     implementation("androidx.navigation:navigation-compose:2.9.0")
 
     implementation("androidx.room:room-runtime:2.8.5")
-    implementation("androidx.room:room-ktx:2.8.5")
     ksp("androidx.room:room-compiler:2.8.5")
 
     // PDF text extraction (find-in-file) and page geometry. PdfBox-Android is the Apache-2.0
@@ -184,7 +182,6 @@ dependencies {
 
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test:runner:1.6.2")
-    androidTestImplementation("androidx.test:rules:1.6.1")
     androidTestImplementation(platform("androidx.compose:compose-bom:2026.09.00"))
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
     // The end-to-end tests drive the installed app through its accessibility tree, so they never call into its code.

@@ -240,7 +240,8 @@ The end-to-end tests are in `app/src/androidTest/java/com/papyrus/app/e2e`. They
 documents the way a file manager does, and drive it through the accessibility tree with UI Automator, so they call
 nothing inside the app. They run on `debug` only: minification makes AGP minify the androidTest APK too and treat the
 app's output as a provided classpath, so anything R8 stripped from the app is missing at run time and the runner dies
-before the first test — a green build reporting zero tests. An orchestrator clears the app's data before each test, so
+before the first test — a green build reporting zero tests. The orchestrator runs each test in its own process, and
+`PapyrusTestRunner` empties the database, the imported copies and the settings before any of the app's code loads, so
 none depends on another.
 
 The DOCX/ODT, EPUB and DOC extractors run against archives the tests build in memory (kxml2 stands in for the platform's

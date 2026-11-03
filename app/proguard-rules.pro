@@ -21,4 +21,4 @@
 -dontwarn pl.droidsonroids.gif.**
 -dontwarn okhttp3.**
 -dontwarn okio.**
-# No Markdown math renderer is bundled any more. No proguard keep rules are needed for math rendering.
+# Markdown math is drawn by RaTeX over the source text; its fonts load from assets, so no keep rule.

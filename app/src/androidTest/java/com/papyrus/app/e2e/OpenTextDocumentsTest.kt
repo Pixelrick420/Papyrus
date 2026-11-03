@@ -43,9 +43,8 @@ class OpenTextDocumentsTest {
         assertTrue(shown, shown.contains("as everyone knows."))
         assertTrue(shown, shown.contains("The footnote body."))
         assertTrue(shown, shown.contains("Footnotes"))
-        // Math is the one construct that keeps its source: RaTeX draws the formula over the `$$...$$` text with a
-        // replacement span instead of rewriting the string, so those characters stay in the node and only the
-        // drawing changes. Every other plugin rewrites the text, so its markup is gone when it ran.
+        // RaTeX draws the formula over the `$$...$$` text with a replacement span, so those characters
+        // stay in the node; every other plugin rewrites its markup away.
         for (markup in listOf("# ", "**", "](", "~~", "[^")) {
             assertFalse("\"$markup\" is still in: $shown", shown.contains(markup))
         }

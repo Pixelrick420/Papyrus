@@ -48,9 +48,8 @@ class Bm25RankerTest {
 
     @Test
     fun `recorded blobs rank the documents the way the formula says`() {
-        // Recorded from the app's own FTS4 table: one phrase, four documents, six tokens on average.
-        // medium: five tokens, one occurrence. longManyHits: fourteen tokens, four occurrences.
-        // short: three tokens, one occurrence.
+        // Recorded from the app's own FTS4 table: one phrase, four documents, six tokens on average;
+        // the three below are five/one, fourteen/four and three/one tokens/occurrences.
         val medium = blob(1, 1, 4, 6, 5, 1, 6, 3)
         val longManyHits = blob(1, 1, 4, 6, 14, 4, 6, 3)
         val short = blob(1, 1, 4, 6, 3, 1, 6, 3)

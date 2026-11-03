@@ -464,10 +464,8 @@ class PdfPageTextTest {
         assertEquals("of a\nlong paragraph", copied)
     }
 
-    // Equivalence: the line index in front of nearestChar is an optimisation, so it must answer
-    // exactly what the brute-force full scan answers — same index, same distance — on every shape
-    // of page, ties included. The reference works off the same synthetic boxes the page was built
-    // from, since the page's own arrays are private.
+    // Equivalence: the line index must answer exactly what the brute-force scan answers, ties included.
+    // The reference works off the same synthetic boxes, since the page's own arrays are private.
 
     /** The pre-index algorithm, verbatim: every character, strict-less-than keeps the first hit. */
     private fun referenceNearestChar(boxes: List<FloatArray>, x: Float, y: Float, aspect: Float = 1f): CharHit? {

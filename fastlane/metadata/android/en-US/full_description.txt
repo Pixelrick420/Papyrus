@@ -1,4 +1,4 @@
-Papyrus is an offline document viewer with support for PDF, Word, OpenDocument, EPUB, Markdown, plain text and source-code files.
+Papyrus is an offline document viewer with support for PDF, Word, OpenDocument, EPUB, Markdown, CSV/TSV tables, plain text and source-code files.
 
 Documents are picked through the system file picker and indexed in a local library. No internet permission is requested and nothing leaves your device.
 

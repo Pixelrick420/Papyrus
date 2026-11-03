@@ -300,8 +300,7 @@ fun MarkdownViewer(
         }
     }
 
-    // Async LaTeX span creation: replace each placeholder with a real RaTeXSpan when ready.
-    // Re-runs when the factory, rendered text, font size, or theme colour changes.
+    // Each placeholder becomes a real RaTeXSpan as its build finishes.
     val scope = rememberCoroutineScope()
     LaunchedEffect(latexFactory, highlighted, textPx, textColor) {
         val factory = latexFactory ?: return@LaunchedEffect
@@ -322,7 +321,6 @@ fun MarkdownViewer(
                     val end = viewText.getSpanEnd(placeholder)
                     viewText.removeSpan(placeholder)
                     if (span != null) {
-                        // Replace the placeholder with the real RaTeXSpan over the same $$...$$ range.
                         viewText.setSpan(span, start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
                     }
                     applied = true
@@ -815,7 +813,6 @@ private fun TextChunk(
         Modifier
     } else {
         Modifier.drawBehind {
-            // Nothing until the layout arrives.
             val laidOut = layout
             if (laidOut != null && marks.isNotEmpty()) drawGutter(marks, laidOut, gutter)
         }
