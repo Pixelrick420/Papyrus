@@ -2,10 +2,10 @@ package com.papyrus.app.e2e
 
 import android.content.Context
 import android.content.Intent
+import android.graphics.Point
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.BySelector
-import androidx.test.uiautomator.Direction
 import androidx.test.uiautomator.StaleObjectException
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.UiObject2
@@ -104,11 +104,32 @@ internal class AppDriver {
      * keeps the rows it has scrolled past, so a match only counts once some of it is inside the screen.
      */
     fun scrollTo(selector: BySelector): UiObject2 {
+        findVisible(selector)?.let { return it }
         repeat(MAX_SCROLLS) {
-            device.findObject(selector)?.takeIf { !it.visibleBounds.isEmpty }?.let { return it }
-            device.findObject(By.pkg(packageName).scrollable(true))?.scroll(Direction.DOWN, SCROLL_FRACTION)
+            if (!scrollDown()) return find(selector)
+            findVisible(selector)?.let { return it }
         }
         return find(selector)
+    }
+
+    private fun findVisible(selector: BySelector): UiObject2? =
+        device.findObject(selector)?.takeIf { !it.visibleBounds.isEmpty }
+
+    /**
+     * Drags the list up by less than its own height, ending with the finger held still. A fling carried the screen
+     * past the row a test was looking for: it was checked for before the scroll and again after, and by then it was
+     * behind the screen. A drag that stops before it lifts has no momentum to overshoot with.
+     */
+    private fun scrollDown(): Boolean {
+        val list = device.findObject(By.pkg(packageName).scrollable(true)) ?: return false
+        val bounds = list.visibleBounds
+        if (bounds.height() <= 0) return false
+        val x = bounds.centerX()
+        val from = Point(x, bounds.top + (bounds.height() * SCROLL_FROM).toInt())
+        val to = Point(x, bounds.top + (bounds.height() * SCROLL_TO).toInt())
+        // The last two points are the same place: the gesture holds there and so ends at rest.
+        device.swipe(arrayOf(from, to, to), DRAG_STEPS)
+        return true
     }
 
     fun scrollToAndTap(selector: BySelector) {
@@ -181,8 +202,10 @@ internal class AppDriver {
         /** How long to wait for something that should already be on its way out. */
         const val SETTLE_TIMEOUT_MS = 3_000L
 
-        private const val MAX_SCROLLS = 8
-        private const val SCROLL_FRACTION = 0.8f
+        private const val MAX_SCROLLS = 15
+        private const val SCROLL_FROM = 0.75f
+        private const val SCROLL_TO = 0.35f
+        private const val DRAG_STEPS = 25
         private const val STALE_RETRIES = 3
         private const val MAX_WORDS_SHOWN = 80
     }
