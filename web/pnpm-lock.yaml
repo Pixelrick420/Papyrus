@@ -8,7 +8,7 @@ overrides:
   minimatch: ^11.0.1
 
 patchedDependencies:
-  deepmerge@4.3.1: 26a80faadb6e95ac2c4f8ff4112991dd2bce7fe7f609e7f423f48189115522ed
+  deepmerge@4.3.1: 1ddec1f99246cfbb994b44998d952b89c122416fc13bc529ae5689390c23aae0
 
 importers:
 
@@ -1696,7 +1696,7 @@ snapshots:
 
   '@sveltejs/vite-plugin-svelte@7.3.1(svelte@5.57.3(@typescript-eslint/types@8.72.1))(vite@8.3.5(@types/node@22.20.5)(esbuild@0.28.2)(jiti@2.7.0))':
     dependencies:
-      deepmerge: 4.3.1(patch_hash=26a80faadb6e95ac2c4f8ff4112991dd2bce7fe7f609e7f423f48189115522ed)
+      deepmerge: 4.3.1(patch_hash=1ddec1f99246cfbb994b44998d952b89c122416fc13bc529ae5689390c23aae0)
       magic-string: 1.4.5
       obug: 2.2.1
       svelte: 5.57.3(@typescript-eslint/types@8.72.1)
@@ -1927,7 +1927,7 @@ snapshots:
 
   deep-is@0.1.4: {}
 
-  deepmerge@4.3.1(patch_hash=26a80faadb6e95ac2c4f8ff4112991dd2bce7fe7f609e7f423f48189115522ed): {}
+  deepmerge@4.3.1(patch_hash=1ddec1f99246cfbb994b44998d952b89c122416fc13bc529ae5689390c23aae0): {}
 
   detect-libc@2.1.2: {}
 

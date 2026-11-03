@@ -16,6 +16,9 @@ env:
   PNPM_VERSION: '12.16.1'
   NODE_VERSION: '22'
 
+permissions:
+  contents: read
+
 jobs:
   lint-and-typecheck:
     name: Lint & Type Check

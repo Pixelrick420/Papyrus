@@ -136,24 +136,30 @@ internal class OfficeMedia(
     private fun writeMedia(zipName: String, bytes: ByteArray): File? {
         val dir = mediaDir ?: return null
         if (!dir.exists() && !dir.mkdirs()) return null
+        // Trailing separator, so the prefix covers a whole directory name.
+        val root = dir.canonicalPath + File.separator
         // Two entries in one archive can sanitise to the same name; disambiguate rather than clobber.
         val target = File(dir, OfficeTextExtractor.sanitiseName(zipName))
-        if (!target.exists()) return target.writeOrNull(bytes)
+        if (!target.exists()) return target.writeOrNull(bytes, root)
         val base = target.nameWithoutExtension
         val ext = target.extension.ifEmpty { "bin" }
         var suffix = 1
         while (true) {
             val candidate = File(dir, "$base-$suffix.$ext")
-            if (!candidate.exists()) return candidate.writeOrNull(bytes)
+            if (!candidate.exists()) return candidate.writeOrNull(bytes, root)
             suffix++
         }
     }
 
-    private fun File.writeOrNull(bytes: ByteArray): File? = try {
-        writeBytes(bytes)
-        this
-    } catch (_: IOException) {
-        null
+    // Keep the write under the media directory.
+    private fun File.writeOrNull(bytes: ByteArray, root: String): File? {
+        if (!canonicalPath.startsWith(root)) return null
+        return try {
+            writeBytes(bytes)
+            this
+        } catch (_: IOException) {
+            null
+        }
     }
 
     /** Streams wanted entries to [sink], changed by [transform] and charged to the budget as each arrives
