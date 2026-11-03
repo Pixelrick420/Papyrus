@@ -8,8 +8,9 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * Whether the end-to-end run is testing what it claims to. The suite is the same on both builds, so a release
- * run that quietly installed an unminified build would pass every other test and prove nothing about R8.
+ * Whether the end-to-end run is testing the build it claims to. The suite runs on `debug` only -- the minified release
+ * build cannot host it -- but the assertion stays: it fails if the build under test is neither debuggable nor minified,
+ * which is what a release that lost its minification looks like.
  */
 @RunWith(AndroidJUnit4::class)
 class BuildVariantTest {
