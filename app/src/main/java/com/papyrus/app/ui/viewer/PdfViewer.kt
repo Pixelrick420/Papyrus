@@ -76,6 +76,10 @@ import kotlinx.coroutines.flow.first
 import kotlin.math.roundToInt
 
 private const val LOW_RES_DIVISOR = 4
+
+/** Pages kept rendered on each side of the visible ones, so a short scroll back needs no re-render. */
+private const val CACHED_PAGES_AROUND_VIEW = 3
+
 private val PAGE_HIT_BORDER = 3.dp
 
 /** Gap between pages, and the margin above the first one, at 100%. */
@@ -188,6 +192,15 @@ internal fun PdfViewer(
     }
 
     LazyPositionEffects(listState, LocationKind.PAGE, source.pageCount, zoom, position, restoreTarget)
+
+    // Pages that scrolled far away give their bitmaps back; only the visible pages and a few around them stay.
+    LaunchedEffect(listState, source) {
+        snapshotFlow {
+            val first = listState.firstVisibleItemIndex
+            val last = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: first
+            (first - CACHED_PAGES_AROUND_VIEW)..(last + CACHED_PAGES_AROUND_VIEW)
+        }.collect { keep -> source.evictOutside(keep) }
+    }
 
     BoxWithConstraints(modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant)) {
         val baseWidthPx = with(LocalDensity.current) { maxWidth.roundToPx() }

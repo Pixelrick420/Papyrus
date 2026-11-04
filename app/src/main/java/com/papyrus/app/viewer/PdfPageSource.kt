@@ -19,6 +19,8 @@ import java.io.Closeable
 import java.io.File
 import java.io.FileNotFoundException
 import java.io.IOException
+import java.util.Collections
+import java.util.WeakHashMap
 import kotlin.math.roundToInt
 
 class PdfPasswordException : IOException("Password-protected PDF")
@@ -44,9 +46,10 @@ class PdfPageSource private constructor(
     private val lock = Mutex()
     private var closed = false
 
-    private val cache = object : LruCache<String, Bitmap>(cacheBytes()) {
-        // Must stay >= 1: a recycled bitmap reports byteCount 0, and LruCache's sizeOf must be stable.
-        override fun sizeOf(key: String, value: Bitmap): Int = value.byteCount.coerceAtLeast(1)
+    private val cache = object : LruCache<PageKey, Bitmap>(cacheBytes()) {
+        // allocationByteCount, since a reused bitmap can hold more than its pixels need. Must stay >= 1:
+        // a recycled bitmap reports 0, and LruCache's sizeOf must be stable.
+        override fun sizeOf(key: PageKey, value: Bitmap): Int = value.allocationByteCount.coerceAtLeast(1)
     }
 
     /** height / width for every page, so list items can reserve space before rendering. */
@@ -56,22 +59,38 @@ class PdfPageSource private constructor(
         }
     }
 
-    fun cached(index: Int, widthPx: Int): Bitmap? = cache.get(key(index, widthPx))
+    fun cached(index: Int, widthPx: Int): Bitmap? = cache.get(PageKey(index, widthPx))
+
+    /**
+     * Drops the cached renders of pages outside [keep], so pages scrolled far away stop holding memory.
+     * Not recycled: a page on screen may still be drawing its bitmap, and the GC frees it once unused.
+     */
+    fun evictOutside(keep: IntRange) {
+        for (key in cache.snapshot().keys) {
+            if (key.index !in keep) cache.remove(key)
+        }
+    }
+
+    /** Memory pressure: everything when [evictAll], otherwise down to half the budget, oldest first. */
+    fun trimMemory(evictAll: Boolean) {
+        if (evictAll) cache.evictAll() else cache.trimToSize(cache.maxSize() / 2)
+    }
 
     /** Returns null if the source was closed meanwhile, or if the page is too large to render. */
     suspend fun render(index: Int, widthPx: Int): Bitmap? {
-        cache.get(key(index, widthPx))?.let { return it }
+        val key = PageKey(index, widthPx)
+        cache.get(key)?.let { return it }
         return withContext(dispatcher) {
             lock.withLock {
                 if (closed) return@withLock null
-                cache.get(key(index, widthPx))?.let { return@withLock it }
+                cache.get(key)?.let { return@withLock it }
                 try {
                     engine.open(index).use { page ->
                         val height = (widthPx.toFloat() * page.height / page.width).roundToInt().coerceAtLeast(1)
                         val bitmap = createBitmap(widthPx, height)
                         bitmap.eraseColor(Color.WHITE)
                         page.render(bitmap)
-                        cache.put(key(index, widthPx), bitmap)
+                        cache.put(key, bitmap)
                         bitmap
                     }
                 } catch (_: OutOfMemoryError) {
@@ -227,6 +246,7 @@ class PdfPageSource private constructor(
      * kill the process.
      */
     override fun close() {
+        synchronized(openSources) { openSources.remove(this) }
         CoroutineScope(dispatcher).launch {
             runCatching {
                 lock.withLock {
@@ -241,10 +261,20 @@ class PdfPageSource private constructor(
         }
     }
 
-    private fun key(index: Int, widthPx: Int) = "$index@$widthPx"
+    private data class PageKey(val index: Int, val widthPx: Int)
 
     companion object {
         private const val TAG = "PdfPageSource"
+
+        /** Weak, so a source that is never closed cannot be kept alive by the memory-pressure hook. */
+        private val openSources: MutableSet<PdfPageSource> =
+            Collections.newSetFromMap(WeakHashMap<PdfPageSource, Boolean>())
+
+        /** Trims every open source's page cache; the application calls this when the system is short of memory. */
+        fun trimAll(evictAll: Boolean) {
+            val sources = synchronized(openSources) { openSources.toList() }
+            for (source in sources) source.trimMemory(evictAll)
+        }
 
         /** One sheet's worth of widgets; past this the form is not offered rather than half-listed. */
         private const val MAX_FORM_FIELDS = 300
@@ -299,7 +329,9 @@ class PdfPageSource private constructor(
             val aligned = if (engine.kind == device.kind) device else PdfCapabilities.legacy()
             // An XFA form is drawn but never filled: the platform's AcroForm edit path does not apply.
             val capabilities = aligned.copy(forms = aligned.forms && engine.formType.fillable)
-            return PdfPageSource(pfd, engine, capabilities, tempFile)
+            return PdfPageSource(pfd, engine, capabilities, tempFile).also {
+                synchronized(openSources) { openSources.add(it) }
+            }
         }
 
         private fun createEngine(pfd: ParcelFileDescriptor, capabilities: PdfCapabilities): PdfEngine =
