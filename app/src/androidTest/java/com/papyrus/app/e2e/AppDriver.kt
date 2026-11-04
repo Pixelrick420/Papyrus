@@ -57,6 +57,9 @@ internal class AppDriver {
         if (device.wait(Until.hasObject(By.pkg(packageName).depth(0)), LAUNCH_TIMEOUT_MS) != true) {
             throw AssertionError("Papyrus did not come to the front within ${LAUNCH_TIMEOUT_MS}ms")
         }
+        // The package is on screen as soon as the splash window is, and a tap that lands while the system
+        // swaps the splash for the activity is dropped. Waiting for the events to stop lets the swap finish.
+        device.waitForIdle(SETTLE_TIMEOUT_MS)
     }
 
     /** The first node matching [selector], waiting for it to appear. */
@@ -77,6 +80,21 @@ internal class AppDriver {
     }
 
     fun tap(selector: BySelector) = retryStale { find(selector).click() }
+
+    /**
+     * Taps [target] and waits for [expected], tapping again if nothing came of the first tap. A tap can be lost
+     * to a window that is still changing, and it leaves no trace: the screen just stays as it was. The second
+     * tap only happens while [target] is still on screen, so one that did land is never repeated.
+     */
+    fun tapUntilShown(target: BySelector, expected: BySelector, timeoutMs: Long = UI_TIMEOUT_MS) {
+        repeat(TAP_ATTEMPTS - 1) {
+            tap(target)
+            if (device.wait(Until.hasObject(expected), TAP_RESPONSE_MS) == true) return
+            if (!device.hasObject(target)) return assertShown(expected, timeoutMs)
+        }
+        tap(target)
+        assertShown(expected, timeoutMs)
+    }
 
     fun longPress(selector: BySelector) = retryStale { find(selector).longClick() }
 
@@ -131,8 +149,7 @@ internal class AppDriver {
 
     /** One accessibility scroll step up. */
     private fun scrollUp(): Boolean {
-        val root = instrumentation.uiAutomation.rootInActiveWindow ?: return false
-        val list = findScrollable(root) ?: return false
+        val list = awaitScrollable() ?: return false
         if (!list.performAction(AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD)) return false
         device.waitForIdle(SCROLL_SETTLE_MS)
         return true
@@ -158,11 +175,25 @@ internal class AppDriver {
      * down, and the system then rejects every later touch on the device.
      */
     private fun scrollDown(): Boolean {
-        val root = instrumentation.uiAutomation.rootInActiveWindow ?: return false
-        val list = findScrollable(root) ?: return false
+        val list = awaitScrollable() ?: return false
         if (!list.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)) return false
         device.waitForIdle(SCROLL_SETTLE_MS)
         return true
+    }
+
+    /**
+     * The app's scrollable list, waiting for it to exist. Right after a screen change the active window can still
+     * be the previous screen, or have no tree yet, and a missing list then says nothing about whether the one
+     * being scrolled has reached its end: only a scroll action that is refused says that.
+     */
+    private fun awaitScrollable(): AccessibilityNodeInfo? {
+        val until = SystemClock.uptimeMillis() + SCROLLABLE_TIMEOUT_MS
+        while (true) {
+            val list = instrumentation.uiAutomation.rootInActiveWindow?.let(::findScrollable)
+            if (list != null) return list
+            if (SystemClock.uptimeMillis() >= until) return null
+            Thread.sleep(FIND_POLL_MS)
+        }
     }
 
     /** The first scrollable node of the app's, wherever it sits below [node]. */
@@ -257,5 +288,12 @@ internal class AppDriver {
         private const val FIND_POLL_MS = 100L
         private const val STALE_RETRIES = 3
         private const val MAX_WORDS_SHOWN = 80
+
+        /** How long a tap gets to show its effect before it is taken as lost. */
+        private const val TAP_RESPONSE_MS = 3_000L
+        private const val TAP_ATTEMPTS = 3
+
+        /** How long to wait for the screen's list to appear, which a screen that has none never does. */
+        private const val SCROLLABLE_TIMEOUT_MS = 5_000L
     }
 }

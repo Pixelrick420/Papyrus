@@ -39,8 +39,7 @@ class LibraryTest : E2eTest() {
         app.addToLibrary(Fixtures.text("notes.txt", "Hello from the library"))
         app.launchHome()
 
-        app.tap(app.text("notes.txt"))
-        app.assertShown(app.label("Hello from the library"), load)
+        app.tapUntilShown(app.text("notes.txt"), app.label("Hello from the library"), load)
         app.assertGone(app.desc("Add files"))
 
         app.back()
