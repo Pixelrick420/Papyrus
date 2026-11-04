@@ -135,6 +135,13 @@ class SettingsRepository(context: Context) {
         prefs.edit { putBoolean(KEY_NOTIFICATION_PROMPT_SHOWN, true) }
     }
 
+    /** Every value back to a fresh install's, in the file and in memory, since clearing the file alone
+     * leaves the values this process already read in place. */
+    fun resetToDefaults() {
+        prefs.edit { clear() }
+        _settings.value = AppSettings()
+    }
+
     private fun read(): AppSettings {
         val defaults = AppSettings()
         val storedTheme = prefs.getString(KEY_THEME_MODE, null)

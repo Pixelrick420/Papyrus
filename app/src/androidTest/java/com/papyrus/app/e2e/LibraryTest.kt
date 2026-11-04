@@ -7,7 +7,7 @@ import org.junit.runner.RunWith
 
 /** The library: saving a document into it, then finding, ordering and removing what is there. */
 @RunWith(AndroidJUnit4::class)
-class LibraryTest {
+class LibraryTest : E2eTest() {
 
     private val app = AppDriver()
 
@@ -203,8 +203,8 @@ class LibraryTest {
     }
 
     private fun assertAbove(upper: String, lower: String) {
-        val upperY = app.find(app.text(upper)).visibleCenter.y
-        val lowerY = app.find(app.text(lower)).visibleCenter.y
+        val upperY = app.centerYOf(app.text(upper))
+        val lowerY = app.centerYOf(app.text(lower))
         assertTrue("$upper is at $upperY, below $lower at $lowerY", upperY < lowerY)
     }
 

@@ -8,7 +8,7 @@ import org.junit.runner.RunWith
 
 /** Text formats handed over by another app, the way a file manager opens them: no picker, no library. */
 @RunWith(AndroidJUnit4::class)
-class OpenTextDocumentsTest {
+class OpenTextDocumentsTest : E2eTest() {
 
     private val app = AppDriver()
 

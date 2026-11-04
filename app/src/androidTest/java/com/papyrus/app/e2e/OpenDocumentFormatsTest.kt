@@ -6,7 +6,7 @@ import org.junit.runner.RunWith
 
 /** The binary and structured formats, each through its own reader: PDF, Word, OpenDocument, EPUB and CSV. */
 @RunWith(AndroidJUnit4::class)
-class OpenDocumentFormatsTest {
+class OpenDocumentFormatsTest : E2eTest() {
 
     private val app = AppDriver()
 

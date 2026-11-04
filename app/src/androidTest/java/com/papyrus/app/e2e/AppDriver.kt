@@ -180,6 +180,9 @@ internal class AppDriver {
         tap(selector)
     }
 
+    /** Where [selector] sits on the screen, retried if the node is replaced while it is being read. */
+    fun centerYOf(selector: BySelector): Int = retryStale { find(selector).visibleCenter.y }
+
     /** Opens the "More options" menu of the Home row titled [title]: the button nearest it, as every row has one. */
     fun openRowMenu(title: String) = retryStale {
         val titleY = find(text(title)).visibleCenter.y

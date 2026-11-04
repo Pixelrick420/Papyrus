@@ -6,7 +6,7 @@ import org.junit.runner.RunWith
 
 /** What the viewer's menu offers on a document that is open: find, go to, and file info. */
 @RunWith(AndroidJUnit4::class)
-class ViewerToolsTest {
+class ViewerToolsTest : E2eTest() {
 
     private val app = AppDriver()
 

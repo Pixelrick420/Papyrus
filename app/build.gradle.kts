@@ -64,7 +64,7 @@ android {
             // armeabi-v7a is 32-bit ARM). Users' device is arm64-v8a.
             abiFilters.add("arm64-v8a")
         }
-        // Clears the app's data before each test, which the orchestrator's own clearing does not do here.
+        // Clears what an earlier run or hand use left on disk before app code loads; FreshInstallRule does this per test.
         testInstrumentationRunner = "com.papyrus.app.e2e.PapyrusTestRunner"
     }
 
@@ -117,12 +117,6 @@ android {
         // Cert-path-validator i18n bundles; no bundled class references them.
         resources.excludes += "org/bouncycastle/x509/**"
         jniLibs.useLegacyPackaging = false // keep any .so page-aligned for 16 KB devices
-    }
-
-    testOptions {
-        // The library, the settings and the documents handed over all outlive a process, so each test
-        // gets its own run and PapyrusTestRunner (above) its own empty data directory.
-        execution = "ANDROIDX_TEST_ORCHESTRATOR"
     }
 }
 
@@ -186,7 +180,6 @@ dependencies {
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
     // The end-to-end tests drive the installed app through its accessibility tree, so they never call into its code.
     androidTestImplementation("androidx.test.uiautomator:uiautomator:2.3.0")
-    androidTestUtil("androidx.test:orchestrator:1.6.1")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
 }
 

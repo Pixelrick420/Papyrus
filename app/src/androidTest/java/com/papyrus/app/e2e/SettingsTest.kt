@@ -6,7 +6,7 @@ import org.junit.runner.RunWith
 
 /** A setting changed on the Settings screen and its effect on the next screen the reader opens. */
 @RunWith(AndroidJUnit4::class)
-class SettingsTest {
+class SettingsTest : E2eTest() {
 
     private val app = AppDriver()
 
