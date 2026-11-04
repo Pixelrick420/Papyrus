@@ -19,12 +19,16 @@ import com.papyrus.app.viewer.OfficeBlock
 import com.papyrus.app.viewer.OfficeTextExtractor
 import com.papyrus.app.viewer.PdfPageSource
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 import java.io.FileNotFoundException
 import java.io.InputStream
+import kotlin.coroutines.cancellation.CancellationException
 
 sealed interface ThumbnailResult {
     data class Image(val bitmap: Bitmap) : ThumbnailResult
@@ -39,7 +43,15 @@ sealed interface ThumbnailResult {
 class ThumbnailLoader(private val context: Context) {
 
     private val cache = object : LruCache<String, Bitmap>(cacheBytes()) {
-        override fun sizeOf(key: String, value: Bitmap): Int = value.byteCount
+        override fun sizeOf(key: String, value: Bitmap): Int = value.allocationByteCount.coerceAtLeast(1)
+    }
+
+    /** Renders are blocking and each may open a PDF, so a fast scroll must not start one per row at once. */
+    private val renderSlots = Semaphore(MAX_CONCURRENT_RENDERS)
+
+    /** Memory pressure: everything when [evictAll], otherwise down to half the budget, oldest first. */
+    fun trimMemory(evictAll: Boolean) {
+        if (evictAll) cache.evictAll() else cache.trimToSize(cache.maxSize() / 2)
     }
 
     /** Keyed by id@sizeBytes: an external size change re-thumbnails, a rename does not. */
@@ -61,7 +73,13 @@ class ThumbnailLoader(private val context: Context) {
             gate.withLock {
                 cached(document)?.let { return@withLock ThumbnailResult.Image(it) }
                 val bitmap = try {
-                    render(document)
+                    renderSlots.withPermit {
+                        // A row scrolled away while it waited has cancelled this load; skip its render.
+                        ensureActive()
+                        render(document)
+                    }
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: SecurityException) {
                     return@withLock ThumbnailResult.NoAccess
                 } catch (e: FileNotFoundException) {
@@ -225,6 +243,7 @@ class ThumbnailLoader(private val context: Context) {
         private const val MAX_THUMBNAIL_CHARS = 20
         private const val MAX_THUMBNAIL_SOURCE_BYTES = 16 * 1024
         private const val EPUB_PREVIEW_CHAPTERS = 3
+        private const val MAX_CONCURRENT_RENDERS = 2
 
         /** Pixels a cover may claim before it is not worth decoding for a 132 by 176 tile. */
         private const val MAX_COVER_PIXELS = 40L * 1000 * 1000

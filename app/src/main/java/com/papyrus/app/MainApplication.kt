@@ -12,6 +12,7 @@ import com.papyrus.app.data.ThumbnailLoader
 import com.papyrus.app.tts.TtsSession
 import com.papyrus.app.viewer.OFFICE_UNLOCK_DIR
 import com.papyrus.app.viewer.PDF_UNLOCK_DIR
+import com.papyrus.app.viewer.PdfPageSource
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -99,9 +100,33 @@ class MainApplication : Application() {
         applicationScope.launch { searchIndexer.start(this) }
     }
 
+    /** Trims the page and thumbnail caches; the bitmaps are rebuilt on demand, so trimming costs only a re-render. */
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        if (ACRA.isACRASenderServiceProcess() || level < TRIM_LEVEL_RUNNING_LOW) return
+        trimCaches(evictAll = level >= TRIM_LEVEL_BACKGROUND)
+    }
+
+    override fun onLowMemory() {
+        super.onLowMemory()
+        if (ACRA.isACRASenderServiceProcess()) return
+        trimCaches(evictAll = true)
+    }
+
+    private fun trimCaches(evictAll: Boolean) {
+        PdfPageSource.trimAll(evictAll)
+        thumbnailLoader.trimMemory(evictAll)
+    }
+
     /** A kill mid-view leaves a decrypted copy behind, so clear the whole directory on the next start. */
     private fun sweepUnlocked() {
         runCatching { File(cacheDir, PDF_UNLOCK_DIR).deleteRecursively() }
         runCatching { File(cacheDir, OFFICE_UNLOCK_DIR).deleteRecursively() }
+    }
+
+    private companion object {
+        // The values of TRIM_MEMORY_RUNNING_LOW and TRIM_MEMORY_BACKGROUND, which newer SDKs deprecate.
+        const val TRIM_LEVEL_RUNNING_LOW = 10
+        const val TRIM_LEVEL_BACKGROUND = 40
     }
 }
