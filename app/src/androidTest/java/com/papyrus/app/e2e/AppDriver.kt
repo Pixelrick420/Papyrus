@@ -107,10 +107,35 @@ internal class AppDriver {
     fun scrollTo(selector: BySelector): UiObject2 {
         findVisible(selector)?.let { return it }
         repeat(MAX_SCROLLS) {
-            if (!scrollDown()) return find(selector)
+            if (!scrollDown()) {
+                // If we can't scroll down, maybe we started past the target — try scrolling up.
+                scrollToTop()
+                return find(selector)
+            }
             findVisible(selector, SCROLL_SETTLE_MS)?.let { return it }
         }
+        // Exhausted downward scrolls; try from the top as a last resort.
+        scrollToTop()
         return find(selector)
+    }
+
+    /** Scrolls up until the list can't scroll further, resetting to a known start position. */
+    private fun scrollToTop() {
+        var canScroll = true
+        for (i in 0 until MAX_SCROLLS) {
+            if (!canScroll) break
+            canScroll = scrollUp()
+            device.waitForIdle(SCROLL_SETTLE_MS)
+        }
+    }
+
+    /** One accessibility scroll step up. */
+    private fun scrollUp(): Boolean {
+        val root = instrumentation.uiAutomation.rootInActiveWindow ?: return false
+        val list = findScrollable(root) ?: return false
+        if (!list.performAction(AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD)) return false
+        device.waitForIdle(SCROLL_SETTLE_MS)
+        return true
     }
 
     /**
