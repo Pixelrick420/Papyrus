@@ -97,6 +97,22 @@ jobs:
           path: ${{ env.ANDROID_SDK_ROOT }}/ndk/${{ steps.ndk.outputs.version }}
           key: ndk-${{ runner.os }}-${{ steps.ndk.outputs.version }}
 
+      - name: Align preinstalled command-line tools
+        # The runner image's `cmdline-tools/latest` predates SDK XML v4, and
+        # reactivecircus/android-emulator-runner reuses that directory whenever it exists
+        # (it only downloads its own copy when it doesn't). setup-android has just installed
+        # a current copy and put it first on PATH, so point `latest` at that one; otherwise
+        # the emulator runner's sdkmanager warns about the v4 package.xml files the rest of
+        # this job writes ("unexpected element ... abis" / "... translatedAbis").
+        run: |
+          set -euo pipefail
+          tools="$ANDROID_HOME/cmdline-tools"
+          active="$(dirname "$(dirname "$(command -v sdkmanager)")")"
+          if [ "$active" != "$tools/latest" ]; then
+            rm -rf "$tools/latest"
+            ln -s "$active" "$tools/latest"
+          fi
+
       - name: Install SDK packages
         run: |
           android sdk install platform-tools platforms/android-37 build-tools/36.0.0
