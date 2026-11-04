@@ -15,7 +15,7 @@ permissions:
 jobs:
   ci:
     name: Test and build
-    # Tag pushes get the release job instead, which re-runs the same build.
+    # Branch pushes run this alongside the emulator suite; tag pushes get the release job instead.
     if: github.ref_type == 'branch'
     runs-on: ubuntu-24.04
     steps:
@@ -68,7 +68,7 @@ jobs:
     # Job id stays `instrumentation-tests` on purpose: gradle/actions/setup-gradle includes it in
     # its cache key, so renaming the id would orphan the Gradle cache already on the remote.
     name: Emulator tests
-    if: github.ref_type == 'tag'
+    if: github.ref_type == 'branch'
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
@@ -141,18 +141,35 @@ jobs:
 
   release:
     name: Publish release
-    # Tag pushes run "Emulator tests" first; `success()` keeps a failed test run from publishing.
-    if: success() && github.ref_type == 'tag'
-    needs: instrumentation-tests
+    # Tag pushes run only this job: the branch-only test and emulator jobs above are skipped.
+    if: github.ref_type == 'tag'
     runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:
       # fetch-depth: 0 is load-bearing: the versionCode assert compares against the previous release
-      # tag, and a shallow fetch returns neither the tags nor the previous file contents. `ci` needs no history.
+      # tag, the ancestry gate below needs origin/main, and a shallow fetch returns neither the tags
+      # nor the previous file contents. `ci` needs no history.
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+
+      # Placed before the build so an unreleasable tag fails in seconds instead of after a full assemble.
+      # HEAD rather than GITHUB_SHA: for an annotated tag the latter is the tag object, which no branch
+      # contains, so the ancestry check would fail for every annotated tag.
+      - name: Assert the tag is on main
+        run: |
+          set -euo pipefail
+          if ! git rev-parse --verify --quiet origin/main >/dev/null; then
+            git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          fi
+          if ! git merge-base --is-ancestor HEAD origin/main; then
+            echo "::error::Tag $GITHUB_REF_NAME is not on main; refusing to publish it."
+            echo "A commit that never reached main has run neither the unit tests nor the emulator suite."
+            echo "Merge it to main first, then move the tag onto the merged commit."
+            exit 1
+          fi
+          echo "$GITHUB_REF_NAME is on main at $(git rev-parse --short HEAD)"
 
       - uses: actions/setup-java@v6
         with:

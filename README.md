@@ -426,9 +426,10 @@ detekt, and lint and detekt are not part of CI. The screenshots this README show
 
 ## Releases
 
-- Every push to `main` runs the unit tests and assembles an unsigned release APK, uploaded as a build artifact.
-- Pushing a `v*` tag runs the emulator suite first, then publishes a signed APK to [Releases](../../releases). A
-  failing emulator test stops the release before anything is published.
+- Every push to `main` runs the unit tests and the API 34 emulator suite, and assembles an unsigned release APK
+  uploaded as a build artifact.
+- Pushing a `v*` tag publishes a signed APK to [Releases](../../releases), and runs nothing else: the unit tests and
+  emulator suite belong to the `main` push, so a tag that has not landed on `main` is released without them.
 - The tag must match `versionName` in `app/build.gradle.kts`, and `versionCode` must exceed the previous release tag's,
   since that value alone orders the upgrades.
 - The job fails if the APK comes out unsigned or carries the Android debug certificate.
