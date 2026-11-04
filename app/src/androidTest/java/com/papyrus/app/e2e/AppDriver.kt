@@ -119,32 +119,69 @@ internal class AppDriver {
     }
 
     /**
-     * Scrolls the screen's list down until [selector] is on it; a screen that fits needs no scrolling. A column
+     * Scrolls the screen's list until [selector] is on it; a screen that fits needs no scrolling. A column
      * keeps the rows it has scrolled past, so a match only counts once some of it is inside the screen.
+     * Looks down the list first and then back up it, so a row is found wherever the list was left.
      */
     fun scrollTo(selector: BySelector): UiObject2 {
         findVisible(selector)?.let { return it }
-        repeat(MAX_SCROLLS) {
-            if (!scrollDown()) {
-                // If we can't scroll down, maybe we started past the target — try scrolling up.
-                scrollToTop()
-                return find(selector)
-            }
-            findVisible(selector, SCROLL_SETTLE_MS)?.let { return it }
-        }
-        // Exhausted downward scrolls; try from the top as a last resort.
-        scrollToTop()
-        return find(selector)
+        scrollThrough(selector) { scrollDown() }?.let { return it }
+        scrollThrough(selector) { scrollUp() }?.let { return it }
+        return find(selector, SETTLE_TIMEOUT_MS)
     }
 
-    /** Scrolls up until the list can't scroll further, resetting to a known start position. */
-    private fun scrollToTop() {
-        var canScroll = true
-        for (i in 0 until MAX_SCROLLS) {
-            if (!canScroll) break
-            canScroll = scrollUp()
-            device.waitForIdle(SCROLL_SETTLE_MS)
+    /**
+     * Steps through the list with [scroll] until [selector] is on screen; null once the list has no more to show
+     * that way.
+     *
+     * A scroll request is only applied on the app's next frame, and on a slow emulator that is seconds away, so
+     * the row can show up long after a fixed wait has run out. Each step therefore waits for the screen to
+     * change before it looks for [selector] or asks for another step. Asking again while the first request is
+     * still on its way is wasted, and once the first lands the list can be at its end and refuse the second,
+     * which reads as "nothing more to scroll" with the row still unseen.
+     */
+    private fun scrollThrough(selector: BySelector, scroll: () -> Boolean): UiObject2? {
+        repeat(MAX_SCROLLS) {
+            val before = screenText()
+            if (!scroll() || !awaitScreenChange(before)) return null
+            findVisible(selector, SCROLL_SETTLE_MS)?.let { return it }
         }
+        return null
+    }
+
+    /** The words on screen, or null if the tree could not be read; a scroll has landed once this reads differently. */
+    private fun screenText(): String? {
+        repeat(STALE_RETRIES) {
+            runCatching {
+                device.findObjects(By.pkg(packageName)).joinToString("|") { it.text ?: it.contentDescription ?: "" }
+            }.getOrNull()?.let { return it }
+            Thread.sleep(FIND_POLL_MS)
+        }
+        return null
+    }
+
+    /**
+     * Waits for the screen to change from [before] after a scroll request, then to stop changing, so that what
+     * is on it is where the list ended up. False if nothing changed within [SCROLL_LAND_TIMEOUT_MS]: the list
+     * had nowhere to go.
+     */
+    private fun awaitScreenChange(before: String?): Boolean {
+        val until = SystemClock.uptimeMillis() + SCROLL_LAND_TIMEOUT_MS
+        var latest = before
+        var changed = false
+        var changedAt = 0L
+        while (SystemClock.uptimeMillis() < until) {
+            val now = screenText()
+            if (now != null && now != latest) {
+                latest = now
+                changed = true
+                changedAt = SystemClock.uptimeMillis()
+            } else if (changed && SystemClock.uptimeMillis() - changedAt >= SCROLL_STILL_MS) {
+                return true
+            }
+            Thread.sleep(FIND_POLL_MS)
+        }
+        return changed
     }
 
     /** One accessibility scroll step up. */
@@ -283,6 +320,15 @@ internal class AppDriver {
 
         /** Covers the list settling between one scroll step and the next. */
         private const val SCROLL_SETTLE_MS = 1_000L
+
+        /**
+         * How long a scroll request may take to show on screen. The app applies it on a frame, and frames on the
+         * CI emulator (software rendering) have been seen a second apart; a scroll there has taken over 2.8s.
+         */
+        private const val SCROLL_LAND_TIMEOUT_MS = 10_000L
+
+        /** How long the screen must hold still after a scroll before the scroll counts as finished. */
+        private const val SCROLL_STILL_MS = 600L
 
         /** Poll interval while waiting for the accessibility tree to rebuild after a scroll. */
         private const val FIND_POLL_MS = 100L
