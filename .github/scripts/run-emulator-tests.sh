@@ -1,11 +1,5 @@
 #!/usr/bin/env bash
-# Runs the instrumented tests on the emulator android-emulator-runner has already booted.
-#
-# Failing TESTS must not fail this step: evaluate-emulator-tests.py decides whether the suite as a whole
-# passes. A run that never produced results (build error, install failure, no device) still fails here,
-# so the step that went red is the one that explains why.
-#
-# Leaves in app/build/emulator-ci/:  gradle.log, gradle-exit-code, logcat.txt
+
 set -uo pipefail
 
 ci_dir=app/build/emulator-ci
@@ -15,11 +9,8 @@ adb="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}/platform-t
 [ -x "$adb" ] || adb=adb
 
 mkdir -p "$ci_dir"
-# Results from an earlier run would otherwise be graded as this one's.
 rm -rf "$results_dir"
 
-# The default log buffer wraps within a couple of minutes of this suite, losing exactly the lines
-# (crashes, ANRs, RetryRule's FLAKY reports) the artifact is uploaded for.
 "$adb" logcat -G 16M || true
 "$adb" logcat -c || true
 

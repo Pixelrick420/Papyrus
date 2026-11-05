@@ -3,7 +3,7 @@ name: build
 on:
   push:
     branches: [main]
-    tags: ['v*']
+    tags: ["v*"]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -15,7 +15,6 @@ permissions:
 jobs:
   ci:
     name: Test and build
-    # Branch pushes run this alongside the emulator suite; tag pushes get the release job instead.
     if: github.ref_type == 'branch'
     runs-on: ubuntu-24.04
     steps:
@@ -24,7 +23,7 @@ jobs:
       - uses: actions/setup-java@v6
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: "17"
 
       - uses: gradle/actions/setup-gradle@v5
 
@@ -32,7 +31,7 @@ jobs:
         uses: android-actions/setup-android@v4
         with:
           accept-android-sdk-licenses: false
-          packages: ''
+          packages: ""
 
       - name: Resolve pinned NDK version
         id: ndk
@@ -46,8 +45,7 @@ jobs:
 
       - name: Install SDK packages
         run: |
-          # android-37 lives in Google's newer repo index, which `android sdk install`
-          # can't read; the runner image already ships it, so "not found" here is harmless.
+          # android-37 lives in Google's newer index; it is preinstalled, so its install failure is harmless.
           android sdk install platform-tools platforms/android-37 build-tools/36.0.0
           android sdk install "ndk/${{ steps.ndk.outputs.version }}"
 
@@ -65,22 +63,21 @@ jobs:
           if-no-files-found: error
 
   instrumentation-tests:
-    # Job id stays `instrumentation-tests` on purpose: gradle/actions/setup-gradle includes it in
-    # its cache key, so renaming the id would orphan the Gradle cache already on the remote.
+    # Keep this job id: setup-gradle's cache key includes it, so renaming orphans the remote cache.
     name: Emulator tests
     if: github.ref_type == 'branch'
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
       # The build fails only when MORE than this share of the emulator suite did not pass.
-      EMULATOR_MAX_FAILURE_PERCENT: '80'
+      EMULATOR_MAX_FAILURE_PERCENT: "80"
     steps:
       - uses: actions/checkout@v7
 
       - uses: actions/setup-java@v6
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: "17"
 
       - uses: gradle/actions/setup-gradle@v5
 
@@ -88,7 +85,7 @@ jobs:
         uses: android-actions/setup-android@v4
         with:
           accept-android-sdk-licenses: false
-          packages: ''
+          packages: ""
 
       - name: Resolve pinned NDK version
         id: ndk
@@ -101,12 +98,7 @@ jobs:
           key: ndk-${{ runner.os }}-${{ steps.ndk.outputs.version }}
 
       - name: Align preinstalled command-line tools
-        # The runner image's `cmdline-tools/latest` predates SDK XML v4, and
-        # reactivecircus/android-emulator-runner reuses that directory whenever it exists
-        # (it only downloads its own copy when it doesn't). setup-android has just installed
-        # a current copy and put it first on PATH, so point `latest` at that one; otherwise
-        # the emulator runner's sdkmanager warns about the v4 package.xml files the rest of
-        # this job writes ("unexpected element ... abis" / "... translatedAbis").
+        # Runner's cmdline-tools/latest predates SDK XML v4; point it at the copy setup-android installed.
         run: |
           set -euo pipefail
           tools="$ANDROID_HOME/cmdline-tools"
@@ -124,8 +116,7 @@ jobs:
           android sdk install emulator
 
       - name: Enable KVM
-        # The runner exposes /dev/kvm but not the group permissions, so without this the emulator
-        # silently falls back to software emulation and the job takes several times longer.
+        # Runner exposes /dev/kvm without group permissions; otherwise the emulator falls back to software.
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
             | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -142,20 +133,10 @@ jobs:
           force-avd-creation: true
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
-          # Instrumented tests only run against `debug`. They cannot run against the minified release build:
-          # minification makes AGP minify the androidTest APK too, and hand it the app's output as a provided
-          # classpath, so whatever R8 stripped from the app is missing at run time and the runner dies before
-          # the first test -- reported as a green build with zero tests. See android/android-test#2167.
-          #
-          # The script runs `connectedDebugAndroidTest` but does not let failing tests fail this step; the
-          # next step grades the whole suite instead.
+          # Instrumented tests must run against debug: R8 strips the release classpath (android/android-test#2167).
           script: bash .github/scripts/run-emulator-tests.sh
 
-      # A soft gate. The emulator suite is timing-sensitive on a software-rendered CI emulator, so a few
-      # failing tests are reported (annotations + job summary) without failing the build. The job fails when
-      # more than EMULATOR_MAX_FAILURE_PERCENT of the suite did not pass, and also when no tests reported at
-      # all or when the run died partway: tests that never ran count as not passing, so a crash cannot hide
-      # behind the tests that happened to finish first. `!cancelled()` so it still grades after a failed step.
+      # Soft gate: fails only above EMULATOR_MAX_FAILURE_PERCENT, or when nothing ran.
       - name: Check emulator test results
         if: ${{ !cancelled() }}
         run: python3 .github/scripts/evaluate-emulator-tests.py --max-failure-percent "$EMULATOR_MAX_FAILURE_PERCENT"
@@ -173,22 +154,17 @@ jobs:
 
   release:
     name: Publish release
-    # Tag pushes run only this job: the branch-only test and emulator jobs above are skipped.
     if: github.ref_type == 'tag'
     runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:
-      # fetch-depth: 0 is load-bearing: the versionCode assert compares against the previous release
-      # tag, the ancestry gate below needs origin/main, and a shallow fetch returns neither the tags
-      # nor the previous file contents. `ci` needs no history.
+      # fetch-depth: 0: the ancestry and versionCode checks need origin/main and the tags.
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
-      # Placed before the build so an unreleasable tag fails in seconds instead of after a full assemble.
-      # HEAD rather than GITHUB_SHA: for an annotated tag the latter is the tag object, which no branch
-      # contains, so the ancestry check would fail for every annotated tag.
+      # HEAD, not GITHUB_SHA: an annotated tag's SHA is the tag object, not a branch commit.
       - name: Assert the tag is on main
         run: |
           set -euo pipefail
@@ -206,7 +182,7 @@ jobs:
       - uses: actions/setup-java@v6
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: "17"
 
       - uses: gradle/actions/setup-gradle@v5
 
@@ -214,7 +190,7 @@ jobs:
         uses: android-actions/setup-android@v4
         with:
           accept-android-sdk-licenses: false
-          packages: ''
+          packages: ""
 
       - name: Resolve pinned NDK version
         id: ndk
@@ -228,16 +204,14 @@ jobs:
 
       - name: Install SDK packages
         run: |
-          # android-37 lives in Google's newer repo index, which `android sdk install`
-          # can't read; the runner image already ships it, so "not found" here is harmless.
+          # android-37 lives in Google's newer index; it is preinstalled, so its install failure is harmless.
           android sdk install platform-tools platforms/android-37 build-tools/36.0.0
           android sdk install "ndk/${{ steps.ndk.outputs.version }}"
 
       - name: Unit tests
         run: ./gradlew --no-daemon testDebugUnitTest
 
-      # The release key lives in repository secrets, never the repo -- a committed keystore is a
-      # compromised key. Secrets are string-only, so the keystore travels base64-encoded in PAPYRUS_KEYSTORE_BASE64.
+      # A committed keystore is a compromised key; secrets are string-only, so it travels base64-encoded.
       - name: Check signing secrets are present
         env:
           KEYSTORE_B64: ${{ secrets.PAPYRUS_KEYSTORE_BASE64 }}
@@ -285,8 +259,7 @@ jobs:
             # Fails on an unsigned APK, catching a build that silently lost its signing config.
             "$build_tools/apksigner" verify --print-certs --verbose "$apk"
             echo "::endgroup::"
-            # A signed APK is not automatically release-signed: the debug key satisfies apksigner
-            # but makes an artifact no properly signed build can replace.
+            # The debug key satisfies apksigner but cannot be replaced by a properly signed build.
             if "$build_tools/apksigner" verify --print-certs "$apk" \
               | grep -q 'CN=Android Debug'; then
               echo "::error::$apk is signed with the Android debug certificate"
@@ -308,14 +281,12 @@ jobs:
             exit 1
           fi
 
-      # Catches a missed versionCode bump, which the versionName assert cannot: versionCode is the
-      # only value the package manager orders releases by, so a repeat ships an artifact the OS cannot tell apart. Compared against the previous release tag.
+      # versionCode is the only value releases are ordered by, so a repeat ships an indistinguishable artifact.
       - name: Assert versionCode increased
         run: |
           set -euo pipefail
           current=$(grep -om1 -P 'versionCode\s*=\s*\K\d+' app/build.gradle.kts)
-          # A read loop, not `git tag | grep | head -1`: a head-terminated pipeline can SIGPIPE its
-          # writer, which `pipefail` reports as exit 141. Not reachable today (~20k tags needed), kept off the release gate.
+          # A read loop, not `git tag | grep | head -1`: SIGPIPE would exit 141 under pipefail.
           previous_tag=""
           while read -r candidate; do
             if [ "$candidate" != "$GITHUB_REF_NAME" ]; then

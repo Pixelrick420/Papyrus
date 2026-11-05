@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Decides whether the emulator job passes.
 
 The emulator suite is a soft gate: individual failing tests are reported but do not fail the build.
@@ -27,13 +26,10 @@ import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from pathlib import Path
 
-# Matches a test declaration at the start of a line, so `// @Test` and `* @Test` in comments do not count.
 TEST_ANNOTATION = re.compile(r"^\s*@Test\b", re.MULTILINE)
-
-# Logged by RetryRule (androidTest) when a test failed and then passed on a later attempt.
 FLAKY_LOG = re.compile(r"PapyrusRetry\b[^:]*:\s*(FLAKY .*)")
 
-MAX_ANNOTATIONS = 10  # GitHub shows at most ten per step anyway.
+MAX_ANNOTATIONS = 10
 MAX_LISTED = 25
 
 
@@ -73,7 +69,9 @@ class Verdict:
     headline: str
 
 
-def decide(tally: Tally, max_failure_percent: float, gradle_exit: int | None) -> Verdict:
+def decide(
+    tally: Tally, max_failure_percent: float, gradle_exit: int | None
+) -> Verdict:
     if tally.passed + tally.failed + tally.skipped == 0:
         return Verdict(
             False,
@@ -81,12 +79,14 @@ def decide(tally: Tally, max_failure_percent: float, gradle_exit: int | None) ->
             "instrumentation process died before the first test. See the 'Run emulator tests' step.",
         )
     if tally.counted == 0:
-        return Verdict(False, "Every emulator test was skipped, so nothing was actually checked.")
+        return Verdict(
+            False, "Every emulator test was skipped, so nothing was actually checked."
+        )
     if gradle_exit not in (None, 0) and tally.bad == 0:
-        # Every recorded test passed, yet Gradle failed: the build or device broke in a way the results
-        # cannot explain. Tolerating that would hide an infrastructure problem.
-        return Verdict(False, f"Gradle exited with {gradle_exit} although no test is recorded as failing.")
-    # Integer-friendly comparison: exactly the limit still passes ("more than 80% fail" is the failure).
+        return Verdict(
+            False,
+            f"Gradle exited with {gradle_exit} although no test is recorded as failing.",
+        )
     if tally.bad * 100 > max_failure_percent * tally.counted:
         return Verdict(
             False,
@@ -107,7 +107,11 @@ def count_declared_tests(source_root: Path) -> int:
     if source_root.is_dir():
         for path in source_root.rglob("*"):
             if path.suffix in {".kt", ".java"} and path.is_file():
-                total += len(TEST_ANNOTATION.findall(path.read_text(encoding="utf-8", errors="replace")))
+                total += len(
+                    TEST_ANNOTATION.findall(
+                        path.read_text(encoding="utf-8", errors="replace")
+                    )
+                )
     return total
 
 
@@ -126,7 +130,9 @@ def read_results(results_dir: Path) -> tuple[int, int, int, list[Failure], int]:
     outcome: dict[str, str] = {}
     detail: dict[str, str] = {}
     files_read = 0
-    for xml_file in sorted(results_dir.rglob("TEST-*.xml")) if results_dir.is_dir() else []:
+    for xml_file in (
+        sorted(results_dir.rglob("TEST-*.xml")) if results_dir.is_dir() else []
+    ):
         try:
             root = ET.parse(xml_file).getroot()
         except ET.ParseError as error:
@@ -138,19 +144,31 @@ def read_results(results_dir: Path) -> tuple[int, int, int, list[Failure], int]:
             bad_node = next((c for c in case if c.tag in ("failure", "error")), None)
             if bad_node is not None:
                 status = "failed"
-                message = first_line(bad_node.get("message")) or first_line(bad_node.text)
+                message = first_line(bad_node.get("message")) or first_line(
+                    bad_node.text
+                )
             elif any(c.tag == "skipped" for c in case):
                 status, message = "skipped", ""
             else:
                 status, message = "passed", ""
             previous = outcome.get(name)
             if previous == "passed" or (previous == "skipped" and status == "failed"):
-                continue  # keep the better outcome
+                continue
             outcome[name] = status
             detail[name] = message
-    failures = [Failure(name, detail[name]) for name, status in sorted(outcome.items()) if status == "failed"]
+    failures = [
+        Failure(name, detail[name])
+        for name, status in sorted(outcome.items())
+        if status == "failed"
+    ]
     values = list(outcome.values())
-    return values.count("passed"), values.count("failed"), values.count("skipped"), failures, files_read
+    return (
+        values.count("passed"),
+        values.count("failed"),
+        values.count("skipped"),
+        failures,
+        files_read,
+    )
 
 
 def read_flaky(logcat: Path | None) -> list[str]:
@@ -180,12 +198,17 @@ def short(test: str) -> str:
     return test.rsplit(".", 1)[-1] if "#" in test else test
 
 
-def build_report(tally: Tally, verdict: Verdict, failures: list[Failure], flaky: list[str], limit: float) -> str:
-    icon = "✅" if verdict.ok else "❌"
+def build_report(
+    tally: Tally,
+    verdict: Verdict,
+    failures: list[Failure],
+    flaky: list[str],
+    limit: float,
+) -> str:
     lines = [
         "## Emulator tests",
         "",
-        f"{icon} {verdict.headline}",
+        verdict.headline,
         "",
         "| Passed | Failed | Not run | Skipped | Declared | Not passing | Limit |",
         "| ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
@@ -195,9 +218,14 @@ def build_report(tally: Tally, verdict: Verdict, failures: list[Failure], flaky:
     ]
     if failures:
         lines += ["### Failing tests", ""]
-        lines += [f"- `{short(f.test)}` — {f.detail or 'no message'}" for f in failures[:MAX_LISTED]]
+        lines += [
+            f"- `{short(f.test)}` — {f.detail or 'no message'}"
+            for f in failures[:MAX_LISTED]
+        ]
         if len(failures) > MAX_LISTED:
-            lines.append(f"- … and {len(failures) - MAX_LISTED} more (see the `emulator-test-results` artifact)")
+            lines.append(
+                f"- … and {len(failures) - MAX_LISTED} more (see the `emulator-test-results` artifact)"
+            )
         lines.append("")
     if tally.missing:
         lines += [
@@ -207,17 +235,29 @@ def build_report(tally: Tally, verdict: Verdict, failures: list[Failure], flaky:
         ]
     if flaky:
         lines += ["### Passed only after a retry (flaky)", ""]
-        lines += [f"- {entry.removeprefix('FLAKY ')}" for entry in flaky[:MAX_LISTED]]
+        lines += [
+            f"- {entry.removeprefix('FLAKY ')}" for entry in flaky[:MAX_LISTED]
+        ]
         lines.append("")
     return "\n".join(lines)
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--results-dir", type=Path, default=Path("app/build/outputs/androidTest-results"))
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    parser.add_argument(
+        "--results-dir",
+        type=Path,
+        default=Path("app/build/outputs/androidTest-results"),
+    )
     parser.add_argument("--tests-dir", type=Path, default=Path("app/src/androidTest"))
-    parser.add_argument("--ci-dir", type=Path, default=Path("app/build/emulator-ci"),
-                        help="where run-emulator-tests.sh left gradle-exit-code and logcat.txt")
+    parser.add_argument(
+        "--ci-dir",
+        type=Path,
+        default=Path("app/build/emulator-ci"),
+        help="where run-emulator-tests.sh left gradle-exit-code and logcat.txt",
+    )
     parser.add_argument("--max-failure-percent", type=float, default=80.0)
     args = parser.parse_args()
 
@@ -230,13 +270,19 @@ def main() -> int:
 
     report = build_report(tally, verdict, failures, flaky, args.max_failure_percent)
     print(report)
-    print(f"(result files read: {files_read}; gradle exit code: {gradle_exit if gradle_exit is not None else 'unknown'})")
+    print(
+        f"(result files read: {files_read}; gradle exit code: {gradle_exit if gradle_exit is not None else 'unknown'})"
+    )
 
     if verdict.ok:
         for failure in failures[:MAX_ANNOTATIONS]:
-            print(f"::warning title=Emulator test failed (tolerated)::{escape_annotation(f'{short(failure.test)}: {failure.detail}')}")
+            print(
+                f"::warning title=Emulator test failed (tolerated)::{escape_annotation(f'{short(failure.test)}: {failure.detail}')}"
+            )
         for entry in flaky[:MAX_ANNOTATIONS]:
-            print(f"::notice title=Flaky emulator test::{escape_annotation(entry.removeprefix('FLAKY '))}")
+            print(
+                f"::notice title=Flaky emulator test::{escape_annotation(entry.removeprefix('FLAKY '))}"
+            )
     else:
         print(f"::error title=Emulator tests::{escape_annotation(verdict.headline)}")
 
