@@ -244,6 +244,15 @@ before the first test — a green build reporting zero tests. Every test starts 
 depends on another: `FreshInstall` empties the database, the imported copies and the settings before each
 one, and `PapyrusTestRunner` takes the same data off disk before any of the app's code loads.
 
+The emulator in CI draws in software, so a frame can arrive seconds late and a tap can be lost. Two things keep that from
+failing the build. `RetryRule` runs a failed end-to-end test again (three attempts, each from a fresh install, and at
+most 15 retries for the whole run so a broken build still ends at a report), and logs `FLAKY` for any test that only
+passed on a retry. Then the emulator job grades the suite as a whole instead of failing on the first red test: it passes
+unless more than 80% of the tests did not pass (`EMULATOR_MAX_FAILURE_PERCENT` in `.github/workflows/build.yml`). Tests
+that never ran count as not passing, and a run that reports no tests at all fails, so a crashed run cannot pass by
+omission. The failing tests are listed in the job summary and as warnings, and `logcat.txt` is in the
+`emulator-test-results` artifact. Locally, `./gradlew connectedDebugAndroidTest` stays strict: any failure fails it.
+
 The DOCX/ODT, EPUB and DOC extractors run against archives the tests build in memory (kxml2 stands in for the platform's
 `XmlPullParser`, and the `.doc` fixtures assemble the OLE2 container and piece table from scratch). detekt is scoped to
 dead code and correctness, with the deliberate broad catches baselined so they stay visible. CI runs the unit tests and
@@ -427,7 +436,8 @@ detekt, and lint and detekt are not part of CI. The screenshots this README show
 ## Releases
 
 - Every push to `main` runs the unit tests and the API 34 emulator suite, and assembles an unsigned release APK
-  uploaded as a build artifact.
+  uploaded as a build artifact. Failing emulator tests are tolerated unless more than 80% of the suite did not pass;
+  see [Test](#test).
 - Pushing a `v*` tag publishes a signed APK to [Releases](../../releases), and runs nothing else: the unit tests and
   emulator suite belong to the `main` push, so a tag that has not landed on `main` is released without them.
 - The tag must match `versionName` in `app/build.gradle.kts`, and `versionCode` must exceed the previous release tag's,
