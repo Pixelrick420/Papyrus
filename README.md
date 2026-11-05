@@ -151,13 +151,13 @@ an XML root, JSON or Objective-C.
 
 - **TalkBack-first controls.** Each control is one focus stop that says what it is and what a tap does: a row reads
   "Open", "Select" or "Deselect", a selected row reads as checked, and sheet titles are headings so TalkBack can jump
-  between sections.
+  between sections. Headings in Markdown, EPUB, DOCX and ODT documents are headings too, and an image with alt
+  text reads it; an image without is skipped.
 - **Live updates and touch targets.** The find-in-file counter announces each match change ("2 of 7") without moving
   focus, and interactive controls meet the 48dp minimum touch target.
 - **Known limits.** With TalkBack running, a PDF page with a text layer is read as one stop per page — its page
   number and the page's own text — rather than line by line; a page with no text layer reads only its number. Use
-  Android's accessibility zoom instead of pinch zoom, which TalkBack intercepts. Images inside documents are not
-  described.
+  Android's accessibility zoom instead of pinch zoom, which TalkBack intercepts.
 - The manual test script and the checks enforced by `AccessibilitySemanticsTest` are in
   [ACCESSIBILITY.md](ACCESSIBILITY.md).
 
@@ -167,7 +167,9 @@ an XML root, JSON or Objective-C.
 - **Save to library** keeps a copy, so it outlives the other app's grant.
 - **Password-protected documents** unlock locally: Word, OpenDocument and PDF. The password is never stored or logged,
   and the temporary copy of a Word or OpenDocument file is deleted when you close it.
-- **Lost access** keeps the page on screen and offers to re-pick the file, matching on name and format.
+- **Lost access** keeps the page on screen and offers to re-pick the file, matching on name and format. A file that
+  was moved or deleted offers the same.
+- **Open errors** say what went wrong: an unsupported type, a protection Papyrus cannot unlock, or a damaged file.
 
 ### Settings
 

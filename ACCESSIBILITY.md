@@ -12,7 +12,9 @@ with the script at the end.
   "Select" or "Deselect", not "Open".
 - A search result's excerpt is one text node. The highlighted words do not split it into separate stops,
   so TalkBack reads it as a sentence.
-- Sheet titles are headings, so TalkBack's heading navigation skips between sections.
+- Sheet titles are headings, so TalkBack's heading navigation skips between sections. So are the
+  headings inside EPUB, DOCX and ODT documents and inside Markdown.
+- An image that has alt text (EPUB, DOCX, ODT) reads that text. An image without it is skipped.
 - The find-in-file match counter is a polite live region: stepping through matches announces
   "2 of 7" without moving focus.
 - Interactive controls have a touch target of at least 48dp. Material's
@@ -98,6 +100,14 @@ device face down if you want to remove visual cues.
     not the dot drawn at its end, so it is a full fingertip target. The sheet offers a note field
     with a character counter, Save, and Delete highlight. Only plain highlights are written into a
     saved copy of the PDF; the note stays in Papyrus.
+11. **Headings:** in a Markdown, EPUB, DOCX or ODT document, set TalkBack's reading controls to
+    Headings and swipe down. Focus moves from heading to heading and each reads as "heading".
+12. **Image alt text:** in an EPUB, DOCX or ODT document with a described image, the image is one
+    stop that reads its alt text. An image with no alt text is not a stop.
+13. **Open errors:** a file that cannot be opened shows its own message: unsupported type, protected
+    in a way Papyrus cannot unlock, damaged, or moved or deleted. A password prompt says whether
+    the password is required or was wrong. A file that is moved, deleted or no longer accessible
+    offers "Pick file" to choose it again.
 
 ### Known limits
 
@@ -107,7 +117,9 @@ device face down if you want to remove visual cues.
   since the platform's annotation API offers no note annotation here.
 - Pinch zoom is a two-finger gesture that TalkBack intercepts. Use Android's accessibility zoom
   instead. Text documents keep their normal TalkBack text navigation.
-- Images inside documents are not described.
+- Images in Markdown documents are not described.
+- Headings in Markdown are virtual nodes over one text view, so a heading is a stop of its own as
+  well as part of the document's text.
 
 ## Adding a check
 
