@@ -91,10 +91,15 @@ access</string>
     <string
         name="viewer_error_access"
     >Access to this file was lost. Open it again from Home.</string>
-    <string name="viewer_error_missing">The file was moved or deleted.</string>
+    <string
+        name="viewer_error_missing"
+    >The file was moved or deleted. Pick it again to open it.</string>
+    <string
+        name="viewer_error_corrupt"
+    >This file is damaged or incomplete and can\'t be read.</string>
     <string
         name="viewer_error_password"
-    >This document is protected and couldn\'t be opened.</string>
+    >This document\'s password protection isn\'t supported, so it can\'t be opened.</string>
     <string name="viewer_password_title">Password required</string>
     <string
         name="viewer_password_message"
@@ -109,7 +114,7 @@ access</string>
     >Password-protected document not opened.</string>
     <string
         name="viewer_error_unsupported"
-    >This file type isn\'t supported.</string>
+    >Papyrus can\'t open this type of file.</string>
     <string
         name="viewer_error_empty"
     >No readable text found in this document.</string>

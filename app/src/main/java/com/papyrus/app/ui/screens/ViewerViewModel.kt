@@ -868,16 +868,26 @@ class ViewerViewModel(
         withContext(Dispatchers.IO) { loadContent(doc) }
     } catch (e: CancellationException) {
         throw e
-    } catch (e: PdfPasswordException) {
-        ViewerContent.Failed(UiText(R.string.viewer_error_password))
-    } catch (e: SecurityException) {
-        // Dropped SAF grant: offer a re-pick rather than only reporting the failure.
-        _state.update { it.copy(needsRegrant = true) }
-        ViewerContent.Failed(UiText(R.string.viewer_error_access))
-    } catch (e: FileNotFoundException) {
-        ViewerContent.Failed(UiText(R.string.viewer_error_missing))
     } catch (e: Exception) {
-        ViewerContent.Failed(UiText(R.string.viewer_error_generic, e.localizedMessage ?: e.javaClass.simpleName))
+        failureFor(e)
+    }
+
+    /** One message per cause, so a person can tell a wrong format from a lost file from a damaged one. */
+    private fun failureFor(e: Exception): ViewerContent.Failed = when (e) {
+        is PdfPasswordException, is DocumentPasswordException ->
+            ViewerContent.Failed(UiText(R.string.viewer_error_password))
+        // Dropped SAF grant: offer a re-pick rather than only reporting the failure.
+        is SecurityException -> {
+            _state.update { it.copy(needsRegrant = true) }
+            ViewerContent.Failed(UiText(R.string.viewer_error_access))
+        }
+        is FileNotFoundException -> {
+            _state.update { it.copy(needsRegrant = true) }
+            ViewerContent.Failed(UiText(R.string.viewer_error_missing))
+        }
+        is IOException ->
+            ViewerContent.Failed(UiText(R.string.viewer_error_corrupt))
+        else -> ViewerContent.Failed(UiText(R.string.viewer_error_generic, e.localizedMessage ?: e.javaClass.simpleName))
     }
 
     // Saves a handed-over document once it opens, if its setting is on. An encrypted document waits
@@ -1268,7 +1278,7 @@ class ViewerViewModel(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                ViewerContent.Failed(UiText(R.string.viewer_error_generic, e.localizedMessage ?: e.javaClass.simpleName))
+                failureFor(e)
             }
             _state.update { it.copy(content = content) }
             loadPdfOutline()
