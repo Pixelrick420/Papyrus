@@ -11,6 +11,7 @@ import androidx.core.graphics.createBitmap
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -46,7 +47,16 @@ class PdfPageSource private constructor(
     private val lock = Mutex()
     private var closed = false
 
-    private val cache = object : LruCache<PageKey, Bitmap>(cacheBytes()) {
+    private val cacheBudgetBytes = cacheBytes()
+
+    /**
+     * The most pixels one page is rasterised at. A few zoomed pages are on screen at once and each
+     * holds its bitmap, so one page may take only a share of the cache; a page past it would be
+     * dropped from the cache as it went in, or fail to allocate and leave the page blank.
+     */
+    val maxRenderPixels: Int = cacheBudgetBytes / (BYTES_PER_PIXEL * PAGES_PER_CACHE)
+
+    private val cache = object : LruCache<PageKey, Bitmap>(cacheBudgetBytes) {
         // allocationByteCount, since a reused bitmap can hold more than its pixels need. Must stay >= 1:
         // a recycled bitmap reports 0, and LruCache's sizeOf must be stable.
         override fun sizeOf(key: PageKey, value: Bitmap): Int = value.allocationByteCount.coerceAtLeast(1)
@@ -76,7 +86,11 @@ class PdfPageSource private constructor(
         if (evictAll) cache.evictAll() else cache.trimToSize(cache.maxSize() / 2)
     }
 
-    /** Returns null if the source was closed meanwhile, or if the page is too large to render. */
+    /**
+     * Returns null if the source was closed meanwhile, or if the page is too large to render. Renders
+     * queue behind one another, so a caller cancelled while waiting (its page scrolled away) never
+     * starts; a render already running cannot be interrupted and finishes into the cache.
+     */
     suspend fun render(index: Int, widthPx: Int): Bitmap? {
         val key = PageKey(index, widthPx)
         cache.get(key)?.let { return it }
@@ -84,6 +98,8 @@ class PdfPageSource private constructor(
             lock.withLock {
                 if (closed) return@withLock null
                 cache.get(key)?.let { return@withLock it }
+                // Checked with the lock held: the wait is where a page has time to scroll away.
+                ensureActive()
                 try {
                     engine.open(index).use { page ->
                         val height = (widthPx.toFloat() * page.height / page.width).roundToInt().coerceAtLeast(1)
@@ -265,6 +281,11 @@ class PdfPageSource private constructor(
 
     companion object {
         private const val TAG = "PdfPageSource"
+
+        private const val BYTES_PER_PIXEL = 4
+
+        /** Pages that may sit at the largest size together before the cache is full. */
+        private const val PAGES_PER_CACHE = 3
 
         /** Weak, so a source that is never closed cannot be kept alive by the memory-pressure hook. */
         private val openSources: MutableSet<PdfPageSource> =

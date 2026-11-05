@@ -74,8 +74,20 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.first
 import kotlin.math.roundToInt
+import kotlin.math.sqrt
 
 private const val LOW_RES_DIVISOR = 4
+
+/**
+ * The width a page is rasterised at: the width it is shown at, which already has the committed zoom
+ * in it, held to [maxPixels] for a page of the given [aspect] (height over width). Never below
+ * [floorWidthPx], the page at 100%, which has to be sharp whatever the budget says.
+ */
+internal fun renderWidthFor(displayWidthPx: Int, aspect: Float, maxPixels: Int, floorWidthPx: Int): Int {
+    if (aspect <= 0f || maxPixels <= 0) return displayWidthPx.coerceAtLeast(1)
+    val budgetWidth = sqrt(maxPixels / aspect.toDouble()).toInt()
+    return minOf(displayWidthPx, maxOf(budgetWidth, floorWidthPx)).coerceAtLeast(1)
+}
 
 /** Pages kept rendered on each side of the visible ones, so a short scroll back needs no re-render. */
 private const val CACHED_PAGES_AROUND_VIEW = 3
@@ -246,6 +258,7 @@ internal fun PdfViewer(
                             source = source,
                             index = index,
                             widthPx = renderWidthPx,
+                            baseWidthPx = baseWidthPx,
                             aspect = aspectRatios.getOrElse(index) { DEFAULT_ASPECT },
                             scrolling = scrolling,
                             isHit = index in hitPages,
@@ -310,7 +323,10 @@ private val PAGE_INDICATOR_CLEARANCE = 56.dp
 private fun PdfPage(
     source: PdfPageSource,
     index: Int,
+    /** The width the page is shown at, committed zoom included. */
     widthPx: Int,
+    /** The width at 100%: the least a page is ever rasterised at. */
+    baseWidthPx: Int,
     aspect: Float,
     scrolling: Boolean,
     isHit: Boolean,
@@ -332,15 +348,26 @@ private fun PdfPage(
     followVoice: Boolean,
     viewportHeight: () -> Int,
 ) {
-    // Keyed on page identity only; keying on widthPx blanked the page on every quantisation step.
-    var bitmap by remember(source, index) { mutableStateOf<Bitmap?>(source.cached(index, widthPx)) }
+    // What is shown at the committed zoom, within the pixel budget: the box below keeps the shown width,
+    // and the bitmap is scaled to it, so a capped page is softer rather than missing.
+    val rasterWidthPx = renderWidthFor(widthPx, aspect, source.maxRenderPixels, baseWidthPx)
 
-    // Width of the last rasterisation; until it settles a new width is scaled.
-    var settledWidthPx by remember(source, index) { mutableIntStateOf(widthPx) }
-    LaunchedEffect(source, index, widthPx) {
-        if (widthPx == settledWidthPx) return@LaunchedEffect
+    // Keyed on page identity only; keying on the width blanked the page on every quantisation step.
+    var bitmap by remember(source, index) { mutableStateOf<Bitmap?>(source.cached(index, rasterWidthPx)) }
+
+    // Width of the last rasterisation; until it settles the bitmap already shown is scaled, so a zoom
+    // never blanks the page and the sharper render only replaces it once the width has stopped changing.
+    var settledWidthPx by remember(source, index) { mutableIntStateOf(rasterWidthPx) }
+    LaunchedEffect(source, index, rasterWidthPx) {
+        if (rasterWidthPx == settledWidthPx) return@LaunchedEffect
+        // A width rendered before (zooming back out) is already in hand: nothing to wait for or draw again.
+        source.cached(index, rasterWidthPx)?.let {
+            bitmap = it
+            settledWidthPx = rasterWidthPx
+            return@LaunchedEffect
+        }
         delay(RESIZE_SETTLE_MILLIS)
-        settledWidthPx = widthPx
+        settledWidthPx = rasterWidthPx
     }
 
     LaunchedEffect(source, index, settledWidthPx, scrolling) {
