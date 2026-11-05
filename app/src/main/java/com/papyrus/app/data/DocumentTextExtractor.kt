@@ -3,6 +3,7 @@ package com.papyrus.app.data
 import android.content.Context
 import android.net.Uri
 import androidx.core.net.toUri
+import com.papyrus.app.viewer.BoundedCache
 import com.papyrus.app.viewer.DocTextExtractor
 import com.papyrus.app.viewer.EpubExtractor
 import com.papyrus.app.viewer.EpubProtectedException
@@ -10,7 +11,9 @@ import com.papyrus.app.viewer.OfficeEncryption
 import com.papyrus.app.viewer.OfficeTextExtractor
 import com.papyrus.app.viewer.PdfEncryption
 import com.papyrus.app.viewer.PdfPageTextSource
+import com.papyrus.app.viewer.TextCacheKey
 import com.papyrus.app.viewer.readTextString
+import com.papyrus.app.viewer.textCacheKey
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -38,12 +41,24 @@ class DocumentTextExtractor(
     private val openStream: (Uri) -> InputStream,
 ) {
 
+    /**
+     * Text already extracted, by what the provider says the bytes are now (URI, modified time and
+     * size). A document queued again while those are unchanged (removed and added back, or its row
+     * lost) is not parsed again; an edited one has a new key and is. Only indexed text is kept: a
+     * failure or a skip is cheap to reach again and may not be the same next time.
+     */
+    private val extracted = BoundedCache<TextCacheKey, ExtractedText>(MAX_CACHED_BYTES) {
+        it.text.length * 2L + CACHED_OVERHEAD_BYTES
+    }
+
     suspend fun extract(document: DocumentEntity): ExtractedText = withContext(Dispatchers.IO) {
         // Checked before any open: a 2 GB scan should not be read just to be told it is too large.
         if (document.sizeBytes > MAX_SOURCE_BYTES) {
             return@withContext ExtractedText("", TextIndexState.TOO_LARGE)
         }
-        try {
+        val key = textCacheKey(context, document.uri.toUri())
+        key?.let { extracted.get(it) }?.let { return@withContext it }
+        val result = try {
             read(document) ?: ExtractedText("", TextIndexState.SKIPPED)
         } catch (cancellation: CancellationException) {
             throw cancellation
@@ -53,6 +68,8 @@ class DocumentTextExtractor(
             // Catches document parsing failures; JVM Errors (like OOM) are uncaught to avoid corrupted state.
             ExtractedText("", TextIndexState.FAILED)
         }
+        if (key != null && result.state == TextIndexState.INDEXED) extracted.put(key, result)
+        result
     }
 
     /** Null when the format has nothing to index at all. */
@@ -114,5 +131,11 @@ class DocumentTextExtractor(
 
         /** Bytes read for a text format, enough for [MAX_INDEX_CHARS] even at four bytes each. */
         const val MAX_SOURCE_TEXT_BYTES = 8 * 1024 * 1024
+
+        /** Heap held by remembered extractions: a few documents at the [MAX_INDEX_CHARS] cap. */
+        private const val MAX_CACHED_BYTES = 8L * 1024 * 1024
+
+        /** The object and its state beside the characters, so an empty text still costs something. */
+        private const val CACHED_OVERHEAD_BYTES = 64L
     }
 }

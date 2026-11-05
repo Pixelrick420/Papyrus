@@ -1439,11 +1439,18 @@ class ViewerViewModel(
      * One page of text plus boxes. The open platform engine is asked first — it is the reader's own
      * extractor, so TalkBack, selection and read-aloud see what the page actually draws — and only a
      * page it cannot answer falls back to PDFBox. A search read is reused unless it was past the
-     * box budget.
+     * box budget. Either reading is kept under the document's bytes, so a page is read once however
+     * many of them ask for it, and again only after the file changes.
      */
     suspend fun pageText(index: Int): PdfPageText? {
         pdfPageText?.getOrNull(index)?.takeIf { it.hasBoxes || it.text.isBlank() }?.let { return it }
-        return platformPageText(index) ?: pageSource()?.page(index)
+        val texts = pageSource()
+        texts?.cached(index, fromPlatform = true)?.let { return it }
+        platformPageText(index)?.let { read ->
+            texts?.remember(index, read)
+            return read
+        }
+        return texts?.page(index)
     }
 
     /** The rendered source's own text, or null when this engine has none or nothing is open as a PDF. */

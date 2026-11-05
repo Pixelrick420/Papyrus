@@ -70,6 +70,9 @@ class PdfPageText(
     /** True when glyph boxes were kept. A page past the extractor's budget holds text without them. */
     val hasBoxes: Boolean get() = boxes.isNotEmpty()
 
+    /** Roughly what this page holds on the heap: its characters, its glyph boxes and its line breaks. */
+    val approxBytes: Long get() = text.length * 2L + boxes.size * 4L + lineBreaks.size() / 8 + OBJECT_OVERHEAD_BYTES
+
     /**
      * A scan has no text, and a page whose characters all lack a box has nowhere for a finger to
      * land: having a box array is not enough, since every slot of it can be NaN.
@@ -235,6 +238,9 @@ class PdfPageText(
 
     companion object {
         const val MAX_RECTS_PER_PAGE = 2000
+
+        /** The object, its string and its arrays, apart from their contents. */
+        private const val OBJECT_OVERHEAD_BYTES = 96L
 
         private val WHITESPACE_RUN = Regex("\\s+")
 

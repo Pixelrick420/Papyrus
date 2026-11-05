@@ -33,12 +33,16 @@ object PdfTextExtractor {
     /** A shift off the baseline past this fraction of the font size starts a new line. */
     private const val LINE_SHIFT_FRACTION = 0.5f
 
-    /** One [PdfPageText] per page; a page that fails to parse is empty, not fatal. */
-    fun extract(document: PDDocument): List<PdfPageText> {
+    /**
+     * One [PdfPageText] per page; a page that fails to parse is empty, not fatal. A page [known]
+     * already has is taken as it is and not read again; it does not count against the box budget,
+     * which is for what this call itself reads.
+     */
+    fun extract(document: PDDocument, known: (Int) -> PdfPageText? = { null }): List<PdfPageText> {
         val collector = PageCollector()
         var boxedChars = 0
         return List(document.numberOfPages) { page ->
-            collect(collector, document, page, trackBoxes = boxedChars < MAX_BOXED_CHARS).also {
+            known(page) ?: collect(collector, document, page, trackBoxes = boxedChars < MAX_BOXED_CHARS).also {
                 boxedChars += if (collector.trackingBoxes) it.text.length else 0
             }
         }
