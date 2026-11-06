@@ -13,6 +13,7 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -44,6 +45,30 @@ object Routes {
     }
 }
 
+/**
+ * The viewer as a destination. The same definition serves the full-screen route and the pane beside
+ * the library, so a document opens with the same arguments in either.
+ */
+internal fun NavGraphBuilder.viewerDestination(onBack: () -> Unit) {
+    composable(
+        route = Routes.VIEWER,
+        arguments = listOf(
+            navArgument(Routes.ARG_DOCUMENT_ID) { type = NavType.LongType },
+            navArgument(Routes.ARG_QUERY) {
+                type = NavType.StringType
+                nullable = true
+                defaultValue = null
+            },
+            navArgument(Routes.ARG_CRASH_REPORT) {
+                type = NavType.BoolType
+                defaultValue = false
+            },
+        ),
+    ) {
+        ViewerScreen(onBack = onBack)
+    }
+}
+
 private const val NAV_DURATION_MS = 300
 
 /** Material's "emphasized decelerate": fast off the mark, long soft landing. */
@@ -62,6 +87,9 @@ fun PapyrusNavGraph(
     val context = LocalContext.current
     val app = context.applicationContext as MainApplication
     val leaveViewer: () -> Unit = { if (!navController.popBackStack()) activity?.finish() }
+    // Wide windows put the library and a document side by side; read here so a fold, a rotation or a
+    // resized window switches the layout live.
+    val twoPane = rememberTwoPane()
 
     LaunchedEffect(externalDocument) {
         val uri = externalDocument ?: return@LaunchedEffect
@@ -96,12 +124,18 @@ fun PapyrusNavGraph(
         },
     ) {
         composable(Routes.HOME) {
-            // Still registered for share intents and hardware keyboards, though no UI navigates here.
-            HomeScreen(
-                onOpenDocument = { id, query -> navController.navigate(Routes.viewer(id, query)) },
-                // Single-top so a double tap on the icon cannot stack two Settings screens.
-                onOpenSettings = { navController.navigate(Routes.SETTINGS) { launchSingleTop = true } },
-            )
+            // Single-top so a double tap on the icon cannot stack two Settings screens.
+            val openSettings: () -> Unit = { navController.navigate(Routes.SETTINGS) { launchSingleTop = true } }
+            if (twoPane) {
+                // A document opens beside the list, so nothing here navigates to the viewer route.
+                HomeWithViewer(onOpenSettings = openSettings)
+            } else {
+                // Still registered for share intents and hardware keyboards, though no UI navigates here.
+                HomeScreen(
+                    onOpenDocument = { id, query -> navController.navigate(Routes.viewer(id, query)) },
+                    onOpenSettings = openSettings,
+                )
+            }
         }
         composable(Routes.SETTINGS) {
             SettingsScreen(
@@ -118,22 +152,7 @@ fun PapyrusNavGraph(
                 },
             )
         }
-        composable(
-            route = Routes.VIEWER,
-            arguments = listOf(
-                navArgument(Routes.ARG_DOCUMENT_ID) { type = NavType.LongType },
-                navArgument(Routes.ARG_QUERY) {
-                    type = NavType.StringType
-                    nullable = true
-                    defaultValue = null
-                },
-                navArgument(Routes.ARG_CRASH_REPORT) {
-                    type = NavType.BoolType
-                    defaultValue = false
-                },
-            ),
-        ) {
-            ViewerScreen(onBack = leaveViewer)
-        }
+        // Full screen: from a phone's list, a handed-over document, or a crash report.
+        viewerDestination(onBack = leaveViewer)
     }
 }

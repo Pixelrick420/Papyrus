@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import com.tom_roush.pdfbox.pdmodel.PDDocument
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -170,8 +171,8 @@ class PdfPageTextSource(
      * Reads a page at a time instead of reusing [allPages]: that method keeps 4 floats per character
      * (16 bytes, up to about 32 MB for one document), which indexing has no use for.
      */
-    suspend fun allText(maxChars: Int): String? = lock.withLock {
-        if (closed) null else withContext(Dispatchers.IO) { readAllText(maxChars) }
+    suspend fun allText(maxChars: Int, dispatcher: CoroutineDispatcher = Dispatchers.IO): String? = lock.withLock {
+        if (closed) null else withContext(dispatcher) { readAllText(maxChars) }
     }
 
     /** Runs on the IO dispatcher, under [lock]. */

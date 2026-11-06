@@ -104,7 +104,7 @@ class MigrationsTest {
         assertEquals(Migrations.BASELINE_VERSION, Migrations.ALL.first().startVersion)
         assertEquals(Migrations.CURRENT_VERSION, Migrations.ALL.last().endVersion)
         assertEquals(
-            listOf(4 to 5, 5 to 6, 6 to 7, 7 to 8),
+            listOf(4 to 5, 5 to 6, 6 to 7, 7 to 8, 8 to 9),
             Migrations.ALL.map { it.startVersion to it.endVersion },
         )
     }
@@ -305,6 +305,33 @@ class MigrationsTest {
                     normalized in exported,
                 )
             }
+        }
+    }
+
+    @Test
+    fun `the 8 to 9 statement only adds a column with a default, so no indexed text is rewritten`() {
+        val additive = Regex("^ALTER TABLE `\\w+` ADD COLUMN ")
+        for (sql in Migrations.V8_TO_V9_SQL) {
+            assertTrue("not an additive statement: $sql", additive.containsMatchIn(sql))
+        }
+        // The default is what makes every row indexed before this version read back as "not recorded".
+        val alter = Migrations.V8_TO_V9_SQL.single()
+        assertTrue("missing the default: $alter", "`sourceModified` INTEGER NOT NULL DEFAULT 0" in alter)
+        // Not an UPDATE of the text table either: that would fire the FTS triggers for every row.
+        assertTrue("must not touch the rows: $alter", "UPDATE" !in alter)
+    }
+
+    @Test
+    fun `every 8 to 9 statement is exactly what the exported schema says`() {
+        val exported = schemaFile(9).readText().replace(Regex("\\s+"), " ")
+        for (sql in Migrations.V8_TO_V9_SQL) {
+            // Room exports the table as a whole, never the ALTER: the added column's own declaration
+            // is what must appear in it, exactly as the entity describes it.
+            val column = sql.replace(Regex("\\s+"), " ").substringAfter("ADD COLUMN ")
+            assertTrue(
+                "not in the exported document_text table, so the entity and the migration disagree:\n$column",
+                column in exported,
+            )
         }
     }
 }

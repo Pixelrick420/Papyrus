@@ -74,6 +74,8 @@ class SettingsViewModel(private val repository: SettingsRepository) : ViewModel(
 
     fun setRememberPosition(enabled: Boolean) = repository.setRememberPosition(enabled)
 
+    fun setContentIndexing(enabled: Boolean) = repository.setContentIndexing(enabled)
+
     fun setSyntaxHighlighting(enabled: Boolean) = repository.setSyntaxHighlighting(enabled)
 
     fun setColorblindMode(enabled: Boolean) = repository.setColorblindMode(enabled)
@@ -238,6 +240,13 @@ fun SettingsScreen(
                         description = stringResource(R.string.settings_remember_position_desc),
                         checked = settings.rememberPosition,
                         onCheckedChange = viewModel::setRememberPosition,
+                    )
+                    CardDivider()
+                    SwitchRow(
+                        title = stringResource(R.string.settings_content_indexing),
+                        description = stringResource(R.string.settings_content_indexing_desc),
+                        checked = settings.contentIndexing,
+                        onCheckedChange = viewModel::setContentIndexing,
                     )
                 }
 

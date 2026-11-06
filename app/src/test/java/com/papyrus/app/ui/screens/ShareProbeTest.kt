@@ -91,4 +91,20 @@ class ShareProbeTest {
 
         assertTrue(result.isEmpty())
     }
+
+    @Test
+    fun `every document is reported as probed once, readable or not`() = runBlocking {
+        val probed = AtomicInteger(0)
+
+        val result = probeShareable(
+            selected = listOf(1, 2, 3, 4, 5),
+            probe = { id -> if (id % 2 == 0) SafAccess.Missing else SafAccess.Readable },
+            type = { null },
+            onProbed = { probed.incrementAndGet() },
+        )
+
+        // Three readable, two not, and a count that reached five: the progress counts files, not shares.
+        assertEquals(3, result.size)
+        assertEquals(5, probed.get())
+    }
 }

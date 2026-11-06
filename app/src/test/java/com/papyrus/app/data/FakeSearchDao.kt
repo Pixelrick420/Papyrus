@@ -16,8 +16,21 @@ internal class FakeSearchDao : SearchDao {
     /** What [pending] will answer with, in order; each call takes up to its `limit` off the front. */
     val queue = mutableListOf<DocumentEntity>()
 
+    /**
+     * When true, [pending] behaves like the database: a document stays in the queue until a row has
+     * been written for it, rather than leaving it the moment it is read.
+     */
+    var queueUntilWritten = false
+
     /** Every `(version, limit)` pair [pending] was asked for, in order. */
     val pendingQueries = mutableListOf<Pair<Int, Int>>()
+
+    /** Every `(maxBytes, limit)` pair [pendingUpTo] was asked for, in order. */
+    val eagerPendingQueries = mutableListOf<Pair<Long, Int>>()
+
+    /** What [indexedWithModified] answers from, by document id; each call takes the rows after its `afterId`. */
+    var indexedRows = listOf<IndexedDocument>()
+    var indexedQueries = 0
 
     /** Ids [existingId] reported as still in the library; null means every id is. */
     var existingIds: Set<Long>? = null
@@ -42,9 +55,27 @@ internal class FakeSearchDao : SearchDao {
 
     override suspend fun pending(version: Int, limit: Int): List<DocumentEntity> {
         pendingQueries += version to limit
-        val batch = queue.take(limit)
-        repeat(batch.size) { queue.removeAt(0) }
+        return take(limit) { true }
+    }
+
+    override suspend fun pendingUpTo(version: Int, maxBytes: Long, limit: Int): List<DocumentEntity> {
+        eagerPendingQueries += maxBytes to limit
+        return take(limit) { it.sizeBytes <= maxBytes }
+    }
+
+    private fun take(limit: Int, include: (DocumentEntity) -> Boolean): List<DocumentEntity> {
+        if (queueUntilWritten) {
+            val done = written.mapTo(HashSet()) { it.documentId }
+            return queue.filter { it.id !in done && include(it) }.take(limit)
+        }
+        val batch = queue.filter(include).take(limit)
+        batch.forEach { queue.remove(it) }
         return batch
+    }
+
+    override suspend fun indexedWithModified(version: Int, afterId: Long, limit: Int): List<IndexedDocument> {
+        indexedQueries++
+        return indexedRows.filter { it.document.id > afterId }.sortedBy { it.document.id }.take(limit)
     }
 
     override suspend fun existingId(id: Long): Long? = if (existingIds?.contains(id) != false) id else null

@@ -113,7 +113,13 @@ an XML root, JSON or Objective-C.
   with search and sorting, survive rotation, and a **Clear filters** button appears when nothing matches.
 - **Star** a file from its row menu. Reopening it or re-granting access keeps the star.
 - **Thumbnails** for every document, with the format label until one is ready.
-- **Bulk select** on a long-press, then share the whole selection or remove it after a confirmation.
+- **Bulk select** on a long-press, then share the whole selection or remove it after a confirmation. A remove or a share
+  that takes longer than a moment shows how far it has got ("Removing 3 of 12") and ends with one announcement. A
+  single row's **Remove** can still be undone for a few seconds.
+- **Tablets and foldables** show the library and a document side by side once the window is at least 600dp wide and
+  480dp tall, so a phone, even on its side, keeps one pane. Tapping a document opens it beside the list without
+  moving the list's scroll position or search, and the open row is highlighted. Opened from outside (another app, a
+  crash report) a document still fills the window.
 - **Share** sends a read-only grant, so the receiving app cannot write, rename or delete the file.
 - **Remove** with a six-second **Undo**. Your own file on disk is never touched.
 - **File info**: name, format, size, provider type, page count for PDFs, both timestamps and the content URI.
@@ -190,6 +196,8 @@ an XML root, JSON or Objective-C.
   encrypted and the password is never stored.
 - **Remember reading position** reopens a library document where you stopped and shows progress on Home. Off, no
   position is read or written, and the stored ones apply again when it goes back on.
+- **Search inside documents** lets the library be read in the background so search can find words inside it. It is
+  paused while you read and under battery saver. Off, nothing new is read and what is already indexed stays searchable.
 - **Crash Reports** lists local crash logs by date and size, lets you open one in the viewer (read only, share
   button only), and deletes one after a confirmation dialog. Reports are ACRA JSON stored in app storage and
   nothing leaves the device.
@@ -297,13 +305,15 @@ flowchart LR
 The index is one Room row per document: URI, title, format, size, and the added and last-opened timestamps. Page count
 and MIME type are read live, so they are not stored.
 
-The current schema is 8. Version 4 is the oldest supported one, since earlier versions were test-only. Version 5 adds a
+The current schema is 9. Version 4 is the oldest supported one, since earlier versions were test-only. Version 5 adds a
 `reading_progress` table with one row per document, a `bookmarks` table, and `documents.isFavourite`. Version 6 adds
 the content index: a `document_text` table holding each document's extracted text and its index state, and a
 `document_text_fts` FTS4 table over it that stores only the inverted index, so no text is kept twice. Version 7 adds a
 `highlights` table: a row per highlighted run of text on a page, holding its boxes on the page and no text. Version 8
 gives a highlight a `kind` and an optional `note`, so the same table holds plain highlights and notes, and adds a
-`pdf_outlines` table that caches a PDF's bookmarks against the file's size and the outline reader's version. Each of
+`pdf_outlines` table that caches a PDF's bookmarks against the file's size and the outline reader's version. Version 9 adds
+`document_text.sourceModified`, the modified time the provider gave when a file's text was read, so an edited file can
+be told from an untouched one without opening it. Each of
 `reading_progress`, `bookmarks`, `highlights`, `document_text` and `pdf_outlines` references `documents(id)` with
 `ON DELETE CASCADE`, so deleting a document removes its rows. `documents` rows are never written with
 `OnConflictStrategy.REPLACE`, because that deletes and reinserts, which would cascade the children away. Migrations are
@@ -377,6 +387,7 @@ erDiagram
         INTEGER sourceSize
         INTEGER indexedAt
         INTEGER indexVersion
+        INTEGER sourceModified
     }
 
     DOCUMENT_TEXT_FTS {
@@ -388,11 +399,22 @@ erDiagram
 ### Content search
 
 A background indexer fills `document_text` for every document that has no text yet, a batch of 16 at a time, and runs
-again whenever the library changes. The database is its queue, so an interrupted pass simply resumes. Text is
-extracted by the same readers the viewer uses, so a search and find-in-file see the same words. Each document ends in
-one of four states: `INDEXED`, `FAILED` (the reader threw; never retried), `SKIPPED` (encrypted, DRM-protected, or no
-reader for the format) or `TOO_LARGE` (the file is over 64 MB and is never opened). At most 1,000,000 characters are
-kept per document. Raising `SearchIndexer.INDEX_VERSION` re-indexes everything.
+again whenever a document is added, removed or changes size. The database is its queue, so an interrupted pass simply
+resumes. Text is extracted by the same readers the viewer uses, so a search and find-in-file see the same words. Each
+document ends in one of four states: `INDEXED`, `FAILED` (the reader threw; never retried unless the file changes),
+`SKIPPED` (encrypted, DRM-protected, or no reader for the format) or `TOO_LARGE` (the file is over 64 MB and is never
+opened). At most 1,000,000 characters are kept per document. Raising `SearchIndexer.INDEX_VERSION` re-indexes
+everything.
+
+Only new or changed documents are read. A document is changed when the size the library records for it differs from
+the one its text was read at, which is what opening a file again after an edit does, or when the provider reports
+another last-modified time than the one stored with its text. The second check asks the provider for that one number
+and never opens the file, and it runs once per process, 3 seconds after launch. A row written before schema 9 has no
+stored time and is checked by size only until it is read again.
+
+The indexer works at low priority, on a thread of its own, one document at a time. It pauses between two documents
+while a viewer is in the foreground, whether full screen or beside the list, and while battery saver is on, and picks
+the queue up again when both end. Settings has a switch that turns it off; documents already indexed stay searchable.
 
 A query is split into words (anything that is not a letter or digit separates them, at most 8 are kept, and a
 single-character word is dropped when a longer one is present), each quoted for FTS4 so nothing typed can act as an
@@ -433,7 +455,8 @@ after the last keystroke before it queries, and a search that fails is reported 
 - CSV and TSV tables are not read aloud.
 - Content search only finds text that is in the index. Encrypted and DRM-protected documents are not indexed, nor are
   files over 64 MB, and a document is indexed up to its first 1,000,000 characters. A scanned PDF with no text layer is
-  indexed as empty. A document is searchable by content only once the indexer has reached it.
+  indexed as empty. A document is searchable by content only once the indexer has reached it, which can take a while on a large library
+  and does not happen while you read, under battery saver, or with **Search inside documents** off.
 - Size and shape caps: Markdown up to 6 MB, a table up to 8 MB and 200,000 cells. A table that hits a cap ends with the
   viewer's incomplete-document notice instead of failing.
 - Plain text and code have no size cap in UTF-8 and the single-byte encodings: a large file is indexed once and decoded

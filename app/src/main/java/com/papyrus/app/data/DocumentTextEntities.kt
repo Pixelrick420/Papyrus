@@ -59,6 +59,14 @@ data class DocumentTextEntity(
     val sourceSize: Long,
     val indexedAt: Long,
     val indexVersion: Int,
+    /**
+     * When the provider said the file was last modified as its text was read, or 0 when it did not.
+     * The indexer reads the text again only when the provider now says something else, which is how
+     * an edited file is told apart from an untouched one without opening it. Added in schema
+     * version 9; a row from before it holds 0 and is never re-read for its modified time.
+     */
+    @ColumnInfo(defaultValue = "0")
+    val sourceModified: Long = 0,
 )
 
 /**

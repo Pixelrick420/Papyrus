@@ -82,6 +82,7 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
@@ -173,6 +174,8 @@ data class HomeUiState(
     val contentHits: Map<Long, ContentHit> = emptyMap(),
     /** A content search for [query] is still running, so an empty [results] may yet fill. */
     val searching: Boolean = false,
+    /** A multi-file Remove or Share that has run long enough to show, or null; see [trackBulk]. */
+    val bulkProgress: BulkProgress? = null,
 )
 
 /**
@@ -184,7 +187,11 @@ data class HomeUiState(
 internal data class ContentSearch(val query: String, val hits: Map<Long, ContentHit>?)
 
 /** What [HomeViewModel.uiState] needs beyond the library, its filters and its selection. */
-private data class AsyncState(val pendingRemovalToken: Long?, val content: ContentSearch?)
+private data class AsyncState(
+    val pendingRemovalToken: Long?,
+    val content: ContentSearch?,
+    val bulkProgress: BulkProgress?,
+)
 
 /**
  * What the list shows for one set of inputs. Pure and independent of the flows it reads from, so
@@ -198,6 +205,7 @@ internal fun buildHomeUiState(
     hidden: Set<Long>,
     contentHits: Map<Long, ContentHit> = emptyMap(),
     searching: Boolean = false,
+    bulkProgress: BulkProgress? = null,
 ): HomeUiState {
     val needle = params.query.trim()
     // Hiding first keeps `libraryEmpty` and the results agreeing with what the screen actually shows.
@@ -216,6 +224,7 @@ internal fun buildHomeUiState(
         hasStarred = documents.any { it.isStarred },
         contentHits = contentHits,
         searching = searching,
+        bulkProgress = bulkProgress,
     )
 }
 
@@ -228,19 +237,23 @@ private const val CONTENT_SEARCH_DEBOUNCE_MILLIS = 250L
 /**
  * The share pre-flight for several files, concurrently but at most [limit] at a time: each document
  * is probed once, and only a readable one is also asked its type. The result keeps [selected]'s
- * order and holds the readable documents paired with the type they reported.
+ * order and holds the readable documents paired with the type they reported. [onProbed] is called
+ * once per document when its probe has finished, readable or not, for a progress count.
  */
 internal suspend fun <T> probeShareable(
     selected: List<T>,
     limit: Int = SHARE_PROBE_PARALLELISM,
     probe: suspend (T) -> SafAccess,
     type: suspend (T) -> String?,
+    onProbed: () -> Unit = {},
 ): List<Pair<T, String?>> = coroutineScope {
     val gate = Semaphore(limit)
     selected.map { document ->
         async(Dispatchers.IO) {
             gate.withPermit {
-                if (probe(document) == SafAccess.Readable) document to type(document) else null
+                val probed = if (probe(document) == SafAccess.Readable) document to type(document) else null
+                onProbed()
+                probed
             }
         }
     }.awaitAll().filterNotNull()
@@ -280,6 +293,12 @@ class HomeViewModel(
 
     private val _selection = MutableStateFlow(SelectionState())
 
+    /** The multi-file Remove or Share in progress, once it is slow enough to show; see [trackBulk]. */
+    private val _bulkProgress = MutableStateFlow<BulkProgress?>(null)
+
+    /** The multi-file Remove or Share running now, so a second tap cannot start another over it. */
+    private var bulkJob: Job? = null
+
     /**
      * Rows removed with an undo window; hidden only until it ends, then committed in [commitRemoval].
      */
@@ -313,11 +332,11 @@ class HomeViewModel(
     }
 
     /**
-     * The two inputs that are neither the library nor its filters, paired so the typed five-argument
-     * [combine] below still fits them.
+     * The inputs that are neither the library nor its filters, gathered into one so the typed
+     * five-argument [combine] below still fits them.
      */
-    private val asyncState = combine(pendingRemoval.pending, contentSearch) { pending, content ->
-        AsyncState(pending?.token, content)
+    private val asyncState = combine(pendingRemoval.pending, contentSearch, _bulkProgress) { pending, content, bulk ->
+        AsyncState(pending?.token, content, bulk)
     }
 
     /**
@@ -341,6 +360,7 @@ class HomeViewModel(
             hidden = hidden,
             contentHits = answer?.hits.orEmpty(),
             searching = params.query.isNotEmpty() && answer?.hits == null,
+            bulkProgress = async.bulkProgress,
         )
     }
         .distinctUntilChanged()
@@ -502,25 +522,39 @@ class HomeViewModel(
         pendingRemoval.flush()
     }
 
-    /** Bulk remove only, which is immediate because the confirmation dialog already asked. */
+    /**
+     * Bulk remove only, which is immediate because the confirmation dialog already asked. Shows its
+     * progress if it runs long, and says once, when it is done, how many files went.
+     */
     fun removeSelected() {
         val selected = selectedDocuments()
-        if (selected.isEmpty()) return
-        viewModelScope.launch {
-            var removed = 0
-            for (document in selected) {
-                try {
-                    repository.remove(document)
-                    removed++
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    // Skip the one that failed; the rest still go.
+        if (selected.isEmpty() || bulkRunning()) return
+        bulkJob = viewModelScope.launch {
+            val removed = trackBulk(BulkAction.REMOVE, selected.size, ::publishBulk) { progress ->
+                var count = 0
+                for (document in selected) {
+                    try {
+                        repository.remove(document)
+                        count++
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        // Skip the one that failed; the rest still go.
+                    }
+                    progress.advance()
                 }
+                count
             }
+            // Sent after the progress is gone, and only once: the snackbar is the announcement.
             if (removed > 0) _messages.send(UiText(R.string.home_removed_count, removed))
             exitSelection()
         }
+    }
+
+    private fun bulkRunning(): Boolean = bulkJob?.isActive == true
+
+    private fun publishBulk(progress: BulkProgress?) {
+        _bulkProgress.value = progress
     }
 
     /** Probed first: a chooser opened over a dead grant works, then fails inside the chosen app. */
@@ -536,16 +570,23 @@ class HomeViewModel(
         }
     }
 
-    /** Unreadable files are skipped and reported rather than failing the whole share. */
+    /**
+     * Unreadable files are skipped and reported rather than failing the whole share. Checking the
+     * files is the slow part, so that is what shows its progress; the chooser that follows is the
+     * system's own and announces itself.
+     */
     fun shareSelected(onShare: (Intent) -> Unit) {
         val selected = selectedDocuments()
-        if (selected.isEmpty()) return
-        viewModelScope.launch {
-            val readable = probeShareable(
-                selected,
-                probe = { repository.probeShare(it) },
-                type = { repository.mimeTypeOf(it) },
-            )
+        if (selected.isEmpty() || bulkRunning()) return
+        bulkJob = viewModelScope.launch {
+            val readable = trackBulk(BulkAction.SHARE, selected.size, ::publishBulk) { progress ->
+                probeShareable(
+                    selected,
+                    probe = { repository.probeShare(it) },
+                    type = { repository.mimeTypeOf(it) },
+                    onProbed = progress::advance,
+                )
+            }
             if (readable.isEmpty()) {
                 _messages.send(UiText(R.string.home_share_none))
                 return@launch
@@ -592,6 +633,8 @@ private val TitleInset = 24.dp
 fun HomeScreen(
     onOpenDocument: (Long, String?) -> Unit,
     onOpenSettings: () -> Unit,
+    /** The document open beside the list on a wide window, drawn as the current row; null on a phone. */
+    openDocumentId: Long? = null,
     viewModel: HomeViewModel = viewModel(factory = AppViewModelProvider.Factory),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -735,6 +778,7 @@ fun HomeScreen(
                 SelectionHeader(
                     count = state.selection.ids.size,
                     allSelected = state.results.isNotEmpty() && state.results.all { it.id in state.selection.ids },
+                    progress = state.bulkProgress,
                     onExit = { viewModel.exitSelection() },
                     onToggleAll = { viewModel.toggleSelectAll(state.results.mapTo(mutableSetOf()) { it.id }) },
                     onShare = shareSelection,
@@ -808,6 +852,7 @@ fun HomeScreen(
                             loader = viewModel.thumbnailLoader,
                             selecting = state.selection.active,
                             selected = doc.id in state.selection.ids,
+                            open = doc.id == openDocumentId,
                             menuOpen = menuFor == doc.id,
                             onMenuOpenChange = { open -> menuFor = if (open) doc.id else null },
                             searchQuery = state.query,
@@ -903,59 +948,72 @@ fun HomeScreen(
     }
 }
 
-/** Takes the search pill's slot while selecting: back, count, remove/share/select-all. */
+/**
+ * Takes the search pill's slot while selecting: back, count, remove/share/select-all. While a bulk
+ * action runs ([progress]) the count gives way to how far it has got, and the buttons that would
+ * start another are off.
+ */
 @Composable
-private fun SelectionHeader(
+internal fun SelectionHeader(
     count: Int,
     allSelected: Boolean,
+    progress: BulkProgress?,
     onExit: () -> Unit,
     onToggleAll: () -> Unit,
     onShare: () -> Unit,
     onRemove: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val hasSelection = count > 0
+    val busy = progress != null
+    val hasSelection = count > 0 && !busy
     val selectAllLabel = stringResource(R.string.home_select_all)
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .heightIn(min = ControlHeight)
-            // 4dp inside the screen's 16dp list inset puts the checkbox on the row checkboxes' centre line.
-            .padding(end = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        IconButton(onClick = onExit) {
-            Icon(
-                Icons.AutoMirrored.Filled.ArrowBack,
-                contentDescription = stringResource(R.string.action_back),
-            )
-        }
-        Text(
-            text = stringResource(R.string.home_selected_count, count),
-            style = MaterialTheme.typography.titleMedium,
+    // A Box so the bar can sit on the header's bottom edge without making it taller when it appears.
+    Box(modifier.fillMaxWidth()) {
+        Row(
             modifier = Modifier
-                .weight(1f)
-                .padding(horizontal = 4.dp),
-        )
-        IconButton(onClick = onRemove, enabled = hasSelection) {
-            Icon(
-                painter = painterResource(R.drawable.ic_remove),
-                contentDescription = stringResource(R.string.action_remove),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                .fillMaxWidth()
+                .heightIn(min = ControlHeight)
+                // 4dp inside the screen's 16dp list inset puts the checkbox on the row checkboxes' centre line.
+                .padding(end = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconButton(onClick = onExit) {
+                Icon(
+                    Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = stringResource(R.string.action_back),
+                )
+            }
+            Text(
+                text = progress?.label() ?: stringResource(R.string.home_selected_count, count),
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(horizontal = 4.dp),
+            )
+            IconButton(onClick = onRemove, enabled = hasSelection) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_remove),
+                    contentDescription = stringResource(R.string.action_remove),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            IconButton(onClick = onShare, enabled = hasSelection) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_share),
+                    contentDescription = stringResource(R.string.action_share),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Checkbox(
+                checked = allSelected,
+                onCheckedChange = { onToggleAll() },
+                enabled = !busy,
+                modifier = Modifier.semantics { contentDescription = selectAllLabel },
             )
         }
-        IconButton(onClick = onShare, enabled = hasSelection) {
-            Icon(
-                painter = painterResource(R.drawable.ic_share),
-                contentDescription = stringResource(R.string.action_share),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+        if (progress != null) {
+            BulkProgressBar(progress, Modifier.align(Alignment.BottomCenter).fillMaxWidth())
         }
-        Checkbox(
-            checked = allSelected,
-            onCheckedChange = { onToggleAll() },
-            modifier = Modifier.semantics { contentDescription = selectAllLabel },
-        )
     }
 }
 
@@ -1071,6 +1129,8 @@ private fun DocumentRow(
     loader: ThumbnailLoader,
     selecting: Boolean,
     selected: Boolean,
+    /** This is the document showing beside the list. Not the same as [selected], which is for a bulk action. */
+    open: Boolean,
     menuOpen: Boolean,
     onMenuOpenChange: (Boolean) -> Unit,
     onClick: () -> Unit,
@@ -1119,6 +1179,8 @@ private fun DocumentRow(
         modifier = modifier
             .fillMaxWidth()
             .clip(shape)
+            // Only said when true, so a phone's rows read exactly as they did.
+            .then(if (open) Modifier.semantics { this.selected = true } else Modifier)
             .combinedClickable(
                 onClickLabel = stringResource(
                     when {
@@ -1132,10 +1194,10 @@ private fun DocumentRow(
                 onLongClick = onLongPress,
             ),
         shape = shape,
-        color = if (selected) {
-            MaterialTheme.colorScheme.surfaceContainerHighest
-        } else {
-            MaterialTheme.colorScheme.surfaceContainerLow
+        color = when {
+            selected -> MaterialTheme.colorScheme.surfaceContainerHighest
+            open -> MaterialTheme.colorScheme.secondaryContainer
+            else -> MaterialTheme.colorScheme.surfaceContainerLow
         },
     ) {
         Row(

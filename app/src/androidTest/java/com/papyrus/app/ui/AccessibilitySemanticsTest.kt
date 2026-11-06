@@ -12,6 +12,7 @@ import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
@@ -33,6 +34,9 @@ import com.papyrus.app.data.LibrarySort
 import com.papyrus.app.tts.TtsState
 import com.papyrus.app.ui.components.SearchPill
 import com.papyrus.app.ui.components.SnippetText
+import com.papyrus.app.ui.screens.BulkAction
+import com.papyrus.app.ui.screens.BulkProgress
+import com.papyrus.app.ui.screens.SelectionHeader
 import com.papyrus.app.ui.screens.SortFilterButton
 import com.papyrus.app.ui.viewer.FileInfoSheet
 import com.papyrus.app.ui.viewer.FindInFileBar
@@ -251,5 +255,51 @@ class AccessibilitySemanticsTest {
             val bounds = node.touchBoundsInRoot
             bounds.width >= minimum && bounds.height >= minimum
         }
+    }
+
+    @Test
+    fun selectionHeaderReadsItsProgressAsOneLabelAndNeverAnnouncesItAsItMoves() {
+        rule.setContent {
+            SelectionHeader(
+                count = 12,
+                allSelected = false,
+                progress = BulkProgress(BulkAction.REMOVE, done = 3, total = 12),
+                onExit = {},
+                onToggleAll = {},
+                onShare = {},
+                onRemove = {},
+            )
+        }
+
+        rule.onNodeWithText("Removing 3 of 12").assertExists()
+        // The count gives way to the progress rather than sitting beside it.
+        rule.onAllNodesWithText("12 selected").assertCountEquals(0)
+        // Neither action can be started again over the one that is running.
+        rule.onNodeWithContentDescription("Remove").assertIsNotEnabled()
+        rule.onNodeWithContentDescription("Share").assertIsNotEnabled()
+        // TalkBack announces a progress bar as it moves and a live region whenever it changes, which
+        // would read a running tally and then the finish a second time. The finish is announced once,
+        // by the snackbar, so nothing here may be either.
+        rule.onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsProperties.ProgressBarRangeInfo)).assertCountEquals(0)
+        rule.onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsProperties.LiveRegion)).assertCountEquals(0)
+    }
+
+    @Test
+    fun selectionHeaderWithNoActionRunningShowsTheCountAndItsActions() {
+        rule.setContent {
+            SelectionHeader(
+                count = 12,
+                allSelected = false,
+                progress = null,
+                onExit = {},
+                onToggleAll = {},
+                onShare = {},
+                onRemove = {},
+            )
+        }
+
+        rule.onNodeWithText("12 selected").assertExists()
+        rule.onNodeWithContentDescription("Remove").assertIsEnabled()
+        rule.onNodeWithContentDescription("Share").assertIsEnabled()
     }
 }

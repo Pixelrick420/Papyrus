@@ -39,6 +39,7 @@ class HomeUiStateTest {
         hidden: Set<Long> = emptySet(),
         contentHits: Map<Long, ContentHit> = emptyMap(),
         searching: Boolean = false,
+        bulkProgress: BulkProgress? = null,
     ) = buildHomeUiState(
         all,
         ViewParams(query, filter, LibrarySort.LAST_OPENED),
@@ -47,6 +48,7 @@ class HomeUiStateTest {
         hidden,
         contentHits,
         searching,
+        bulkProgress,
     )
 
     private fun hit(documentId: Long, snippet: String = "the paper trail") = ContentHit(
@@ -207,5 +209,26 @@ class HomeUiStateTest {
 
         assertTrue(state.contentHits.isEmpty())
         assertFalse(state.searching)
+    }
+
+    @Test
+    fun `a bulk action's progress reaches the state, and is absent when none is running`() {
+        assertNull(homeState().bulkProgress)
+
+        val progress = BulkProgress(BulkAction.REMOVE, done = 3, total = 12)
+        assertEquals(progress, homeState(bulkProgress = progress).bulkProgress)
+    }
+
+    @Test
+    fun `progress does not change what the list shows`() {
+        val idle = homeState(selection = SelectionState().start(1))
+        val busy = homeState(
+            selection = SelectionState().start(1),
+            bulkProgress = BulkProgress(BulkAction.SHARE, done = 0, total = 1),
+        )
+
+        assertEquals(idle.results, busy.results)
+        assertEquals(idle.selection, busy.selection)
+        assertEquals(idle.libraryEmpty, busy.libraryEmpty)
     }
 }

@@ -19,6 +19,9 @@
     <string name="home_row_select">Select</string>
     <string name="home_row_deselect">Deselect</string>
     <string name="home_removed_count">Removed %1$d files</string>
+    <string name="home_bulk_removing">Removing %1$d of %2$d</string>
+    <string name="home_bulk_sharing">Preparing %1$d of %2$d</string>
+    <string name="home_pane_placeholder">Choose a document from the list to read it here</string>
     <string name="home_remove_confirm_title">Remove from list?</string>
     <plurals name="home_remove_confirm_body">
         <item quantity="one">This action will remove %1$d item</item>
@@ -304,6 +307,10 @@ access</string>
     <string
         name="settings_remember_position_desc"
     >Reopen library documents where you stopped and show your progress on Home. Only numbers are stored, on this device.</string>
+    <string name="settings_content_indexing">Search inside documents</string>
+    <string
+        name="settings_content_indexing_desc"
+    >Read documents in the background so search can find words inside them. Paused while you read and when battery saver is on. Off, documents already read stay searchable.</string>
     <string name="settings_section_crash_reports">Crash Reports</string>
     <string name="settings_crash_reports_title">Crash Reports</string>
     <string name="settings_crash_reports_desc">View, share, and manage crash logs</string>

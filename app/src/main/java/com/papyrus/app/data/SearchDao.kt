@@ -1,6 +1,7 @@
 package com.papyrus.app.data
 
 import androidx.room.Dao
+import androidx.room.Embedded
 import androidx.room.Insert
 import androidx.room.Query
 import androidx.room.Transaction
@@ -24,6 +25,13 @@ data class TextSummaryRow(
     val sourceSize: Long,
 )
 
+/** A library document whose indexed text carries a recorded modified time, with that time. */
+data class IndexedDocument(
+    @Embedded val document: DocumentEntity,
+    /** [DocumentTextEntity.sourceModified] of its text row; never 0 here. */
+    val sourceModified: Long,
+)
+
 /**
  * One excerpt request's answer. [snippet] carries [SearchDao.SNIPPET_START] and
  * [SearchDao.SNIPPET_END] around each matched word.
@@ -43,14 +51,42 @@ data class SnippetRow(
 interface SearchDao {
 
     /**
-     * The next documents to index, oldest first: no text row, or one written by an older index
-     * version. Bounded by [limit] so one pass never has to hold the whole library at once.
+     * The next documents to index, oldest first: no text row, one written by an older index version,
+     * or one written for a file of another size than the library now records for it (the document was
+     * opened again after an edit). Bounded by [limit] so one pass never has to hold the whole library
+     * at once. Writing a row stores the size it was read at, so a document leaves this list once indexed.
      */
     @Query(
         "SELECT d.* FROM documents d LEFT JOIN document_text t ON t.rowid = d.id " +
-            "WHERE t.rowid IS NULL OR t.indexVersion < :version ORDER BY d.id LIMIT :limit",
+            "WHERE t.rowid IS NULL OR t.indexVersion < :version OR t.sourceSize != d.sizeBytes " +
+            "ORDER BY d.id LIMIT :limit",
     )
     suspend fun pending(version: Int, limit: Int): List<DocumentEntity>
+
+    /**
+     * The same queue as [pending], narrowed to documents of at most [maxBytes] so large files cannot
+     * hide small ones.
+     */
+    @Query(
+        "SELECT d.* FROM documents d LEFT JOIN document_text t ON t.rowid = d.id " +
+            "WHERE (t.rowid IS NULL OR t.indexVersion < :version OR t.sourceSize != d.sizeBytes) " +
+            "AND d.sizeBytes <= :maxBytes " +
+            "ORDER BY d.id LIMIT :limit",
+    )
+    suspend fun pendingUpTo(version: Int, maxBytes: Long, limit: Int): List<DocumentEntity>
+
+    /**
+     * Up to [limit] indexed documents after [afterId], by id, that have a recorded modified time: the
+     * ones whose file can be checked for an edit without being opened. Paged by id rather than by
+     * offset because the pass rewrites rows as it goes. Reads no text.
+     */
+    @Query(
+        "SELECT d.*, t.sourceModified AS sourceModified FROM documents d " +
+            "JOIN document_text t ON t.rowid = d.id " +
+            "WHERE t.indexVersion = :version AND t.sourceModified != 0 AND d.id > :afterId " +
+            "ORDER BY d.id LIMIT :limit",
+    )
+    suspend fun indexedWithModified(version: Int, afterId: Long, limit: Int): List<IndexedDocument>
 
     /** The row again if it is still in the library; the indexer re-checks before writing. */
     @Query("SELECT id FROM documents WHERE id = :id")

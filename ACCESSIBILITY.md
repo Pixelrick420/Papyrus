@@ -17,6 +17,9 @@ with the script at the end.
 - An image that has alt text (EPUB, DOCX, ODT) reads that text. An image without it is skipped.
 - The find-in-file match counter is a polite live region: stepping through matches announces
   "2 of 7" without moving focus.
+- A multi-file Remove or Share that runs long enough to show progress says so in one text node
+  ("Removing 3 of 12") and nothing else: the bar is not exposed and no live region is involved, so the
+  steps are not read out as they pass. The result is announced once, by the snackbar, when it ends.
 - Interactive controls have a touch target of at least 48dp. Material's
   `minimumInteractiveComponentSize` supplies this; the tests assert the touch bounds rather than the
   visual size.
@@ -61,6 +64,15 @@ device face down if you want to remove visual cues.
    toggles once; there is no second checkbox stop.
 6. Empty, no-match and no-results-for-filters states are each announced once with their action
    button last.
+7. **Bulk Remove and Share:** with a long selection, confirm Remove. Nothing is read while it runs. Swipe
+   to the header: it reads "Removing 3 of 12" (Share reads "Preparing 3 of 12") and Remove, Share and
+   Select all read as dimmed. When it ends the snackbar announces "Removed 12 files" once, and selection
+   closes. A single row's Remove still offers Undo.
+8. **Tablet or unfolded foldable** (window at least 600dp wide and 480dp tall): the list is on the left and
+   the document on the right. Before one is chosen the right side reads "Choose a document from the list to
+   read it here". Once one is open its row in the list reads "selected". Back closes the open document, and a
+   second Back leaves the app. A phone, including one on its side, keeps the single pane and the script
+   above unchanged.
 
 ### Viewer
 

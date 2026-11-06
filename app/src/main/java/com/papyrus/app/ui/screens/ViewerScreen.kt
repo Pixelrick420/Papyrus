@@ -80,8 +80,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.papyrus.app.MainApplication
 import com.papyrus.app.R
 import com.papyrus.app.data.DocumentFormat
 import com.papyrus.app.data.Highlight
@@ -166,6 +168,12 @@ fun ViewerScreen(
     }
     // The process can be killed once the app is in the background, and onCleared is not guaranteed then.
     LifecycleEventEffect(Lifecycle.Event.ON_STOP) { viewModel.flushPosition() }
+    // While this viewer is in the foreground the background indexer keeps out of its way.
+    val readers = remember(context) { (context.applicationContext as MainApplication).readerPresence }
+    LifecycleResumeEffect(readers) {
+        readers.entered()
+        onPauseOrDispose { readers.left() }
+    }
     val snackbar = remember { SnackbarHostState() }
     val selectionScope = rememberCoroutineScope()
     val chooserTitle = stringResource(R.string.action_share)

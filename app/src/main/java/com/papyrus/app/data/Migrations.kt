@@ -11,7 +11,7 @@ object Migrations {
     const val BASELINE_VERSION = 4
 
     /** The version in `@Database`; raise it together with a migration in [ALL]. */
-    const val CURRENT_VERSION = 8
+    const val CURRENT_VERSION = 9
 
     /**
      * 4 -> 5. Every statement only adds, so existing rows keep their ids and the files under
@@ -132,8 +132,23 @@ object Migrations {
         }
     }
 
+    /**
+     * 8 -> 9. Records when a file was last modified as its text was indexed, so the indexer can tell an
+     * edited document from an untouched one. The column only adds: every existing row keeps its text
+     * and reads back 0, which means "not recorded" and is never compared.
+     */
+    internal val V8_TO_V9_SQL: List<String> = listOf(
+        "ALTER TABLE `document_text` ADD COLUMN `sourceModified` INTEGER NOT NULL DEFAULT 0",
+    )
+
+    private val MIGRATION_8_9 = object : Migration(8, 9) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            V8_TO_V9_SQL.forEach { db.execSQL(it) }
+        }
+    }
+
     /** Hand-written migrations, oldest first. */
-    val ALL: Array<Migration> = arrayOf(MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
+    val ALL: Array<Migration> = arrayOf(MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
 
     /**
      * Problems with [migrations] as a chain from [baseline] to [current], one message each, empty when

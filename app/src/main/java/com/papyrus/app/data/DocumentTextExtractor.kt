@@ -15,6 +15,7 @@ import com.papyrus.app.viewer.TextCacheKey
 import com.papyrus.app.viewer.readTextString
 import com.papyrus.app.viewer.textCacheKey
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.InputStream
@@ -38,6 +39,11 @@ data class ExtractedText(
  */
 class DocumentTextExtractor(
     private val context: Context,
+    /**
+     * Where the reading runs. The indexer gives it a thread of its own at background priority, so a
+     * pass over a large library never competes with the viewer for the shared IO threads.
+     */
+    private val dispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val openStream: (Uri) -> InputStream,
 ) {
 
@@ -51,7 +57,7 @@ class DocumentTextExtractor(
         it.text.length * 2L + CACHED_OVERHEAD_BYTES
     }
 
-    suspend fun extract(document: DocumentEntity): ExtractedText = withContext(Dispatchers.IO) {
+    suspend fun extract(document: DocumentEntity): ExtractedText = withContext(dispatcher) {
         // Checked before any open: a 2 GB scan should not be read just to be told it is too large.
         if (document.sizeBytes > MAX_SOURCE_BYTES) {
             return@withContext ExtractedText("", TextIndexState.TOO_LARGE)
@@ -87,7 +93,7 @@ class DocumentTextExtractor(
         if (PdfEncryption.status { openStream(uri) } != PdfEncryption.NOT_ENCRYPTED) {
             return ExtractedText("", TextIndexState.SKIPPED)
         }
-        val text = PdfPageTextSource(context, uri).use { source -> source.allText(MAX_INDEX_CHARS) }
+        val text = PdfPageTextSource(context, uri).use { source -> source.allText(MAX_INDEX_CHARS, dispatcher) }
             ?: return ExtractedText("", TextIndexState.FAILED)
         return indexable(text)
     }

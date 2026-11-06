@@ -35,8 +35,9 @@ class OpenTextDocumentsTest : E2eTest() {
     fun markdownIsRenderedInsteadOfShownAsSource() {
         app.openFromAnotherApp(Fixtures.text("report.md", MARKDOWN))
 
-        // The whole document is one text view, not a Compose `Text`, so one node holds everything drawn as text.
-        val shown = app.find(app.textContains("Quarterly report"), AppDriver.LOAD_TIMEOUT_MS).text
+        // The whole document is one text view, not a Compose `Text`, so one node holds everything drawn
+        // as text. Start from a body phrase: the heading is its own virtual node with only its text.
+        val shown = app.find(app.textContains("Revenue grew 12%"), AppDriver.LOAD_TIMEOUT_MS).text
         assertTrue(shown, shown.contains("Revenue grew 12% this quarter, see the full notes."))
         assertTrue(shown, shown.contains("Cancelled item"))
         assertTrue(shown, shown.contains("Energy follows"))
@@ -70,7 +71,7 @@ class OpenTextDocumentsTest : E2eTest() {
     fun aFileThatIsNotTextIsReportedAsUnsupported() {
         app.openFromAnotherApp(Fixtures.bytes("blob.bin", ByteArray(64) { it.toByte() }))
 
-        app.assertShown(app.text("This file type isn't supported."), AppDriver.LOAD_TIMEOUT_MS)
+        app.assertShown(app.text("Papyrus can't open this type of file."), AppDriver.LOAD_TIMEOUT_MS)
         app.tap(app.text("Back"))
         app.assertGone(app.anything(), AppDriver.UI_TIMEOUT_MS)
     }
