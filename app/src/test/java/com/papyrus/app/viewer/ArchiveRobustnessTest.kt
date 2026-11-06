@@ -42,6 +42,7 @@ class ArchiveRobustnessTest {
             .extract(OfficeFixtures.streamFactory(bytes))
 
     /** Runs [read]; true if it returned, false if it threw one of the two types callers catch, a failure otherwise. */
+    @Suppress("TooGenericExceptionCaught") // The "otherwise" case must be caught and reported, not escape the helper.
     private fun survives(label: String, read: () -> Unit): Boolean = try {
         read()
         true

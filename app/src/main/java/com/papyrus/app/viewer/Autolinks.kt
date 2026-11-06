@@ -44,12 +44,16 @@ internal object Autolinks {
     }
 
     private fun findEmails(text: String, into: MutableList<Autolink>) {
+        // Both matches arrive in ascending order, so one pointer replaces a per-email scan of every URL.
         val urls = into.toList()
+        var nextUrl = 0
         for (match in EMAIL.findAll(text)) {
             val start = match.range.first
             val end = match.range.last + 1
+            while (nextUrl < urls.size && urls[nextUrl].end <= start) nextUrl++
+            val overlapsUrl = nextUrl < urls.size && urls[nextUrl].start < end
             // `https://user@host.com/` is one URL, not a URL and an address.
-            if (urls.none { start < it.end && it.start < end }) into.add(Autolink(start, end, "mailto:${match.value}"))
+            if (!overlapsUrl) into.add(Autolink(start, end, "mailto:${match.value}"))
         }
     }
 
