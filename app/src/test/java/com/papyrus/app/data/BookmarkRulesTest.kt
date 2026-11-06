@@ -5,6 +5,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import kotlin.random.Random
 
 class BookmarkRulesTest {
 
@@ -189,5 +190,182 @@ class BookmarkRulesTest {
     @Test
     fun `a format with no viewer has no bookmarks`() {
         assertEquals(emptyList<Bookmark>(), listOf(row(1, page(1))).forFormat(DocumentFormat.UNKNOWN))
+    }
+
+    // --- Label truncation ---
+
+    @Test
+    fun `a label of exactly the maximum is kept whole and one more is cut`() {
+        val exact = "x".repeat(MAX_BOOKMARK_LABEL_CHARS)
+
+        assertEquals(exact, cleanBookmarkLabel(exact, "Page 3"))
+        assertEquals(exact, cleanBookmarkLabel(exact + "y", "Page 3"))
+        assertEquals(MAX_BOOKMARK_LABEL_CHARS, cleanBookmarkLabel("x".repeat(10_000), "Page 3").length)
+    }
+
+    @Test
+    fun `the cut keeps the start of the label, not the end`() {
+        val label = "start-" + "m".repeat(200) + "-end"
+
+        val cut = cleanBookmarkLabel(label, "Page 3")
+
+        assertTrue(cut.startsWith("start-"))
+        assertFalse(cut.endsWith("-end"))
+    }
+
+    @Test
+    fun `a cut that lands on a space does not leave it at the end`() {
+        // 79 letters, a space as the 80th character, then more text.
+        val cut = cleanBookmarkLabel("x".repeat(MAX_BOOKMARK_LABEL_CHARS - 1) + " tail", "Page 3")
+
+        assertEquals("x".repeat(MAX_BOOKMARK_LABEL_CHARS - 1), cut)
+    }
+
+    @Test
+    fun `leading whitespace and runs of it do not count against the length`() {
+        val label = "   " + "word  ".repeat(10)
+
+        assertEquals("word ".repeat(9) + "word", cleanBookmarkLabel(label, "Page 3"))
+        val long = " ".repeat(500) + "x".repeat(MAX_BOOKMARK_LABEL_CHARS)
+        assertEquals("x".repeat(MAX_BOOKMARK_LABEL_CHARS), cleanBookmarkLabel(long, "Page 3"))
+    }
+
+    @Test
+    fun `every kind of line break becomes one space`() {
+        assertEquals("a b c d", cleanBookmarkLabel("a\nb\r\nc\rd", "Page 3"))
+        assertEquals("a b", cleanBookmarkLabel("a\t\t \n b", "Page 3"))
+    }
+
+    @Test
+    fun `a label cleaned twice is the same as cleaned once`() {
+        val random = Random(11)
+        val pieces = listOf("a", "bb", " ", "  ", "\n", "\t", "é", "日本", "x".repeat(40))
+        repeat(300) {
+            val raw = buildString { repeat(random.nextInt(0, 12)) { append(pieces[random.nextInt(pieces.size)]) } }
+            val once = cleanBookmarkLabel(raw, "Page 3")
+
+            assertEquals(raw, once, cleanBookmarkLabel(once, "Page 3"))
+            assertTrue(once.length <= MAX_BOOKMARK_LABEL_CHARS)
+            assertEquals(once, once.trim())
+        }
+    }
+
+    @Test
+    fun `the fallback is used as given, and is not cut or cleaned`() {
+        assertEquals("Page 3", cleanBookmarkLabel("\n", "Page 3"))
+        assertEquals("a  b", cleanBookmarkLabel("", "a  b"))
+    }
+
+    // --- Duplicate detection ---
+
+    @Test
+    fun `duplicate detection is symmetric`() {
+        val random = Random(3)
+        fun place(): ReadingLocation {
+            val kind = LocationKind.entries[random.nextInt(LocationKind.entries.size)]
+            return ReadingLocation(kind, random.nextInt(0, 6) * 40, random.nextInt(0, 21) / 20f)
+        }
+        repeat(2_000) {
+            val a = place()
+            val b = place()
+
+            assertEquals("$a vs $b", a.isSameBookmarkSpot(b), b.isSameBookmarkSpot(a))
+            assertTrue("$a is not its own duplicate", a.isSameBookmarkSpot(a))
+        }
+    }
+
+    @Test
+    fun `a chunk is a duplicate within two lines and not beyond`() {
+        assertTrue(chunk(5, 0.50f).isSameBookmarkSpot(chunk(5, 0.54f)))
+        assertTrue(chunk(5, 0.50f).isSameBookmarkSpot(chunk(5, 0.46f)))
+        assertFalse(chunk(5, 0.50f).isSameBookmarkSpot(chunk(5, 0.56f)))
+        assertFalse(chunk(5, 0.50f).isSameBookmarkSpot(chunk(5, 0.44f)))
+    }
+
+    @Test
+    fun `a block is a duplicate within a tenth and not beyond`() {
+        assertTrue(block(2, 0.50f).isSameBookmarkSpot(block(2, 0.59f)))
+        assertTrue(block(2, 0.50f).isSameBookmarkSpot(block(2, 0.41f)))
+        assertFalse(block(2, 0.50f).isSameBookmarkSpot(block(2, 0.61f)))
+        assertFalse(block(2, 0.50f).isSameBookmarkSpot(block(2, 0.39f)))
+    }
+
+    @Test
+    fun `a markdown offset is a duplicate at exactly the tolerance and not one past it`() {
+        assertTrue(char(1_000).isSameBookmarkSpot(char(1_100)))
+        assertTrue(char(1_000).isSameBookmarkSpot(char(900)))
+        assertFalse(char(1_000).isSameBookmarkSpot(char(1_101)))
+        assertFalse(char(1_000).isSameBookmarkSpot(char(899)))
+        assertTrue(char(0).isSameBookmarkSpot(char(100)))
+    }
+
+    @Test
+    fun `offsets at the ends of the int range do not overflow into a false match`() {
+        assertFalse(char(Int.MIN_VALUE).isSameBookmarkSpot(char(Int.MAX_VALUE)))
+        assertFalse(char(0).isSameBookmarkSpot(char(Int.MAX_VALUE)))
+        assertTrue(char(Int.MIN_VALUE).isSameBookmarkSpot(char(Int.MIN_VALUE + 100)))
+    }
+
+    @Test
+    fun `the fraction of a place is ignored for a page and for an offset`() {
+        assertTrue(page(4, 0.0f).isSameBookmarkSpot(page(4, 1.0f)))
+        assertTrue(ReadingLocation(LocationKind.CHAR, 500, 0.0f).isSameBookmarkSpot(ReadingLocation(LocationKind.CHAR, 500, 1f)))
+    }
+
+    @Test
+    fun `a spot of another kind never blocks a new one, even on the same numbers`() {
+        val existing = listOf(chunk(3, 0.5f), block(3, 0.5f), char(3))
+
+        assertEquals(BookmarkDecision.ADD, decideBookmark(existing, page(3)))
+    }
+
+    @Test
+    fun `any one match among many is enough`() {
+        val existing = (0 until 50).map { page(it) } + chunk(7, 0.5f)
+
+        assertEquals(BookmarkDecision.ALREADY_BOOKMARKED, decideBookmark(existing, chunk(7, 0.52f)))
+        assertEquals(BookmarkDecision.ADD, decideBookmark(existing, chunk(8, 0.52f)))
+    }
+
+    // --- The per-document cap ---
+
+    @Test
+    fun `the cap is exact at one below, at, and above the limit`() {
+        val below = (0 until MAX_BOOKMARKS_PER_DOCUMENT - 1).map { page(it) }
+        val at = below + page(MAX_BOOKMARKS_PER_DOCUMENT)
+        val above = at + (1..5).map { page(1_000 + it) }
+        val candidate = page(9_999)
+
+        assertEquals(BookmarkDecision.ADD, decideBookmark(below, candidate))
+        assertEquals(BookmarkDecision.LIMIT_REACHED, decideBookmark(at, candidate))
+        assertEquals(BookmarkDecision.LIMIT_REACHED, decideBookmark(above, candidate))
+    }
+
+    @Test
+    fun `the cap is two hundred`() {
+        assertEquals(200, MAX_BOOKMARKS_PER_DOCUMENT)
+        assertEquals(80, MAX_BOOKMARK_LABEL_CHARS)
+    }
+
+    @Test
+    fun `a duplicate is reported before the cap at every size past it`() {
+        for (extra in 0..3) {
+            val full = (0 until MAX_BOOKMARKS_PER_DOCUMENT + extra).map { page(it) }
+
+            assertEquals(BookmarkDecision.ALREADY_BOOKMARKED, decideBookmark(full, page(0, 0.9f)))
+        }
+    }
+
+    @Test
+    fun `a limit of zero refuses everything that is new`() {
+        assertEquals(BookmarkDecision.LIMIT_REACHED, decideBookmark(emptyList(), page(0), limit = 0))
+    }
+
+    @Test
+    fun `every spot a limited list holds can be told apart from every spot it lacks`() {
+        val held = (0 until 5).map { page(it) }
+
+        for (unit in 0 until 5) assertEquals(BookmarkDecision.ALREADY_BOOKMARKED, decideBookmark(held, page(unit), limit = 5))
+        for (unit in 5 until 10) assertEquals(BookmarkDecision.LIMIT_REACHED, decideBookmark(held, page(unit), limit = 5))
     }
 }
