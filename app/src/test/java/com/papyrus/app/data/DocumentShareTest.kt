@@ -82,4 +82,119 @@ class DocumentShareTest {
         assertEquals("text/csv", shareMimeType(DocumentFormat.CSV, null))
         assertEquals("text/tab-separated-values", shareMimeType(DocumentFormat.CSV, "text/tab-separated-values"))
     }
+
+    // --- Tables: every format against every kind of provider answer ---
+
+    /** The first type each format declares, written out so the table does not borrow the code under test. */
+    private val declared = mapOf(
+        DocumentFormat.PDF to "application/pdf",
+        DocumentFormat.MARKDOWN to "text/markdown",
+        DocumentFormat.TEXT to "text/plain",
+        DocumentFormat.CSV to "text/csv",
+        DocumentFormat.DOC to "application/msword",
+        DocumentFormat.DOCX to "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        DocumentFormat.ODT to "application/vnd.oasis.opendocument.text",
+        DocumentFormat.EPUB to "application/epub+zip",
+        DocumentFormat.CODE to null,
+        DocumentFormat.UNKNOWN to null,
+    )
+
+    @Test
+    fun `the table covers every format`() {
+        assertEquals(DocumentFormat.entries.toSet(), declared.keys)
+    }
+
+    @Test
+    fun `a placeholder or missing type shares as the format's own type, or the wildcard`() {
+        val placeholders = listOf(
+            null, "", "   ", "\t\n", "application/octet-stream", "application/binary", "*/*",
+            " application/octet-stream ", " */* ",
+        )
+        for ((format, own) in declared) {
+            for (reported in placeholders) {
+                assertEquals("$format reported as '$reported'", own ?: "*/*", shareMimeType(format, reported))
+            }
+        }
+    }
+
+    @Test
+    fun `a text-plain label is a mislabel for every format that is not plain text`() {
+        for ((format, own) in declared) {
+            val expected = when (own) {
+                null, "text/plain" -> "text/plain"
+                else -> own
+            }
+            assertEquals("$format reported as text/plain", expected, shareMimeType(format, "text/plain"))
+            assertEquals("$format reported as padded text/plain", expected, shareMimeType(format, "  text/plain "))
+        }
+    }
+
+    @Test
+    fun `a specific type other than text-plain is kept for every format`() {
+        val specific = listOf("application/pdf", "image/png", "application/x-custom", "text/html", "text/csv")
+        for (format in DocumentFormat.entries) {
+            for (reported in specific) {
+                assertEquals("$format reported as $reported", reported, shareMimeType(format, reported))
+            }
+        }
+    }
+
+    @Test
+    fun `a mislabel is not repaired by case`() {
+        // The provider's answer is compared as written: only the exact placeholder spellings are placeholders.
+        assertEquals("Text/Plain", shareMimeType(DocumentFormat.MARKDOWN, "Text/Plain"))
+        assertEquals("APPLICATION/OCTET-STREAM", shareMimeType(DocumentFormat.PDF, "APPLICATION/OCTET-STREAM"))
+    }
+
+    /** What a selection of files declares: each file's own type first, then the selection's. */
+    private fun selection(vararg files: Pair<DocumentFormat, String?>): String =
+        sharedMimeType(files.map { (format, reported) -> shareMimeType(format, reported) })
+
+    @Test
+    fun `a mixed selection narrows only when every file resolves to the same type`() {
+        // Same format, however the provider labelled each file.
+        assertEquals(
+            "application/pdf",
+            selection(
+                DocumentFormat.PDF to "application/pdf",
+                DocumentFormat.PDF to "application/octet-stream",
+                DocumentFormat.PDF to null,
+            ),
+        )
+        // A mislabelled markdown file and a correct one.
+        assertEquals(
+            "text/markdown",
+            selection(DocumentFormat.MARKDOWN to "text/plain", DocumentFormat.MARKDOWN to "text/markdown"),
+        )
+        // Plain text and code are both text/plain once resolved.
+        assertEquals("text/plain", selection(DocumentFormat.TEXT to "text/plain", DocumentFormat.CODE to "text/plain"))
+    }
+
+    @Test
+    fun `a selection of different types declares the wildcard`() {
+        assertEquals("*/*", selection(DocumentFormat.PDF to null, DocumentFormat.DOCX to null))
+        assertEquals("*/*", selection(DocumentFormat.TEXT to "text/plain", DocumentFormat.MARKDOWN to "text/plain"))
+        // A file with nothing to say about itself is the wildcard, which no other type equals.
+        assertEquals("*/*", selection(DocumentFormat.PDF to "application/pdf", DocumentFormat.UNKNOWN to null))
+        assertEquals("*/*", selection(DocumentFormat.UNKNOWN to null, DocumentFormat.CODE to null))
+    }
+
+    @Test
+    fun `a selection of unidentifiable files is the wildcard, which is also what it declares`() {
+        assertEquals("*/*", selection(DocumentFormat.UNKNOWN to null, DocumentFormat.UNKNOWN to "application/octet-stream"))
+    }
+
+    @Test
+    fun `the order of a selection does not change what it declares`() {
+        val files = listOf(
+            DocumentFormat.PDF to "application/pdf",
+            DocumentFormat.PDF to null,
+            DocumentFormat.DOCX to "application/octet-stream",
+        )
+        val forward = selection(*files.toTypedArray())
+        val backward = selection(*files.reversed().toTypedArray())
+
+        assertEquals("*/*", forward)
+        assertEquals(forward, backward)
+    }
 }
