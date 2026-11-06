@@ -270,8 +270,9 @@ omission. The failing tests are listed in the job summary and as warnings, and `
 The DOCX/ODT, EPUB and DOC extractors run against archives the tests build in memory (kxml2 stands in for the platform's
 `XmlPullParser`, and the `.doc` fixtures assemble the OLE2 container and piece table from scratch). detekt is scoped to
 dead code and correctness, with the deliberate broad catches baselined so they stay visible. CI runs `check` (unit tests, lint
-and detekt, with their reports uploaded as the `check-reports` artifact), `assembleRelease` and the emulator suite on
-every push to `main`; a `v*` tag runs the unit tests and publishes the signed release.
+and detekt, with their reports uploaded as the `check-reports` artifact) and `assembleRelease` on every pull request to
+`main`, and those plus the emulator suite on every push to `main`; a `v*` tag runs the unit tests and publishes the signed
+release.
 
 ## Architecture
 
@@ -498,6 +499,9 @@ detekt, the same task CI runs. The screenshots this README shows live in
 
 ## Releases
 
+- Every pull request to `main` runs the unit tests and assembles an unsigned release APK uploaded as a build artifact,
+  so a broken build shows up before the merge. The emulator suite is left to the push to `main`, to keep runner cost
+  down.
 - Every push to `main` runs the unit tests and the emulator suite, and assembles an unsigned release APK uploaded as a
   build artifact. Failing emulator tests are tolerated unless a configured share of the suite did not pass; see
   [Test](#test).

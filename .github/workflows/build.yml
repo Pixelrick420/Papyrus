@@ -4,6 +4,8 @@ on:
   push:
     branches: [main]
     tags: ["v*"]
+  pull_request:
+    branches: [main]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -78,7 +80,8 @@ jobs:
   instrumentation-tests:
     # Keep this job id: setup-gradle's cache key includes it, so renaming orphans the remote cache.
     name: Emulator tests
-    if: github.ref_type == 'branch'
+    # Pushes to main only: a pull request gets the unit tests and the build, not the costly emulator run.
+    if: github.ref_type == 'branch' && github.event_name == 'push'
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
