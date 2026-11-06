@@ -20,6 +20,14 @@ the end-to-end suite, and both are checked by hand with the script at the end.
 - A multi-file Remove or Share that runs long enough to show progress says so in one text node
   ("Removing 3 of 12") and nothing else: the bar is not exposed and no live region is involved, so the
   steps are not read out as they pass. The result is announced once, by the snackbar, when it ends.
+- The read-aloud bar is six labelled stops and says nothing on its own. Play/pause reads the action it will
+  take, the scroll lock reads "Lock scrolling" or "Unlock scrolling", and after an engine failure everything
+  that needs the engine reads as disabled while Play stays.
+- A snackbar is one polite live region holding its message and its Undo button, so it is announced once.
+  A second message waits for the first to leave rather than sharing its region.
+- The empty right-hand pane of the two-pane layout is one plain text node: no action, no live region.
+- The controls of each bar are reached in a fixed order: the selection header, the search row, the find bar
+  and the read-aloud bar are checked by `FocusOrderTest`, and the screens by the script below.
 - Interactive controls have a touch target of at least 48dp. Material's
   `minimumInteractiveComponentSize` supplies this; the tests assert the touch bounds rather than the
   visual size.
@@ -121,6 +129,34 @@ device face down if you want to remove visual cues.
     the password is required or was wrong. A file that is moved, deleted or no longer accessible
     offers "Pick file" to choose it again.
 
+### Focus order
+
+`FocusOrderTest` pins the order inside each bar. These steps cover what a bar test cannot: the first
+stop of a whole screen and the order across its parts. Swipe right from the top of the screen to walk it.
+
+1. **Home:** first stop is the "Papyrus" title (a heading), then Settings, the search field, the sort
+   button, each document row from the top, and the add-files button last.
+2. **Into selection:** long press a row. The header takes the search row's place and the order becomes
+   title, Settings, Back, the count, Remove, Share, Select all, then the rows. The add-files button is gone.
+   Focus stays on the row that was pressed, which now reads "checked".
+3. **Out of selection:** press Back in the header. The search row returns and focus lands on a stop, never
+   on nothing; the order is the one in step 1.
+4. **Two-pane:** the whole list pane comes first (step 1), then the right pane. With no document open the
+   right pane is the one prompt. After a row is opened, the swipe that leaves the last row enters the
+   viewer's Back button. Closing the document returns the right pane to the prompt and leaves focus in the
+   list.
+5. **Viewer:** Back, the title (a heading), Share where it is offered, then the overflow menu. Opening Find
+   puts focus in the find field and raises the keyboard; the order is the field, the counter, Previous match,
+   Next match, Close find, then the document. Read aloud sits between the header and the document: skip
+   back, play or pause, skip forward, the scroll lock, speed, stop. With a text selection the overflow menu
+   gives way to Copy, then Highlight and Remove highlight where offered, then Clear selection.
+6. **Settings and Crash reports:** Back, the title (a heading), then the first section heading and its rows
+   in the order they appear.
+7. **Sheets and dialogs:** the first stop is the title (a heading). A dialog with a field (Go to, password,
+   a bookmark's name) puts focus in the field and raises the keyboard.
+8. **Hardware keyboard:** Tab moves through the same controls in the same order and skips text that is not
+   a control, such as the selection count.
+
 ### Known limits
 
 - PDF pages are bitmaps, so TalkBack reads their extracted text as one stop per page rather than
@@ -135,7 +171,8 @@ device face down if you want to remove visual cues.
 
 ## Adding a check
 
-Add a test to `AccessibilitySemanticsTest` next to the existing one for that component. Use
+Add a test to `AccessibilitySemanticsTest` next to the existing one for that component. A change to the order
+a bar's controls are reached in goes in `FocusOrderTest`, which reads the order off the semantics tree. Use
 `onNodeWithContentDescription` for the label and `assertHasClickAction` for the action. For touch
 targets use the test's `minTouchTarget`, which reads touch bounds; a plain height assertion would
 measure the visual size and fail on Material controls that are visually smaller than 48dp.
