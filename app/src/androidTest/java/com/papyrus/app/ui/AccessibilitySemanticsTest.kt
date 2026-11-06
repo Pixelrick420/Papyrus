@@ -5,8 +5,13 @@ import android.text.SpannableString
 import android.text.Spanned
 import android.widget.TextView
 import androidx.annotation.StringRes
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -17,6 +22,7 @@ import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.hasAnyDescendant
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasSetTextAction
@@ -26,6 +32,7 @@ import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -55,6 +62,9 @@ import com.papyrus.app.viewer.OutlineEntry
 import io.noties.markwon.core.MarkwonTheme
 import io.noties.markwon.core.spans.HeadingSpan
 import java.io.File
+import java.util.concurrent.atomic.AtomicReference
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -450,4 +460,85 @@ class AccessibilitySemanticsTest {
     }
 
     private fun isButton(): SemanticsMatcher = SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button)
+
+    @Test
+    fun snackbarMessageIsAnnouncedOnceAsOnePoliteLiveRegion() {
+        val message = string(R.string.home_removed_count, 12)
+        val host = SnackbarHostState()
+        lateinit var scope: CoroutineScope
+        rule.setContent {
+            scope = rememberCoroutineScope()
+            SnackbarHost(host)
+        }
+
+        rule.runOnIdle { scope.launch { host.showSnackbar(message, duration = SnackbarDuration.Indefinite) } }
+        waitForText(message)
+
+        // The bulk Remove ends with this and only this: one message, in one live region.
+        rule.onAllNodesWithText(message).assertCountEquals(1)
+        rule.onAllNodes(politeLiveRegion()).assertCountEquals(1)
+        rule.onNode(politeLiveRegion()).assert(hasText(message) or hasAnyDescendant(hasText(message)))
+    }
+
+    @Test
+    fun snackbarUndoIsOneButtonInsideTheSameAnnouncement() {
+        val message = string(R.string.home_removed)
+        val undo = string(R.string.action_undo)
+        val host = SnackbarHostState()
+        val result = AtomicReference<SnackbarResult?>(null)
+        lateinit var scope: CoroutineScope
+        rule.setContent {
+            scope = rememberCoroutineScope()
+            SnackbarHost(host)
+        }
+
+        rule.runOnIdle {
+            scope.launch {
+                result.set(host.showSnackbar(message, actionLabel = undo, duration = SnackbarDuration.Indefinite))
+            }
+        }
+        waitForText(message)
+
+        rule.onAllNodesWithText(undo).assertCountEquals(1)
+        rule.onNodeWithText(undo).assertHasClickAction().assert(isButton())
+        // The action is read with the message, not announced as a second live region.
+        rule.onAllNodes(politeLiveRegion()).assertCountEquals(1)
+        rule.onNode(politeLiveRegion()).assert(hasAnyDescendant(hasText(undo)) or hasText(undo))
+
+        rule.onNodeWithText(undo).performClick()
+        rule.waitUntil(timeoutMillis = 5_000) { result.get() == SnackbarResult.ActionPerformed }
+    }
+
+    @Test
+    fun aQueuedSnackbarWaitsForTheOneOnScreenAndNeverSharesItsLiveRegion() {
+        val first = string(R.string.home_removed)
+        val second = string(R.string.home_removed_count, 3)
+        val host = SnackbarHostState()
+        lateinit var scope: CoroutineScope
+        rule.setContent {
+            scope = rememberCoroutineScope()
+            SnackbarHost(host)
+        }
+
+        rule.runOnIdle {
+            scope.launch { host.showSnackbar(first, duration = SnackbarDuration.Indefinite) }
+            scope.launch { host.showSnackbar(second, duration = SnackbarDuration.Indefinite) }
+        }
+        waitForText(first)
+        rule.onAllNodesWithText(second).assertCountEquals(0)
+        rule.onAllNodes(politeLiveRegion()).assertCountEquals(1)
+
+        rule.runOnIdle { host.currentSnackbarData?.dismiss() }
+        waitForText(second)
+        // The old one fades out as the new one fades in, so wait for it to leave before counting.
+        rule.waitUntil(timeoutMillis = 5_000) { rule.onAllNodesWithText(first).fetchSemanticsNodes().isEmpty() }
+        rule.onAllNodes(politeLiveRegion()).assertCountEquals(1)
+    }
+
+    private fun waitForText(text: String) {
+        rule.waitUntil(timeoutMillis = 5_000) { rule.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty() }
+    }
+
+    private fun politeLiveRegion(): SemanticsMatcher =
+        SemanticsMatcher.expectValue(SemanticsProperties.LiveRegion, LiveRegionMode.Polite)
 }
