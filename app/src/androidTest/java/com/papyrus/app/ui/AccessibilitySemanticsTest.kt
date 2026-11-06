@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import android.text.SpannableString
 import android.text.Spanned
 import android.widget.TextView
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
@@ -36,6 +37,7 @@ import com.papyrus.app.ui.components.SearchPill
 import com.papyrus.app.ui.components.SnippetText
 import com.papyrus.app.ui.screens.BulkAction
 import com.papyrus.app.ui.screens.BulkProgress
+import com.papyrus.app.ui.screens.BulkProgressBar
 import com.papyrus.app.ui.screens.SelectionHeader
 import com.papyrus.app.ui.screens.SortFilterButton
 import com.papyrus.app.ui.viewer.FileInfoSheet
@@ -301,5 +303,63 @@ class AccessibilitySemanticsTest {
         rule.onNodeWithText("12 selected").assertExists()
         rule.onNodeWithContentDescription("Remove").assertIsEnabled()
         rule.onNodeWithContentDescription("Share").assertIsEnabled()
+    }
+
+    @Test
+    fun bulkProgressBarIsDrawnForTheEyesOnly() {
+        rule.setContent {
+            BulkProgressBar(BulkProgress(BulkAction.SHARE, done = 5, total = 12))
+        }
+
+        // A bar TalkBack can see is announced as it moves; this one must leave the tree.
+        rule.onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsProperties.ProgressBarRangeInfo)).assertCountEquals(0)
+        rule.onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsProperties.LiveRegion)).assertCountEquals(0)
+    }
+
+    @Test
+    fun bulkProgressSteppingReplacesTheLabelInPlaceAndHandsBackTheCount() {
+        val progress = mutableStateOf<BulkProgress?>(BulkProgress(BulkAction.SHARE, done = 3, total = 12))
+        rule.setContent {
+            SelectionHeader(
+                count = 12,
+                allSelected = false,
+                progress = progress.value,
+                onExit = {},
+                onToggleAll = {},
+                onShare = {},
+                onRemove = {},
+            )
+        }
+
+        rule.onNodeWithText("Preparing 3 of 12").assertExists()
+        rule.runOnIdle { progress.value = BulkProgress(BulkAction.SHARE, done = 4, total = 12) }
+        // Each step swaps the one text node; none is added beside it and none is a live region.
+        rule.onNodeWithText("Preparing 4 of 12").assertExists()
+        rule.onAllNodesWithText("Preparing 3 of 12").assertCountEquals(0)
+        rule.onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsProperties.LiveRegion)).assertCountEquals(0)
+
+        rule.runOnIdle { progress.value = null }
+        rule.onNodeWithText("12 selected").assertExists()
+        rule.onAllNodesWithText("Preparing 4 of 12").assertCountEquals(0)
+        rule.onNodeWithContentDescription("Remove").assertIsEnabled()
+        rule.onNodeWithContentDescription("Share").assertIsEnabled()
+        rule.onNodeWithContentDescription("Select all").assertIsEnabled()
+    }
+
+    @Test
+    fun selectAllIsDimmedWhileABulkActionRuns() {
+        rule.setContent {
+            SelectionHeader(
+                count = 12,
+                allSelected = false,
+                progress = BulkProgress(BulkAction.REMOVE, done = 3, total = 12),
+                onExit = {},
+                onToggleAll = {},
+                onShare = {},
+                onRemove = {},
+            )
+        }
+
+        rule.onNodeWithContentDescription("Select all").assertIsNotEnabled()
     }
 }
