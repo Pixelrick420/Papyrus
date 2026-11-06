@@ -46,6 +46,7 @@ import com.papyrus.app.data.LibrarySort
 import com.papyrus.app.tts.TtsState
 import com.papyrus.app.ui.components.SearchPill
 import com.papyrus.app.ui.components.SnippetText
+import com.papyrus.app.ui.navigation.PanePlaceholder
 import com.papyrus.app.ui.screens.BulkAction
 import com.papyrus.app.ui.screens.BulkProgress
 import com.papyrus.app.ui.screens.BulkProgressBar
@@ -541,4 +542,17 @@ class AccessibilitySemanticsTest {
 
     private fun politeLiveRegion(): SemanticsMatcher =
         SemanticsMatcher.expectValue(SemanticsProperties.LiveRegion, LiveRegionMode.Polite)
+
+    @Test
+    fun twoPaneEmptyStateIsOneInertTextNode() {
+        val prompt = string(R.string.home_pane_placeholder)
+        rule.setContent { PanePlaceholder() }
+
+        rule.onAllNodesWithText(prompt).assertCountEquals(1)
+        // Nothing to press and nothing to announce on its own: it is read when focus reaches it.
+        rule.onAllNodes(hasClickAction()).assertCountEquals(0)
+        rule.onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsProperties.LiveRegion)).assertCountEquals(0)
+        rule.onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsProperties.ContentDescription)).assertCountEquals(0)
+        rule.onNodeWithText(prompt).assert(!SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading))
+    }
 }

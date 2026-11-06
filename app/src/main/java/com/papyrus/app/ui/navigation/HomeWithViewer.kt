@@ -168,7 +168,7 @@ private const val PANE_FADE_MS = 150
 
 /** What the viewer's side says before a document is chosen. */
 @Composable
-private fun PanePlaceholder() {
+internal fun PanePlaceholder() {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Text(
             text = stringResource(R.string.home_pane_placeholder),
