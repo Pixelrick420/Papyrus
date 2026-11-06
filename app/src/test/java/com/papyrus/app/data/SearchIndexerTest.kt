@@ -474,4 +474,136 @@ class SearchIndexerTest {
 
         assertTrue("the second changed document was never read", 2L in extracted)
     }
+
+    // --- Eager indexing against the real gate and the setting ---
+
+    private val enabled = MutableStateFlow(true)
+    private val reading = MutableStateFlow(false)
+    private val batterySaver = MutableStateFlow(false)
+
+    private val small = 4_096L
+    private val large = SearchIndexer.EAGER_MAX_BYTES + 1
+
+    /** An indexer behind the real [IndexingGate], with the eager limit left at its default. */
+    private fun behindGate() = SearchIndexer(
+        dao = dao,
+        extract = { doc -> extracted += doc.id; ExtractedText("text", TextIndexState.INDEXED) },
+        library = emptyFlow<Unit>(),
+        mayIndex = IndexingGate(enabled, reading, batterySaver).open,
+        startDelayMillis = 300,
+    )
+
+    @Test
+    fun `a small file is indexed with the setting off`() {
+        enabled.value = false
+        dao.queue += document(1, size = small)
+
+        whileIndexing(behindGate()) {
+            repeat(20) { yield() }
+            delay(50)
+        }
+
+        assertEquals(listOf(1L), dao.written.map { it.documentId })
+    }
+
+    @Test
+    fun `a small file is indexed while a document is open`() {
+        reading.value = true
+        dao.queue += document(1, size = small)
+
+        whileIndexing(behindGate()) {
+            repeat(20) { yield() }
+            delay(50)
+        }
+
+        assertEquals(listOf(1L), dao.written.map { it.documentId })
+    }
+
+    @Test
+    fun `a small file is indexed under battery saver`() {
+        batterySaver.value = true
+        dao.queue += document(1, size = small)
+
+        whileIndexing(behindGate()) {
+            repeat(20) { yield() }
+            delay(50)
+        }
+
+        assertEquals(listOf(1L), dao.written.map { it.documentId })
+    }
+
+    @Test
+    fun `a file at the eager limit is small and one byte over is not`() {
+        enabled.value = false
+        dao.queue += listOf(
+            document(1, size = SearchIndexer.EAGER_MAX_BYTES),
+            document(2, size = large),
+        )
+
+        whileIndexing(behindGate()) {
+            repeat(20) { yield() }
+            delay(50)
+        }
+
+        assertEquals(listOf(1L), extracted)
+    }
+
+    @Test
+    fun `a large file waits while the gate is closed for any one reason`() {
+        for (close in listOf<() -> Unit>(
+            { enabled.value = false },
+            { reading.value = true },
+            { batterySaver.value = true },
+        )) {
+            enabled.value = true
+            reading.value = false
+            batterySaver.value = false
+            close()
+            extracted.clear()
+            dao.queue.clear()
+            dao.queue += document(1, size = large)
+            dao.pendingQueries.clear()
+
+            whileIndexing(behindGate()) {
+                repeat(20) { yield() }
+                delay(400)
+            }
+
+            assertTrue("a large file was read behind a closed gate", extracted.isEmpty())
+            assertTrue("the gated queue was read behind a closed gate", dao.pendingQueries.isEmpty())
+        }
+    }
+
+    @Test
+    fun `a large file is indexed once the gate opens`() {
+        reading.value = true
+        dao.queue += document(1, size = large)
+
+        whileIndexing(behindGate()) {
+            delay(400)
+            assertTrue(extracted.isEmpty())
+
+            reading.value = false
+            delay(100)
+        }
+
+        assertEquals(listOf(1L), extracted)
+    }
+
+    @Test
+    fun `a small file next to a large one is read at once and the large one later`() {
+        reading.value = true
+        dao.queue += listOf(document(1, size = large), document(2, size = small))
+
+        whileIndexing(behindGate()) {
+            repeat(20) { yield() }
+            delay(50)
+            assertEquals(listOf(2L), extracted)
+
+            reading.value = false
+            delay(400)
+        }
+
+        assertEquals(listOf(2L, 1L), extracted)
+    }
 }
