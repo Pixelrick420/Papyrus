@@ -1,8 +1,8 @@
 # Accessibility
 
 Papyrus targets TalkBack first: every control is one focus stop, says what it is, and says what
-pressing it does. The rules below are enforced by `AccessibilitySemanticsTest` and checked by hand
-with the script at the end.
+pressing it does. The semantic rules below are enforced by `AccessibilitySemanticsTest`, the behavioural steps by
+the end-to-end suite, and both are checked by hand with the script at the end.
 
 ## What is covered
 
@@ -34,7 +34,7 @@ This needs a connected device or a running emulator. Keep the phone awake and un
 runs: a slept device leaves the test activity paused, and the suite waits for it to resume before
 the first test starts. `adb shell svc power stayon true` stops it sleeping.
 
-`.github/workflows/build.yml` runs the same task on an API 34 emulator for every push to `main`, and uploads the
+`.github/workflows/build.yml` runs the same task on an emulator in CI for every push to `main`, and uploads the
 HTML report as an artifact.
 
 Run a single test:
@@ -68,7 +68,7 @@ device face down if you want to remove visual cues.
    to the header: it reads "Removing 3 of 12" (Share reads "Preparing 3 of 12") and Remove, Share and
    Select all read as dimmed. When it ends the snackbar announces "Removed 12 files" once, and selection
    closes. A single row's Remove still offers Undo.
-8. **Tablet or unfolded foldable** (window at least 600dp wide and 480dp tall): the list is on the left and
+8. **Tablet or unfolded foldable** (a tablet-width, non-compact-height window): the list is on the left and
    the document on the right. Before one is chosen the right side reads "Choose a document from the list to
    read it here". Once one is open its row in the list reads "selected". Back closes the open document, and a
    second Back leaves the app. A phone, including one on its side, keeps the single pane and the script

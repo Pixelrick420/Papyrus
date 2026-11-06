@@ -23,6 +23,7 @@
   <a href="#install">Install</a> ·
   <a href="#build">Build</a> ·
   <a href="#architecture">Architecture</a> ·
+  <a href="#website">Website</a> ·
   <a href="#license">License</a>
 </p>
 
@@ -86,11 +87,11 @@ on Android 13 and up).
 | **DOC**           | Paragraphs and tables                                                                                         |
 | **EPUB**          | A reflowed book, its own table of contents as the **Outline**, its cover as the thumbnail                     |
 | **Markdown**      | Tables, task lists, maths, footnotes, autolinks, coloured code fences, `data:` URI images                     |
-| **Text / Logs**   | 40-line chunks, selectable text, optional line numbers, no-wrap mode, hyphenated prose                        |
-| **Code / Config** | The same text pipeline, with syntax colour for 30+ languages, found by name or by content                     |
+| **Text / Logs**   | Fixed-size chunks, selectable text, optional line numbers, no-wrap mode, hyphenated prose                     |
+| **Code / Config** | The same text pipeline, with syntax colour for many languages, found by name or by content                    |
 | **CSV / TSV**     | A header row in bold, wrapping cells, sideways scroll for wide tables                                         |
 
-The format comes from the file extension first, then the MIME type, then an 8 KB sniff. Text encodings are detected
+The format comes from the file extension first, then the MIME type, then a short content sniff. Text encodings are detected
 automatically and can be changed from the viewer menu. A source file's language comes from its name too; only when the
 name cannot place it (an unknown or missing extension, or `.h` and `.m`) is the start of the file read, for a shebang,
 an XML root, JSON or Objective-C.
@@ -102,9 +103,9 @@ an XML root, JSON or Objective-C.
 - **Search** filters the list by title as you type and also looks inside the documents. A document that matches by
   content shows an excerpt under its title, with the matching words highlighted. Every word must appear, though a
   single-character word is dropped when a longer one is typed, and a word matches by prefix, so `scal` finds "scaling".
-  Content matches are limited to the 20 most relevant documents, and the list keeps your chosen sort order. Opening a
-  content match lands on the first occurrence of the first searchable word and holds a highlight on it for two seconds
-  before it fades; where find cannot search the document, it opens at the saved position instead.
+  Content matches are limited to the most relevant documents, and the list keeps your chosen sort order. Opening a
+  content match lands on the first occurrence of the first searchable word and holds a highlight on it briefly before
+  it fades; where find cannot search the document, it opens at the saved position instead.
 - **Sort & filter** is the slider icon beside the search pill. One sheet holds every sort order, every file-type
   filter and the starred filter, with a badge counting what is on and a live count of matching files.
 - **Sort** by last opened, name (A to Z or Z to A), date added or size. Names sort the way a person reads them, so
@@ -116,12 +117,12 @@ an XML root, JSON or Objective-C.
 - **Bulk select** on a long-press, then share the whole selection or remove it after a confirmation. A remove or a share
   that takes longer than a moment shows how far it has got ("Removing 3 of 12") and ends with one announcement. A
   single row's **Remove** can still be undone for a few seconds.
-- **Tablets and foldables** show the library and a document side by side once the window is at least 600dp wide and
-  480dp tall, so a phone, even on its side, keeps one pane. Tapping a document opens it beside the list without
+- **Tablets and foldables** show the library and a document side by side once the window is wide enough for two panes
+  and tall enough that a phone on its side keeps one pane. Tapping a document opens it beside the list without
   moving the list's scroll position or search, and the open row is highlighted. Opened from outside (another app, a
   crash report) a document still fills the window.
 - **Share** sends a read-only grant, so the receiving app cannot write, rename or delete the file.
-- **Remove** with a six-second **Undo**. Your own file on disk is never touched.
+- **Remove** with **Undo**. Your own file on disk is never touched.
 - **File info**: name, format, size, provider type, page count for PDFs, both timestamps and the content URI.
 
 ### Reading
@@ -129,11 +130,11 @@ an XML root, JSON or Objective-C.
 - **Find in file** (Ctrl+F) in every format, with the current match highlighted.
 - **PDF outline and go to page** (Ctrl+G). The PDF's own bookmarks become a foldable **Outline**, and a long one starts
   folded. A long outline appears as it is read, and is cached, so the next open shows it at once.
-- **Go to line** (Ctrl+G) in text and code of 100 lines or more: type a line number to jump to it. It lands on the line
-  exactly where lines do not wrap, and within its 40-line chunk where they do.
+- **Go to line** (Ctrl+G) in long text and code: type a line number to jump to it. It lands on the line exactly where
+  lines do not wrap, and within its chunk where they do.
 - **Scrub preview** in text and code: while the scroll knob is held, a readout beside it shows the line at the top of
   the screen and the first words of it.
-- **Bookmarks** (Ctrl+D) in every format: named or positional, rename and delete with Undo, at most 200 per document.
+- **Bookmarks** (Ctrl+D) in every format: named or positional, rename and delete with Undo, with a per-document cap.
 - **PDF text selection**: long-press to select text, then tap **Copy** to put it on the clipboard. For a library file,
   **Highlight** also saves the selection, and on a selection that touches one, **Remove highlight** takes it off.
   Tap a stored highlight to write or edit its note; clearing the text and saving makes it a plain highlight again. A
@@ -150,7 +151,7 @@ an XML root, JSON or Objective-C.
 - **Read aloud** speaks the page, chunk, block or paragraph, shades the sentence being read (and the word, where the
   engine reports timing), and keeps going with the screen off. Play/pause, skip, lock, speed and close are on the bar.
   It is offered only when the document has selectable text; a document with nothing speakable hides it.
-- **Zoom** with a pinch or a double-tap, from 0.5x to 3x.
+- **Zoom** with a pinch or a double-tap, across a bounded range.
 - **Links** open on tap for `http`, `https`, `mailto` and `tel`. A PDF's internal link scrolls to its page.
 
 ### Accessibility
@@ -188,7 +189,7 @@ an XML root, JSON or Objective-C.
 - **Wrap long lines** wraps at the screen edge. Off, each line stays on one row and the view scrolls sideways.
 - **Hyphenation** splits long words at syllables where a `.txt` file wraps. Logs and code are never hyphenated.
 - **Pretty print structured files** indents JSON, XML, HTML and SVG as they open, at the chosen tab size. The stored
-  file is never changed, and one over 32 MB opens as stored.
+  file is never changed, and an oversized one opens as stored.
 - **Tab size** sets the indent for pretty printing: 2, 3, 4 or 8 spaces.
 - **Autosave external docs** adds a document another app hands over to the library as it opens. Off, the viewer's
   **Save to library** keeps a copy instead.
@@ -197,7 +198,8 @@ an XML root, JSON or Objective-C.
 - **Remember reading position** reopens a library document where you stopped and shows progress on Home. Off, no
   position is read or written, and the stored ones apply again when it goes back on.
 - **Search inside documents** lets the library be read in the background so search can find words inside it. It is
-  paused while you read and under battery saver. Off, nothing new is read and what is already indexed stays searchable.
+  paused while you read and under battery saver. Off, nothing new is read by the background pass and what is already
+  indexed stays searchable; small files are still read eagerly, as described under [Content search](#content-search).
 - **Crash Reports** lists local crash logs by date and size, lets you open one in the viewer (read only, share
   button only), and deletes one after a confirmation dialog. Reports are ACRA JSON stored in app storage and
   nothing leaves the device.
@@ -218,12 +220,12 @@ an XML root, JSON or Objective-C.
 2. Install it; Android may ask you to allow installs from your browser or file manager.
 3. Open a document from Papyrus, or tap one in another app and choose Papyrus.
 
-Needs Android 8.0 (API 26) or newer. No Play Services, no network permission, no account. To build it yourself, see
+Needs Android 8.0 or newer. No Play Services, no network permission, no account. To build it yourself, see
 [Build](#build).
 
 ## Build
 
-Needs JDK 17, the Android SDK, and Android 8.0 (API 26) or up.
+Needs a JDK, the Android SDK, and Android 8.0 or up. Use the JDK version CI pins in `.github/workflows/build.yml`.
 
 | Task                            | What it does                                     |
 | ------------------------------- | ------------------------------------------------ |
@@ -233,7 +235,8 @@ Needs JDK 17, the Android SDK, and Android 8.0 (API 26) or up.
 
 `installLocalRelease` signs a throwaway copy with the local debug keystore, because the `release` build type is unsigned
 unless all four `PAPYRUS_*` signing properties are supplied. The build fails outright if any configuration resolves a
-Google Play Services, Firebase, ML Kit or Play dependency, so F-Droid compliance is enforced rather than documented.
+Google Play Services, Firebase, ML Kit, Play or data-transport dependency, so F-Droid compliance is enforced rather than
+documented.
 
 ## Test
 
@@ -255,19 +258,19 @@ depends on another: `FreshInstall` empties the database, the imported copies and
 one, and `PapyrusTestRunner` takes the same data off disk before any of the app's code loads.
 
 The emulator in CI draws in software, so a frame can arrive seconds late and a tap can be lost. Two things keep that from
-failing the build. `RetryRule` runs a failed end-to-end test again (three attempts, each from a fresh install, and at
-most 15 retries for the whole run so a broken build still ends at a report), and logs `FLAKY` for any test that only
+failing the build. `RetryRule` runs a failed end-to-end test again (a fixed number of attempts, each from a fresh
+install, with a cap on the whole run so a broken build still ends at a report), and logs `FLAKY` for any test that only
 passed on a retry. Then the emulator job grades the suite as a whole instead of failing on the first red test: it passes
-unless more than 80% of the tests did not pass (`EMULATOR_MAX_FAILURE_PERCENT` in `.github/workflows/build.yml`). Tests
+unless a configured share of the tests did not pass (`EMULATOR_MAX_FAILURE_PERCENT` in `.github/workflows/build.yml`). Tests
 that never ran count as not passing, and a run that reports no tests at all fails, so a crashed run cannot pass by
 omission. The failing tests are listed in the job summary and as warnings, and `logcat.txt` is in the
 `emulator-test-results` artifact. Locally, `./gradlew connectedDebugAndroidTest` stays strict: any failure fails it.
 
 The DOCX/ODT, EPUB and DOC extractors run against archives the tests build in memory (kxml2 stands in for the platform's
 `XmlPullParser`, and the `.doc` fixtures assemble the OLE2 container and piece table from scratch). detekt is scoped to
-dead code and correctness, with the deliberate broad catches baselined so they stay visible. CI runs the unit tests and
-`assembleRelease` on every push to `main`, and the emulator suite on every `v*` tag before publishing; lint and detekt
-remain local gates.
+dead code and correctness, with the deliberate broad catches baselined so they stay visible. CI runs the unit tests,
+`assembleRelease` and the emulator suite on every push to `main`; a `v*` tag runs the unit tests and publishes the signed
+release. Lint and detekt remain local gates.
 
 ## Architecture
 
@@ -280,13 +283,13 @@ on; otherwise it is not added and lives only while Papyrus runs. Read aloud uses
 flowchart LR
   A["Another app<br>hands over a document"]
   B["File picker"]
-  C{"Which format?<br>extension, MIME type, then the first 8 KB"}
+  C{"Which format?<br>extension, MIME type, then a content sniff"}
   D["Library index<br>one row per document, plus positions, bookmarks, highlights and searchable text"]
   E["Viewer"]
   F["PDF"]
   G["Markdown"]
   H["Office<br>DOCX, ODT, DOC, EPUB, CSV, TSV"]
-  I["Text and code<br>40 lines at a time"]
+  I["Text and code<br>chunks at a time"]
   J["Read aloud<br>system speech engine"]
 
   A --> C
@@ -305,20 +308,15 @@ flowchart LR
 The index is one Room row per document: URI, title, format, size, and the added and last-opened timestamps. Page count
 and MIME type are read live, so they are not stored.
 
-The current schema is 9. Version 4 is the oldest supported one, since earlier versions were test-only. Version 5 adds a
-`reading_progress` table with one row per document, a `bookmarks` table, and `documents.isFavourite`. Version 6 adds
-the content index: a `document_text` table holding each document's extracted text and its index state, and a
-`document_text_fts` FTS4 table over it that stores only the inverted index, so no text is kept twice. Version 7 adds a
-`highlights` table: a row per highlighted run of text on a page, holding its boxes on the page and no text. Version 8
-gives a highlight a `kind` and an optional `note`, so the same table holds plain highlights and notes, and adds a
-`pdf_outlines` table that caches a PDF's bookmarks against the file's size and the outline reader's version. Version 9 adds
-`document_text.sourceModified`, the modified time the provider gave when a file's text was read, so an edited file can
-be told from an untouched one without opening it. Each of
-`reading_progress`, `bookmarks`, `highlights`, `document_text` and `pdf_outlines` references `documents(id)` with
-`ON DELETE CASCADE`, so deleting a document removes its rows. `documents` rows are never written with
+Alongside `documents` sit the tables that hang off it: `reading_progress` (one position per document), `bookmarks`,
+`highlights` (a row per highlighted run, with its boxes on the page and an optional kind and note), `pdf_outlines` (a
+cache keyed by the file's size and the outline reader's cache version), and the content index: `document_text`, holding
+each document's extracted text, its index state and the modified time the provider gave when the text was read, plus
+`document_text_fts`, an FTS4 table that stores only the inverted index so no text is kept twice. Each child references
+`documents(id)` with `ON DELETE CASCADE`, so deleting a document removes its rows. `documents` rows are never written with
 `OnConflictStrategy.REPLACE`, because that deletes and reinserts, which would cascade the children away. Migrations are
-plain SQL in `data/Migrations.kt`, and every version's schema is exported to `app/schemas/` with a test that fails if one
-is missing.
+plain SQL in `data/Migrations.kt`; every schema version is exported to `app/schemas/`, and a test fails if one is missing
+or has no migration.
 
 `document_text_fts` is not a child of `documents`: it follows `document_text` through triggers Room generates.
 
@@ -398,29 +396,35 @@ erDiagram
 
 ### Content search
 
-A background indexer fills `document_text` for every document that has no text yet, a batch of 16 at a time, and runs
+A background indexer fills `document_text` for every document that has no text yet, in small batches, and runs
 again whenever a document is added, removed or changes size. The database is its queue, so an interrupted pass simply
 resumes. Text is extracted by the same readers the viewer uses, so a search and find-in-file see the same words. Each
 document ends in one of four states: `INDEXED`, `FAILED` (the reader threw; never retried unless the file changes),
-`SKIPPED` (encrypted, DRM-protected, or no reader for the format) or `TOO_LARGE` (the file is over 64 MB and is never
-opened). At most 1,000,000 characters are kept per document. Raising `SearchIndexer.INDEX_VERSION` re-indexes
-everything.
+`SKIPPED` (encrypted, DRM-protected, or no reader for the format) or `TOO_LARGE` (the file is over the size cap and is
+never opened). A long document is indexed only up to a character cap. Raising `SearchIndexer.INDEX_VERSION`
+re-indexes everything.
+
+Small files are the exception to the gate: a file at or below `SearchIndexer.EAGER_MAX_BYTES` is read as soon as it
+joins the library, without the startup delay and without waiting for the gate — including when the setting is off, a
+document is open, or battery saver is on.
 
 Only new or changed documents are read. A document is changed when the size the library records for it differs from
 the one its text was read at, which is what opening a file again after an edit does, or when the provider reports
 another last-modified time than the one stored with its text. The second check asks the provider for that one number
-and never opens the file, and it runs once per process, 3 seconds after launch. A row written before schema 9 has no
-stored time and is checked by size only until it is read again.
+and never opens the file, and it runs once per process, starting with the first gated pass after the startup delay. A
+row written before that column existed has no stored time and is checked by size only until it is read again.
 
-The indexer works at low priority, on a thread of its own, one document at a time. It pauses between two documents
-while a viewer is in the foreground, whether full screen or beside the list, and while battery saver is on, and picks
-the queue up again when both end. Settings has a switch that turns it off; documents already indexed stay searchable.
+The indexer works at low priority, on a thread of its own, one document at a time. For files above the eager
+threshold, it pauses between two documents while a viewer is in the foreground, whether full screen or beside the
+list, and while battery saver is on, and picks the queue up again when both end. Settings has a switch that turns the
+background pass off; documents already indexed stay searchable.
 
-A query is split into words (anything that is not a letter or digit separates them, at most 8 are kept, and a
-single-character word is dropped when a longer one is present), each quoted for FTS4 so nothing typed can act as an
+A query is split into words (anything that is not a letter or digit separates them, only the first few are kept, and
+a single-character word is dropped when a longer one is present), each quoted for FTS4 so nothing typed can act as an
 operator, and each of two or more characters matches by prefix. Search runs in two phases: the index finds the matching
-documents and they are ranked with BM25, then excerpts are fetched for only the 20 best. The Home screen waits 250 ms
-after the last keystroke before it queries, and a search that fails is reported once and shown as no content matches.
+documents and they are ranked with BM25, then excerpts are fetched for only the best few. The Home screen waits a short
+debounce after the last keystroke before it queries, and a search that fails is reported once and shown as no content
+matches.
 
 ## Known limitations
 
@@ -437,31 +441,50 @@ after the last keystroke before it queries, and a search that fails is reported 
   left-to-right column order.
 - Password-protected documents open when they are a PDF, a `.docx` (ECMA-376 Agile) or an `.odt` (ODF 1.2
   AES-256-CBC). Newer ODF 1.3 packages and the legacy binary schemes are reported as protected but not opened.
-- A PDF over 128 MB is not read for an outline, because PdfBox would hold a second copy of it in memory next to the
+- A very large PDF is not read for an outline, because PdfBox would hold a second copy of it in memory next to the
   renderer's; an outline already cached from an earlier open is still shown.
-- Filling a PDF form needs Android 12 or newer with PDF SDK extension 13, and writing highlights into a saved copy needs
-  extension 18, built in from Android 17. Elsewhere the page still renders, and its text, find and selection fall back
-  to PDFBox, but no **Form fields** menu is offered and highlights stay in Papyrus alone. An XFA form is never offered
-  for filling, a signature field can be seen but not signed, and at most 300 form fields are read.
+- Filling a PDF form needs Android 12 or newer with the PDF SDK extension that exposes form widgets, and writing
+  highlights into a saved copy needs a newer extension, built in from Android 17. Elsewhere the page still renders, and
+  its text, find and selection fall back to PDFBox, but no **Form fields** menu is offered and highlights stay in
+  Papyrus alone. An XFA form is never offered for filling, a signature field can be seen but not signed, and only a
+  capped number of form fields are read.
 - Notes are stored, drawn and read in Papyrus only. A saved copy of the PDF carries plain highlights, not notes.
 - Markdown shows an image only when the document carries it as a `data:` URI; the app never touches the network, so
   every other image falls back to its alt text.
 - A `data:image/svg+xml` image, in its base64 or its percent-escaped form, is drawn by the same SVG subset the EPUB
   reader uses: shapes, straight paths, fill and stroke, `viewBox` and plain `translate`. What the subset cannot draw is
-  left out, a drawing over 1 MB or one that is not well formed falls back to its alt text, and a script in one is never
+  left out, an oversized drawing or one that is not well formed falls back to its alt text, and a script in one is never
   run.
 - Markdown footnotes are gathered into a **Footnotes** list at the end of the document, numbered in the order they are
   first cited, and a tap on a marker or its way back scrolls there.
 - CSV and TSV tables are not read aloud.
 - Content search only finds text that is in the index. Encrypted and DRM-protected documents are not indexed, nor are
-  files over 64 MB, and a document is indexed up to its first 1,000,000 characters. A scanned PDF with no text layer is
-  indexed as empty. A document is searchable by content only once the indexer has reached it, which can take a while on a large library
-  and does not happen while you read, under battery saver, or with **Search inside documents** off.
-- Size and shape caps: Markdown up to 6 MB, a table up to 8 MB and 200,000 cells. A table that hits a cap ends with the
+  files over the size cap, and a document is indexed only up to a character cap. A scanned PDF with no text layer is
+  indexed as empty. A document is searchable by content only once the indexer has reached it, which can take a while on
+  a large library and, for files above the eager threshold, does not happen while you read, under battery saver, or
+  with **Search inside documents** off.
+- Size and shape caps: Markdown and tables have their own limits. A table that hits a cap ends with the
   viewer's incomplete-document notice instead of failing.
 - Plain text and code have no size cap in UTF-8 and the single-byte encodings: a large file is indexed once and decoded
   as it is scrolled to, a few chunks at a time. One in UTF-16 or a multi-byte East Asian encoding is held in memory and
-  cut at 32 MB, as is one the file provider will not open twice.
+  cut at a size cap, as is one the file provider will not open twice.
+
+## Website
+
+`web/` is the static landing page that ships separately from the Android app: SvelteKit with Tailwind CSS, built to
+static files.
+
+```bash
+cd web
+pnpm install
+pnpm dev      # local preview
+pnpm lint     # ESLint
+pnpm check    # Svelte and TypeScript checks
+pnpm build    # static output in web/build
+```
+
+`.github/workflows/web.yml` runs lint, type check and build on any change under `web/`. Its pinned Node and pnpm
+versions are the ones to use locally, and `web/package.json` lists the scripts.
 
 ## Contributing
 
@@ -471,11 +494,11 @@ detekt, and lint and detekt are not part of CI. The screenshots this README show
 
 ## Releases
 
-- Every push to `main` runs the unit tests and the API 34 emulator suite, and assembles an unsigned release APK
-  uploaded as a build artifact. Failing emulator tests are tolerated unless more than 80% of the suite did not pass;
-  see [Test](#test).
-- Pushing a `v*` tag publishes a signed APK to [Releases](../../releases), and runs nothing else: the unit tests and
-  emulator suite belong to the `main` push, so a tag that has not landed on `main` is released without them.
+- Every push to `main` runs the unit tests and the emulator suite, and assembles an unsigned release APK uploaded as a
+  build artifact. Failing emulator tests are tolerated unless a configured share of the suite did not pass; see
+  [Test](#test).
+- Pushing a `v*` tag runs the unit tests and publishes a signed APK to [Releases](../../releases). It does not run the
+  emulator suite, which belongs to the `main` push, and it refuses a tag that is not on `main`.
 - The tag must match `versionName` in `app/build.gradle.kts`, and `versionCode` must exceed the previous release tag's,
   since that value alone orders the upgrades.
 - The job fails if the APK comes out unsigned or carries the Android debug certificate.
