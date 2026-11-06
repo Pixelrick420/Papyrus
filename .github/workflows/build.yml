@@ -49,8 +49,9 @@ jobs:
           android sdk install platform-tools platforms/android-37 build-tools/36.0.0
           android sdk install "ndk/${{ steps.ndk.outputs.version }}"
 
-      - name: Unit tests
-        run: ./gradlew --no-daemon testDebugUnitTest
+      # `check` is the unit tests, lint and detekt; the same task the README tells contributors to run.
+      - name: Check
+        run: ./gradlew --no-daemon check
 
       - name: Assemble release
         run: ./gradlew --no-daemon assembleRelease
@@ -61,6 +62,18 @@ jobs:
           name: papyrus-apk
           path: app/build/outputs/apk/release/*.apk
           if-no-files-found: error
+
+      - name: Upload check reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: check-reports
+          path: |
+            app/build/reports/tests/
+            app/build/reports/lint-results-*.html
+            app/build/reports/lint-results-*.xml
+            app/build/reports/detekt/
+          if-no-files-found: ignore
 
   instrumentation-tests:
     # Keep this job id: setup-gradle's cache key includes it, so renaming orphans the remote cache.
