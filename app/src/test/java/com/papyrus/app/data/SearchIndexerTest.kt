@@ -657,7 +657,7 @@ class SearchIndexerTest {
     private fun behindGate() = SearchIndexer(
         dao = dao,
         extract = { doc -> extracted += doc.id; ExtractedText("text", TextIndexState.INDEXED) },
-        library = emptyFlow<Unit>(),
+        library = emptyFlow(),
         mayIndex = IndexingGate(enabled, reading, batterySaver).open,
         startDelayMillis = 300,
     )

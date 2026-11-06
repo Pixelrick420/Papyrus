@@ -57,8 +57,8 @@ android {
         applicationId = "com.papyrus.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 15
-        versionName = "0.16"
+        versionCode = 16
+        versionName = "0.17"
         ndk {
             // RaTeX ships native libs for 3 ABIs; keep only arm64-v8a (x86_64 is emulator-only,
             // armeabi-v7a is 32-bit ARM). Users' device is arm64-v8a.
