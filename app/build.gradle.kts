@@ -148,6 +148,9 @@ dependencies {
 
     implementation("androidx.room:room-runtime:2.8.5")
     ksp("androidx.room:room-compiler:2.8.5")
+    // Room 2.8's migration-testing helper needs serialization 1.8; the 1.7.3 the app otherwise
+    // resolves lacks the GeneratedSerializer method its generated serializers rely on.
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.1")
 
     // PDF text extraction (find-in-file) and page geometry. PdfBox-Android is the Apache-2.0
     // AAR port; the platform's PdfRenderer draws the pages.
