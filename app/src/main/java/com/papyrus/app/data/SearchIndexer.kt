@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.launch
@@ -43,7 +44,8 @@ import java.util.concurrent.atomic.AtomicBoolean
  * Small documents are the exception: a file of [EAGER_MAX_BYTES] or less is read without waiting for
  * the gate or the start delay, because its text is usually wanted right away. The one thing they do
  * wait for is [enabled]: with the setting off nothing is read, small files included, and turning it
- * back on reads them again without waiting for the gate.
+ * back on reads them again without waiting for the gate. After the first one, the eager pass runs
+ * again only for a small file that joins the library or changes size, see [eagerArrivals].
  */
 class SearchIndexer(
     private val dao: SearchDao,
@@ -53,7 +55,12 @@ class SearchIndexer(
      * `Context` and without a file, neither of which this class knows anything about.
      */
     private val extract: suspend (DocumentEntity) -> ExtractedText,
-    private val library: Flow<*>,
+    /**
+     * Every document in the library as `(id, size in bytes)`, emitted again whenever that list
+     * changes. What counts as a change is the caller's to decide: a star or an open is not one. Each
+     * emission runs the gated pass again; the eager pass looks only at the small files in it.
+     */
+    private val library: Flow<List<Pair<Long, Long>>>,
     /**
      * When the provider says the file behind a document was last modified, in milliseconds, or null
      * when it does not say. A function for the same reason as [extract]: the provider query needs a
@@ -95,7 +102,8 @@ class SearchIndexer(
             launch {
                 // The setting coming back on is a reason to look again too: a closed gate would
                 // otherwise leave small files unread until the next library change.
-                merge(library, enabled.distinctUntilChanged().drop(1).filter { it }).conflate().collect {
+                val settingOn = enabled.distinctUntilChanged().drop(1).filter { it }
+                merge(library.eagerArrivals(eagerMaxBytes), settingOn).conflate().collect {
                     delay(IMPORT_SETTLE_MILLIS)
                     indexEager()
                 }
@@ -217,5 +225,21 @@ class SearchIndexer(
 
         /** How long an import may keep settling before its text is extracted. */
         private const val IMPORT_SETTLE_MILLIS = 1_000L
+    }
+}
+
+/**
+ * The library changes the eager pass can do something about: a document of at most [maxBytes] that
+ * was not in the list before at that size, because it just joined or its size just changed. Adding
+ * a larger file, removing a document or any list that holds nothing new leaves nothing for the eager
+ * pass to read, so none of them is announced. The first list counts as all new, which costs one
+ * empty read when nothing is pending.
+ */
+internal fun Flow<List<Pair<Long, Long>>>.eagerArrivals(maxBytes: Long): Flow<Unit> = flow {
+    var before = emptySet<Pair<Long, Long>>()
+    this@eagerArrivals.collect { library ->
+        val small = library.filterTo(HashSet()) { (_, size) -> size <= maxBytes }
+        if (small.any { it !in before }) emit(Unit)
+        before = small
     }
 }

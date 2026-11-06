@@ -408,7 +408,9 @@ re-indexes everything.
 Small files are the exception to the gate: a file at or below `SearchIndexer.EAGER_MAX_BYTES` is read as soon as it
 joins the library, without the startup delay and without waiting for the gate, so also while a document is open or
 battery saver is on. The setting is the one thing they do not bypass: with **Search inside documents** off they stay
-unread, and turning it back on reads them right away.
+unread, and turning it back on reads them right away. After the pass at startup, this one runs again only when a small
+file joins the library or changes size; adding a larger file, removing a document, starring or opening one does not
+wake it.
 
 Only new or changed documents are read. A document is changed when the size the library records for it differs from
 the one its text was read at, which is what opening a file again after an edit does, or when the provider reports

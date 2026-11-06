@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.job
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.yield
@@ -26,6 +27,12 @@ class SearchIndexerTest {
     private val dao = FakeSearchDao()
     private val extracted = mutableListOf<Long>()
 
+    private companion object {
+        /** A size the eager pass reads, and one just past it. */
+        const val SMALL = 1_000L
+        const val LARGE = SearchIndexer.EAGER_MAX_BYTES + 1
+    }
+
     private fun document(id: Long, title: String = "Document $id", size: Long = 1_000) = DocumentEntity(
         id = id,
         uri = "content://test/$id",
@@ -44,8 +51,24 @@ class SearchIndexerTest {
                 extracted += doc.id
                 ExtractedText(text(doc), TextIndexState.INDEXED)
             },
-            library = emptyFlow<Unit>(),
+            library = emptyFlow(),
         )
+
+    /** A library over time, as the indexer is told of it: each list is every document's id and size. */
+    private fun indexerOver(vararg libraries: List<Pair<Long, Long>>) =
+        SearchIndexer(
+            dao = dao,
+            extract = { doc ->
+                extracted += doc.id
+                ExtractedText("text", TextIndexState.INDEXED)
+            },
+            library = flowOf(*libraries),
+        )
+
+    /** How many times the eager pass is woken by [libraries], one after another. */
+    private fun wakeups(vararg libraries: List<Pair<Long, Long>>) = runBlocking {
+        flowOf(*libraries).eagerArrivals(SearchIndexer.EAGER_MAX_BYTES).toList().size
+    }
 
     @Test
     fun `every pending document is written with its extracted text`() {
@@ -103,7 +126,7 @@ class SearchIndexerTest {
         val indexer = SearchIndexer(
             dao = dao,
             extract = { ExtractedText("", TextIndexState.FAILED) },
-            library = emptyFlow<Unit>(),
+            library = emptyFlow(),
         )
         dao.queue += document(1)
 
@@ -120,7 +143,7 @@ class SearchIndexerTest {
         val indexer = SearchIndexer(
             dao = dao,
             extract = { ExtractedText("", TextIndexState.SKIPPED) },
-            library = emptyFlow<Unit>(),
+            library = emptyFlow(),
         )
         dao.queue += document(1)
 
@@ -154,7 +177,7 @@ class SearchIndexerTest {
         val indexer = SearchIndexer(
             dao = dao,
             extract = { ExtractedText("indexed", TextIndexState.INDEXED) },
-            library = flowOf(Unit),
+            library = flowOf(listOf(1L to 1_000L)),
         )
 
         runBlocking { indexer.start(this) }
@@ -185,7 +208,7 @@ class SearchIndexerTest {
         val indexer = SearchIndexer(
             dao = dao,
             extract = { doc -> extracted += doc.id; ExtractedText("again", TextIndexState.INDEXED) },
-            library = emptyFlow<Unit>(),
+            library = emptyFlow(),
             lastModified = { doc -> if (doc.id == 1L) 500 else 700 },
         )
 
@@ -201,7 +224,7 @@ class SearchIndexerTest {
         val indexer = SearchIndexer(
             dao = dao,
             extract = { doc -> extracted += doc.id; ExtractedText("new text", TextIndexState.INDEXED) },
-            library = emptyFlow<Unit>(),
+            library = emptyFlow(),
             lastModified = { doc -> if (doc.id == 1L) 500 else 900 },
         )
 
@@ -220,7 +243,7 @@ class SearchIndexerTest {
         val indexer = SearchIndexer(
             dao = dao,
             extract = { doc -> extracted += doc.id; ExtractedText("x", TextIndexState.INDEXED) },
-            library = emptyFlow<Unit>(),
+            library = emptyFlow(),
             // No answer for one, and zero, which a provider uses for "unknown", for the other.
             lastModified = { doc -> if (doc.id == 1L) null else 0 },
         )
@@ -236,7 +259,7 @@ class SearchIndexerTest {
         val indexer = SearchIndexer(
             dao = dao,
             extract = { doc -> extracted += doc.id; ExtractedText("x", TextIndexState.INDEXED) },
-            library = emptyFlow<Unit>(),
+            library = emptyFlow(),
             lastModified = { 2 },
         )
 
@@ -255,7 +278,7 @@ class SearchIndexerTest {
         val indexer = SearchIndexer(
             dao = dao,
             extract = { ExtractedText("text", TextIndexState.INDEXED) },
-            library = emptyFlow<Unit>(),
+            library = emptyFlow(),
             lastModified = { asked++; 100L + asked },
         )
         dao.queue += document(1)
@@ -280,7 +303,7 @@ class SearchIndexerTest {
         val indexer = SearchIndexer(
             dao = dao,
             extract = { ExtractedText("x", TextIndexState.INDEXED) },
-            library = flowOf(Unit, Unit),
+            library = flowOf(listOf(1L to 1_000L), listOf(1L to 1_000L, 2L to 1_000L)),
             lastModified = { 500 },
         )
 
@@ -315,7 +338,7 @@ class SearchIndexerTest {
     ) = SearchIndexer(
         dao = dao,
         extract = { doc -> extracted += doc.id; ExtractedText("text", TextIndexState.INDEXED) },
-        library = emptyFlow<Unit>(),
+        library = emptyFlow(),
         lastModified = lastModified,
         enabled = enabled,
         mayIndex = open,
@@ -365,7 +388,7 @@ class SearchIndexerTest {
                 if (doc.id == 1L) open.value = false
                 ExtractedText("text", TextIndexState.INDEXED)
             },
-            library = emptyFlow<Unit>(),
+            library = emptyFlow(),
             mayIndex = open,
             eagerMaxBytes = 0,
         )
@@ -493,7 +516,7 @@ class SearchIndexerTest {
                 if (doc.id == 1L) enabled.value = false
                 ExtractedText("text", TextIndexState.INDEXED)
             },
-            library = emptyFlow<Unit>(),
+            library = emptyFlow(),
             enabled = enabled,
         )
         dao.queue += listOf(document(1), document(2), document(3))
@@ -515,6 +538,62 @@ class SearchIndexerTest {
         val (maxBytes, limit) = dao.eagerPendingQueries.first()
         assertEquals(SearchIndexer.EAGER_MAX_BYTES, maxBytes)
         assertTrue("the read should be bounded", limit < 20)
+    }
+
+    @Test
+    fun `a small file that joins the library wakes the eager pass`() {
+        assertEquals(1, wakeups(emptyList(), listOf(1L to SMALL)))
+        assertEquals(2, wakeups(emptyList(), listOf(1L to SMALL), listOf(1L to SMALL, 2L to SMALL)))
+    }
+
+    @Test
+    fun `a file above the limit that joins the library does not`() {
+        assertEquals(0, wakeups(emptyList(), listOf(1L to LARGE)))
+        assertEquals(1, wakeups(listOf(1L to SMALL), listOf(1L to SMALL, 2L to LARGE)))
+    }
+
+    @Test
+    fun `a document leaving the library does not`() {
+        // The first list is the one wake-up; the removal adds nothing to read.
+        assertEquals(1, wakeups(listOf(1L to SMALL, 2L to SMALL), listOf(1L to SMALL)))
+    }
+
+    @Test
+    fun `a library that holds nothing new does not`() {
+        assertEquals(1, wakeups(listOf(1L to SMALL), listOf(1L to SMALL), listOf(1L to SMALL)))
+        assertEquals(0, wakeups(emptyList(), emptyList()))
+    }
+
+    @Test
+    fun `a size change wakes it only when the file is small afterwards`() {
+        assertEquals(2, wakeups(listOf(1L to SMALL), listOf(1L to SMALL + 1)))
+        // Grew past the limit: nothing left for the eager pass to read.
+        assertEquals(1, wakeups(listOf(1L to SMALL), listOf(1L to LARGE)))
+        // Shrank under it: now there is.
+        assertEquals(1, wakeups(listOf(1L to LARGE), listOf(1L to SMALL)))
+    }
+
+    @Test
+    fun `the first list counts as all new, however long it is`() {
+        assertEquals(1, wakeups(listOf(1L to SMALL, 2L to SMALL, 3L to LARGE)))
+        assertEquals(0, wakeups(listOf(1L to LARGE)))
+        assertEquals(0, wakeups(emptyList()))
+    }
+
+    @Test
+    fun `a library change that adds only large files does not run the eager pass again`() {
+        runBlocking { indexerOver(emptyList(), listOf(1L to LARGE)).start(this) }
+
+        // The start-up pass alone.
+        assertEquals(1, dao.eagerPendingQueries.size)
+    }
+
+    @Test
+    fun `a library change that adds a small file runs the eager pass again`() {
+        runBlocking { indexerOver(emptyList(), listOf(1L to SMALL)).start(this) }
+
+        // The start-up pass, then the one the import woke.
+        assertEquals(2, dao.eagerPendingQueries.size)
     }
 
     @Test
@@ -548,7 +627,7 @@ class SearchIndexerTest {
                 if (doc.id == 1L && extracted.size == 1) open.value = false
                 ExtractedText("text", TextIndexState.INDEXED)
             },
-            library = emptyFlow<Unit>(),
+            library = emptyFlow(),
             lastModified = { 900 },
             mayIndex = open,
             eagerMaxBytes = 0,
