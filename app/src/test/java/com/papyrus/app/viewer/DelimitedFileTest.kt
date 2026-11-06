@@ -4,6 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import kotlin.random.Random
 
 class DelimitedFileTest {
 
@@ -294,5 +295,93 @@ class DelimitedFileTest {
         assertEquals(listOf("id", "name", "note"), table.rows[0].map { it.text })
         assertEquals("likes \"quotes\"\nand lines", table.rows[1][2].text)
         assertEquals(listOf("2", "Bo", ""), table.rows[2].map { it.text })
+    }
+
+    // --- Unterminated quotes, in every delimiter and place ---
+
+    @Test
+    fun `an unterminated quote in a tab separated file runs to the end like a comma separated one`() {
+        assertEquals(listOf(listOf("a", "b\tc\nd\te")), rows("a\t\"b\tc\nd\te", '\t'))
+    }
+
+    @Test
+    fun `rows before an unterminated quote are kept whole`() {
+        assertEquals(
+            listOf(listOf("h1", "h2"), listOf("1", "2"), listOf("3", "x,y\n4,5")),
+            rows("h1,h2\n1,2\n3,\"x,y\n4,5"),
+        )
+        assertEquals(
+            listOf(listOf("h1", "h2"), listOf("1", "2"), listOf("3", "x\ty\n4\t5")),
+            rows("h1\th2\n1\t2\n3\t\"x\ty\n4\t5", '\t'),
+        )
+    }
+
+    @Test
+    fun `an unterminated quote in the first cell swallows the whole file as one cell`() {
+        assertEquals(listOf(listOf("a,b\nc,d\n")), rows("\"a,b\nc,d\n"))
+        assertEquals(listOf(listOf("a\tb\nc\td")), rows("\"a\tb\nc\td", '\t'))
+    }
+
+    @Test
+    fun `a lone quote is one empty cell and does not fail`() {
+        assertEquals(listOf(listOf("")), rows("\""))
+        assertEquals(listOf(listOf("a", "")), rows("a,\""))
+        assertEquals(listOf(listOf("a", "")), rows("a\t\"", '\t'))
+    }
+
+    @Test
+    fun `a doubled quote at the very end is one quote of an unterminated cell`() {
+        assertEquals(listOf(listOf("a\"")), rows("\"a\"\""))
+    }
+
+    @Test
+    fun `a later quote followed by text closes the cell, so only a quote nothing closes runs to the end`() {
+        assertEquals(listOf(listOf("first\nx,y"), listOf("next")), rows("\"first\nx,\"y\nnext"))
+        // Quotes that are never followed by anything but a line break or a delimiter close it too.
+        assertEquals(listOf(listOf("a\nb"), listOf("c")), rows("\"a\nb\"\nc"))
+    }
+
+    @Test
+    fun `an unterminated quote at the end of a line break pair keeps the break as one newline`() {
+        assertEquals(listOf(listOf("a", "b\nc")), rows("a,\"b\r\nc"))
+        assertEquals(listOf(listOf("a", "b\nc")), rows("a,\"b\rc"))
+    }
+
+    @Test
+    fun `a huge unterminated quote reads in one pass and is cut at the cell limit`() {
+        val body = "word ".repeat(400_000)
+        val started = System.nanoTime()
+
+        val read = DelimitedFile.parse("a,\"" + body, ',')
+
+        assertEquals(1, read.rows.size)
+        assertEquals(2, read.rows.single().size)
+        assertEquals("a", read.rows.single()[0])
+        // What fits, then the ellipsis that says the rest was dropped.
+        assertTrue(read.rows.single()[1] == body.take(DelimitedFile.MAX_CELL_CHARS) + "…")
+        assertTrue(read.truncated)
+        assertTrue("took ${(System.nanoTime() - started) / 1_000_000} ms", System.nanoTime() - started < 5_000_000_000L)
+    }
+
+    @Test
+    fun `an unterminated quote counts as one cell against the limit`() {
+        val read = DelimitedFile.parse("a,b\nc,\"d\ne,f\ng,h", ',', maxCells = 4)
+
+        assertEquals(listOf(listOf("a", "b"), listOf("c", "d\ne,f\ng,h")), read.rows)
+        assertFalse(read.truncated)
+    }
+
+    @Test
+    fun `any mix of quotes, delimiters and line breaks parses without failing`() {
+        val random = Random(5)
+        val pieces = listOf("\"", "\"", ",", "\t", ";", "|", "\n", "\r", "\r\n", "a", "bc", " ", "\"\"", "\uFEFF")
+        repeat(3_000) {
+            val text = buildString { repeat(random.nextInt(0, 40)) { append(pieces[random.nextInt(pieces.size)]) } }
+            for (delimiter in listOf(',', '\t', ';', '|')) {
+                val read = DelimitedFile.parse(text, delimiter)
+
+                assertTrue("an empty row from '$text'", read.rows.all { it.isNotEmpty() })
+            }
+        }
     }
 }
