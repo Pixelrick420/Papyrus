@@ -270,15 +270,26 @@ on; otherwise it is not added and lives only while Papyrus runs. Read aloud uses
 
 ```mermaid
 flowchart LR
-  A["Another app<br/>hands over a document"] --> C{"Which format?<br/>extension, MIME type, then the first 8 KB"}
-  B["File picker"] --> C
-  C --> D["Library index<br/>one row per document, plus positions, bookmarks, highlights and searchable text"]
-  D --> E["Viewer"]
-  E --> F["PDF"]
-  E --> G["Markdown"]
-  E --> H["Office<br/>DOCX, ODT, DOC, EPUB, CSV, TSV"]
-  E --> I["Text and code<br/>40 lines at a time"]
-  E --> J["Read aloud<br/>system speech engine"]
+  A["Another app<br>hands over a document"]
+  B["File picker"]
+  C{"Which format?<br>extension, MIME type, then the first 8 KB"}
+  D["Library index<br>one row per document, plus positions, bookmarks, highlights and searchable text"]
+  E["Viewer"]
+  F["PDF"]
+  G["Markdown"]
+  H["Office<br>DOCX, ODT, DOC, EPUB, CSV, TSV"]
+  I["Text and code<br>40 lines at a time"]
+  J["Read aloud<br>system speech engine"]
+
+  A --> C
+  B --> C
+  C --> D
+  D --> E
+  E --> F
+  E --> G
+  E --> H
+  E --> I
+  E --> J
 ```
 
 ### Data and schema
