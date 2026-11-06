@@ -110,6 +110,9 @@ android {
         includeInBundle = false
     }
 
+    // The migration test opens each exported schema; MigrationTestHelper reads them as assets.
+    sourceSets.getByName("androidTest").assets.srcDir("$projectDir/schemas")
+
     packaging {
         resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
         // pdfbox-android's BouncyCastle ships ~4 MB of post-quantum crypto parameter files Papyrus never uses.
@@ -177,6 +180,7 @@ dependencies {
     testImplementation("net.sf.kxml:kxml2:2.3.0")
 
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation("androidx.room:room-testing:2.8.5")
     androidTestImplementation("androidx.test:runner:1.6.2")
     androidTestImplementation(platform("androidx.compose:compose-bom:2026.09.00"))
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")

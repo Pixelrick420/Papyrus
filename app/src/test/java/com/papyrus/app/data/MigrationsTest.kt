@@ -334,4 +334,59 @@ class MigrationsTest {
             )
         }
     }
+
+    // --- The exported schemas as a set ---
+
+    private fun exportedVersions(): List<Int> {
+        val directory = schemaFile(Migrations.CURRENT_VERSION).parentFile
+        assertTrue("no schema directory at ${directory?.path}", directory?.isDirectory == true)
+        return directory!!.listFiles { file -> file.extension == "json" }!!
+            .map { it.nameWithoutExtension.toInt() }
+            .sorted()
+    }
+
+    @Test
+    fun `every version from the baseline to the current one has its schema exported`() {
+        val expected = (Migrations.BASELINE_VERSION..Migrations.CURRENT_VERSION).toList()
+
+        assertEquals(expected, exportedVersions().filter { it >= Migrations.BASELINE_VERSION })
+    }
+
+    @Test
+    fun `no exported schema is newer than the current version`() {
+        assertTrue(exportedVersions().none { it > Migrations.CURRENT_VERSION })
+    }
+
+    @Test
+    fun `each exported schema says it is the version its file is named for`() {
+        for (version in exportedVersions()) {
+            val declared = Regex("\"version\"\\s*:\\s*(\\d+)").find(schemaFile(version).readText())
+                ?.groupValues?.get(1)?.toInt()
+            assertEquals("${schemaFile(version).path} declares another version", version, declared)
+        }
+    }
+
+    @Test
+    fun `a step starts at every version below the current one`() {
+        for (version in Migrations.BASELINE_VERSION until Migrations.CURRENT_VERSION) {
+            assertTrue("no migration starts at version $version", Migrations.ALL.any { it.startVersion == version })
+        }
+    }
+
+    @Test
+    fun `each step runs at least one statement and none is a no-op`() {
+        val statements = mapOf(
+            4 to Migrations.V4_TO_V5_SQL,
+            5 to Migrations.V5_TO_V6_SQL,
+            6 to Migrations.V6_TO_V7_SQL,
+            7 to Migrations.V7_TO_V8_SQL,
+            8 to Migrations.V8_TO_V9_SQL,
+        )
+        assertEquals(
+            "a migration was added without being listed here",
+            Migrations.ALL.map { it.startVersion }.sorted(),
+            statements.keys.sorted(),
+        )
+        for ((from, sql) in statements) assertTrue("step from $from has no statements", sql.isNotEmpty())
+    }
 }
