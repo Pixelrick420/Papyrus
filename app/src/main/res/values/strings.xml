@@ -310,7 +310,7 @@ access</string>
     <string name="settings_content_indexing">Search inside documents</string>
     <string
         name="settings_content_indexing_desc"
-    >Read documents in the background so search can find words inside them. Paused while you read and when battery saver is on. Off, documents already read stay searchable.</string>
+    >Read documents in the background so search can find words inside them. Larger files wait while you read and when battery saver is on. Off, nothing new is read and documents already read stay searchable.</string>
     <string name="settings_section_crash_reports">Crash Reports</string>
     <string name="settings_crash_reports_title">Crash Reports</string>
     <string name="settings_crash_reports_desc">View, share, and manage crash logs</string>

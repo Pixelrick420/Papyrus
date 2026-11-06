@@ -197,9 +197,10 @@ an XML root, JSON or Objective-C.
   encrypted and the password is never stored.
 - **Remember reading position** reopens a library document where you stopped and shows progress on Home. Off, no
   position is read or written, and the stored ones apply again when it goes back on.
-- **Search inside documents** lets the library be read in the background so search can find words inside it. It is
-  paused while you read and under battery saver. Off, nothing new is read by the background pass and what is already
-  indexed stays searchable; small files are still read eagerly, as described under [Content search](#content-search).
+- **Search inside documents** lets the library be read in the background so search can find words inside it. Larger
+  files are paused while you read and under battery saver; small files are read as soon as they join the library, as
+  described under [Content search](#content-search). Off, nothing new is read, small files included, and what is
+  already indexed stays searchable.
 - **Crash Reports** lists local crash logs by date and size, lets you open one in the viewer (read only, share
   button only), and deletes one after a confirmation dialog. Reports are ACRA JSON stored in app storage and
   nothing leaves the device.
@@ -405,8 +406,9 @@ never opened). A long document is indexed only up to a character cap. Raising `S
 re-indexes everything.
 
 Small files are the exception to the gate: a file at or below `SearchIndexer.EAGER_MAX_BYTES` is read as soon as it
-joins the library, without the startup delay and without waiting for the gate — including when the setting is off, a
-document is open, or battery saver is on.
+joins the library, without the startup delay and without waiting for the gate, so also while a document is open or
+battery saver is on. The setting is the one thing they do not bypass: with **Search inside documents** off they stay
+unread, and turning it back on reads them right away.
 
 Only new or changed documents are read. A document is changed when the size the library records for it differs from
 the one its text was read at, which is what opening a file again after an edit does, or when the provider reports
@@ -416,8 +418,8 @@ row written before that column existed has no stored time and is checked by size
 
 The indexer works at low priority, on a thread of its own, one document at a time. For files above the eager
 threshold, it pauses between two documents while a viewer is in the foreground, whether full screen or beside the
-list, and while battery saver is on, and picks the queue up again when both end. Settings has a switch that turns the
-background pass off; documents already indexed stay searchable.
+list, and while battery saver is on, and picks the queue up again when both end. Settings has a switch that turns
+indexing off, small files included; documents already indexed stay searchable.
 
 A query is split into words (anything that is not a letter or digit separates them, only the first few are kept, and
 a single-character word is dropped when a longer one is present), each quoted for FTS4 so nothing typed can act as an
@@ -461,8 +463,8 @@ matches.
 - Content search only finds text that is in the index. Encrypted and DRM-protected documents are not indexed, nor are
   files over the size cap, and a document is indexed only up to a character cap. A scanned PDF with no text layer is
   indexed as empty. A document is searchable by content only once the indexer has reached it, which can take a while on
-  a large library and, for files above the eager threshold, does not happen while you read, under battery saver, or
-  with **Search inside documents** off.
+  a large library and, for files above the eager threshold, does not happen while you read or under battery saver. With
+  **Search inside documents** off it does not happen at all.
 - Size and shape caps: Markdown and tables have their own limits. A table that hits a cap ends with the
   viewer's incomplete-document notice instead of failing.
 - Plain text and code have no size cap in UTF-8 and the single-byte encodings: a large file is indexed once and decoded

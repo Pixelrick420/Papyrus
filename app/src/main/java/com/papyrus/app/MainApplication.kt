@@ -74,15 +74,17 @@ class MainApplication : Application() {
     /**
      * Extracts document text for the index in the background, using the same readers the viewer
      * opens documents with, at low priority and only while [IndexingGate] is open: not while a
-     * document is being read, not under battery saver, and not once the setting is off. Not started
-     * here: [onCreate] starts it off the main thread.
+     * document is being read, not under battery saver, and not once the setting is off. Small files
+     * skip the first two but never the setting. Not started here: [onCreate] starts it off the main
+     * thread.
      */
     val searchIndexer: SearchIndexer by lazy {
         val extractor = DocumentTextExtractor(this, indexerDispatcher) { uri ->
             contentResolver.openInputStream(uri) ?: throw FileNotFoundException("no stream for $uri")
         }
+        val enabled = settings.settings.map { it.contentIndexing }
         val gate = IndexingGate(
-            enabled = settings.settings.map { it.contentIndexing },
+            enabled = enabled,
             reading = readerPresence.reading,
             batterySaver = batterySaverFlow(this),
         )
@@ -92,6 +94,7 @@ class MainApplication : Application() {
             // Only a document coming, going or changing size is worth a pass; a star or an open is not.
             library = repository.documents.map { rows -> rows.map { it.id to it.sizeBytes } }.distinctUntilChanged(),
             lastModified = { document -> textCacheKey(this, document.uri.toUri())?.lastModified },
+            enabled = enabled,
             mayIndex = gate.open,
             startDelayMillis = INDEX_START_DELAY_MILLIS,
         )

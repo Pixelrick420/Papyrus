@@ -3,6 +3,7 @@ package com.papyrus.app.data
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flowOf
@@ -310,11 +311,13 @@ class SearchIndexerTest {
         lastModified: suspend (DocumentEntity) -> Long? = { null },
         // Off by default so these tests exercise the gate, not the small-file exception.
         eagerMaxBytes: Long = 0,
+        enabled: Flow<Boolean> = flowOf(true),
     ) = SearchIndexer(
         dao = dao,
         extract = { doc -> extracted += doc.id; ExtractedText("text", TextIndexState.INDEXED) },
         library = emptyFlow<Unit>(),
         lastModified = lastModified,
+        enabled = enabled,
         mayIndex = open,
         startDelayMillis = startDelayMillis,
         eagerMaxBytes = eagerMaxBytes,
@@ -412,6 +415,93 @@ class SearchIndexerTest {
 
         assertEquals(listOf(1L), dao.written.map { it.documentId })
         assertTrue("the large file still waits for the gate", dao.pendingQueries.isEmpty())
+    }
+
+    @Test
+    fun `a small file stays pending while the setting is off`() = runBlocking {
+        dao.queue += document(1, size = 4_096)
+        val indexer = gatedIndexer(
+            MutableStateFlow(true),
+            eagerMaxBytes = SearchIndexer.EAGER_MAX_BYTES,
+            enabled = MutableStateFlow(false),
+        )
+
+        indexer.indexEager()
+
+        assertTrue("no document should have been opened", extracted.isEmpty())
+        assertTrue("not even the eager queue should have been read", dao.eagerPendingQueries.isEmpty())
+        assertTrue(dao.written.isEmpty())
+        assertEquals("the document should still be waiting", listOf(1L), dao.queue.map { it.id })
+    }
+
+    @Test
+    fun `nothing is read while the setting is off, however small the file`() {
+        dao.queue +=
+            listOf(document(1, size = 4_096), document(2, size = SearchIndexer.EAGER_MAX_BYTES + 1))
+
+        whileIndexing(
+            gatedIndexer(
+                MutableStateFlow(false),
+                eagerMaxBytes = SearchIndexer.EAGER_MAX_BYTES,
+                enabled = MutableStateFlow(false),
+            ),
+        ) {
+            repeat(20) { yield() }
+            delay(50)
+        }
+
+        assertTrue("no document should have been opened", extracted.isEmpty())
+        assertTrue(dao.eagerPendingQueries.isEmpty())
+        assertTrue(dao.pendingQueries.isEmpty())
+    }
+
+    @Test
+    fun `turning the setting on reads a small file even while the gate stays closed`() {
+        // The gate is closed for another reason, such as battery saver, which small files ignore.
+        dao.queue +=
+            listOf(document(1, size = 4_096), document(2, size = SearchIndexer.EAGER_MAX_BYTES + 1))
+        val enabled = MutableStateFlow(false)
+
+        whileIndexing(
+            gatedIndexer(
+                MutableStateFlow(false),
+                eagerMaxBytes = SearchIndexer.EAGER_MAX_BYTES,
+                enabled = enabled,
+            ),
+        ) {
+            repeat(20) { yield() }
+            delay(50)
+            assertTrue("nothing should be read while the setting is off", extracted.isEmpty())
+
+            enabled.value = true
+            // Past the import settle delay the eager pass waits out before it runs.
+            delay(1_300)
+        }
+
+        assertEquals(listOf(1L), extracted)
+        assertTrue("the large file still waits for the gate", dao.pendingQueries.isEmpty())
+    }
+
+    @Test
+    fun `switching the setting off stops an eager pass before its next document`() = runBlocking {
+        val enabled = MutableStateFlow(true)
+        val indexer = SearchIndexer(
+            dao = dao,
+            extract = { doc ->
+                extracted += doc.id
+                // The person turns the setting off while the first document is being read.
+                if (doc.id == 1L) enabled.value = false
+                ExtractedText("text", TextIndexState.INDEXED)
+            },
+            library = emptyFlow<Unit>(),
+            enabled = enabled,
+        )
+        dao.queue += listOf(document(1), document(2), document(3))
+
+        indexer.indexEager()
+
+        assertEquals(listOf(1L), extracted)
+        assertEquals(listOf(1L), dao.written.map { it.documentId })
     }
 
     @Test

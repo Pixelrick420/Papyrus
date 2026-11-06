@@ -6,7 +6,11 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -37,7 +41,9 @@ import java.util.concurrent.atomic.AtomicBoolean
  * everything.
  *
  * Small documents are the exception: a file of [EAGER_MAX_BYTES] or less is read without waiting for
- * the gate or the start delay, because its text is usually wanted right away.
+ * the gate or the start delay, because its text is usually wanted right away. The one thing they do
+ * wait for is [enabled]: with the setting off nothing is read, small files included, and turning it
+ * back on reads them again without waiting for the gate.
  */
 class SearchIndexer(
     private val dao: SearchDao,
@@ -54,11 +60,16 @@ class SearchIndexer(
      * `Context` this class does not have.
      */
     private val lastModified: suspend (DocumentEntity) -> Long? = { null },
+    /**
+     * Whether the person wants documents read at all: the setting, on its own. Unlike [mayIndex] it
+     * also stops the eager pass. Needs a current value, as a state flow has; on by default.
+     */
+    private val enabled: Flow<Boolean> = flowOf(true),
     /** Indexing runs while this is true; see [IndexingGate]. Always on by default. */
     private val mayIndex: Flow<Boolean> = flowOf(true),
     /** Waited before the first pass, so indexing does not compete with the app starting up. */
     private val startDelayMillis: Long = 0,
-    /** Files at most this large ignore [mayIndex]; zero turns the eager pass off. */
+    /** Files at most this large ignore [mayIndex], but not [enabled]; zero turns the eager pass off. */
     private val eagerMaxBytes: Long = EAGER_MAX_BYTES,
 ) {
     private val started = AtomicBoolean(false)
@@ -82,7 +93,9 @@ class SearchIndexer(
             indexEager()
             // Outside the gated collector, so closing the gate does not cancel the eager pass.
             launch {
-                library.conflate().collect {
+                // The setting coming back on is a reason to look again too: a closed gate would
+                // otherwise leave small files unread until the next library change.
+                merge(library, enabled.distinctUntilChanged().drop(1).filter { it }).conflate().collect {
                     delay(IMPORT_SETTLE_MILLIS)
                     indexEager()
                 }
@@ -108,9 +121,12 @@ class SearchIndexer(
         }
     }
 
-    /** One pass over the pending documents at most [eagerMaxBytes] large; ignores the gate. */
+    /**
+     * One pass over the pending documents at most [eagerMaxBytes] large; ignores the gate but not
+     * [enabled], which is asked again before each document so switching it off stops the pass.
+     */
     suspend fun indexEager() = passLock.withLock {
-        drain { dao.pendingUpTo(INDEX_VERSION, eagerMaxBytes, BATCH_SIZE) }
+        drain(wanted = { enabled.first() }) { dao.pendingUpTo(INDEX_VERSION, eagerMaxBytes, BATCH_SIZE) }
     }
 
     /**
@@ -121,11 +137,18 @@ class SearchIndexer(
         drain { dao.pending(INDEX_VERSION, BATCH_SIZE) }
     }
 
-    private suspend fun drain(batch: suspend () -> List<DocumentEntity>) {
-        while (true) {
+    /** Reads [batch] until it comes back empty, or until [wanted] says no, which ends the pass. */
+    private suspend fun drain(
+        wanted: suspend () -> Boolean = { true },
+        batch: suspend () -> List<DocumentEntity>,
+    ) {
+        while (wanted()) {
             val documents = batch()
             if (documents.isEmpty()) return
-            for (document in documents) indexOne(document, lastModified(document))
+            for (document in documents) {
+                if (!wanted()) return
+                indexOne(document, lastModified(document))
+            }
         }
     }
 
