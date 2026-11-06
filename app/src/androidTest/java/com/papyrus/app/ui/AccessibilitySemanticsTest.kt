@@ -4,8 +4,11 @@ import android.graphics.Bitmap
 import android.text.SpannableString
 import android.text.Spanned
 import android.widget.TextView
+import androidx.annotation.StringRes
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsMatcher
@@ -14,6 +17,7 @@ import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
@@ -238,6 +242,9 @@ class AccessibilitySemanticsTest {
         assertTrue(info?.isHeading == true)
     }
 
+    private fun string(@StringRes id: Int, vararg args: Any): String =
+        InstrumentationRegistry.getInstrumentation().targetContext.getString(id, *args)
+
     private fun loadingLabel(): String =
         InstrumentationRegistry.getInstrumentation().targetContext.getString(R.string.viewer_office_image_loading)
 
@@ -362,4 +369,85 @@ class AccessibilitySemanticsTest {
 
         rule.onNodeWithContentDescription("Select all").assertIsNotEnabled()
     }
+
+    @Test
+    fun readAloudBarIsAbsentUntilSomethingIsBeingRead() {
+        rule.setContent { ReadAloudBar(TtsState()) }
+
+        rule.onAllNodes(hasClickAction()).assertCountEquals(0)
+    }
+
+    @Test
+    fun readAloudPlayPauseNamesTheActionItWillTake() {
+        val state = mutableStateOf(TtsState(isPlaying = true))
+        rule.setContent { ReadAloudBar(state.value) }
+
+        rule.onNodeWithContentDescription("Pause").assertHasClickAction().assert(isButton())
+        rule.onAllNodesWithContentDescription("Play").assertCountEquals(0)
+
+        rule.runOnIdle { state.value = TtsState(isPaused = true) }
+        rule.onNodeWithContentDescription("Play").assertHasClickAction().assert(isButton())
+        rule.onAllNodesWithContentDescription("Pause").assertCountEquals(0)
+    }
+
+    @Test
+    fun readAloudScrollLockNamesWhatPressingItDoes() {
+        val state = mutableStateOf(TtsState(isPlaying = true, scrollLocked = true))
+        rule.setContent { ReadAloudBar(state.value) }
+
+        rule.onNodeWithContentDescription(string(R.string.tts_scroll_unlock)).assertHasClickAction().assert(isButton())
+        rule.onAllNodesWithContentDescription(string(R.string.tts_scroll_lock)).assertCountEquals(0)
+
+        rule.runOnIdle { state.value = TtsState(isPlaying = true, scrollLocked = false) }
+        rule.onNodeWithContentDescription(string(R.string.tts_scroll_lock)).assertHasClickAction().assert(isButton())
+        rule.onAllNodesWithContentDescription(string(R.string.tts_scroll_unlock)).assertCountEquals(0)
+    }
+
+    @Test
+    fun readAloudBarIsSixLabelledStopsAndAnnouncesNothingOnItsOwn() {
+        rule.setContent { ReadAloudBar(TtsState(isPlaying = true, speed = 1.5f)) }
+
+        // Skip back, play/pause, skip forward, lock, speed and stop: one node each, no separate glyph.
+        rule.onAllNodes(hasClickAction()).assertCountEquals(6)
+        rule.onNodeWithContentDescription("Skip back").assertHasClickAction()
+        rule.onNodeWithContentDescription("Skip forward").assertHasClickAction()
+        rule.onNodeWithContentDescription(string(R.string.viewer_read_aloud_stop)).assertHasClickAction()
+        rule.onNodeWithContentDescription("Speed 1.5×").assertHasClickAction()
+        // The speed chip's own "1.5×" text is folded into its label rather than read twice.
+        rule.onAllNodesWithText("1.5×").assertCountEquals(0)
+        // Playback state changes as the voice moves on; the bar must not talk over it.
+        rule.onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsProperties.LiveRegion)).assertCountEquals(0)
+    }
+
+    @Test
+    fun readAloudEngineFailureKeepsPlayAndDimsTheRest() {
+        rule.setContent {
+            ReadAloudBar(TtsState(hasError = true, errorMessage = "Speech stopped unexpectedly"))
+        }
+
+        rule.onNodeWithText("Speech stopped unexpectedly").assertExists()
+        // Play stays so the viewer can rebuild the queue; everything that needs the engine is off.
+        rule.onNodeWithContentDescription("Play").assertIsEnabled()
+        rule.onNodeWithContentDescription("Skip back").assertIsNotEnabled()
+        rule.onNodeWithContentDescription("Skip forward").assertIsNotEnabled()
+        // A failed read cannot hold the page, so the lock reads as the action it would take.
+        rule.onNodeWithContentDescription(string(R.string.tts_scroll_lock)).assertIsNotEnabled()
+        rule.onNodeWithContentDescription("Speed 1×").assertIsNotEnabled()
+        rule.onNodeWithContentDescription(string(R.string.viewer_read_aloud_stop)).assertIsEnabled()
+    }
+
+    @Composable
+    private fun ReadAloudBar(state: TtsState) {
+        TtsControls(
+            state = state,
+            onPlayPause = {},
+            onSkipBack = {},
+            onSkipForward = {},
+            onClose = {},
+            onSpeedChange = {},
+            onToggleScrollLock = {},
+        )
+    }
+
+    private fun isButton(): SemanticsMatcher = SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button)
 }
