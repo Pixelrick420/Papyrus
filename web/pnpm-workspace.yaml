@@ -19,7 +19,5 @@ minimumReleaseAgeExclude:
 # uses one copy of minimatch rather than a split between major versions.
 overrides:
   minimatch: ^11.0.1
-
-# Upstream has published no release carrying this change, so it lives in patches/ instead.
-patchedDependencies:
-  deepmerge@4.3.1: patches/deepmerge@4.3.1.patch
+  # deepmerge >= 4.2.0 has a prototype poisoning bug with no fixed release; 4.1.2 predates it.
+  deepmerge: 4.1.2
