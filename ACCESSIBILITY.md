@@ -14,7 +14,7 @@ the end-to-end suite, and both are checked by hand with the script at the end.
   so TalkBack reads it as a sentence.
 - Sheet titles are headings, so TalkBack's heading navigation skips between sections. So are the
   headings inside EPUB, DOCX and ODT documents and inside Markdown.
-- An image that has alt text (EPUB, DOCX, ODT) reads that text. An image without it is skipped.
+- An image that has alt text (EPUB, DOCX, ODT, Markdown) reads that text. An image without it is skipped.
 - The find-in-file match counter is a polite live region: stepping through matches announces
   "2 of 7" without moving focus.
 - A multi-file Remove or Share that runs long enough to show progress says so in one text node
@@ -122,8 +122,9 @@ device face down if you want to remove visual cues.
     saved copy of the PDF; the note stays in Papyrus.
 11. **Headings:** in a Markdown, EPUB, DOCX or ODT document, set TalkBack's reading controls to
     Headings and swipe down. Focus moves from heading to heading and each reads as "heading".
-12. **Image alt text:** in an EPUB, DOCX or ODT document with a described image, the image is one
-    stop that reads its alt text. An image with no alt text is not a stop.
+12. **Image alt text:** in an EPUB, DOCX, ODT or Markdown document with a described image, the image is one
+    stop that announces as an image and reads its alt text. An image with no alt text is not a stop. In Markdown
+    the alt text is also part of the document's text, so it is read there too.
 13. **Open errors:** a file that cannot be opened shows its own message: unsupported type, protected
     in a way Papyrus cannot unlock, damaged, or moved or deleted. A password prompt says whether
     the password is required or was wrong. A file that is moved, deleted or no longer accessible
@@ -155,7 +156,55 @@ stop of a whole screen and the order across its parts. Swipe right from the top 
 7. **Sheets and dialogs:** the first stop is the title (a heading). A dialog with a field (Go to, password,
    a bookmark's name) puts focus in the field and raises the keyboard.
 8. **Hardware keyboard:** Tab moves through the same controls in the same order and skips text that is not
-   a control, such as the selection count.
+   a control, such as the selection count. The keyboard pass below walks it in full.
+
+### Keyboard
+
+Connect a hardware keyboard (the emulator takes the host's) and turn TalkBack off. Do everything here without
+touching the screen. A control that cannot be reached, or that does not answer, is fixed or goes under Known
+limits.
+
+1. **Reach and press:** Tab and Shift+Tab move focus through the controls in the order of the focus-order steps
+   above, and Enter or Space presses the focused one. Each stop shows that it has focus; a control that takes
+   focus with no mark on it is a bug.
+2. **Home:** the search field takes typing once Tab reaches it. Enter on a row opens it. On a row's more options
+   button Enter opens its menu, the arrow keys step through Share, Star and Remove, Enter chooses one and Esc
+   closes the menu. Selection cannot be started from a keyboard (see Known limits), so Remove and Share for
+   several files at once are not available here; each row's own menu does both for one file.
+3. **Selection started by touch:** Tab reaches Back, Remove, Share and Select all, then the rows. Enter on a row
+   toggles it, and Back leaves selection.
+4. **Viewer shortcuts:** Ctrl+F opens find and puts focus in its field, also when a field already has it. Ctrl+G
+   opens Go to line or Go to page where the menu offers one. Ctrl+D adds a bookmark where the menu offers Add
+   bookmark. Where the menu does not offer the action (a crash report has no menu) the shortcut does nothing.
+5. **Find and read-aloud bars:** Tab walks each bar in the order `FocusOrderTest` pins, and Enter presses
+   Previous match, Next match, Close find and each read-aloud control.
+6. **Sheets and dialogs:** focus starts inside and stays inside, Esc closes them, and a dialog with a field
+   puts focus in it.
+7. **Settings:** Tab moves down the rows, Space or Enter flips a switch or opens a choice, and the arrow keys
+   step through a choice's options.
+8. **Two panes:** Tab leaves the last list row for the viewer's Back button. Back closes selection first, then
+   the open document, then the app.
+
+### Switch Access
+
+Turn on Switch Access in Android's accessibility settings, give it a switch, and use auto-scan or linear
+scanning with TalkBack off. Do everything here with the switch alone. A control that scanning never reaches is
+fixed or goes under Known limits.
+
+1. **Scanning reaches every control:** on each screen of the TalkBack script every control is highlighted in
+   turn, and selecting it does what a tap does. Text that is not a control is passed over.
+2. **A Home row:** selecting a row offers its actions: "Open", and "Select", which is the long press that starts
+   selection. With selection on, each row offers "Select" or "Deselect". The more options button opens the row's
+   menu, and every item in it can be scanned and selected.
+3. **Selection:** Back, Remove, Share and Select all in the header are reached. Remove asks to confirm, and
+   Cancel and the confirm button are reached. The add files button is gone while selecting, so it is not scanned.
+4. **Scrolling:** Switch Access's scroll actions move the Home list, a text file, Markdown, an office document,
+   an EPUB and a PDF a screen at a time, so no place in a long document needs a touch. Go to line and Go to page
+   are reached for longer jumps.
+5. **Viewer bars:** the header, the find bar and the read-aloud bar are scanned in the order of the focus-order
+   steps. Selecting the speed chip cycles the speed.
+6. **Sheets, dialogs and menus:** each opens with scanning on its first stop and closes from its own controls or
+   through Back. The password prompt's field takes focus.
 
 ### Known limits
 
@@ -164,10 +213,16 @@ stop of a whole screen and the order across its parts. Swipe right from the top 
 - A note is stored, drawn and read in Papyrus only. It is not written into a saved copy of the PDF,
   since the platform's annotation API offers no note annotation here.
 - Pinch zoom is a two-finger gesture that TalkBack intercepts. Use Android's accessibility zoom
-  instead. Text documents keep their normal TalkBack text navigation.
-- Images in Markdown documents are not described.
-- Headings in Markdown are virtual nodes over one text view, so a heading is a stop of its own as
-  well as part of the document's text.
+  instead. Text documents keep their normal TalkBack text navigation. Double-tap zoom and the fast-scroll
+  knob are touch gestures too, with no other control; scrolling and Go to take the place of the knob.
+- Headings and described images in Markdown are virtual nodes over one text view, so each is a stop of its
+  own as well as part of the document's text. An image's alt text is read in both places.
+- Selection on Home starts with a long press, which a hardware keyboard has no key for. Switch Access and
+  TalkBack start it from the row's "Select" action. A keyboard still has Share, Star and Remove for one file in
+  each row's menu; only Remove and Share for several files at once need selection.
+- PDF text selection starts with a long press on the page and moves with drag handles, and a link on a PDF page
+  is followed by tapping it. Neither is a stop of its own, so a keyboard or Switch Access cannot copy, highlight
+  or add a note to PDF text, or follow a PDF's links. A note that already exists is a button and can be opened.
 
 ## Adding a check
 
