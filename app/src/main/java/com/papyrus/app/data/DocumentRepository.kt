@@ -32,9 +32,8 @@ class DocumentRepository(
 ) {
     private val resolver get() = context.contentResolver
 
-    /** In-memory only; ids are negative (Room's positive), -1 the viewer's sentinel, so counting starts at -2. */
-    private val handedOver = mutableMapOf<Long, DocumentEntity>()
-    private var nextHandedOverId = -2L
+    /** In-memory only, and several at once: a second external file opens beside the first. */
+    private val handedOver = HandedOverStore<DocumentEntity>()
     private val crashReports = mutableMapOf<Long, DocumentEntity>()
     private var nextCrashReportId = -1000000L
 
@@ -174,12 +173,7 @@ class DocumentRepository(
                 .map { rows -> rows.firstOrNull()?.takeIf { it.sourceSize == document.sizeBytes } }
         }
 
-    private fun handOver(entity: DocumentEntity): Long {
-        val id = nextHandedOverId--
-        handedOver.clear()
-        handedOver[id] = entity.copy(id = id)
-        return id
-    }
+    private fun handOver(entity: DocumentEntity): Long = handedOver.add { id -> entity.copy(id = id) }
 
     fun openCrashReport(file: File): Long {
         val id = nextCrashReportId--
