@@ -76,7 +76,8 @@ Documents open through the Storage Access Framework, get indexed in a local Room
 on-device. The manifest declares no network or storage permissions; the only ones it asks for,
 `FOREGROUND_SERVICE` and `FOREGROUND_SERVICE_MEDIA_PLAYBACK`, let read-aloud keep speaking with the screen off,
 and `POST_NOTIFICATIONS` lets read-aloud show its playback notification (asked the first time read-aloud is used,
-on Android 13 and up).
+on Android 13 and up). A `<queries>` entry for the text-to-speech service lets read-aloud see the speech engine you
+chose, since Android 11 and up hides other apps otherwise.
 
 ## Formats
 
@@ -217,7 +218,10 @@ an XML root, JSON or Objective-C.
 
 ## Install
 
-1. Download the signed APK from the [latest release](https://github.com/Pixelrick420/Papyrus/releases/latest).
+1. Download the signed APK that fits your phone from the
+   [latest release](https://github.com/Pixelrick420/Papyrus/releases/latest): `app-arm64-v8a-release.apk` for most
+   phones, `app-armeabi-v7a-release.apk` for older 32-bit ARM ones, or `app-universal-release.apk` if unsure or on an
+   x86_64 device.
 2. Install it; Android may ask you to allow installs from your browser or file manager.
 3. Open a document from Papyrus, or tap one in another app and choose Papyrus.
 
@@ -230,14 +234,14 @@ Needs a JDK, the Android SDK, and Android 8.0 or up. Use the JDK version CI pins
 
 | Task                            | What it does                                     |
 | ------------------------------- | ------------------------------------------------ |
-| `./gradlew assembleDebug`       | build the debug APK                              |
+| `./gradlew assembleDebug`       | build the debug APKs                             |
 | `./gradlew installLocalDebug`   | build and install on the connected device        |
 | `./gradlew installLocalRelease` | minified release build, signed for local install |
 
-`installLocalRelease` signs a throwaway copy with the local debug keystore, because the `release` build type is unsigned
-unless all four `PAPYRUS_*` signing properties are supplied. The build fails outright if any configuration resolves a
-Google Play Services, Firebase, ML Kit, Play or data-transport dependency, so F-Droid compliance is enforced rather than
-documented.
+Both install tasks use the universal APK. `installLocalRelease` signs a throwaway copy with the local debug keystore,
+because the `release` build type is unsigned unless all four `PAPYRUS_*` signing properties are supplied. The build
+fails outright if any configuration resolves a Google Play Services, Firebase, ML Kit, Play or data-transport
+dependency, so F-Droid compliance is enforced rather than documented.
 
 ## Test
 
@@ -499,17 +503,18 @@ detekt, the same task CI runs. The screenshots this README shows live in
 
 ## Releases
 
-- Every pull request to `main` runs the unit tests and assembles an unsigned release APK uploaded as a build artifact,
-  so a broken build shows up before the merge. The emulator suite is left to the push to `main`, to keep runner cost
-  down.
-- Every push to `main` runs the unit tests and the emulator suite, and assembles an unsigned release APK uploaded as a
-  build artifact. Failing emulator tests are tolerated unless a configured share of the suite did not pass; see
+- Every pull request to `main` runs the unit tests and assembles the unsigned release APKs uploaded as a build
+  artifact, so a broken build shows up before the merge. The emulator suite is left to the push to `main`, to keep
+  runner cost down.
+- Every push to `main` runs the unit tests and the emulator suite, and assembles the unsigned release APKs uploaded as
+  a build artifact. Failing emulator tests are tolerated unless a configured share of the suite did not pass; see
   [Test](#test).
-- Pushing a `v*` tag runs the unit tests and publishes a signed APK to [Releases](../../releases). It does not run the
-  emulator suite, which belongs to the `main` push, and it refuses a tag that is not on `main`.
+- Pushing a `v*` tag runs the unit tests and publishes three signed APKs (arm64-v8a, armeabi-v7a and universal) to
+  [Releases](../../releases). It does not run the emulator suite, which belongs to the `main` push, and it refuses a
+  tag that is not on `main`.
 - The tag must match `versionName` in `app/build.gradle.kts`, and `versionCode` must exceed the previous release tag's,
   since that value alone orders the upgrades.
-- The job fails if the APK comes out unsigned or carries the Android debug certificate.
+- The job fails if any APK comes out unsigned or carries the Android debug certificate.
 - Signing uses a release keystore supplied from repository secrets, never committed to the repo. The job stops early
   if any of those secrets is missing rather than publishing an APK no one can upgrade to.
 
