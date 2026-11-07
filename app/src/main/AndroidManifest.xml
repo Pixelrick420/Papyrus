@@ -7,6 +7,15 @@
          still plays and the in-flow controls still work; only the system notification is missing. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- TextToSpeech finds the engine through PackageManager, which Android 11+ filters to the apps declared
+         here. Without this, a chosen engine such as eSpeak or RHVoice is invisible and read aloud falls back
+         or fails. Scoped to the TTS service action, so QUERY_ALL_PACKAGES is not needed. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE" />
+        </intent>
+    </queries>
+
     <application
         android:name=".MainApplication"
         android:allowBackup="false"
