@@ -102,7 +102,8 @@ class PdfPageSource private constructor(
                 ensureActive()
                 try {
                     engine.open(index).use { page ->
-                        val height = (widthPx.toFloat() * page.height / page.width).roundToInt().coerceAtLeast(1)
+                        if (page.width <= 0 || page.height <= 0) return@withLock null
+                        val height = (widthPx.toFloat() * page.height / page.width).roundToInt().coerceIn(1, MAX_PAGE_HEIGHT_PX)
                         val bitmap = createBitmap(widthPx, height)
                         bitmap.eraseColor(Color.WHITE)
                         page.render(bitmap)
@@ -110,6 +111,8 @@ class PdfPageSource private constructor(
                         bitmap
                     }
                 } catch (_: OutOfMemoryError) {
+                    null
+                } catch (_: RuntimeException) {
                     null
                 }
             }
@@ -299,6 +302,9 @@ class PdfPageSource private constructor(
 
         /** One sheet's worth of widgets; past this the form is not offered rather than half-listed. */
         private const val MAX_FORM_FIELDS = 300
+
+        /** Upper bound on a page bitmap's height, so a degenerate page size never asks for a bitmap the device cannot hold. */
+        private const val MAX_PAGE_HEIGHT_PX = 16_384
 
         private fun cacheBytes(): Int =
             (Runtime.getRuntime().maxMemory() / 8).toInt().coerceIn(8 shl 20, 128 shl 20)
