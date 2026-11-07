@@ -73,6 +73,21 @@ internal object Documents {
 
     fun odtParagraph(text: String) = "<text:p>${text.xmlEscaped()}</text:p>"
 
+    /**
+     * A text document that declares an encrypted entry in its manifest, which is all the app reads to tell that
+     * a file is password protected. The entry's bytes are never decrypted by anything here, so they are plain.
+     */
+    fun encryptedOdt(): ByteArray = zip(
+        "mimetype" to "application/vnd.oasis.opendocument.text",
+        "content.xml" to """<?xml version="1.0" encoding="UTF-8"?>
+            <office:document-content
+                xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
+                xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0">
+              <office:body><office:text><text:p>locked</text:p></office:text></office:body>
+            </office:document-content>""",
+        "META-INF/manifest.xml" to ENCRYPTED_ODF_MANIFEST,
+    )
+
     /** One chapter of a book: [href] is relative to the package folder, [body] is the XHTML inside `body`. */
     class Chapter(val href: String, val body: String)
 
@@ -118,6 +133,17 @@ internal object Documents {
     }
 
     private fun String.xmlEscaped() = replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+    private const val ENCRYPTED_ODF_MANIFEST = """<?xml version="1.0" encoding="UTF-8"?>
+        <manifest:manifest xmlns:manifest="urn:oasis:names:tc:opendocument:xmlns:manifest:1.0">
+          <manifest:file-entry manifest:full-path="content.xml" manifest:media-type="text/xml">
+            <manifest:encryption-data manifest:checksum-type="SHA1/1K" manifest:checksum="AAAAAAAAAAAAAAAAAAAAAAAAAAA=">
+              <manifest:algorithm manifest:algorithm-name="http://www.w3.org/2001/04/xmlenc#aes256-cbc" manifest:initialisation-vector="AAAAAAAAAAAAAAAAAAAAAA=="/>
+              <manifest:key-derivation manifest:key-derivation-name="PBKDF2" manifest:key-size="32" manifest:iteration-count="100000" manifest:salt="AAAAAAAAAAAAAAAAAAAAAA=="/>
+              <manifest:start-key-generation manifest:start-key-generation-name="SHA256" manifest:key-size="32"/>
+            </manifest:encryption-data>
+          </manifest:file-entry>
+        </manifest:manifest>"""
 
     private const val DOCX_CONTENT_TYPES = """<?xml version="1.0" encoding="UTF-8"?>
         <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
