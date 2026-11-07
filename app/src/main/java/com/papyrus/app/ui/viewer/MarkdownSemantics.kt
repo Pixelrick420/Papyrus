@@ -87,7 +87,7 @@ private class MarkdownSemantics(private val host: TextView) : ExploreByTouchHelp
         if (item == null || rect == null) {
             // A stale id still needs text and bounds, or the helper throws.
             node.text = " "
-            node.setBoundsInParent(Rect(0, 0, 1, 1))
+            setBoundsInScreenFromBoundsInParent(node, Rect(0, 0, 1, 1))
             return
         }
         if (item.isImage) {
@@ -98,7 +98,7 @@ private class MarkdownSemantics(private val host: TextView) : ExploreByTouchHelp
             node.text = item.label
             node.isHeading = true
         }
-        node.setBoundsInParent(rect)
+        setBoundsInScreenFromBoundsInParent(node, rect)
     }
 
     override fun onPerformActionForVirtualView(virtualViewId: Int, action: Int, arguments: Bundle?): Boolean = false

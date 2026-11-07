@@ -70,6 +70,8 @@ class TabletTest : E2eTest() {
     @Test
     fun backClosesTheOpenDocumentAndASecondBackLeavesTheApp() {
         app.addToLibrary(Fixtures.text("alpha.txt", "Alpha body text"))
+        // Saving left the document in a task of its own; Back from Home would otherwise reveal it.
+        app.leaveTheApp()
         app.launchHome()
         app.tapUntilShown(app.text("alpha.txt"), app.label("Alpha body text"), load)
 

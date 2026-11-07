@@ -1,9 +1,9 @@
 package com.papyrus.app.ui
 
+import android.view.KeyEvent
 import androidx.compose.foundation.layout.Row
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -12,10 +12,8 @@ import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
-import androidx.compose.ui.test.onRoot
-import androidx.compose.ui.test.performKeyInput
-import androidx.compose.ui.test.pressKey
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import com.papyrus.app.data.LibrarySort
 import com.papyrus.app.tts.TtsState
 import com.papyrus.app.ui.components.SearchPill
@@ -65,9 +63,15 @@ class FocusOrderTest {
 
         // The count is text, not a control, so the keyboard skips it.
         for (label in listOf("Back", "Remove", "Share", "Select all")) {
-            rule.onRoot().performKeyInput { pressKey(Key.Tab) }
+            pressTab()
             rule.onNodeWithContentDescription(label).assertIsFocused()
         }
+    }
+
+    /** performKeyInput only feeds an already-focused node; a real key press focuses the first control. */
+    private fun pressTab() {
+        InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(KeyEvent.KEYCODE_TAB)
+        rule.waitForIdle()
     }
 
     @Test

@@ -118,6 +118,16 @@ internal class AppDriver {
         device.pressBack()
     }
 
+    /** Presses Back until the app has left the screen: a document it was handed gets a task of its own. */
+    fun leaveTheApp() {
+        repeat(BACK_ATTEMPTS) {
+            if (!device.hasObject(By.pkg(packageName))) return
+            device.pressBack()
+            device.waitForIdle(SETTLE_TIMEOUT_MS)
+        }
+        if (device.hasObject(By.pkg(packageName))) throw AssertionError("The app is still on screen: ${onScreen()}")
+    }
+
     /**
      * Scrolls the screen's list until [selector] is on it; a screen that fits needs no scrolling. A column
      * keeps the rows it has scrolled past, so a match only counts once some of it is inside the screen.
@@ -338,6 +348,9 @@ internal class AppDriver {
         /** How long a tap gets to show its effect before it is taken as lost. */
         private const val TAP_RESPONSE_MS = 3_000L
         private const val TAP_ATTEMPTS = 3
+
+        /** Backs a task can need to unwind before the app is gone, one per screen and its document. */
+        private const val BACK_ATTEMPTS = 4
 
         /** How long to wait for the screen's list to appear, which a screen that has none never does. */
         private const val SCROLLABLE_TIMEOUT_MS = 5_000L

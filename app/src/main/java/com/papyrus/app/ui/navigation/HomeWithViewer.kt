@@ -32,6 +32,7 @@ import androidx.compose.material3.windowsizeclass.calculateWindowSizeClass
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -159,9 +160,13 @@ internal fun HomeWithViewer(
         }
     }
 
-    // Registered after the pane's own back handling, so it is asked first: Back leaves selection
-    // before it closes the open document, as it leaves selection before it leaves Home on a phone.
-    BackHandler(enabled = state.selection.active) { home.exitSelection() }
+    // nav-compose registers its own back handler after the first frame and only the last enabled handler
+    // is asked, so this re-registers whenever the pane changes and lands after that one.
+    key(openId, state.selection.active) {
+        BackHandler(enabled = state.selection.active || openId != null) {
+            if (state.selection.active) home.exitSelection() else closeDocument()
+        }
+    }
 }
 
 private const val PANE_FADE_MS = 150
