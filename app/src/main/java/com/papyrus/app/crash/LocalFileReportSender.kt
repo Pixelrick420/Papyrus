@@ -27,14 +27,26 @@ class LocalFileReportSender : ReportSender {
         }
     }
 
-    /** Replaces app-internal absolute paths in the stack trace so crash reports never name the user's documents. */
+    /** Redacts document paths and URIs from the report so crash reports never name the user's documents. */
     private fun redactDocumentPaths(errorContent: CrashReportData, filesDir: File) {
         val stackTrace = errorContent.getString(ReportField.STACK_TRACE) ?: return
-        val root = filesDir.absolutePath
-        val sanitized = stackTrace.replace(Regex(Pattern.quote(root)), "[redacted]")
+        val sanitized = redact(stackTrace, filesDir.absolutePath)
         if (sanitized != stackTrace) {
             errorContent.put(ReportField.STACK_TRACE, sanitized)
         }
+    }
+
+    internal companion object {
+        private val CONTENT_URI = Regex("""content://\S+""")
+        // Names can hold spaces, so a file path or an imported file's path is redacted to the end of its line.
+        private val FILE_URI = Regex("""file://.*""")
+        private val IMPORTS = Regex("""\S*imports/.*""")
+
+        internal fun redact(text: String, root: String): String =
+            text.replace(Regex(Pattern.quote(root) + """.*"""), "[redacted]")
+                .replace(CONTENT_URI, "[redacted]")
+                .replace(FILE_URI, "[redacted]")
+                .replace(IMPORTS, "[redacted]")
     }
 }
 
