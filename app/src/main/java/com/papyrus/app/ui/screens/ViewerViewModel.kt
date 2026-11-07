@@ -877,6 +877,10 @@ class ViewerViewModel(
         throw e
     } catch (e: Exception) {
         failureFor(e)
+    } catch (_: OutOfMemoryError) {
+        ViewerContent.Failed(UiText(R.string.viewer_error_too_large))
+    } catch (_: StackOverflowError) {
+        ViewerContent.Failed(UiText(R.string.viewer_error_too_large))
     }
 
     /** One message per cause, so a person can tell a wrong format from a lost file from a damaged one. */

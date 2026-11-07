@@ -122,6 +122,9 @@ access</string>
         name="viewer_error_empty"
     >No readable text found in this document.</string>
     <string
+        name="viewer_error_too_large"
+    >This document is too large to open.</string>
+    <string
         name="viewer_error_generic"
     >Couldn\'t open the document: %1$s</string>
     <string name="viewer_copy">Copy</string>

@@ -552,7 +552,7 @@ private const val CHECKSUM_BYTES = 1024
 
 private const val MAX_SPIN_COUNT = 5_000_000
 private const val MAX_MANIFEST_BYTES = 16 * 1024 * 1024
-private const val MAX_ENTRY_BYTES = 128 * 1024 * 1024
+private const val MAX_ENTRY_BYTES = 64 * 1024 * 1024
 private const val MAX_DECOMPRESSED = 256 * 1024 * 1024
 private const val READ_BUFFER = 64 * 1024
 private const val INFLATE_BUFFER = 64 * 1024
