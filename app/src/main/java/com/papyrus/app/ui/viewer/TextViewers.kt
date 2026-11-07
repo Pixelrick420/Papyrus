@@ -271,7 +271,7 @@ fun MarkdownViewer(
                                 // The setter, not `isTextSelectable = true`: that resolves to the
                                 // read-only val.
                                 setTextIsSelectable(true)
-                                exposeMarkdownHeadings()
+                                exposeMarkdownSemantics()
                             }
                         },
                         update = { view ->
@@ -289,7 +289,7 @@ fun MarkdownViewer(
                                 textState.view = view
                                 textState.text = highlighted
                                 markwon.setParsedMarkdown(view, highlighted)
-                                view.refreshMarkdownHeadings()
+                                view.refreshMarkdownSemantics()
                             }
                             // After any re-set of the text, which drops every span it had.
                             spokenSpans.show(view, spoken, sentenceColor, wordColor)

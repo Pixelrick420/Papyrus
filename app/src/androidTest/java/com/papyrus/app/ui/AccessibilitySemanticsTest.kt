@@ -3,6 +3,8 @@ package com.papyrus.app.ui
 import android.graphics.Bitmap
 import android.text.SpannableString
 import android.text.Spanned
+import android.view.accessibility.AccessibilityNodeProvider
+import android.widget.ImageView
 import android.widget.TextView
 import androidx.annotation.StringRes
 import androidx.compose.material3.SnackbarDuration
@@ -57,8 +59,9 @@ import com.papyrus.app.ui.viewer.FindInFileBar
 import com.papyrus.app.ui.viewer.OfficeBlockView
 import com.papyrus.app.ui.viewer.OutlineSheet
 import com.papyrus.app.ui.viewer.TtsControls
-import com.papyrus.app.ui.viewer.exposeMarkdownHeadings
+import com.papyrus.app.ui.viewer.exposeMarkdownSemantics
 import com.papyrus.app.viewer.OfficeBlock
+import com.papyrus.app.viewer.MarkdownRenderer
 import com.papyrus.app.viewer.OutlineEntry
 import io.noties.markwon.core.MarkwonTheme
 import io.noties.markwon.core.spans.HeadingSpan
@@ -236,7 +239,7 @@ class AccessibilitySemanticsTest {
                     )
                     TextView(context).apply {
                         this.text = text
-                        exposeMarkdownHeadings()
+                        exposeMarkdownSemantics()
                         view = this
                     }
                 },
@@ -251,6 +254,44 @@ class AccessibilitySemanticsTest {
         }
         assertEquals("Setup", info?.text?.toString())
         assertTrue(info?.isHeading == true)
+    }
+
+    @Test
+    fun markdownImagesWithAltTextAreVirtualImageNodesAndMissingAltIsSkipped() {
+        val source = "# Report\n\n![Sales by quarter]($PIXEL)\n\n![]($PIXEL)\n\nClosing words"
+        lateinit var view: TextView
+        rule.setContent {
+            AndroidView(
+                factory = { context ->
+                    TextView(context).apply {
+                        // Rendered by the real Markwon, so the spans are the ones the viewer gets.
+                        MarkdownRenderer.create(context, source).markwon.setMarkdown(this, source)
+                        exposeMarkdownSemantics()
+                        view = this
+                    }
+                },
+            )
+        }
+
+        rule.waitForIdle()
+        var children = -1
+        var heading: AccessibilityNodeInfoCompat? = null
+        var image: AccessibilityNodeInfoCompat? = null
+        rule.runOnUiThread {
+            val provider = view.accessibilityNodeProvider
+            children = provider
+                ?.createAccessibilityNodeInfo(AccessibilityNodeProvider.HOST_VIEW_ID)
+                ?.let { AccessibilityNodeInfoCompat.wrap(it).childCount } ?: -1
+            heading = provider?.createAccessibilityNodeInfo(0)?.let { AccessibilityNodeInfoCompat.wrap(it) }
+            image = provider?.createAccessibilityNodeInfo(1)?.let { AccessibilityNodeInfoCompat.wrap(it) }
+        }
+        // The heading and the described image: the image with no alt text adds no node of its own.
+        assertEquals(2, children)
+        assertEquals("Report", heading?.text?.toString())
+        assertTrue(heading?.isHeading == true)
+        assertEquals("Sales by quarter", image?.contentDescription?.toString())
+        assertEquals(ImageView::class.java.name, image?.className?.toString())
+        assertTrue(image?.isHeading != true)
     }
 
     private fun string(@StringRes id: Int, vararg args: Any): String =
@@ -556,3 +597,6 @@ class AccessibilitySemanticsTest {
         rule.onNodeWithText(prompt).assert(!SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading))
     }
 }
+
+private const val PIXEL =
+    "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
