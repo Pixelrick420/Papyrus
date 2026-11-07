@@ -768,10 +768,10 @@ class ViewerViewModel(
             )
             try {
                 TtsPlaybackService.start(app)
-            } catch (e: IllegalStateException) {
+            } catch (_: IllegalStateException) {
                 // Android 12+ refuses a foreground service start once the app has left the foreground.
                 tts.stop()
-            } catch (e: SecurityException) {
+            } catch (_: SecurityException) {
                 tts.stop()
             }
         }
