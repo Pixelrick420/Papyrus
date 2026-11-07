@@ -5,7 +5,7 @@ import androidx.test.runner.AndroidJUnitRunner
 
 /**
  * Clears what an earlier run left on disk before any of the app's code opens it, and restores the
- * device's animations in [finish].
+ * device's animations and window size in [finish].
  */
 class PapyrusTestRunner : AndroidJUnitRunner() {
 
@@ -16,6 +16,7 @@ class PapyrusTestRunner : AndroidJUnitRunner() {
 
     override fun finish(resultCode: Int, results: Bundle) {
         Animations.restore()
+        TabletWindow.off()
         super.finish(resultCode, results)
     }
 }
