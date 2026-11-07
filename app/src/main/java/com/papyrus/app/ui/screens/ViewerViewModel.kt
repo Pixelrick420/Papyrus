@@ -766,7 +766,14 @@ class ViewerViewModel(
                 startIndex = TtsDocumentSource.startIndexFor(units, location),
                 speed = tts.state.value.speed.takeIf { it > 0f } ?: 1.0f,
             )
-            TtsPlaybackService.start(app)
+            try {
+                TtsPlaybackService.start(app)
+            } catch (e: IllegalStateException) {
+                // Android 12+ refuses a foreground service start once the app has left the foreground.
+                tts.stop()
+            } catch (e: SecurityException) {
+                tts.stop()
+            }
         }
     }
 
