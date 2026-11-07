@@ -138,10 +138,14 @@ class MainApplication : Application() {
         super.onCreate()
         // ACRA runs its report pipeline in a separate ":acra" process; skip app setup there.
         if (ACRA.isACRASenderServiceProcess()) return
+        // Taken before anything can save a copy, so only files from an earlier run count as old.
+        val startedAt = System.currentTimeMillis()
         sweepUnlocked()
         // Off the main thread: the first thing indexing does is open the database, and a kill
         // between the two is harmless because the queue lives in that database.
         applicationScope.launch { searchIndexer.start(this) }
+        // Best effort: a sweep that fails leaves the files for the next start.
+        applicationScope.launch { runCatching { repository.sweepOrphanedImports(startedAt) } }
     }
 
     /** Trims the page and thumbnail caches; the bitmaps are rebuilt on demand, so trimming costs only a re-render. */

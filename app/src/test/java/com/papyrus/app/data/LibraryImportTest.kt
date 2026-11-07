@@ -176,6 +176,70 @@ class LibraryImportTest {
         assertFalse(LibraryImport.sameContent(candidate, candidate.length()) { throw IOException("boom") })
     }
 
+    @Test
+    fun `a sweep deletes an old file no row names and keeps one a row names`() {
+        val dir = temp.newFolder("imports")
+        val orphan = imported(dir, "orphan.pdf", OLD)
+        val owned = imported(dir, "owned.pdf", OLD)
+
+        val removed = LibraryImport.sweepOrphans(dir, setOf(owned), CUTOFF)
+
+        assertEquals(1, removed)
+        assertFalse(orphan.exists())
+        assertTrue(owned.exists())
+    }
+
+    @Test
+    fun `a sweep spares a file written since the cutoff even with no row`() {
+        val dir = temp.newFolder("imports")
+        val saving = imported(dir, "saving.pdf", NEWER)
+        val atCutoff = imported(dir, "boundary.pdf", CUTOFF)
+
+        assertEquals(0, LibraryImport.sweepOrphans(dir, emptySet(), CUTOFF))
+
+        assertTrue(saving.exists())
+        assertTrue(atCutoff.exists())
+    }
+
+    @Test
+    fun `a sweep deletes the temp file a killed copy left behind`() {
+        val dir = temp.newFolder("imports")
+        val leftover = imported(dir, "import-123456.tmp", OLD)
+
+        assertEquals(1, LibraryImport.sweepOrphans(dir, emptySet(), CUTOFF))
+
+        assertFalse(leftover.exists())
+    }
+
+    @Test
+    fun `a sweep matches a row's file by its canonical path`() {
+        val dir = temp.newFolder("imports")
+        val owned = imported(dir, "owned.pdf", OLD)
+        val roundabout = File(dir, "../imports/./owned.pdf")
+
+        assertEquals(0, LibraryImport.sweepOrphans(dir, setOf(roundabout), CUTOFF))
+
+        assertTrue(owned.exists())
+    }
+
+    @Test
+    fun `a sweep leaves folders alone and tolerates a folder that is not there`() {
+        val dir = temp.newFolder("imports")
+        val nested = File(dir, "nested").apply { mkdir() }
+        imported(nested, "inside.pdf", OLD)
+
+        assertEquals(0, LibraryImport.sweepOrphans(dir, emptySet(), CUTOFF))
+        assertEquals(0, LibraryImport.sweepOrphans(File(dir, "absent"), emptySet(), CUTOFF))
+
+        assertTrue(File(nested, "inside.pdf").exists())
+    }
+
+    private fun imported(dir: File, name: String, modified: Long): File =
+        File(dir, name).apply {
+            writeText(name)
+            assertTrue(setLastModified(modified))
+        }
+
     private fun candidate(bytes: ByteArray): File =
         File(temp.newFolder("imports"), "doc.pdf").apply { writeBytes(bytes) }
 
@@ -183,5 +247,12 @@ class LibraryImportTest {
     private fun oneByteThenFails(): InputStream = object : InputStream() {
         private var reads = 0
         override fun read(): Int = if (reads++ == 0) 'x'.code else throw IOException("boom")
+    }
+
+    private companion object {
+        // Millisecond stamps: a file from an earlier run, the moment this run started, and one written after.
+        const val OLD = 1_000_000L
+        const val CUTOFF = 10_000_000L
+        const val NEWER = 20_000_000L
     }
 }

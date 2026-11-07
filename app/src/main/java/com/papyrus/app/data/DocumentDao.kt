@@ -24,6 +24,10 @@ interface DocumentDao {
     @Query("SELECT * FROM documents WHERE title = :title")
     suspend fun getByTitle(title: String): List<DocumentEntity>
 
+    /** Every stored URI, so the startup sweep can tell which files in the imports folder a row still names. */
+    @Query("SELECT uri FROM documents")
+    suspend fun allUris(): List<String>
+
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertIgnore(document: DocumentEntity): Long
 

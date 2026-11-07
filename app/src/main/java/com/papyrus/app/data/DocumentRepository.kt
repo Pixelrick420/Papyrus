@@ -311,6 +311,17 @@ class DocumentRepository(
     }
 
     /**
+     * Deletes the app-owned copies no row points at. [remove] drops the row before the file, so a kill
+     * between the two leaves a file nothing would ever delete; so does a copy whose insert never ran.
+     * Files written at or after [startedAt] are spared, because a copy this run is saving has no row yet.
+     * Reads the rows first, so a failed read deletes nothing.
+     */
+    suspend fun sweepOrphanedImports(startedAt: Long): Int = withContext(Dispatchers.IO) {
+        val referenced = dao.allUris().mapNotNullTo(HashSet()) { ownedCopy(it) }
+        LibraryImport.sweepOrphans(LibraryImport.importsDir(context), referenced, startedAt)
+    }
+
+    /**
      * SAF URIs share as-is. A local copy has no grant and cannot leave as a bare file:// URI, so it
      * goes through a FileProvider.
      */

@@ -35,6 +35,26 @@ object LibraryImport {
         return file.delete()
     }
 
+    /**
+     * Deletes the files in [dir] that [referenced] does not name and that were last written before
+     * [modifiedBefore]: a copy whose row went first when a removal was cut short, one whose insert never
+     * ran, a temp file from a copy that was killed. The age bound keeps it off a copy still being saved,
+     * which exists a moment before its row does. A file with no readable time is kept. Returns how many
+     * files went.
+     */
+    internal fun sweepOrphans(dir: File, referenced: Set<File>, modifiedBefore: Long): Int {
+        val kept = referenced.mapNotNullTo(HashSet()) { runCatching { it.canonicalFile }.getOrNull() }
+        var removed = 0
+        for (file in dir.listFiles().orEmpty()) {
+            if (!file.isFile) continue
+            val modified = file.lastModified()
+            if (modified == 0L || modified >= modifiedBefore) continue
+            val canonical = runCatching { file.canonicalFile }.getOrNull() ?: continue
+            if (canonical !in kept && file.delete()) removed++
+        }
+        return removed
+    }
+
     /** True when [file] lies in [dir] — canonical, so a sibling `imports-evil` never matches. */
     internal fun isInside(dir: File, file: File): Boolean = runCatching {
         file.canonicalFile.parentFile == dir.canonicalFile
