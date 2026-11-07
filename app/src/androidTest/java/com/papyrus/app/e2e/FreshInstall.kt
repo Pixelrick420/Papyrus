@@ -15,6 +15,7 @@ internal object FreshInstall {
     fun beforeAppCode(context: Context) {
         clear(File(context.dataDir, DATABASES_DIR))
         clearImports(context)
+        clear(File(context.filesDir, CRASH_REPORTS_DIR))
         // A fresh install has no preferences at all; the app writes the setting it needs back as it reads them.
         clear(File(context.dataDir, SHARED_PREFS_DIR))
     }
@@ -24,6 +25,7 @@ internal object FreshInstall {
         val app = ApplicationProvider.getApplicationContext<MainApplication>()
         app.database.clearAllTables()
         clearImports(app)
+        clear(File(app.filesDir, CRASH_REPORTS_DIR))
         app.settings.resetToDefaults()
     }
 
@@ -39,5 +41,6 @@ internal object FreshInstall {
 
     private const val DATABASES_DIR = "databases"
     private const val IMPORTS_DIR = "imports"
+    private const val CRASH_REPORTS_DIR = "crash-reports"
     private const val SHARED_PREFS_DIR = "shared_prefs"
 }
