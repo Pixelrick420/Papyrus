@@ -262,14 +262,17 @@ class TtsPlaybackService : Service(), TextToSpeech.OnInitListener {
      * there is nothing left to silence.
      */
     private fun stopPlayback(clearSession: Boolean = true) {
-        if (!started) return
-        started = false
-        if (clearSession) {
-            controller?.stop()
-            session.stop()
+        if (started) {
+            started = false
+            if (clearSession) {
+                controller?.stop()
+                session.stop()
+            }
+            audio.release()
+            stopForeground(STOP_FOREGROUND_REMOVE)
         }
-        audio.release()
-        stopForeground(STOP_FOREGROUND_REMOVE)
+        // Also when nothing had started: a second tap on Stop, or one that lands after the first has already
+        // stopped playback, is a start command like any other and would keep an idle service alive.
         stopSelf()
     }
 
