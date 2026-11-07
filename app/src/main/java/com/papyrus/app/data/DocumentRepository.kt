@@ -372,6 +372,9 @@ class DocumentRepository(
             return@withContext true
         }
         dao.updateUri(expected.id, picked.toString())
+        // The row no longer names the old URI, so its grant would sit dead in the OS's capped pool and push
+        // live ones out at the cap. A re-pick that returns the same URI is the grant just taken: that stays.
+        if (expected.uri != picked.toString()) SafStorage.releasePermission(resolver, expected.uri.toUri())
         true
     }
 
