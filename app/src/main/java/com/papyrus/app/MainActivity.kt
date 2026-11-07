@@ -68,7 +68,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun viewUri(intent: Intent?): Uri? =
-        intent?.takeIf { it.action == Intent.ACTION_VIEW }?.data
+        intent?.takeIf { it.action == Intent.ACTION_VIEW }?.data?.takeIf { it.scheme == "content" }
 
     private fun deviceInDarkMode(): Boolean =
         (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
