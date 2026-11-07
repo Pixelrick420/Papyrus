@@ -262,7 +262,7 @@ The emulator in CI draws in software, so a frame can arrive seconds late and a t
 failing the build. `RetryRule` runs a failed end-to-end test again (a fixed number of attempts, each from a fresh
 install, with a cap on the whole run so a broken build still ends at a report), and logs `FLAKY` for any test that only
 passed on a retry. Then the emulator job grades the suite as a whole instead of failing on the first red test: it passes
-unless a configured share of the tests did not pass (`EMULATOR_MAX_FAILURE_PERCENT` in `.github/workflows/build.yml`). Tests
+when at least a configured share of the tests passed (`EMULATOR_MIN_PASS_PERCENT`, 90, in `.github/workflows/build.yml`). Tests
 that never ran count as not passing, and a run that reports no tests at all fails, so a crashed run cannot pass by
 omission. The failing tests are listed in the job summary and as warnings, and `logcat.txt` is in the
 `emulator-test-results` artifact. Locally, `./gradlew connectedDebugAndroidTest` stays strict: any failure fails it.

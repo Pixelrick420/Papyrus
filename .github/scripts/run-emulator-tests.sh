@@ -14,6 +14,21 @@ rm -rf "$results_dir"
 "$adb" logcat -G 16M || true
 "$adb" logcat -c || true
 
+# A system error dialog, the "isn't responding" one above all, is a modal window that takes input focus from
+# the app under test. Every test that needs Papyrus on screen then fails, and nothing on CI dismisses it. With
+# dialogs hidden, Android kills the process that would have shown one instead (AppErrors.handleShowAnrUi), and
+# the launcher simply restarts. ATMS observes this setting, so it applies at once and needs no reboot.
+"$adb" shell settings put global hide_error_dialogs 1 || true
+
+# A dialog that came up before the setting did (the emulator is still busy for its first minute) outlives it,
+# but not the process that owns it, so stop that process. The window is titled "Application Not Responding: <process>".
+anr_process="$("$adb" shell dumpsys window windows 2>/dev/null | tr -d '\r' \
+  | grep -o 'Application Not Responding: [A-Za-z0-9_.:]*' | head -n 1 | cut -d' ' -f4)"
+if [ -n "$anr_process" ]; then
+  echo "::warning::An ANR dialog for $anr_process was already showing; stopping that process to clear it."
+  "$adb" shell am force-stop "${anr_process%%:*}" || true
+fi
+
 ./gradlew --no-daemon connectedDebugAndroidTest 2>&1 | tee "$ci_dir/gradle.log"
 status="${PIPESTATUS[0]}"
 echo "$status" > "$ci_dir/gradle-exit-code"

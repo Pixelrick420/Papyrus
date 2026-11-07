@@ -55,7 +55,7 @@ internal class AppDriver {
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
         context.startActivity(intent)
         if (device.wait(Until.hasObject(By.pkg(packageName).depth(0)), LAUNCH_TIMEOUT_MS) != true) {
-            throw AssertionError("Papyrus did not come to the front within ${LAUNCH_TIMEOUT_MS}ms")
+            throw AssertionError("Papyrus did not come to the front within ${LAUNCH_TIMEOUT_MS}ms. ${whoHasTheScreen()}")
         }
         // The package is on screen as soon as the splash window is, and a tap that lands while the system
         // swaps the splash for the activity is dropped. Waiting for the events to stop lets the swap finish.
@@ -286,6 +286,29 @@ internal class AppDriver {
         assertShown(text("Saved to your library"))
     }
 
+    /**
+     * What the device showed when the app never appeared: the window that has input focus, and the words every
+     * window is drawing, whichever app drew them. A system dialog over the app (an ANR box above all) takes the
+     * focus and hides the app from the accessibility tree, and nothing else in the failure would say so.
+     */
+    private fun whoHasTheScreen(): String {
+        val focus = Shell.run("dumpsys window").lineSequence()
+            .filter { it.contains("mCurrentFocus") || it.contains("mFocusedApp") }
+            .take(MAX_FOCUS_LINES)
+            .joinToString(" ") { it.trim() }
+        val words = runCatching {
+            device.findObjects(By.clazz(TEXT_VIEW))
+                .mapNotNull { node ->
+                    // One line: a failure's message is reported by its first line alone.
+                    node.text?.takeIf { it.isNotBlank() }
+                        ?.let { "${node.applicationPackage}: ${it.take(MAX_WORDS_SHOWN).replace('\n', ' ')}" }
+                }
+                .take(MAX_WINDOW_WORDS)
+                .joinToString(" | ")
+        }.getOrElse { "(the screen could not be read: ${it.message})" }
+        return "Focus: ${focus.ifEmpty { "(unknown)" }}. All windows: ${words.ifEmpty { "(no text)" }}"
+    }
+
     /** Everything the app is showing, as the message of a test that failed: the screen it was looking at. */
     fun onScreen(): String = runCatching {
         device.findObjects(By.pkg(packageName))
@@ -344,6 +367,10 @@ internal class AppDriver {
         private const val FIND_POLL_MS = 100L
         private const val STALE_RETRIES = 3
         private const val MAX_WORDS_SHOWN = 80
+
+        /** Lines of other windows' text a failed launch reports: enough to recognise a dialog, short enough to read. */
+        private const val MAX_WINDOW_WORDS = 20
+        private const val MAX_FOCUS_LINES = 4
 
         /** How long a tap gets to show its effect before it is taken as lost. */
         private const val TAP_RESPONSE_MS = 3_000L

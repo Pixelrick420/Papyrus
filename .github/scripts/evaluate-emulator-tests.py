@@ -1,8 +1,8 @@
 """Decides whether the emulator job passes.
 
 The emulator suite is a soft gate: individual failing tests are reported but do not fail the build.
-The build fails only when MORE than --max-failure-percent of the suite did not pass. "Did not pass"
-counts three things, so that a run cannot look healthy by not running:
+The build fails when LESS than --min-pass-percent of the suite passed (at least that share must pass). The
+rest, "did not pass", counts three things, so that a run cannot look healthy by not running:
 
   * tests the XML records as failed or errored,
   * tests declared in the sources (`@Test`) that never reported a result -- the instrumentation
@@ -59,8 +59,8 @@ class Tally:
     def bad(self) -> int:
         return self.failed + self.missing
 
-    def failure_percent(self) -> float:
-        return 100.0 * self.bad / self.counted if self.counted else 100.0
+    def pass_percent(self) -> float:
+        return 100.0 * self.passed / self.counted if self.counted else 0.0
 
 
 @dataclass(frozen=True)
@@ -70,7 +70,7 @@ class Verdict:
 
 
 def decide(
-    tally: Tally, max_failure_percent: float, gradle_exit: int | None
+    tally: Tally, min_pass_percent: float, gradle_exit: int | None
 ) -> Verdict:
     if tally.passed + tally.failed + tally.skipped == 0:
         return Verdict(
@@ -87,17 +87,18 @@ def decide(
             False,
             f"Gradle exited with {gradle_exit} although no test is recorded as failing.",
         )
-    if tally.bad * 100 > max_failure_percent * tally.counted:
+    # Integer-friendly form of passed / counted < min_pass_percent / 100, so exactly the required share passes.
+    if tally.passed * 100 < min_pass_percent * tally.counted:
         return Verdict(
             False,
-            f"{tally.bad} of {tally.counted} emulator tests did not pass "
-            f"({tally.failure_percent():.1f}%), more than the {max_failure_percent:g}% allowed.",
+            f"Only {tally.passed} of {tally.counted} emulator tests passed "
+            f"({tally.pass_percent():.1f}%); at least {min_pass_percent:g}% must pass.",
         )
     if tally.bad:
         return Verdict(
             True,
-            f"{tally.bad} of {tally.counted} emulator tests did not pass "
-            f"({tally.failure_percent():.1f}%), within the {max_failure_percent:g}% allowed. Not a build failure.",
+            f"{tally.passed} of {tally.counted} emulator tests passed "
+            f"({tally.pass_percent():.1f}%), meeting the {min_pass_percent:g}% required. Not a build failure.",
         )
     return Verdict(True, f"All {tally.passed} emulator tests passed.")
 
@@ -203,17 +204,17 @@ def build_report(
     verdict: Verdict,
     failures: list[Failure],
     flaky: list[str],
-    limit: float,
+    required: float,
 ) -> str:
     lines = [
         "## Emulator tests",
         "",
         verdict.headline,
         "",
-        "| Passed | Failed | Not run | Skipped | Declared | Not passing | Limit |",
+        "| Passed | Failed | Not run | Skipped | Declared | Pass rate | Required |",
         "| ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
         f"| {tally.passed} | {tally.failed} | {tally.missing} | {tally.skipped} | {tally.declared} "
-        f"| {tally.failure_percent():.1f}% | {limit:g}% |",
+        f"| {tally.pass_percent():.1f}% | {required:g}% |",
         "",
     ]
     if failures:
@@ -258,17 +259,24 @@ def main() -> int:
         default=Path("app/build/emulator-ci"),
         help="where run-emulator-tests.sh left gradle-exit-code and logcat.txt",
     )
-    parser.add_argument("--max-failure-percent", type=float, default=80.0)
+    parser.add_argument(
+        "--min-pass-percent",
+        type=float,
+        default=90.0,
+        help="the build fails when a smaller share of the counted tests passed (default: 90)",
+    )
     args = parser.parse_args()
+    if not 0.0 <= args.min_pass_percent <= 100.0:
+        parser.error("--min-pass-percent must be between 0 and 100")
 
     passed, failed, skipped, failures, files_read = read_results(args.results_dir)
     declared = count_declared_tests(args.tests_dir)
     tally = Tally(passed, failed, skipped, declared)
     gradle_exit = read_exit_code(args.ci_dir / "gradle-exit-code")
-    verdict = decide(tally, args.max_failure_percent, gradle_exit)
+    verdict = decide(tally, args.min_pass_percent, gradle_exit)
     flaky = read_flaky(args.ci_dir / "logcat.txt")
 
-    report = build_report(tally, verdict, failures, flaky, args.max_failure_percent)
+    report = build_report(tally, verdict, failures, flaky, args.min_pass_percent)
     print(report)
     print(
         f"(result files read: {files_read}; gradle exit code: {gradle_exit if gradle_exit is not None else 'unknown'})"
