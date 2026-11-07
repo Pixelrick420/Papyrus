@@ -5,11 +5,14 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.ServiceInfo
 import android.graphics.drawable.Icon
 import android.media.AudioAttributes
+import android.media.AudioManager
 import android.media.session.MediaSession
 import android.media.session.PlaybackState
 import android.os.Build
@@ -35,14 +38,15 @@ import java.util.Locale
  * [TtsSession].
  *
  * A media-style notification offers play/pause, and a platform [MediaSession] forwards headset and
- * Bluetooth transport keys and the lock-screen surface. Audio is attributed to media use so it ducks
- * with music.
+ * Bluetooth transport keys and the lock-screen surface. Audio is attributed to media use and holds audio
+ * focus while it speaks: a call or another app's audio pauses it, and so does unplugging the headphones.
  */
 class TtsPlaybackService : Service(), TextToSpeech.OnInitListener {
 
     private lateinit var tts: TextToSpeech
     private lateinit var mediaSession: MediaSession
     private lateinit var session: TtsSession
+    private lateinit var audio: ReadAloudAudio
     private var controller: TtsController? = null
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
@@ -60,6 +64,19 @@ class TtsPlaybackService : Service(), TextToSpeech.OnInitListener {
      */
     private var pendingSpeak: Pair<String, String>? = null
     private var pendingRate = 1.0f
+
+    /** What the engine speaks with, and what the focus request tells other apps this is. */
+    private val speechAttributes = AudioAttributes.Builder()
+        .setUsage(AudioAttributes.USAGE_MEDIA)
+        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+        .build()
+
+    /** Headphones unplugged or a Bluetooth link dropped: the speech would move to the speaker, so it pauses. */
+    private val noisyReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            audio.onBecomingNoisy()
+        }
+    }
 
     private val engine = object : SpeechEngine {
         override fun speak(text: String, utteranceId: String) {
@@ -88,6 +105,13 @@ class TtsPlaybackService : Service(), TextToSpeech.OnInitListener {
         super.onCreate()
         createNotificationChannel()
         session = (application as MainApplication).ttsSession
+        audio = ReadAloudAudio(
+            focus = PlatformAudioFocus(this, speechAttributes) { change -> audio.onFocusChange(change) },
+            pause = { session.pause() },
+            resume = { session.play() },
+        )
+        // System broadcast only, so no export flag is asked for.
+        registerReceiver(noisyReceiver, IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY))
         val control = TtsController(engine, getString(R.string.tts_error_engine))
         controller = control
         session.attachController(control)
@@ -130,6 +154,7 @@ class TtsPlaybackService : Service(), TextToSpeech.OnInitListener {
             var published: TtsPlayback? = null
             control.playback.collectLatest { playback ->
                 session.syncPlayback(playback)
+                audio.onPlaybackChanged(playback.isPlaying)
                 // The word moves several times a second; the notification and the media session only
                 // change with the transport, and the system throttles an app that re-posts faster.
                 if (published?.sameTransportAs(playback) != true) publish(playback)
@@ -173,12 +198,7 @@ class TtsPlaybackService : Service(), TextToSpeech.OnInitListener {
             controller?.onError(getString(R.string.tts_error_engine))
             return
         }
-        tts.setAudioAttributes(
-            AudioAttributes.Builder()
-                .setUsage(AudioAttributes.USAGE_MEDIA)
-                .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                .build(),
-        )
+        tts.setAudioAttributes(speechAttributes)
         // Falls back to English if device locale lacks TTS data; errors only if English is also missing.
         val defaultResult = runCatching { tts.language = Locale.getDefault() }.getOrDefault(-1)
         if (defaultResult == TextToSpeech.LANG_MISSING_DATA || defaultResult == TextToSpeech.LANG_NOT_SUPPORTED) {
@@ -248,6 +268,7 @@ class TtsPlaybackService : Service(), TextToSpeech.OnInitListener {
             controller?.stop()
             session.stop()
         }
+        audio.release()
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
@@ -309,6 +330,8 @@ class TtsPlaybackService : Service(), TextToSpeech.OnInitListener {
 
     override fun onDestroy() {
         scope.cancel()
+        unregisterReceiver(noisyReceiver)
+        audio.release()
         controller?.let { session.detachController(it) }
         mediaSession.release()
         // Shut down even if onInit never arrived: the bind is live either way, and an engine left

@@ -150,7 +150,8 @@ an XML root, JSON or Objective-C.
 - **Reading position** reopens a document where you stopped, at the same zoom, even after a rotation. A switch in
   Settings turns it off.
 - **Read aloud** speaks the page, chunk, block or paragraph, shades the sentence being read (and the word, where the
-  engine reports timing), and keeps going with the screen off. Play/pause, skip, lock, speed and close are on the bar.
+  engine reports timing), and keeps going with the screen off. It pauses for a call or another app's audio, and when
+  headphones are unplugged; a short interruption resumes on its own. Play/pause, skip, lock, speed and close are on the bar.
   It is offered only when the document has selectable text; a document with nothing speakable hides it.
 - **Zoom** with a pinch or a double-tap, across a bounded range.
 - **Links** open on tap for `http`, `https`, `mailto` and `tel`. A PDF's internal link scrolls to its page.
