@@ -59,11 +59,6 @@ android {
         targetSdk = 36
         versionCode = 16
         versionName = "0.17"
-        ndk {
-            // RaTeX ships native libs for 3 ABIs; keep only arm64-v8a (x86_64 is emulator-only,
-            // armeabi-v7a is 32-bit ARM). Users' device is arm64-v8a.
-            abiFilters.add("arm64-v8a")
-        }
         // Clears what an earlier run or hand use left on disk before app code loads; FreshInstallRule does this per test.
         testInstrumentationRunner = "com.papyrus.app.e2e.PapyrusTestRunner"
     }
@@ -76,6 +71,17 @@ android {
                 keyAlias = releaseSigning.getValue("PAPYRUS_KEY_ALIAS")
                 keyPassword = releaseSigning.getValue("PAPYRUS_KEY_PASSWORD")
             }
+        }
+    }
+
+    // RaTeX, the only native dependency, ships arm64-v8a, armeabi-v7a and x86_64. The two ARM ABIs each get a slim
+    // APK; the universal one carries all three, for x86_64 emulators and for anyone unsure which to pick.
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("arm64-v8a", "armeabi-v7a")
+            isUniversalApk = true
         }
     }
 
@@ -232,11 +238,12 @@ fun runCommand(command: List<String>): String {
 
 fun runAdb(vararg args: String): String = runCommand(listOf(adb.absolutePath) + args)
 
-/** Resolves the single APK for [variant], probing the signed and `-unsigned` names: `release`
- *  only gets a signing config when the build was given PAPYRUS_* properties. */
+/** Resolves the universal APK for [variant], probing the signed and `-unsigned` names: `release`
+ *  only gets a signing config when the build was given PAPYRUS_* properties. The ABI splits sit beside
+ *  it, but only the universal one installs on any connected device. */
 fun pickApk(variant: String): File {
     val out = layout.buildDirectory.dir("outputs/apk/$variant").get().asFile
-    return listOf(File(out, "app-$variant.apk"), File(out, "app-$variant-unsigned.apk"))
+    return listOf(File(out, "app-universal-$variant.apk"), File(out, "app-universal-$variant-unsigned.apk"))
         .firstOrNull { it.isFile }
         ?: error("No APK for $variant in ${out.absolutePath}. Did assemble$variant run?")
 }
