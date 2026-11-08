@@ -20,8 +20,6 @@ import com.papyrus.app.viewer.PDF_UNLOCK_DIR
 import com.papyrus.app.viewer.PdfPageSource
 import com.papyrus.app.viewer.textCacheKey
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
@@ -104,7 +102,10 @@ class MainApplication : Application() {
      * Work that must finish even if the screen that started it is gone (e.g. committing a removal
      * whose undo window was still open). Never cancelled: it lives and dies with the process.
      */
-    val applicationScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    val applicationScope: CoroutineScope = backgroundScope { failure ->
+        // A silent report: it lands in Crash Reports like a crash would, without ending the process.
+        runCatching { ACRA.errorReporter.handleSilentException(failure) }
+    }
 
     /** Application-scoped so the bitmap cache survives navigation and rotation. */
     val thumbnailLoader: ThumbnailLoader by lazy { ThumbnailLoader(this) }
