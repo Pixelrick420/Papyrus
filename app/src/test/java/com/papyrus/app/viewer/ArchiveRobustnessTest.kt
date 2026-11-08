@@ -69,6 +69,12 @@ class ArchiveRobustnessTest {
 
     private fun texts(blocks: List<OfficeBlock>) = blocks.filterIsInstance<OfficeBlock.Paragraph>().map { it.text }
 
+    /**
+     * Bytes that do not compress. A run of zeros inflates a thousandfold, which the compression-ratio guard
+     * refuses before the size caps the tests below are about are reached; noise gets to them.
+     */
+    private fun noise(size: Int) = kotlin.random.Random(SEED).nextBytes(size)
+
     // --- Truncated archives ---
 
     @Test
@@ -201,20 +207,19 @@ class ArchiveRobustnessTest {
 
     @Test
     fun `a body that inflates past its cap fails instead of being parsed from a cut`() {
-        val huge = ByteArray(33 * 1024 * 1024)
-        val bytes = zip(listOf("word/document.xml" to huge))
+        val bytes = zip(listOf("word/document.xml" to noise(33 * 1024 * 1024)))
 
         val outcome = runCatching { office(bytes, DocumentFormat.DOCX) }.exceptionOrNull()
 
         assertTrue("got $outcome", outcome is IOException)
-        assertTrue(outcome!!.message!!.contains("too large"))
+        assertTrue(outcome!!.message!!.contains("document body is too large"))
     }
 
     @Test
     fun `a formatting part that inflates past its cap is left out and the body still reads`() {
         val bytes = zip(
             listOf(
-                "word/styles.xml" to ByteArray(17 * 1024 * 1024),
+                "word/styles.xml" to noise(17 * 1024 * 1024),
                 "word/document.xml" to OfficeFixtures.docxBody("<w:p><w:r><w:t>kept</w:t></w:r></w:p>").toByteArray(),
             ),
         )
@@ -226,7 +231,7 @@ class ArchiveRobustnessTest {
     fun `an odt styles part that inflates past its cap is left out and the body still reads`() {
         val bytes = zip(
             listOf(
-                "styles.xml" to ByteArray(17 * 1024 * 1024),
+                "styles.xml" to noise(17 * 1024 * 1024),
                 "content.xml" to OfficeFixtures.odtContent("<text:p>kept</text:p>").toByteArray(),
             ),
         )
@@ -235,11 +240,71 @@ class ArchiveRobustnessTest {
     }
 
     @Test
-    fun `a great many empty entries do not stop the body being read`() {
-        val entries = (1..30_000).map { "word/media/img$it.png" to ByteArray(0) } +
+    fun `as many empty entries as the limit allows do not stop the body being read`() {
+        val entries = (1 until ZipLimits().maxEntries).map { "word/media/img$it.png" to ByteArray(0) } +
             ("word/document.xml" to OfficeFixtures.docxBody("<w:p><w:r><w:t>kept</w:t></w:r></w:p>").toByteArray())
 
+        assertEquals(ZipLimits().maxEntries, entries.size)
         assertEquals(listOf("kept"), texts(office(zip(entries), DocumentFormat.DOCX)))
+    }
+
+    @Test
+    fun `a docx with more entries than the limit is refused whole`() {
+        val entries = (1..ZipLimits().maxEntries).map { "word/media/img$it.png" to ByteArray(0) } +
+            ("word/document.xml" to OfficeFixtures.docxBody("<w:p><w:r><w:t>kept</w:t></w:r></w:p>").toByteArray())
+
+        val outcome = runCatching { office(zip(entries), DocumentFormat.DOCX) }.exceptionOrNull()
+
+        assertTrue("got $outcome", outcome is IOException)
+        assertEquals("too many entries", outcome!!.message)
+    }
+
+    @Test
+    fun `an odt with more entries than the limit is refused whole`() {
+        val entries = (1..ZipLimits().maxEntries).map { "Pictures/img$it.png" to ByteArray(0) } +
+            ("content.xml" to OfficeFixtures.odtContent("<text:p>kept</text:p>").toByteArray())
+
+        val outcome = runCatching { office(zip(entries), DocumentFormat.ODT) }.exceptionOrNull()
+
+        assertEquals("too many entries", outcome?.message)
+    }
+
+    @Test
+    fun `a body that compresses implausibly well is refused before it reaches its cap`() {
+        val bytes = zip(listOf("word/document.xml" to ByteArray(8 * 1024 * 1024)))
+
+        val outcome = runCatching { office(bytes, DocumentFormat.DOCX) }.exceptionOrNull()
+
+        assertTrue("got $outcome", outcome is IOException)
+        assertEquals("implausible compression", outcome!!.message)
+    }
+
+    @Test
+    fun `an entry the reader never wants is still counted, so a bomb cannot hide in it`() {
+        val bytes = zip(
+            listOf(
+                "word/media/bomb.bin" to ByteArray(8 * 1024 * 1024),
+                "word/document.xml" to OfficeFixtures.docxBody("<w:p><w:r><w:t>kept</w:t></w:r></w:p>").toByteArray(),
+            ),
+        )
+
+        val outcome = runCatching { office(bytes, DocumentFormat.DOCX) }.exceptionOrNull()
+
+        assertEquals("implausible compression", outcome?.message)
+    }
+
+    @Test
+    fun `an odt bomb in an entry the reader never wants is refused too`() {
+        val bytes = zip(
+            listOf(
+                "Pictures/bomb.bin" to ByteArray(8 * 1024 * 1024),
+                "content.xml" to OfficeFixtures.odtContent("<text:p>kept</text:p>").toByteArray(),
+            ),
+        )
+
+        val outcome = runCatching { office(bytes, DocumentFormat.ODT) }.exceptionOrNull()
+
+        assertEquals("implausible compression", outcome?.message)
     }
 
     // --- XML that is not XML ---
@@ -309,5 +374,9 @@ class ArchiveRobustnessTest {
         )
 
         assertEquals(listOf("kept"), texts(office(bytes, DocumentFormat.ODT)))
+    }
+
+    private companion object {
+        const val SEED = 20_261_108
     }
 }

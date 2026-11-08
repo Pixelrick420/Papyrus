@@ -228,7 +228,7 @@ object OfficeEncryption {
     ) {
         val entries = parseOdfManifest(openStream, newParserFactory).associateBy { it.path }
         openStream().use { input ->
-            ZipInputStream(input).use { zip ->
+            BoundedZipInputStream(input).use { zip ->
                 ZipOutputStream(target.outputStream().buffered()).use { out ->
                     while (true) {
                         val entry = zip.nextEntry ?: break
@@ -472,7 +472,7 @@ object OfficeEncryption {
 
     private fun readZipEntry(openStream: () -> InputStream, name: String, max: Int): ByteArray? {
         openStream().use { input ->
-            ZipInputStream(input).use { zip ->
+            BoundedZipInputStream(input).use { zip ->
                 while (true) {
                     val entry = zip.nextEntry ?: return null
                     if (entry.name == name) return readBounded(zip, max)

@@ -79,6 +79,30 @@ class OfficeEncryptionTest {
         return out.toByteArray()
     }
 
+    /**
+     * The real ODF 1.2 fixture with one more entry, ahead of the rest or after them. Ahead, only the walk that
+     * looks for the manifest has to pass it; after, only the walk that decrypts every entry reaches it.
+     */
+    private fun odfWithExtraEntry(name: String, bytes: ByteArray, first: Boolean): ByteArray {
+        val out = ByteArrayOutputStream()
+        fun ZipOutputStream.add(entryName: String, data: ByteArray) {
+            putNextEntry(ZipEntry(entryName))
+            write(data)
+            closeEntry()
+        }
+        ZipInputStream(ByteArrayInputStream(resource("odf12-encrypted.b64"))).use { zip ->
+            ZipOutputStream(out).use { rewritten ->
+                if (first) rewritten.add(name, bytes)
+                while (true) {
+                    val entry = zip.nextEntry ?: break
+                    rewritten.add(entry.name, zip.readBytes())
+                }
+                if (!first) rewritten.add(name, bytes)
+            }
+        }
+        return out.toByteArray()
+    }
+
     private fun odfStatus(bytes: ByteArray) =
         OfficeEncryption.status(OfficeFixtures.streamFactory(bytes), OfficeFixtures::parser)
 
@@ -210,6 +234,29 @@ class OfficeEncryptionTest {
 
         assertTrue(failure is IOException)
         assertFalse(failure is DocumentPasswordException)
+        assertFalse(target.exists())
+    }
+
+    @Test
+    fun `a bomb ahead of the odf manifest is not walked to find it`() {
+        val bytes = odfWithExtraEntry("Pictures/bomb.bin", ByteArray(8 * 1024 * 1024), first = true)
+
+        // Not offered a password prompt: the manifest was never reached, and the extractor refuses the file.
+        assertEquals(OfficeEncryption.Party.NOT_ENCRYPTED, odfStatus(bytes))
+    }
+
+    @Test
+    fun `decrypting an odf whose archive holds a bomb after the manifest is refused instead of inflated`() {
+        val bytes = odfWithExtraEntry("Pictures/bomb.bin", ByteArray(8 * 1024 * 1024), first = false)
+        val target = temp.newFile("bomb.odt")
+
+        val failure = runCatching {
+            OfficeEncryption.decrypt(OfficeFixtures.streamFactory(bytes), "secret123", target, OfficeFixtures::parser)
+        }.exceptionOrNull()
+
+        assertTrue("got $failure", failure is IOException)
+        assertFalse("a password prompt would be pointless", failure is DocumentPasswordException)
+        assertEquals("implausible compression", failure?.message)
         assertFalse(target.exists())
     }
 

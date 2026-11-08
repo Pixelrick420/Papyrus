@@ -38,7 +38,7 @@ class OfficeTextExtractor(
 
         val found = HashMap<String, ByteArray>()
         openStream().use { input ->
-            ZipInputStream(input).use { zip ->
+            BoundedZipInputStream(input).use { zip ->
                 while (true) {
                     val entry = zip.nextEntry ?: break
                     if (entry.isDirectory || entry.name !in partNames) continue

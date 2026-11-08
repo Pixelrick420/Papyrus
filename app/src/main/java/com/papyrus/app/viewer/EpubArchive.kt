@@ -4,10 +4,8 @@ import com.papyrus.app.viewer.svg.SvgLimits
 import org.xmlpull.v1.XmlPullParser
 import org.xmlpull.v1.XmlPullParserException
 import java.io.ByteArrayOutputStream
-import java.io.FilterInputStream
 import java.io.IOException
 import java.io.InputStream
-import java.util.zip.ZipInputStream
 
 /** The file is not a usable EPUB: not a ZIP, no package, or an archive built to hurt the reader. */
 class EpubFormatException(message: String, cause: Throwable? = null) : IOException(message, cause)
@@ -20,13 +18,14 @@ class EpubProtectedException : IOException("EPUB content is protected")
  * real book (a long novel is a few MB of XHTML in a few hundred entries) and far below what would hurt.
  */
 data class EpubLimits(
-    val maxEntries: Int = 10_000,
+    // The five bounds on the archive itself are the ones Word and OpenDocument files are read under.
+    val maxEntries: Int = ZipLimits().maxEntries,
     /** One entry's inflated size, and so what a single bomb entry can cost in time. */
-    val maxEntryBytes: Long = 64L * 1024 * 1024,
-    val maxTotalBytes: Long = 512L * 1024 * 1024,
+    val maxEntryBytes: Long = ZipLimits().maxEntryBytes,
+    val maxTotalBytes: Long = ZipLimits().maxTotalBytes,
     /** Inflated bytes per compressed byte, judged once an entry is past [ratioFloorBytes]. */
-    val maxRatio: Int = 100,
-    val ratioFloorBytes: Long = 1024L * 1024,
+    val maxRatio: Int = ZipLimits().maxRatio,
+    val ratioFloorBytes: Long = ZipLimits().ratioFloorBytes,
     /** One text part (XHTML, OPF, NCX) held in memory. */
     val maxPartBytes: Int = 16 * 1024 * 1024,
     /** All text parts held together. */
@@ -44,6 +43,9 @@ data class EpubLimits(
 ) {
     /** The bounds an SVG in this book is read under. */
     val svgLimits: SvgLimits get() = SvgLimits(maxSvgElements, maxSvgOps, maxDepth)
+
+    /** The bounds the archive is walked under. */
+    val zipLimits: ZipLimits get() = ZipLimits(maxEntries, maxEntryBytes, maxTotalBytes, maxRatio, ratioFloorBytes)
 }
 
 /** What one pass over the archive kept, and how many wanted parts it had to leave out. */
@@ -52,8 +54,9 @@ internal class EpubScan(val parts: Map<String, ByteArray>, val skippedParts: Int
 /**
  * One walk over an EPUB's ZIP with the hostile cases closed off: a name that could leave its directory
  * (zip-slip) fails the book, as does an archive with too many entries, an entry or total that inflates
- * past its cap, or one that compresses implausibly well (a bomb). The check counts bytes as they come out,
- * not the sizes the entry declares, since a bomb declares what it likes.
+ * past its cap, or one that compresses implausibly well (a bomb). All but the name check are
+ * [BoundedZipInputStream]'s, which counts bytes as they come out, not the sizes the entry declares, since a
+ * bomb declares what it likes.
  */
 internal class EpubArchive(
     private val openStream: () -> InputStream,
@@ -67,16 +70,12 @@ internal class EpubArchive(
     fun scan(wanted: (String) -> Boolean, done: (Map<String, ByteArray>) -> Boolean = { false }): EpubScan {
         val parts = LinkedHashMap<String, ByteArray>()
         var skipped = 0
-        var entries = 0
-        var total = 0L
         var kept = 0L
-        val counting = CountingInputStream(openStream())
-        counting.use {
-            ZipInputStream(counting).use { zip ->
+        openStream().use { input ->
+            BoundedZipInputStream(input, limits.zipLimits) { reason -> EpubFormatException(reason) }.use { zip ->
                 val buffer = ByteArray(MEDIA_COPY_BUFFER)
                 while (true) {
                     val entry = zip.nextEntry ?: break
-                    if (++entries > limits.maxEntries) throw EpubFormatException("too many entries")
                     val name = entry.name
                     if (!isSafeEntryName(name)) throw EpubFormatException("unsafe entry name")
                     if (entry.isDirectory) continue
@@ -84,18 +83,9 @@ internal class EpubArchive(
                     val keep = wanted(name)
                     val out = if (keep) ByteArrayOutputStream() else null
                     var overPart = false
-                    var size = 0L
-                    val compressedFrom = counting.count
                     while (true) {
                         val n = zip.read(buffer)
                         if (n < 0) break
-                        size += n
-                        total += n
-                        if (size > limits.maxEntryBytes || total > limits.maxTotalBytes) throw EpubFormatException("too large")
-                        if (size >= limits.ratioFloorBytes) {
-                            val compressed = (counting.count - compressedFrom).coerceAtLeast(1L)
-                            if (size / compressed > limits.maxRatio) throw EpubFormatException("implausible compression")
-                        }
                         if (out != null && !overPart) {
                             if (out.size() + n > limits.maxPartBytes) overPart = true else out.write(buffer, 0, n)
                         }
@@ -112,18 +102,6 @@ internal class EpubArchive(
             }
         }
         return EpubScan(parts, skipped)
-    }
-
-    /** Counts what the ZIP layer pulls from the file, which is the compressed size of what it has inflated. */
-    private class CountingInputStream(source: InputStream) : FilterInputStream(source) {
-        var count = 0L
-            private set
-
-        override fun read(): Int = super.read().also { if (it >= 0) count++ }
-
-        override fun read(b: ByteArray, off: Int, len: Int): Int = super.read(b, off, len).also { if (it > 0) count += it }
-
-        override fun skip(n: Long): Long = super.skip(n).also { if (it > 0) count += it }
     }
 }
 

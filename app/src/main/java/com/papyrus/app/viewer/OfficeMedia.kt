@@ -174,7 +174,7 @@ internal class OfficeMedia(
     ) {
         if (wanted.isEmpty()) return
         openStream().use { input ->
-            ZipInputStream(input).use { zip ->
+            BoundedZipInputStream(input).use { zip ->
                 val buffer = ByteArray(MEDIA_COPY_BUFFER)
                 while (true) {
                     val entry = zip.nextEntry ?: break

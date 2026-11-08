@@ -414,7 +414,8 @@ class OfficeTextExtractorTest {
     @Test
     fun `an image larger than the per-file cap is rejected without writing`() {
         val mediaDir = temp.newFolder("media")
-        val oversized = ByteArray(OfficeTextExtractor.MAX_IMAGE_BYTES + 1) { 0x41 }
+        // Noise, not a run of one byte: that compresses so well the archive guard refuses the file first.
+        val oversized = kotlin.random.Random(1).nextBytes(OfficeTextExtractor.MAX_IMAGE_BYTES + 1)
         val bytes = OfficeFixtures.docx(
             bodyXml = OfficeFixtures.docxBody(
                 """<w:p><w:r><w:t>text</w:t></w:r></w:p><w:p><w:r><w:drawing><a:blip r:embed="rId7"/></w:drawing></w:r></w:p>""",

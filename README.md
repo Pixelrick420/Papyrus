@@ -212,7 +212,8 @@ an XML root, JSON or Objective-C.
 
 - **EPUB safety.** A book is a ZIP from someone else, so it is read with hard limits and never extracted to disk beyond
   its images. A zip-slip entry, an oversized archive or a decompression bomb fails the book, not the app, and DRM is
-  refused.
+  refused. Word and OpenDocument files are ZIPs too and are read under the same limits on entries, size and
+  compression ratio.
 - **Crash reports** are JSON files in app storage, written by ACRA. Nothing leaves the device.
 - **Highlights and notes** stay in Papyrus's private database, are removed with the document, and are never written
   into your file unless you save a copy. A saved copy carries plain highlights only; notes are not exported.
