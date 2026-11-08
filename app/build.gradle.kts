@@ -57,9 +57,8 @@ android {
         applicationId = "com.papyrus.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 16
-        versionName = "0.17"
-        // Clears what an earlier run or hand use left on disk before app code loads; FreshInstallRule does this per test.
+        versionCode = 17
+        versionName = "1.0"
         testInstrumentationRunner = "com.papyrus.app.e2e.PapyrusTestRunner"
     }
 
@@ -154,9 +153,6 @@ dependencies {
 
     implementation("androidx.room:room-runtime:2.8.5")
     ksp("androidx.room:room-compiler:2.8.5")
-    // Room 2.8's migration-testing helper needs serialization 1.8; the 1.7.3 the app otherwise
-    // resolves lacks the GeneratedSerializer method its generated serializers rely on.
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.1")
 
     // PDF text extraction (find-in-file) and page geometry. PdfBox-Android is the Apache-2.0
     // AAR port; the platform's PdfRenderer draws the pages.
@@ -189,7 +185,6 @@ dependencies {
     testImplementation("net.sf.kxml:kxml2:2.3.0")
 
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
-    androidTestImplementation("androidx.room:room-testing:2.8.5")
     androidTestImplementation("androidx.test:runner:1.6.2")
     androidTestImplementation(platform("androidx.compose:compose-bom:2026.09.00"))
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")

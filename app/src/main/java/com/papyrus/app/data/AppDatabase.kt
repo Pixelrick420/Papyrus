@@ -5,10 +5,7 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 
-/**
- * Version 4 is the oldest supported schema; the number was not reset to 1 because installed devices
- * already hold v4 and Room throws on downgrade. No destructive fallback: wiping rows orphans app-owned files.
- */
+/** 1.0 starts a new database generation: 0.x databases are deleted before this one opens, never downgraded. */
 @Database(
     entities = [
         DocumentEntity::class,
@@ -19,7 +16,7 @@ import androidx.room.RoomDatabase
         DocumentTextEntity::class,
         DocumentTextFtsEntity::class,
     ],
-    version = Migrations.CURRENT_VERSION,
+    version = 1,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -37,17 +34,19 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun searchDao(): SearchDao
 
     companion object {
-        private const val DB_NAME = "papyrus.db"
+        private const val DB_NAME = "papyrus-v1.db"
 
         @Volatile
         private var instance: AppDatabase? = null
 
         fun getInstance(context: Context): AppDatabase =
             instance ?: synchronized(this) {
-                instance ?: Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, DB_NAME)
-                    .addMigrations(*Migrations.ALL)
-                    .build()
-                    .also { instance = it }
+                instance ?: run {
+                    LegacyDatabase.deleteIfPresent(context.applicationContext)
+                    Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, DB_NAME)
+                        .build()
+                        .also { instance = it }
+                }
             }
     }
 }

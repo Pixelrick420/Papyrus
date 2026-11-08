@@ -322,9 +322,9 @@ cache keyed by the file's size and the outline reader's cache version), and the 
 each document's extracted text, its index state and the modified time the provider gave when the text was read, plus
 `document_text_fts`, an FTS4 table that stores only the inverted index so no text is kept twice. Each child references
 `documents(id)` with `ON DELETE CASCADE`, so deleting a document removes its rows. `documents` rows are never written with
-`OnConflictStrategy.REPLACE`, because that deletes and reinserts, which would cascade the children away. Migrations are
-plain SQL in `data/Migrations.kt`; every schema version is exported to `app/schemas/`, and a test fails if one is missing
-or has no migration.
+`OnConflictStrategy.REPLACE`, because that deletes and reinserts, which would cascade the children away. 1.0 starts the
+schema at version 1: a 0.x database is never migrated or downgraded, it is deleted on first launch, and its imported
+copies go with the orphan sweep. Every schema version is exported to `app/schemas/`.
 
 `document_text_fts` is not a child of `documents`: it follows `document_text` through triggers Room generates.
 

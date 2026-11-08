@@ -335,12 +335,28 @@ jobs:
             exit 1
           fi
 
+      # The fastlane changelog doubles as the release body; without one, fall back to generated notes.
+      - name: Resolve release notes
+        id: notes
+        run: |
+          set -euo pipefail
+          version_code=$(grep -om1 -P 'versionCode\s*=\s*\K\d+' app/build.gradle.kts)
+          notes="fastlane/metadata/android/en-US/changelogs/${version_code}.txt"
+          if [ -s "$notes" ]; then
+            echo "path=$notes" >> "$GITHUB_OUTPUT"
+            echo "Using $notes"
+          else
+            echo "path=" >> "$GITHUB_OUTPUT"
+            echo "No $notes; GitHub will generate the release notes instead."
+          fi
+
       - name: Publish to GitHub Releases
         uses: softprops/action-gh-release@v3
         with:
           name: Papyrus ${{ github.ref_name }}
           prerelease: false
-          generate_release_notes: true
+          body_path: ${{ steps.notes.outputs.path }}
+          generate_release_notes: ${{ steps.notes.outputs.path == '' }}
           files: |
             app/build/outputs/apk/release/app-arm64-v8a-release.apk
             app/build/outputs/apk/release/app-armeabi-v7a-release.apk

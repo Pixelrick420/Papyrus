@@ -1,0 +1,10 @@
+Papyrus 1.0 is the first stable release.
+
+- PDF, EPUB, Word, OpenDocument, Markdown, text and code
+- Library with search, filters and reading progress
+- Bookmarks, highlights and notes
+- Full-text search with match navigation
+- Read aloud with the system speech engine
+- System, light or dark theme, plus a colour-blind palette
+
+1.0 starts a fresh library: documents from 0.x are not carried over.
