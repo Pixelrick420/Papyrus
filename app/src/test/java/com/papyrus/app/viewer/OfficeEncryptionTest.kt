@@ -7,8 +7,14 @@ import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
+import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
 import java.io.FileInputStream
+import java.io.IOException
 import java.util.Base64
+import java.util.zip.ZipEntry
+import java.util.zip.ZipInputStream
+import java.util.zip.ZipOutputStream
 
 /**
  * Fixtures are real, independently produced: msoffcrypto Agile `.docx` and a hand-rolled ODF 1.2 CBC
@@ -47,6 +53,34 @@ class OfficeEncryptionTest {
         """.trimIndent().toByteArray()
         return OfficeFixtures.odt(OfficeFixtures.odtContent("<text:p>plain</text:p>"), extra = mapOf("META-INF/manifest.xml" to manifest))
     }
+
+    /** The real ODF 1.2 fixture with only the two numbers its manifest controls for key derivation changed. */
+    private fun odfWithKeyDerivation(iterationCount: Int, keySize: Int = 32): ByteArray {
+        val original = "manifest:iteration-count=\"100000\" manifest:key-size=\"32\""
+        val out = ByteArrayOutputStream()
+        ZipInputStream(ByteArrayInputStream(resource("odf12-encrypted.b64"))).use { zip ->
+            ZipOutputStream(out).use { rewritten ->
+                while (true) {
+                    val entry = zip.nextEntry ?: break
+                    var data = zip.readBytes()
+                    if (entry.name == "META-INF/manifest.xml") {
+                        val manifest = data.toString(Charsets.UTF_8)
+                        check(original in manifest) { "fixture manifest changed" }
+                        data = manifest
+                            .replace(original, "manifest:iteration-count=\"$iterationCount\" manifest:key-size=\"$keySize\"")
+                            .toByteArray()
+                    }
+                    rewritten.putNextEntry(ZipEntry(entry.name))
+                    rewritten.write(data)
+                    rewritten.closeEntry()
+                }
+            }
+        }
+        return out.toByteArray()
+    }
+
+    private fun odfStatus(bytes: ByteArray) =
+        OfficeEncryption.status(OfficeFixtures.streamFactory(bytes), OfficeFixtures::parser)
 
     @Test
     fun `a plain docx is not encrypted`() {
@@ -136,6 +170,47 @@ class OfficeEncryptionTest {
         val bytes = unsupportedOdf()
         assertEquals(OfficeEncryption.Party.UNSUPPORTED, OfficeEncryption.status(OfficeFixtures.streamFactory(bytes), OfficeFixtures::parser))
         assertTrue(OfficeEncryption.isEncrypted(OfficeFixtures.streamFactory(bytes), OfficeFixtures::parser))
+    }
+
+    @Test
+    fun `an odf iteration count past the ceiling is flagged without a prompt and one at it is not`() {
+        assertEquals(OfficeEncryption.Party.PASSWORD, odfStatus(odfWithKeyDerivation(iterationCount = 1_000_000)))
+        assertEquals(OfficeEncryption.Party.UNSUPPORTED, odfStatus(odfWithKeyDerivation(iterationCount = 1_000_001)))
+        assertEquals(OfficeEncryption.Party.UNSUPPORTED, odfStatus(odfWithKeyDerivation(iterationCount = Int.MAX_VALUE)))
+    }
+
+    @Test
+    fun `an odf key size other than aes-256's is flagged without a prompt`() {
+        assertEquals(OfficeEncryption.Party.UNSUPPORTED, odfStatus(odfWithKeyDerivation(100_000, keySize = 16)))
+        assertEquals(OfficeEncryption.Party.UNSUPPORTED, odfStatus(odfWithKeyDerivation(100_000, keySize = 1_000_000_000)))
+    }
+
+    @Test(timeout = 10_000)
+    fun `decrypting an odf with a hostile iteration count fails at once instead of spinning`() {
+        val bytes = odfWithKeyDerivation(iterationCount = Int.MAX_VALUE)
+        val target = temp.newFile("spin.odt")
+
+        val failure = runCatching {
+            OfficeEncryption.decrypt(OfficeFixtures.streamFactory(bytes), "secret123", target, OfficeFixtures::parser)
+        }.exceptionOrNull()
+
+        assertTrue(failure is IOException)
+        assertFalse("a password prompt would be pointless", failure is DocumentPasswordException)
+        assertFalse(target.exists())
+    }
+
+    @Test(timeout = 10_000)
+    fun `decrypting an odf with a hostile key size fails at once instead of deriving it`() {
+        val bytes = odfWithKeyDerivation(iterationCount = 100_000, keySize = 1_000_000_000)
+        val target = temp.newFile("keysize.odt")
+
+        val failure = runCatching {
+            OfficeEncryption.decrypt(OfficeFixtures.streamFactory(bytes), "secret123", target, OfficeFixtures::parser)
+        }.exceptionOrNull()
+
+        assertTrue(failure is IOException)
+        assertFalse(failure is DocumentPasswordException)
+        assertFalse(target.exists())
     }
 
     @Test

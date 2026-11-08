@@ -246,6 +246,8 @@ object OfficeEncryption {
     }
 
     private fun decryptOdfEntry(data: ByteArray, encryption: OdfEncryption, password: String): ByteArray {
+        // The manifest sets the work the derivation does, so it is checked here too, not only for the prompt.
+        if (!supportedOdf(encryption)) throw IOException("unsupported encryption")
         if (data.size % AES_BLOCK != 0) throw IOException("invalid encrypted entry")
         val startKey = startKey(password, encryption.startKeyName)
         val key = pbkdf2Sha1(startKey, encryption.salt, encryption.iterationCount, encryption.keySize)
@@ -282,7 +284,8 @@ object OfficeEncryption {
             enc.keyDerivationName?.contains("pbkdf2", ignoreCase = true) == true &&
             enc.iv.size == IV_LENGTH &&
             enc.salt.isNotEmpty() &&
-            enc.iterationCount > 0
+            enc.keySize == ODF_KEY_BYTES &&
+            enc.iterationCount in 1..MAX_PBKDF2_ITERATIONS
 
     private class OdfEntry(val path: String, val encryption: OdfEncryption?)
 
@@ -551,6 +554,12 @@ private const val ALGORITHM_AES256_CBC = "aes256-cbc"
 private const val CHECKSUM_BYTES = 1024
 
 private const val MAX_SPIN_COUNT = 5_000_000
+
+/** An order of magnitude over what producers write (LibreOffice: 100,000); one derivation runs per entry. */
+private const val MAX_PBKDF2_ITERATIONS = 1_000_000
+
+/** AES-256, the only cipher accepted; a longer derived key only multiplies the work before the cipher rejects it. */
+private const val ODF_KEY_BYTES = 32
 private const val MAX_MANIFEST_BYTES = 16 * 1024 * 1024
 private const val MAX_ENTRY_BYTES = 64 * 1024 * 1024
 private const val MAX_DECOMPRESSED = 256 * 1024 * 1024
