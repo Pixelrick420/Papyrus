@@ -81,6 +81,7 @@ import com.papyrus.app.viewer.TextChunks
 import com.papyrus.app.viewer.TextEncoding
 import com.papyrus.app.viewer.TextEncodings
 import com.papyrus.app.viewer.TextSniffer
+import com.papyrus.app.viewer.UnlockedCopy
 import com.papyrus.app.viewer.chunkText
 import com.papyrus.app.viewer.isProse
 import com.papyrus.app.viewer.skipTo
@@ -372,8 +373,7 @@ class ViewerViewModel(
     private var pageTextSourceUri: String? = null
 
     /** The decrypted copy of a password-protected document; owned here so close deletes the plaintext. */
-    private var unlockedFile: File? = null
-    private var unlockedUri: String? = null
+    private val unlocked = UnlockedCopy()
 
     /** Per document: a shared directory would let a viewer delete another's images. */
     private val mediaDir: File by lazy { File(app.cacheDir, "office-media/$documentId") }
@@ -455,9 +455,7 @@ class ViewerViewModel(
         pageTextSource?.close()
         pageTextSource = null
         pageTextSourceUri = null
-        unlockedFile?.delete()
-        unlockedFile = null
-        unlockedUri = null
+        unlocked.discard()
         val doc = repository.getById(documentId)?.let { withCurrentFormat(it) }
         if (doc == null) {
             _state.value = ViewerUiState(content = ViewerContent.Failed(UiText(R.string.viewer_error_not_found)))
@@ -557,7 +555,7 @@ class ViewerViewModel(
         val source = pageSource() ?: return
         val entries = source.outline { soFar -> showPdfOutline(shown, soFar) } ?: return
         // A title read from an unlocked copy came out of a password-protected file, so it is not kept.
-        if (document != null && unlockedFile == null) runQuietly { repository.storeOutline(document, entries) }
+        if (document != null && !unlocked.isHeld) runQuietly { repository.storeOutline(document, entries) }
     }
 
     /** Publishes an outline only for the document it was read for: a re-grant may have replaced it. */
@@ -914,7 +912,7 @@ class ViewerViewModel(
         if (!opened) return
         val settings = app.settings.current
         // A decrypted copy exists exactly when the document was encrypted, with a password or owner-only.
-        val wanted = if (unlockedUri != null) settings.autosaveEncrypted else settings.autosaveExternal
+        val wanted = if (unlocked.uri != null) settings.autosaveEncrypted else settings.autosaveExternal
         if (wanted) saveToLibrary(notify = false)
     }
 
@@ -1075,9 +1073,10 @@ class ViewerViewModel(
         try {
             PdfEncryption.decrypt({ openStream(uri) }, password, target)
             val source = PdfPageSource.openFile(target)
-            unlockedFile = target
-            unlockedUri = target.toUri().toString()
-            return ViewerContent.Pdf(source, source.loadAspectRatios())
+            val aspectRatios = source.loadAspectRatios()
+            // Kept only once it has opened, and the copy it replaces goes with it.
+            unlocked.keep(target, target.toUri().toString())
+            return ViewerContent.Pdf(source, aspectRatios)
         } catch (e: InvalidPasswordException) {
             target.delete()
             return ViewerContent.NeedsPassword(incorrect = true)
@@ -1105,8 +1104,7 @@ class ViewerViewModel(
             target.delete()
             return ViewerContent.Failed(UiText(R.string.viewer_error_empty))
         }
-        unlockedFile = target
-        unlockedUri = target.toUri().toString()
+        unlocked.keep(target, target.toUri().toString())
         return ViewerContent.Office(blocks)
     }
 
@@ -1541,7 +1539,7 @@ class ViewerViewModel(
 
     /** The decrypted copy when one is open, so find and selection read the bytes actually on screen. */
     private val contentUri: String
-        get() = unlockedUri ?: documentUri
+        get() = unlocked.uri ?: documentUri
 
     private fun openStream(uri: Uri): InputStream =
         app.contentResolver.openInputStream(uri) ?: throw FileNotFoundException(uri.toString())
@@ -1572,7 +1570,7 @@ class ViewerViewModel(
         outbox.close()
         (_state.value.content as? ViewerContent.Pdf)?.source?.close()
         pageTextSource?.close()
-        unlockedFile?.delete()
+        unlocked.discard()
         // Unconditional: own dir per document, and any format may have written images.
         mediaDir.deleteRecursively()
     }
