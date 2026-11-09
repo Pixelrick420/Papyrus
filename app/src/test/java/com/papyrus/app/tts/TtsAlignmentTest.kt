@@ -130,7 +130,7 @@ class TtsAlignmentTest {
             "crlf one\r\ncrlf two\r\n\r\nnext  paragraph\r\n   with indent",
             "  leading and trailing   \n\n lone cr\rjoined\r\rlast",
             "multiple   spaces   inside\nand\n\n\n\nmore blank lines",
-            "Ünïcödé — dashes… and “quotes”\n    on a second line",
+            "Ünïcödé - dashes… and “quotes”\n    on a second line",
         )
         for (source in sources) {
             for (paragraph in TtsDocumentSource.paragraphs(source)) {

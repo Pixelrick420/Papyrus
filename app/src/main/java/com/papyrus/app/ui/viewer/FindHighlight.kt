@@ -55,7 +55,7 @@ internal fun FindHighlight.paints(index: Int): Boolean = !onlyActive || index ==
 /**
  * The style for match [index]: orange behind the current one, yellow behind the rest. Its text is
  * [MatchTextColor] against [baseTextColor], so a fade returns the text to the document's own colour
- * as the mark leaves — at [alpha] 1 the style is exactly the one find has always drawn.
+ * as the mark leaves - at [alpha] 1 the style is exactly the one find has always drawn.
  */
 internal fun FindHighlight.styleFor(index: Int, baseTextColor: Color): SpanStyle =
     if (index == activeOccurrence) activeSpan(alpha, baseTextColor) else otherSpan(alpha, baseTextColor)

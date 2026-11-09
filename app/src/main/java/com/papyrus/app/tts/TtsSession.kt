@@ -44,7 +44,7 @@ data class TtsState(
  * [prepare], and the service publishes the controller's playback back through [syncPlayback].
  *
  * Controls go through here so the UI never holds a controller reference; when no service is attached
- * they are no-ops, which is exactly right — the bar is only shown while something is playing or paused.
+ * they are no-ops, which is exactly right - the bar is only shown while something is playing or paused.
  */
 class TtsSession {
 

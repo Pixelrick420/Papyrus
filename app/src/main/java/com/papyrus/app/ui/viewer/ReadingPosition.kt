@@ -63,7 +63,7 @@ internal fun rememberRestoredTarget(kind: LocationKind, unitCount: Int, position
  * Null while nothing is laid out. Reads snapshot state only, so it is safe inside `snapshotFlow`.
  *
  * [blockOfUnit] maps (item, fraction) back to what a location stores, for lists where one stored
- * unit spans several items — a table's bands. Without it, the item *is* the unit, unchanged.
+ * unit spans several items - a table's bands. Without it, the item *is* the unit, unchanged.
  */
 internal fun LazyListState.positionSample(
     kind: LocationKind,
@@ -106,7 +106,7 @@ private fun ViewerJump?.targetFor(kind: LocationKind, unitCount: Int): ReadingLo
  * [unitOfBlock] and [blockOfUnit] are the two halves of one mapping between a stored location and
  * the list's items, for lists where one stored unit spans several items (a table's bands): restore
  * splits the stored (unit, fraction) across the items, sampling folds the visible item back. Both
- * default to null — the identity mapping — which is every other viewer.
+ * default to null - the identity mapping - which is every other viewer.
  * A [PositionHooks.jump] scrolls the same list later, to any place of the document.
  */
 @Composable

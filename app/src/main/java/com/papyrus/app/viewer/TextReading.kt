@@ -51,7 +51,7 @@ internal fun assembleChunks(opened: OpenedText, linesPerChunk: Int = TEXT_LINES_
 }
 
 /**
- * The same chunking [readTextChunks] applies, over an already-decoded string — the pretty-printed
+ * The same chunking [readTextChunks] applies, over an already-decoded string - the pretty-printed
  * path, which holds the whole file as text first. Feeds [LineAssembler] in buffer-sized blocks, so
  * no second whole-file copy is made.
  */

@@ -361,7 +361,7 @@ internal val LinkTapSlop = 4.dp
 internal val MarkTapSlop = 6.dp
 
 /**
- * What a press turned out to be. A tap carries its release so a link tap can consume it — that is
+ * What a press turned out to be. A tap carries its release so a link tap can consume it - that is
  * what keeps the double-tap zoom above from also firing under a tap that opened a link.
  */
 private sealed interface Press {

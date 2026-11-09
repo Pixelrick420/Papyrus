@@ -36,8 +36,8 @@ import com.papyrus.app.ui.icons.SkipPrevious
 
 /**
  * The in-flow read-aloud bar: play/pause, skip a paragraph either way, lock the page to the line being
- * read, cycle the speed, close. Shown while a document is being spoken and while it is paused, and —
- * after an engine failure — kept up to show the reason without losing the reading position.
+ * read, cycle the speed, close. Shown while a document is being spoken and while it is paused, and -
+ * after an engine failure - kept up to show the reason without losing the reading position.
  *
  * Drawn as the find bar's sibling: the transport sits in an outlined pill with the same height, corner
  * radius and outline as the search pill, and the close button sits outside it on the trailing edge, the

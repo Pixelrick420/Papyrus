@@ -9,15 +9,15 @@ import kotlin.math.min
  * BM25 over the `matchinfo` blob FTS4 returns for `'pcnalx'`, the only ranking signal the index
  * offers without reading a single document's text.
  *
- * The blob is a run of 32-bit integers in machine byte order — little-endian on every ABI Android
- * ships — laid out as:
+ * The blob is a run of 32-bit integers in machine byte order - little-endian on every ABI Android
+ * ships - laid out as:
  *
  *  - `p`, `c`, `n`: phrases in the query, columns in the table, rows in the table.
  *  - `a[c]`: average tokens per column, where the length normalisation starts.
  *  - `l[c]`: tokens in this row per column, its "document length".
- *  - `x[3*c*p]`: for each phrase and column, three values — occurrences in this row (the term
+ *  - `x[3*c*p]`: for each phrase and column, three values - occurrences in this row (the term
  *    frequency), occurrences in all rows, and rows containing at least one occurrence (the
- *    document frequency) — ordered by phrase, then column, as
+ *    document frequency) - ordered by phrase, then column, as
  *    `3 * (column + phrase * columns) + {0, 1, 2}` from the start of the block.
  *
  * The middle value is never read: BM25 needs no collection-wide hit count. The table here has a

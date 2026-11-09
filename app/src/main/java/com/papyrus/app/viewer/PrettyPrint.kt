@@ -9,8 +9,8 @@ class PrettyOutcome(val text: String, val failed: Boolean)
 /**
  * Indents structured files as they open, purely in memory: only whitespace outside strings,
  * comments and text nodes is re-laid, so the stored file's content is never changed. These are
- * hand-written scanners, not a parser library, because a scanner can only ever re-lay whitespace —
- * exactly the promise — while working on JSONC comments and non-well-formed HTML alike, and it
+ * hand-written scanners, not a parser library, because a scanner can only ever re-lay whitespace -
+ * exactly the promise - while working on JSONC comments and non-well-formed HTML alike, and it
  * never throws on weird input.
  */
 object PrettyPrint {
@@ -24,7 +24,7 @@ object PrettyPrint {
     /** [spaces] if it is one of [INDENT_CHOICES], else [DEFAULT_INDENT]: a stored value is never trusted. */
     fun indentOrDefault(spaces: Int): Int = if (spaces in INDENT_CHOICES) spaces else DEFAULT_INDENT
 
-    /** Null: the name is not a formattable format — the caller must not take the string path. */
+    /** Null: the name is not a formattable format - the caller must not take the string path. */
     fun kindFor(displayName: String?): PrettyKind? {
         val name = displayName?.lowercase().orEmpty()
         if (name.isEmpty()) return null
@@ -77,8 +77,8 @@ object PrettyPrint {
 /**
  * Whitespace between tokens is dropped and re-laid by rule: a newline + one indent step after `{`
  * and `[`, a newline + one fewer step before `}` and `]` (an empty `{}` / `[]` stays on one line),
- * a newline after `,` — kept off a preceding `//` comment's line, so the comma never lands inside
- * the comment — and exactly one space after `:`. Strings and comments are copied byte-for-byte, so
+ * a newline after `,` - kept off a preceding `//` comment's line, so the comma never lands inside
+ * the comment - and exactly one space after `:`. Strings and comments are copied byte-for-byte, so
  * escapes, unicode, number lexemes (1E+3, 12345678901234567890) and key order are untouched.
  *
  * Null on structural failure: an unterminated string or block comment at EOF (the truncated-file
@@ -176,7 +176,7 @@ private class JsonLayout(private val step: String) {
     }
 
     /** Closes `}` / `]`: matches the bracket against the innermost open one. Null on a mismatch,
-     * a close with none open — both cover truncated and hand-broken files. */
+     * a close with none open - both cover truncated and hand-broken files. */
     fun closeBracket(c: Char): Boolean {
         val expected = if (c == '}') '{' else '['
         if (opened.isEmpty() || opened.last() != expected) return false
@@ -239,7 +239,7 @@ private fun String.nextIs(at: Int, c: Char) = at + 1 < length && this[at + 1] ==
  * [strict] (XML family) pushes element names and fails on mismatched nesting or an element still
  * open at EOF; lenient (HTML) tolerates void elements and implied closes like `<li>a<li>b`, and
  * copies `<script>` / `<style>` bodies raw, where `<` and `>` are code, not markup. Both fail on
- * an unterminated tag, comment, CDATA or PI at EOF — the truncated-file case.
+ * an unterminated tag, comment, CDATA or PI at EOF - the truncated-file case.
  */
 private fun formatMarkup(strict: Boolean, text: String, step: String): String? {
     // Nothing to format; the stored bytes pass through, no toast.
@@ -389,7 +389,7 @@ private fun tagConstruct(text: String, start: Int): MarkupConstruct? {
 }
 
 /** Pushes an opening element; pops on a close. XML matches strictly and fails on a mismatch or a
- * stray close; HTML never fails — a close drops its element and anything an implied close
+ * stray close; HTML never fails - a close drops its element and anything an implied close
  * (`<li>a<li>b`) left open above it. False only when [strict] cannot match. */
 private fun applyToStack(stack: MutableList<String>, construct: MarkupConstruct, strict: Boolean): Boolean {
     val name = construct.name.orEmpty()

@@ -51,7 +51,7 @@ class TextEncodingsTest {
 
     @Test
     fun `valid utf-8 with multi-byte characters is utf-8`() {
-        val found = detect("naïve café — 日本語 😀".toByteArray())
+        val found = detect("naïve café - 日本語 😀".toByteArray())
 
         assertEquals(Charsets.UTF_8, found.charset)
         assertEquals(EncodingSource.UTF8, found.source)

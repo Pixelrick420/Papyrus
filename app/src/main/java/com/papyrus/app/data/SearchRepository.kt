@@ -17,7 +17,7 @@ data class ContentHit(
 /**
  * Content search across the library: the two-phase query, ranked, with an excerpt for each hit.
  *
- * Phase one asks the index which documents match and for their `matchinfo` only — no document text
+ * Phase one asks the index which documents match and for their `matchinfo` only - no document text
  * is read, so ranking a large result set stays cheap. Phase two asks for excerpts, for the handful
  * of documents that survived ranking, because `snippet` reads the content row.
  *
@@ -61,7 +61,7 @@ class SearchRepository(private val dao: SearchDao) {
 
     /**
      * Strips the markers `snippet` wrapped around the matches, recording the ranges they spanned.
-     * An unterminated marker — the excerpt was cut short — highlights the rest of the text.
+     * An unterminated marker - the excerpt was cut short - highlights the rest of the text.
      */
     private fun withMarkersRemoved(raw: String): Excerpt {
         val text = StringBuilder()

@@ -141,7 +141,7 @@ class PdfPageTextSource(
     }
 
     /**
-     * Every page's text in order, or null if the document cannot be read — one whole-document pass on
+     * Every page's text in order, or null if the document cannot be read - one whole-document pass on
      * the already-open document, so find-in-file shares this parse instead of opening a second copy
      * of the file. A page already held (read for TalkBack, a selection, read aloud or an earlier find)
      * is taken as it is, and the pages this pass reads are kept for those readers in turn. The caller

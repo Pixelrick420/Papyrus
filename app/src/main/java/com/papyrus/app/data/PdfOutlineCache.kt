@@ -55,7 +55,7 @@ private const val MAX_CACHED_DEPTH = 32
 
 /**
  * `index depth titleLength:title` per entry, all joined with nothing in between. A title may hold any
- * character — spaces, colons, digits — so its length is written down instead of a delimiter being
+ * character - spaces, colons, digits - so its length is written down instead of a delimiter being
  * assumed; the decoder then cuts exactly that many characters and resumes at the next entry.
  */
 internal fun encodeOutline(entries: List<OutlineEntry>): String = buildString {

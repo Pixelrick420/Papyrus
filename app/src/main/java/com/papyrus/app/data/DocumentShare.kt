@@ -39,7 +39,7 @@ fun shareIntent(uri: Uri, mimeType: String): Intent =
         // name; EXTRA_STREAM stays for receivers that predate ClipData. setClipData returns void.
         .apply { setClipData(ClipData.newRawUri("", uri)) }
         // SAF URIs share as-is (the row's persisted grant sub-grants); local copies go through the
-        // FileProvider — see DocumentRepository.resolveShareUri.
+        // FileProvider - see DocumentRepository.resolveShareUri.
         .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
 
 /** Several files in one chooser; [uris] must not be empty. Same read-only guarantees as [shareIntent]. */
@@ -55,5 +55,5 @@ fun shareIntentMultiple(uris: List<Uri>, mimeType: String): Intent =
             setClipData(clip)
         }
         // SAF URIs share as-is (the row's persisted grant sub-grants); local copies go through the
-        // FileProvider — see DocumentRepository.resolveShareUri.
+        // FileProvider - see DocumentRepository.resolveShareUri.
         .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)

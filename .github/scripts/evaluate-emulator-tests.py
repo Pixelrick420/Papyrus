@@ -69,9 +69,7 @@ class Verdict:
     headline: str
 
 
-def decide(
-    tally: Tally, min_pass_percent: float, gradle_exit: int | None
-) -> Verdict:
+def decide(tally: Tally, min_pass_percent: float, gradle_exit: int | None) -> Verdict:
     if tally.passed + tally.failed + tally.skipped == 0:
         return Verdict(
             False,
@@ -213,14 +211,14 @@ def build_report(
         "",
         "| Passed | Failed | Not run | Skipped | Declared | Pass rate | Required |",
         "| ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
-        f"| {tally.passed} | {tally.failed} | {tally.missing} | {tally.skipped} | {tally.declared} "
+        f"| {tally.passed} | {tally.failed} | {tally.missing} | {tally.skipped} | {tally.declared} ",
         f"| {tally.pass_percent():.1f}% | {required:g}% |",
         "",
     ]
     if failures:
         lines += ["### Failing tests", ""]
         lines += [
-            f"- `{short(f.test)}` — {f.detail or 'no message'}"
+            f"- `{short(f.test)}` - {f.detail or 'no message'}"
             for f in failures[:MAX_LISTED]
         ]
         if len(failures) > MAX_LISTED:
@@ -230,15 +228,13 @@ def build_report(
         lines.append("")
     if tally.missing:
         lines += [
-            f"{tally.missing} declared test(s) reported no result, which usually means the instrumentation "
+            f"{tally.missing} declared test(s) reported no result, which usually means the instrumentation ",
             "process crashed. Check `logcat.txt` in the `emulator-test-results` artifact.",
             "",
         ]
     if flaky:
         lines += ["### Passed only after a retry (flaky)", ""]
-        lines += [
-            f"- {entry.removeprefix('FLAKY ')}" for entry in flaky[:MAX_LISTED]
-        ]
+        lines += [f"- {entry.removeprefix('FLAKY ')}" for entry in flaky[:MAX_LISTED]]
         lines.append("")
     return "\n".join(lines)
 

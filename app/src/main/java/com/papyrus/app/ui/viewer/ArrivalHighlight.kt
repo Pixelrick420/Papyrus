@@ -24,7 +24,7 @@ data class ArrivalHighlight(
 
 /**
  * The word an arrival should land on: the first searchable word of [query], in the case it was
- * typed. Null when [hasContentHit] is false — a title-only match has no occurrence to land on —
+ * typed. Null when [hasContentHit] is false - a title-only match has no occurrence to land on -
  * and when [query] has no searchable word at all.
  */
 internal fun focusTermFor(query: String, hasContentHit: Boolean): String? =

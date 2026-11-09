@@ -304,7 +304,7 @@ internal fun ViewerContent.unitCount(): Int = when (this) {
 
 /**
  * Whether the content itself has words to read aloud, for every format whose text is already in
- * memory: false when the voice would have nothing to say. Null when the content cannot answer — a
+ * memory: false when the voice would have nothing to say. Null when the content cannot answer - a
  * PDF's text is read a page at a time and never whole, so the search index answers for those instead.
  */
 internal fun ViewerContent.hasSpeakableText(): Boolean? = when (this) {
@@ -582,7 +582,7 @@ class ViewerViewModel(
      * Works out whether there is anything to read aloud, so the option is not offered for a document
      * with nothing speakable in it. Every format but a PDF answers from the content already on
      * screen. A PDF cannot: its text is read a page at a time and never whole, so this asks the
-     * search index instead — it already holds what the document's text extraction found — and keeps
+     * search index instead - it already holds what the document's text extraction found - and keeps
      * watching, so a document indexed while it is open hides the option the moment the row lands.
      * Until the index has an answer, nothing is hidden: an unknown answer is not a "no".
      */
@@ -781,7 +781,7 @@ class ViewerViewModel(
     /**
      * Whether the read-aloud notification permission still has to be asked for: Android 13+ only,
      * once only, and never when it is already granted. A refusal is remembered like a grant, so the
-     * reader is not asked again — the system settings remain the way to change the answer.
+     * reader is not asked again - the system settings remain the way to change the answer.
      */
     fun needsNotificationPrompt(): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return false
@@ -1397,7 +1397,7 @@ class ViewerViewModel(
     /**
      * A page repeats in hits per match; budget-exceeding pages still count, scans have no text.
      *
-     * The platform engine's own search answers first — it reads the page it already renders, so even
+     * The platform engine's own search answers first - it reads the page it already renders, so even
      * a file too large to parse again stays searchable. It is exact-case, so a query with capitals,
      * and any page it cannot read, go to the PdfBox text model, which every device has.
      */
@@ -1455,8 +1455,8 @@ class ViewerViewModel(
     private suspend fun extractPageText(): List<PdfPageText> = pageSource()?.allPages() ?: emptyList()
 
     /**
-     * One page of text plus boxes. The open platform engine is asked first — it is the reader's own
-     * extractor, so TalkBack, selection and read-aloud see what the page actually draws — and only a
+     * One page of text plus boxes. The open platform engine is asked first - it is the reader's own
+     * extractor, so TalkBack, selection and read-aloud see what the page actually draws - and only a
      * page it cannot answer falls back to PDFBox. A search read is reused unless it was past the
      * box budget. Either reading is kept under the document's bytes, so a page is read once however
      * many of them ask for it, and again only after the file changes.

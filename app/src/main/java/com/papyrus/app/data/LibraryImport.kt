@@ -55,7 +55,7 @@ object LibraryImport {
         return removed
     }
 
-    /** True when [file] lies in [dir] — canonical, so a sibling `imports-evil` never matches. */
+    /** True when [file] lies in [dir] - canonical, so a sibling `imports-evil` never matches. */
     internal fun isInside(dir: File, file: File): Boolean = runCatching {
         file.canonicalFile.parentFile == dir.canonicalFile
     }.getOrDefault(false)

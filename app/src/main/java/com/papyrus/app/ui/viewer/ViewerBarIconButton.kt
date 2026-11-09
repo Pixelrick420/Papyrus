@@ -14,7 +14,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
 /**
- * The icon button both in-flow viewer bars draw with — find and read-aloud — so they share one tint
+ * The icon button both in-flow viewer bars draw with - find and read-aloud - so they share one tint
  * and one disabled treatment: a muted glyph that dims rather than vanishes when it has nothing to do.
  */
 @Composable

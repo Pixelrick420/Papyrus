@@ -357,7 +357,7 @@ object OfficeEncryption {
         }
     }
 
-    /** H(salt + UTF-16LE password), then H(le32(i) + h) for `spinCount` rounds — per MS-OFFCRYPTO. */
+    /** H(salt + UTF-16LE password), then H(le32(i) + h) for `spinCount` rounds - per MS-OFFCRYPTO. */
     private fun deriveIteratedHash(password: String, salt: ByteArray, hashName: String, spinCount: Int): ByteArray {
         if (spinCount < 0 || spinCount > MAX_SPIN_COUNT) throw IOException("unsupported spin count")
         val md = MessageDigest.getInstance(jcaHash(hashName))

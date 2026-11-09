@@ -15,7 +15,7 @@ class TextSnifferTest {
     @Test
     fun `plain ascii and utf-8 are text`() {
         assertTrue(sniff("hello world\n"))
-        assertTrue(sniff("Grüße aus München — ünïcodé ✓\n"))
+        assertTrue(sniff("Grüße aus München - ünïcodé ✓\n"))
     }
 
     @Test

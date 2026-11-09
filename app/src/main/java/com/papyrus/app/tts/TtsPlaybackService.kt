@@ -257,7 +257,7 @@ class TtsPlaybackService : Service(), TextToSpeech.OnInitListener {
 
     /**
      * Drop the foreground job, the notification and the service. [clearSession] false is the failure
-     * path: it leaves the error — and the document with it — in the session, so the bar reports it and
+     * path: it leaves the error - and the document with it - in the session, so the bar reports it and
      * keeps the reading position. Everything that reaches an error has already stopped the engine, so
      * there is nothing left to silence.
      */

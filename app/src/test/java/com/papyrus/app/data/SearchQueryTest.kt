@@ -101,7 +101,7 @@ class SearchQueryTest {
     fun `nothing searchable parses to null`() {
         assertNull(SearchQuery.parse(""))
         assertNull(SearchQuery.parse("   "))
-        assertNull(SearchQuery.parse("!?.,;:-–—()[]{}'\"*/\\"))
+        assertNull(SearchQuery.parse("!?.,;:-–-()[]{}'\"*/\\"))
     }
 
     // --- Properties, over seeded random input so a failure reproduces ---

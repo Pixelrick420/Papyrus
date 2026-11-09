@@ -330,7 +330,7 @@ fun ViewerScreen(
     }
 
     // The read-aloud notification is optional: asked once, at the first Read aloud on Android 13+,
-    // and the voice starts either way — a refusal only leaves out the system notification.
+    // and the voice starts either way - a refusal only leaves out the system notification.
     val requestNotifications = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { viewModel.startReadAloud() }

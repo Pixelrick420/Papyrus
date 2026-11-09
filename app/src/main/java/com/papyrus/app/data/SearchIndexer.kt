@@ -25,7 +25,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  * The database is the queue. [SearchDao.pending] is the source of truth about what is left to do, so
  * nothing is lost if the process dies mid-pass, a document is removed while its extraction runs, or
  * two passes overlap: the next pass simply re-reads the queue and skips what is already indexed.
- * That is also why [start] can be called without knowing what happened before — the first pass after
+ * That is also why [start] can be called without knowing what happened before - the first pass after
  * an upgrade is what picks up an index written by an older [INDEX_VERSION].
  *
  * A document that is already indexed is read again only if it changed, and that is told without opening
@@ -208,8 +208,8 @@ class SearchIndexer(
 
     companion object {
         /**
-         * Bumped whenever the stored text of the same document would come out different — a new
-         * extractor, a changed text shape — which re-indexes the whole library on the next start.
+         * Bumped whenever the stored text of the same document would come out different - a new
+         * extractor, a changed text shape - which re-indexes the whole library on the next start.
          * It is also the only retry path for a [TextIndexState.FAILED] row.
          */
         const val INDEX_VERSION = 1

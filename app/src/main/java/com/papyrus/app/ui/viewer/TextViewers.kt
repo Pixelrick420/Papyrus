@@ -410,7 +410,7 @@ private class FadingMatchSpan : CharacterStyle(), UpdateAppearance {
 
 /**
  * The one match a search arrival landed on. Unlike find's spans it is moved in place and only its
- * paint changes, so a fade costs a repaint rather than re-setting the whole document — which would
+ * paint changes, so a fade costs a repaint rather than re-setting the whole document - which would
  * also drop a selection in progress.
  */
 private class ArrivalSpans {
@@ -854,7 +854,7 @@ private class Gutter(
 /** One line's number, measured when the chunk is laid out: the row it labels and the text itself. */
 private class GutterMark(val row: Int, val number: TextLayoutResult)
 
-/** Paints [marks] and the divider — no measuring, no lookups; that work happened once, in TextChunk. */
+/** Paints [marks] and the divider - no measuring, no lookups; that work happened once, in TextChunk. */
 private fun DrawScope.drawGutter(marks: List<GutterMark>, layout: TextLayoutResult, gutter: Gutter) {
     val top = ChunkVerticalPadding.toPx()
     for (mark in marks) {
@@ -1081,7 +1081,7 @@ fun OfficeViewer(
     }
 }
 
-/** One lazy item: the block it draws, or a table band — the rows of its slice. */
+/** One lazy item: the block it draws, or a table band - the rows of its slice. */
 internal class OfficeUnit(val block: Int, val rows: IntRange?)
 
 /**
@@ -1093,7 +1093,7 @@ internal class OfficeUnits(
     /** First unit of each block, so a jump to a block lands on the band that starts it. */
     val firstUnitOfBlock: IntArray,
     val blockOfUnit: IntArray,
-    /** Units per block — more than one only for a table tall enough to split. */
+    /** Units per block - more than one only for a table tall enough to split. */
     val bandCounts: IntArray,
 ) {
     val size: Int get() = units.size
@@ -1105,7 +1105,7 @@ internal class OfficeUnits(
         val first = firstUnitOfBlock.getOrNull(block) ?: return 0 to fraction
         val bands = bandCounts[block]
         if (bands <= 1) return first to fraction
-        // The fraction rides the band index, so a save inside band b restores inside band b —
+        // The fraction rides the band index, so a save inside band b restores inside band b -
         // exact for any band sizes, because the divide-back undoes the multiply-forward.
         val position = fraction.coerceIn(0f, 1f) * bands
         val band = position.toInt().coerceAtMost(bands - 1)

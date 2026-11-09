@@ -9,7 +9,7 @@ import org.junit.Test
  * The two-phase query's call plumbing and its answer: the order of the hits, which candidates are
  * dropped, and what the excerpt looks like once FTS4's markers are gone.
  *
- * The SQL itself is not exercised here — [FakeSearchDao] stands in for it — so this covers exactly
+ * The SQL itself is not exercised here - [FakeSearchDao] stands in for it - so this covers exactly
  * what the repository adds on top: ranking, limiting and marker stripping.
  */
 class SearchRepositoryTest {

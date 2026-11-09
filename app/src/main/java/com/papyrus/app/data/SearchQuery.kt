@@ -17,14 +17,14 @@ data class ParsedSearch(
  * into a syntax error. The split below drops everything that is not a letter or a digit before
  * quoting, so a token can never even contain the one character a quoted phrase does not tolerate.
  *
- * Every word of two characters or more also gets a trailing `*` — a prefix match — written *inside*
+ * Every word of two characters or more also gets a trailing `*` - a prefix match - written *inside*
  * the quotes, `"scal*"`, which is the only form FTS4 reads as one: after the closing quote the same
  * asterisk is ignored, so `"scal"*` would quietly mean an exact match. The index keeps prefix tables
  * for lengths 2 and 3 (`prefix = [2, 3]` on [DocumentTextFtsEntity]), so `scal` finds "scale",
  * "scaling" and "Scality" from the index instead of by scanning every token. Longer prefixes are
  * still valid queries, they are simply not covered by those tables.
  *
- * Words are joined by a space — FTS4's implicit AND — so a document must contain all of them.
+ * Words are joined by a space - FTS4's implicit AND - so a document must contain all of them.
  * Single-character words are dropped as soon as a longer one is present: they match nearly every
  * document, so they cost a scan and change no ranking. A query made only of them is still
  * honoured, without the `*`, because typing "a" is a request rather than a mistake.

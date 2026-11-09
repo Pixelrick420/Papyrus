@@ -61,7 +61,7 @@ internal object DocFibParser {
         val kept = minOf(pairs, KEPT_PAIRS)
         val fcLcb = LongArray(kept * 2) { u32(head, rgFcLcbBase + (it / 2) * 8 + (it % 2) * 4) }
         // A producer that names the wrong table stream still opens: try the flag's name first,
-        // then the other, then fail — matching how Word reads both streams by name.
+        // then the other, then fail - matching how Word reads both streams by name.
         val primary = if (flags and FLAG_WHICH_TABLE != 0) TABLE_STREAM_1 else TABLE_STREAM_0
         val secondary = if (primary == TABLE_STREAM_1) TABLE_STREAM_0 else TABLE_STREAM_1
         val table = when {

@@ -1,7 +1,7 @@
 package com.papyrus.app.viewer
 
 /**
- * Linearises one OMML equation to text — Papyrus has no maths renderer, so `(a+b)/c`, `x²`, `√(x+1)`
+ * Linearises one OMML equation to text - Papyrus has no maths renderer, so `(a+b)/c`, `x²`, `√(x+1)`
  * rather than Word's layout. Unknown elements contribute their children's text.
  */
 internal class OmmlLinearizer {

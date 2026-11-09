@@ -226,7 +226,7 @@ private fun headingStyle(level: Int) = when (level.coerceIn(1, 6)) {
  * Column widths come from the cells' own content and every cell is drawn as tall as its row, so a
  * short cell's border reaches the bottom. Row spans need a layout that sees every row: [TableGrid].
  *
- * Draws [rowCount] rows from [firstRow] — one band of a table split for virtualization. The counting
+ * Draws [rowCount] rows from [firstRow] - one band of a table split for virtualization. The counting
  * stays whole-table, so a band's match numbering and coverage are exactly what the same rows show in
  * an unsplit table: indices address the table globally, the band's grid locally. [hScroll] is shared
  * by every band of the table, so they move sideways as one.

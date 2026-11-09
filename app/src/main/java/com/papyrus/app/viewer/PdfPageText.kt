@@ -112,7 +112,7 @@ class PdfPageText(
         return if (best < 0) null else CharHit(best, sqrt(bestSquared))
     }
 
-    /** Caret nearest ([x], [y]) — 0..char count, by which half of the closest box; null if none. */
+    /** Caret nearest ([x], [y]) - 0..char count, by which half of the closest box; null if none. */
     fun caretAt(x: Float, y: Float, aspect: Float = 1f): Int? {
         val hit = nearestChar(x, y, aspect) ?: return null
         val o = hit.index * 4
@@ -197,7 +197,7 @@ class PdfPageText(
     private class LineBand(val start: Int, val end: Int, val top: Float, val bottom: Float, val skippable: Boolean)
 
     /**
-     * Lines split at the recorded breaks, built once — the class is immutable, so the index is
+     * Lines split at the recorded breaks, built once - the class is immutable, so the index is
      * safe to hold. A line's band only vouches for chars whose box has a usable y span, so a line
      * holding a box without one is marked unskippable and always scanned in full.
      */
@@ -216,7 +216,7 @@ class PdfPageText(
             val measurable = boxed && !boxes[o + 1].isNaN() && !boxes[o + 3].isNaN()
             if (lineBreaks[i]) {
                 // A break closes the line above it and belongs to no line itself, though the scan
-                // has always seen it — a boxed one becomes a line of its own, so it still answers.
+                // has always seen it - a boxed one becomes a line of its own, so it still answers.
                 if (start < i) bands += LineBand(start, i, top, bottom, skippable)
                 if (boxed) bands += LineBand(i, i + 1, boxes[o + 1], boxes[o + 3], measurable)
                 start = i + 1
@@ -249,7 +249,7 @@ class PdfPageText(
          * equal slice of its line's span, whitespace takes none, and '\n' ends a line. A line may
          * report several boxes (a run the platform cut in two); they are unioned so every glyph
          * stays hit-testable. [lineBoxes] holds one list per line of [text], or is empty when no
-         * geometry is known — the text then stays searchable but not selectable.
+         * geometry is known - the text then stays searchable but not selectable.
          */
         fun fromLines(
             text: String,

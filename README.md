@@ -164,8 +164,8 @@ an XML root, JSON or Objective-C.
   text reads it; an image without is skipped.
 - **Live updates and touch targets.** The find-in-file counter announces each match change ("2 of 7") without moving
   focus, and interactive controls meet the 48dp minimum touch target.
-- **Known limits.** With TalkBack running, a PDF page with a text layer is read as one stop per page — its page
-  number and the page's own text — rather than line by line; a page with no text layer reads only its number. Use
+- **Known limits.** With TalkBack running, a PDF page with a text layer is read as one stop per page - its page
+  number and the page's own text - rather than line by line; a page with no text layer reads only its number. Use
   Android's accessibility zoom instead of pinch zoom, which TalkBack intercepts.
 - The manual test script and the checks enforced by `AccessibilitySemanticsTest` are in
   [ACCESSIBILITY.md](ACCESSIBILITY.md).
@@ -247,11 +247,11 @@ dependency, so F-Droid compliance is enforced rather than documented.
 
 ## Test
 
-| Task                                                                    | What it runs                                       |
-| ----------------------------------------------------------------------- | -------------------------------------------------- |
-| `./gradlew check`                                                       | unit tests, lint and detekt                        |
-| `./gradlew testDebugUnitTest`                                           | unit tests alone                                   |
-| `./gradlew connectedDebugAndroidTest`                                   | semantics and end-to-end tests on a device         |
+| Task                                  | What it runs                               |
+| ------------------------------------- | ------------------------------------------ |
+| `./gradlew check`                     | unit tests, lint and detekt                |
+| `./gradlew testDebugUnitTest`         | unit tests alone                           |
+| `./gradlew connectedDebugAndroidTest` | semantics and end-to-end tests on a device |
 
 The semantics suite needs a device or emulator kept awake and unlocked; [ACCESSIBILITY.md](ACCESSIBILITY.md) covers
 that and the manual TalkBack script.
@@ -260,7 +260,7 @@ The end-to-end tests are in `app/src/androidTest/java/com/papyrus/app/e2e`. They
 documents the way a file manager does, and drive it through the accessibility tree with UI Automator, so they call
 nothing inside the app. They run on `debug` only: minification makes AGP minify the androidTest APK too and treat the
 app's output as a provided classpath, so anything R8 stripped from the app is missing at run time and the runner dies
-before the first test — a green build reporting zero tests. Every test starts from a fresh install, so none
+before the first test - a green build reporting zero tests. Every test starts from a fresh install, so none
 depends on another: `FreshInstall` empties the database, the imported copies and the settings before each
 one, and `PapyrusTestRunner` takes the same data off disk before any of the app's code loads.
 

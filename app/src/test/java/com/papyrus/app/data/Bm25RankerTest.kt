@@ -10,7 +10,7 @@ import java.nio.ByteOrder
  * The ranking arithmetic over `matchinfo 'pcnalx'` blobs.
  *
  * The blobs below that are marked "recorded" are what SQLite actually returned for the FTS4 table
- * this app creates; the rest are hand-built layouts, which is the point — each test isolates one
+ * this app creates; the rest are hand-built layouts, which is the point - each test isolates one
  * input the formula is supposed to react to.
  */
 class Bm25RankerTest {

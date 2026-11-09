@@ -14,7 +14,7 @@ import io.ratex.RaTeXSpan
  * [ReplacementSpan], so this factory holds detected ranges and launches span creation per range
  * on a caller-supplied coroutine scope. Block vs inline is decided by whether $$...$$ occupies
  * an entire line. Graceful fallback: if [RaTeXSpan.create] throws or returns null, the caller keeps
- * the visible placeholder text — no crash, no missing formula.
+ * the visible placeholder text - no crash, no missing formula.
  */
 class LatexSpanFactory(
     /** The Android context, passed to [RaTeXSpan.create]. Nullable so range-detection can be unit-tested without a real Context. */
@@ -31,7 +31,7 @@ class LatexSpanFactory(
     /**
      * Launches [RaTeXSpan.create] for each range on [scope], returning one deferred per range.
      * Each deferred resolves to [Pair] of the [LatexRange] and its [RaTeXSpan] (null if creation
-     * failed — the caller keeps the visible placeholder text as graceful fallback).
+     * failed - the caller keeps the visible placeholder text as graceful fallback).
      */
     @Suppress("TooGenericExceptionCaught", "SwallowedException")
     fun createSpans(scope: CoroutineScope, fontSizePx: Float, color: Int): List<Deferred<Pair<LatexRange, RaTeXSpan?>>> {

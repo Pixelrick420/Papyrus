@@ -29,7 +29,7 @@ data class TtsParagraph(val start: Int, val end: Int, val text: String)
  * Turns a document into the list of paragraphs to read aloud. Every builder is pure and takes only
  * plain values (strings, chunk lists, [OfficeBlock]s), so all of this is exercised under plain JUnit.
  *
- * The one impure path — a PDF's page text — is read by the caller one page at a time through
+ * The one impure path - a PDF's page text - is read by the caller one page at a time through
  * `PdfPageTextSource.page(index)` and handed here as a plain list of page strings; a 500 MB file is
  * never parsed whole, and the find path's `allPages()` is never called.
  */

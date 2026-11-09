@@ -182,7 +182,7 @@ data class HomeUiState(
  * One content search: the [query] it answers and its [hits], or null while the search is running.
  *
  * The query travels with the hits so a keystroke can never leave the previous query's excerpts on
- * screen under the new one — which is the failure mode a plain result list has.
+ * screen under the new one - which is the failure mode a plain result list has.
  */
 internal data class ContentSearch(val query: String, val hits: Map<Long, ContentHit>?)
 
@@ -384,7 +384,7 @@ class HomeViewModel(
     private fun searchContents(needle: String) {
         contentSearchJob?.cancel()
         if (SearchQuery.parse(needle) == null) {
-            // Nothing searchable — empty, or punctuation only — so no query is worth running.
+            // Nothing searchable - empty, or punctuation only - so no query is worth running.
             contentSearch.value = ContentSearch(needle, emptyMap())
             return
         }

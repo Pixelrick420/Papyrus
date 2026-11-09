@@ -271,7 +271,7 @@ class DocumentRepository(
 
     /**
      * The library row already holding the document behind [source]: a same-title row whose app-owned
-     * copy holds the same bytes. A row only on [source]'s own URI is not a match — it holds no copy,
+     * copy holds the same bytes. A row only on [source]'s own URI is not a match - it holds no copy,
      * so the save would not outlive the grant the document arrived with. Null when nothing matches or
      * the source cannot be read, so the save falls through to copy-and-insert.
      */

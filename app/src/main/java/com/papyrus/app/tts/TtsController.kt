@@ -65,8 +65,8 @@ data class TtsPlayback(
 
 /**
  * The playback brain: a queue of [TtsUnit]s advanced one at a time as each utterance finishes, with
- * play/pause, paragraph skip and live speed. It knows nothing about Android — it drives a
- * [SpeechEngine] and publishes [TtsPlayback] — so every branch is testable with a fake engine.
+ * play/pause, paragraph skip and live speed. It knows nothing about Android - it drives a
+ * [SpeechEngine] and publishes [TtsPlayback] - so every branch is testable with a fake engine.
  *
  * The constructor is silent: nothing is spoken until an explicit [play] or [playFrom].
  */

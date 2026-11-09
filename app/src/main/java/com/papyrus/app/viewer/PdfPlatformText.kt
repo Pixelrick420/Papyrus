@@ -1,7 +1,7 @@
 package com.papyrus.app.viewer
 
 /**
- * A rectangle in page coordinates: points from the page's top-left, y running down — the unit the
+ * A rectangle in page coordinates: points from the page's top-left, y running down - the unit the
  * platform PDF APIs report in. [PdfPlatformText] turns these into the viewer's page-relative model.
  */
 internal data class PageRect(val left: Float, val top: Float, val right: Float, val bottom: Float) {
@@ -31,7 +31,7 @@ internal object PdfPlatformText {
     /**
      * The lines joined into the per-character text model, one entry per line of [lineBoxes] and an
      * empty geometry when the platform reported no lines. A newline separates lines, so a query
-     * never matches across a line break — the platform reports lines, not a reflowed paragraph.
+     * never matches across a line break - the platform reports lines, not a reflowed paragraph.
      */
     fun from(lines: List<PlatformLine>, pageWidth: Float, pageHeight: Float): PdfPageText {
         if (lines.isEmpty()) return PdfPageText.fromLines("", emptyList(), fromPlatform = true)
@@ -47,8 +47,8 @@ internal object PdfPlatformText {
      *
      * The platform reports "continuous streams" of text, bounded by one rectangle per visual line,
      * or by none at all. The model needs one band of boxes per line of text, so only a page that
-     * already has that shape is taken. Anything else — no text, text without a box, or a stream that
-     * wraps over several lines — would give a page with nothing to touch, or a selection on the
+     * already has that shape is taken. Anything else - no text, text without a box, or a stream that
+     * wraps over several lines - would give a page with nothing to touch, or a selection on the
      * wrong words, and is left to PDFBox, which is what the viewer read before the platform engine.
      */
     fun isUsable(lines: List<PlatformLine>, pageWidth: Float, pageHeight: Float): Boolean {
