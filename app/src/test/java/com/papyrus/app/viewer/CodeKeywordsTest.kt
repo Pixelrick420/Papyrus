@@ -5,7 +5,6 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** The keyword tables: a missing word is plain text, and a stray one recolours every identifier that spells it. */
 class CodeKeywordsTest {
 
     private fun language(fileName: String): CodeLanguage = CodeLanguages.forFileName(fileName)
@@ -13,7 +12,6 @@ class CodeKeywordsTest {
 
     private fun keywords(fileName: String): Set<String> = language(fileName).keywordSet
 
-    /** The words the scanner colours as keywords in [text], so an entry is checked through the highlighter and not only the set. */
     private fun keywordsIn(fileName: String, text: String): List<String> {
         val found = SyntaxHighlighter.tokenize(language(fileName), text)
         return (0 until found.size)
@@ -126,10 +124,8 @@ class CodeKeywordsTest {
         assertTrue("true" in language("a.toml").literalSet)
     }
 
-    /**
-     * Words that mean something only in one position and are ordinary names everywhere else. A highlighter with
-     * no notion of position would recolour every variable called `context`, so these stay out of the tables.
-     */
+    // Words that mean something only in one position and are ordinary names everywhere else. A highlighter with
+    // no notion of position would recolour every variable called `context`, so these stay out of the tables.
     @Test
     fun `contextual words that are common identifiers are not keywords`() {
         val stayPlain = mapOf(

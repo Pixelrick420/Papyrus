@@ -17,7 +17,6 @@ import java.io.File
 import java.io.IOException
 import java.io.InputStream
 
-/** The failure modes matter most: a failed decrypt must leave no plaintext behind. */
 class PdfEncryptionTest {
 
     @get:Rule
@@ -29,7 +28,6 @@ class PdfEncryptionTest {
         onePage().use { it.save(out) }
     }.toByteArray()
 
-    /** [ownerPassword] set with an empty [userPassword] is the permissions-only case. */
     private fun protectedPdf(ownerPassword: String, userPassword: String): ByteArray =
         ByteArrayOutputStream().also { out ->
             onePage().use { document ->
@@ -127,7 +125,6 @@ class PdfEncryptionTest {
         PDDocument.load(target).use { assertFalse(it.isEncrypted) }
     }
 
-    /** Counts opens: the plain-PDF path must open once, to scan, and no more. */
     private class CountingSource(private val bytes: ByteArray) : () -> InputStream {
         var opens = 0
             private set

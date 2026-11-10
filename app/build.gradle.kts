@@ -31,8 +31,7 @@ configurations.configureEach {
     }
 }
 
-// Opt-in release signing: `release` gets a signing config only when all four PAPYRUS_*
-// properties/env vars are set, so the default build stays unsigned. The keystore is never committed, and a per-run key would make releases mutually uninstallable.
+// Opt-in release signing: only when all four PAPYRUS_* properties/env vars are set; the default build stays unsigned and the keystore is never committed.
 fun signingSetting(name: String): String? =
     providers.gradleProperty(name).orNull?.takeIf { it.isNotBlank() }
         ?: providers.environmentVariable(name).orNull?.takeIf { it.isNotBlank() }
@@ -73,8 +72,7 @@ android {
         }
     }
 
-    // RaTeX, the only native dependency, ships arm64-v8a, armeabi-v7a and x86_64. The two ARM ABIs each get a slim
-    // APK; the universal one carries all three, for x86_64 emulators and for anyone unsure which to pick.
+    // RaTeX, the only native dependency, ships arm64-v8a, armeabi-v7a and x86_64; each ARM ABI gets a slim APK and the universal one carries all three.
     splits {
         abi {
             isEnable = true
@@ -116,7 +114,7 @@ android {
     }
 
     // The migration test opens each exported schema; MigrationTestHelper reads them as assets.
-    sourceSets.getByName("androidTest").assets.srcDir("$projectDir/schemas")
+    sourceSets.getByName("androidTest").assets.directories.add("$projectDir/schemas")
 
     packaging {
         resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
@@ -154,11 +152,8 @@ dependencies {
     implementation("androidx.room:room-runtime:2.8.5")
     ksp("androidx.room:room-compiler:2.8.5")
 
-    // PDF text extraction (find-in-file) and page geometry. PdfBox-Android is the Apache-2.0
-    // AAR port; the platform's PdfRenderer draws the pages.
     implementation("com.tom-roush:pdfbox-android:2.0.27.0")
 
-    // Markdown (MIT): Spannable output, no WebView or network.
     val markwon = "4.6.2"
     implementation("io.noties.markwon:core:$markwon")
     implementation("io.noties.markwon:ext-strikethrough:$markwon")
@@ -166,19 +161,16 @@ dependencies {
     implementation("io.noties.markwon:ext-tasklist:$markwon")
     // `data:` URI images only; the HTTP loaders are removed in MarkdownRenderer, the reader stays offline.
     implementation("io.noties.markwon:image:$markwon")
-    // RaTeX (MIT): $$...$$ math rendering, replacing the removed GPL JLatexMath.
     implementation("io.github.erweixin:ratex-android:0.1.15")
     // No Prism4j: fenced code is coloured by the app's own tokenizer (SyntaxHighlighter), and autolinks are
     // matched by Autolinks, so neither `syntax-highlight` nor `linkify` is needed.
 
-    // Local-only crash reporting (replaces Crashlytics). `auto-service` is excluded on purpose: it
-    // leaks in from acra-core and drags in Guava; our sender loads via the app's own META-INF/services file.
+    // Local-only crash reporting (replaces Crashlytics). `auto-service` is excluded: it leaks in from acra-core and drags in Guava.
     implementation("ch.acra:acra-core:5.12.0") {
         exclude(group = "com.google.auto.service", module = "auto-service")
     }
 
-    // JUnit 4, not 5: the extractor/sniffer tests need no Android runtime beyond a stubbed
-    // XmlPullParser, and AGP's testDebugUnitTest runs JUnit 4 without an extra runner. No Robolectric -- these tests cover pure parsing logic.
+    // JUnit 4, not 5: AGP's testDebugUnitTest runs it without an extra runner. No Robolectric: these tests need no Android runtime beyond a stubbed XmlPullParser.
     testImplementation("junit:junit:4.13.2")
     // kxml2 is a reference XmlPullParser: the extractor takes its parser from an injected factory so
     // tests can substitute this one, since android.util.Xml is a platform stub under plain JUnit.
@@ -193,13 +185,11 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-test-manifest")
 }
 
-// Room exports each schema version as JSON here, committed so a migration is written against the exact
-// schema a release was built from. `.gitignore` re-includes this dir because it ignores `*.json` globally.
+// Room exports each schema version here, committed so a migration is written against the exact schema a release was built from.
 ksp {
     arg("room.schemaLocation", "$projectDir/schemas")
 }
 
-// Static analysis scoped to dead code and correctness; rule selection and reasons live in config/detekt/detekt.yml.
 detekt {
     buildUponDefaultConfig = false
     allRules = false
@@ -212,8 +202,7 @@ detekt {
     ignoreFailures = false
 }
 
-// Local device install helpers. `release` is unsigned unless the PAPYRUS_* properties were given, so we
-// hand adb a throwaway debug-signed copy. The debug key must never become the release build type's signing config.
+// `release` is unsigned unless PAPYRUS_* properties were given, so adb gets a throwaway debug-signed copy. The debug key must never become the release signing config.
 
 val sdkDirectory = androidComponents.sdkComponents.sdkDirectory.get().asFile
 val adb = sdkDirectory.resolve("platform-tools/adb")
@@ -222,7 +211,6 @@ val apksigner = sdkDirectory.resolve(
 )
 val debugKeystore = File(System.getProperty("user.home"), ".android/debug.keystore")
 
-/** Runs [command] to completion, returning trimmed stdout and throwing on failure. Task-action only, never at configuration time. */
 fun runCommand(command: List<String>): String {
     val process = ProcessBuilder(command).redirectErrorStream(true).start()
     val output = process.inputStream.bufferedReader().readText().trim()
@@ -233,9 +221,7 @@ fun runCommand(command: List<String>): String {
 
 fun runAdb(vararg args: String): String = runCommand(listOf(adb.absolutePath) + args)
 
-/** Resolves the universal APK for [variant], probing the signed and `-unsigned` names: `release`
- *  only gets a signing config when the build was given PAPYRUS_* properties. The ABI splits sit beside
- *  it, but only the universal one installs on any connected device. */
+// Probes the signed and `-unsigned` APK names, since `release` only gets a signing config when PAPYRUS_* properties were given.
 fun pickApk(variant: String): File {
     val out = layout.buildDirectory.dir("outputs/apk/$variant").get().asFile
     return listOf(File(out, "app-universal-$variant.apk"), File(out, "app-universal-$variant-unsigned.apk"))
@@ -243,7 +229,6 @@ fun pickApk(variant: String): File {
         ?: error("No APK for $variant in ${out.absolutePath}. Did assemble$variant run?")
 }
 
-/** True when AGP already signed this output; apksigner rejects a second signature. */
 fun isAlreadySigned(apk: File): Boolean = !apk.name.contains("-unsigned")
 
 fun signForLocalInstall(apk: File): File {
@@ -269,8 +254,6 @@ fun signForLocalInstall(apk: File): File {
     return signed
 }
 
-/** Registers a task that builds [variant], signs it if AGP left it unsigned, and adb-installs it.
- *  Signing is read off the artifact because `release` is unsigned by default. */
 fun registerLocalInstall(
     name: String,
     variant: String,

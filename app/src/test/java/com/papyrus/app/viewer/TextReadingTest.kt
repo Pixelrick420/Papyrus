@@ -10,7 +10,6 @@ import java.nio.charset.Charset
 
 class TextReadingTest {
 
-    /** One byte per read, so every buffer boundary in the reader and the sample splice is crossed. */
     private class Trickle(private val data: ByteArray) : InputStream() {
         private var at = 0
         override fun read(): Int = if (at < data.size) data[at++].toInt() and 0xFF else -1
@@ -116,11 +115,11 @@ class TextReadingTest {
 
     @Test
     fun `windows-1252 text is decoded as such without being asked`() {
-        val data = "Café – “quoted”".toByteArray(TextEncodings.WINDOWS_1252)
+        val data = "Café - “quoted”".toByteArray(TextEncodings.WINDOWS_1252)
 
         val result = readTextChunks(ByteArrayInputStream(data), Int.MAX_VALUE)
 
-        assertEquals("Café – “quoted”", result.chunks.single())
+        assertEquals("Café - “quoted”", result.chunks.single())
         assertEquals(TextEncodings.WINDOWS_1252, result.encoding.charset)
     }
 
@@ -206,8 +205,6 @@ class TextReadingTest {
         assertEquals("こんにちは\n世界", result.chunks.single())
     }
 
-    /** The whole-string path must chunk, count lines and measure columns exactly like the
-     * streaming path, so the pretty-printed and raw views of a file cannot drift apart. */
     private fun assertChunkingParity(text: String, perChunk: Int = TEXT_LINES_PER_CHUNK) {
         val streamed = readTextChunks(ByteArrayInputStream(text.toByteArray()), Int.MAX_VALUE, linesPerChunk = perChunk)
         val decoded = readTextString(ByteArrayInputStream(text.toByteArray()), Int.MAX_VALUE)

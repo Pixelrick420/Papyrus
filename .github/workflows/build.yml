@@ -51,7 +51,6 @@ jobs:
           android sdk install platform-tools platforms/android-37 build-tools/36.0.0
           android sdk install "ndk/${{ steps.ndk.outputs.version }}"
 
-      # `check` is the unit tests, lint and detekt; the same task the README tells contributors to run.
       - name: Check
         run: ./gradlew --no-daemon check
 
@@ -139,10 +138,8 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      # Compiling and dexing keeps both runner cores busy for minutes. Inside the emulator step that ran while the
-      # freshly booted emulator was still starting its own services, and a starved launcher ANRs: the system's
-      # "isn't responding" dialog then owns input focus, so no test can find the app. Build first, so the emulator
-      # step only installs the APKs and runs the tests.
+      # Built before the emulator step: compiling there starves the freshly booted emulator's launcher, and its ANR
+      # dialog then owns input focus so no test can find the app.
       - name: Build debug and test APKs
         run: ./gradlew --no-daemon packageDebug packageDebugAndroidTest
 
@@ -159,7 +156,6 @@ jobs:
           # Instrumented tests must run against debug: R8 strips the release classpath (android/android-test#2167).
           script: bash .github/scripts/run-emulator-tests.sh
 
-      # Gate: fails when fewer than EMULATOR_MIN_PASS_PERCENT of the tests passed, or when nothing ran.
       - name: Check emulator test results
         if: ${{ !cancelled() }}
         run: python3 .github/scripts/evaluate-emulator-tests.py --min-pass-percent "$EMULATOR_MIN_PASS_PERCENT"

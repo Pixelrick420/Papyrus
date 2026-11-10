@@ -9,7 +9,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
-/** Crash reports kept on the device: listing, opening, sharing and deleting one, and what opening it offers. */
 @RunWith(AndroidJUnit4::class)
 class CrashReportsTest : E2eTest() {
 

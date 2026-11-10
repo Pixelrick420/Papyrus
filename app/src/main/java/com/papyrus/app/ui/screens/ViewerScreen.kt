@@ -132,10 +132,8 @@ import com.papyrus.app.viewer.numberedLines
 import com.papyrus.app.viewer.officeOutline
 import kotlinx.coroutines.launch
 
-/** Same inset as Home, so the find pill lines up with the Home search pill. */
 private val ScreenPadding = 16.dp
 
-/** Inset from the left, top and right edges so a highlighted match never sits flush against them. */
 private val ViewerContentMargin = 12.dp
 
 /** Find, zoom and overflow state live here, so a format switch does not reset them. */
@@ -156,8 +154,7 @@ fun ViewerScreen(
     val zoom = rememberZoomState(initialScale = remember { viewModel.restoreTarget()?.zoom ?: REST_SCALE })
     // Re-read when a (re)load hands over a new request, not on every position change; the viewers apply it once.
     val restore = remember(state.restore) { viewModel.restoreTarget() }
-    // The one scroll request of every format (links, outline, go to page): a new object is a new jump.
-    // Keyed on the content so a reload or an encoding change never replays the last one.
+    // The one scroll request of every format; a new object is a new jump, keyed on the content so a reload never replays the last one.
     var jump by remember(state.content) { mutableStateOf<ViewerJump?>(null) }
     val position = remember(restore, viewModel, jump) {
         PositionHooks(restore, viewModel::onRestored, viewModel::onPosition, jump)
@@ -181,13 +178,11 @@ fun ViewerScreen(
         viewModel.share { send -> context.startActivity(Intent.createChooser(send, chooserTitle)) }
     }
 
-    // One opening path for every surface in this screen, so an unopenable link reports the same way.
     val followLink: (String) -> Unit = remember(context) {
         { url ->
             if (!openLink(context, url)) Toast.makeText(context, R.string.viewer_link_failed, Toast.LENGTH_SHORT).show()
         }
     }
-    // A link inside a book is a block of this document: the one jump mechanism takes the reader there.
     val followBookLink: (BookLink) -> Unit = remember(state.content, context) {
         { link ->
             val target = (state.content as? ViewerContent.Office)?.bookLinks?.get(link)
@@ -199,7 +194,6 @@ fun ViewerScreen(
             }
         }
     }
-    // A link to another page of the PDF only reveals it: nothing moves if it is already on screen.
     val followPdfLink: (PdfLinkTarget) -> Unit = remember(context) {
         { target ->
             when (target) {
@@ -219,19 +213,15 @@ fun ViewerScreen(
     var goToOpen by remember { mutableStateOf(false) }
     var bookmarksOpen by remember { mutableStateOf(false) }
     var formOpen by remember { mutableStateOf(false) }
-    // The mark whose note is open; null when the sheet is closed.
     var noteMark by remember { mutableStateOf<Highlight?>(null) }
 
-    // Only a document with an outline has the menu item: an Office document that used heading styles, or a
-    // PDF whose bookmarks are still streaming in (read off the main thread, so they arrive after the first page).
+    // A PDF's bookmarks are read off the main thread, so they arrive after the first page.
     val office = state.content as? ViewerContent.Office
     // A document's own table of contents (an EPUB's) wins; otherwise the outline is its headings.
     val officeEntries = remember(office) { office?.let { it.outline ?: officeOutline(it.blocks) }.orEmpty() }
     val isPdf = state.content is ViewerContent.Pdf
     val outline = if (isPdf) state.pdfOutline else officeEntries
-    // Go to page needs enough pages to be worth numbering; the menu item and Ctrl+G both ask this.
     val pageCount = (state.content as? ViewerContent.Pdf)?.source?.pageCount ?: 0
-    // Plain text and code share a surface, so both can go to a line; a short file has no use for it.
     val plain = state.content as? ViewerContent.PlainText
     val lineCount = remember(plain) {
         plain?.let { numberedLines(it.lineCount, it.chunks.lastOrNull()?.endsWith('\n') == true) } ?: 0
@@ -260,8 +250,7 @@ fun ViewerScreen(
     val highlightCopyAvailable = state.highlightsAvailable &&
         (state.content as? ViewerContent.Pdf)?.source?.canAnnotate == true &&
         exportableHighlights.isNotEmpty()
-    // Which stored highlights the selection sits on: Remove is offered only when there is one. Worked out
-    // once the selected pages have their text, and not at all while the document has no highlights.
+    // Remove is offered only when the selection sits on a stored highlight; worked out once the selected pages have their text.
     val touchedHighlights by produceState<List<Highlight>>(emptyList(), selectionState.selection, highlights) {
         value = if (highlights.isEmpty()) emptyList() else highlights.touchedBy(selectionState.selectedRects())
     }
@@ -278,7 +267,6 @@ fun ViewerScreen(
     LaunchedEffect(arrival?.offset) {
         arrival?.offset?.let { jump = ViewerJump(ReadingLocation(LocationKind.CHAR, it)) }
     }
-    // Only surfaces with searchable content; a failed load has neither.
     val findAvailable = when (state.content) {
         is ViewerContent.Pdf, is ViewerContent.PlainText, is ViewerContent.Office, is ViewerContent.Markdown -> true
         else -> false
@@ -287,11 +275,8 @@ fun ViewerScreen(
     // handed-over document lacks until it is saved. Ctrl+D and the menu both ask this.
     val bookmarkableContent = findAvailable
     val bookmarksAvailable = bookmarkableContent && state.bookmarksAvailable
-    // Form fields are offered once their widgets have been read; a document without a fillable form
-    // never gets any, so the menu item stays away.
     val formAvailable = state.formFields.isNotEmpty()
 
-    // Read aloud is offered for speakable non-table formats with text; error state keeps the bar visible.
     val readAloudAvailable = findAvailable &&
         state.document?.format != DocumentFormat.CSV &&
         state.speakableText != false
@@ -321,7 +306,6 @@ fun ViewerScreen(
         viewModel.closeFind()
     }
 
-    // Back dismisses find first; a second press leaves the document.
     BackHandler(enabled = find.open, onBack = closeFind)
 
     // SAF grants have no runtime dialog, so re-access means a re-pick through the picker.
@@ -504,7 +488,6 @@ fun ViewerScreen(
                 )
             }
 
-            // In the flow like find, so opening it pushes the document down rather than covering it.
             if (ttsActive) {
                 TtsControls(
                     state = tts,
@@ -514,8 +497,6 @@ fun ViewerScreen(
                     onClose = viewModel::stopReadAloud,
                     onSpeedChange = viewModel::ttsSetSpeed,
                     onToggleScrollLock = viewModel::ttsToggleScrollLock,
-                    // Same insets as the find bar, so the two stack as one column: the close button's
-                    // own padding brings its glyph to 16dp, matching find's close.
                     modifier = Modifier.padding(start = ScreenPadding, end = 4.dp, bottom = 8.dp),
                 )
             }
@@ -626,7 +607,6 @@ fun ViewerScreen(
                                 style = MaterialTheme.typography.titleMedium,
                                 textAlign = TextAlign.Center,
                             )
-                            // The same outlined button as Home's Open file.
                             OutlinedButton(
                                 onClick = onBack,
                                 modifier = Modifier.padding(top = 16.dp).heightIn(min = ControlHeight),
@@ -671,7 +651,6 @@ fun ViewerScreen(
 
     val infoDocument = state.document
     if (infoOpen && infoDocument != null) {
-        // Both are read live: the provider's type, and the page count of the PDF already open.
         val mimeType by produceState<String?>(null, infoDocument) {
             value = viewModel.mimeType(infoDocument)
         }
@@ -777,20 +756,16 @@ fun ViewerScreen(
 
 private const val FIND_ANIMATION_MS = 200
 
-/** The type a saved form copy is offered as; only PDFs have forms. */
 private const val PDF_MIME_TYPE = "application/pdf"
 
-/** A copy is named after the document, given a PDF suffix when its title has none. */
 private fun pdfCopyFileName(title: String?, fallback: String): String {
     val base = title?.trim()?.takeIf { it.isNotEmpty() } ?: fallback
     return if (base.endsWith(".pdf", ignoreCase = true)) base else "$base.pdf"
 }
 
-/** Below this many pages the page list is short enough to scroll, so Go to page stays out of the menu. */
 private const val MIN_GO_TO_PAGES = 6
 private const val MIN_GO_TO_LINES = 100
 
-/** Flat title row like Home's; a selection swaps the overflow menu for Copy, Highlight and dismiss. */
 @Composable
 private fun ViewerHeader(
     title: String,
@@ -856,7 +831,6 @@ private fun ViewerHeader(
                 .semantics { heading() },
         )
 
-        // A selection borrows the overflow slot; clearing it restores the bar exactly.
         if (selectionActive) {
             IconButton(onClick = onCopySelection) {
                 Icon(
@@ -865,7 +839,6 @@ private fun ViewerHeader(
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            // Only a library document can keep a highlight; Remove shows only on a selection that touches one.
             if (highlightAvailable) {
                 IconButton(onClick = onHighlight) {
                     Icon(
@@ -916,7 +889,6 @@ private fun ViewerHeader(
                             enabled = findAvailable,
                             onClick = { onMenuOpenChange(false); onFind() },
                         )
-                        // Hidden when document has no speakable text; active sessions always show stop.
                         if (readAloudAvailable || readAloudActive) {
                             DropdownMenuItem(
                                 text = {
@@ -941,21 +913,18 @@ private fun ViewerHeader(
                                 onClick = { onMenuOpenChange(false); onForm() },
                             )
                         }
-                        // Only when there is a plain highlight to write and the engine can annotate.
                         if (highlightCopyAvailable) {
                             DropdownMenuItem(
                                 text = { Text(stringResource(R.string.viewer_save_copy_with_highlights)) },
                                 onClick = { onMenuOpenChange(false); onSaveHighlightCopy() },
                             )
                         }
-                        // Only for a PDF of [MIN_GO_TO_PAGES] pages or more, or text of [MIN_GO_TO_LINES] lines or more.
                         if (goToAvailable) {
                             DropdownMenuItem(
                                 text = { Text(stringResource(if (goToLines) R.string.viewer_goto_line_title else R.string.viewer_goto_page_title)) },
                                 onClick = { onMenuOpenChange(false); onGoTo() },
                             )
                         }
-                        // A handed-over document gets no bookmark rows at all: no library row to hang one from.
                         if (bookmarkableContent && bookmarksAvailable) {
                             DropdownMenuItem(
                                 text = { Text(stringResource(R.string.bookmark_add)) },
@@ -976,7 +945,6 @@ private fun ViewerHeader(
                                 onClick = { onMenuOpenChange(false); onEncoding() },
                             )
                         }
-                        // Only for a handed-over document: library rows are already saved.
                         if (showSaveToLibrary) {
                             DropdownMenuItem(
                                 text = { Text(stringResource(R.string.viewer_save_library)) },
@@ -991,7 +959,6 @@ private fun ViewerHeader(
     }
 }
 
-/** Stays until acted on: until the re-pick, what the viewer shows is stale. */
 @Composable
 private fun RegrantBanner(modifier: Modifier = Modifier, onRegrant: () -> Unit) {
     Surface(
@@ -1015,12 +982,10 @@ private fun RegrantBanner(modifier: Modifier = Modifier, onRegrant: () -> Unit) 
     }
 }
 
-/** Readout only: shown while the scale changes, and for a beat after it stops. */
 @Composable
 private fun ZoomBadge(zoom: ZoomState, modifier: Modifier = Modifier) {
     // Held while the fingers are down, so a pinch that pauses keeps its readout.
     val visible by rememberLingerVisible(hold = { zoom.isZooming }) { zoom.effectiveScale }
-    // Matches the scroll knob, alpha included.
     ReadoutBadge(
         text = zoom.percentLabel(),
         visible = visible,

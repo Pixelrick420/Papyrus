@@ -13,12 +13,7 @@ private val WIDTH = Regex("(?:^|[,;\\s])width\\s*=\\s*$NUMBER", RegexOption.IGNO
 private val HEIGHT = Regex("(?:^|[,;\\s])height\\s*=\\s*$NUMBER", RegexOption.IGNORE_CASE)
 private val SIZE_X = Regex("^\\s*$NUMBER\\s*[xX]\\s*$NUMBER\\s*$")
 
-/**
- * Width over height of the page a fixed-layout chapter says it is, from `<meta name="viewport"
- * content="width=1200, height=1600">`, held between 0.1 and 10; null when there is none or it is unusable. A
- * plain scan of the start of the file, case-insensitive and tolerant of attribute order and quotes: no XML
- * parse, never throws, and the head is not something the markup reader sees.
- */
+// A plain scan, case-insensitive and tolerant of attribute order and quotes; never throws, and the head is not something the markup reader sees.
 internal fun pageAspect(xhtml: ByteArray): Float? {
     val head = String(xhtml, 0, minOf(xhtml.size, HEAD_SCAN_BYTES), Charsets.ISO_8859_1)
     for (tag in META_TAG.findAll(head)) {

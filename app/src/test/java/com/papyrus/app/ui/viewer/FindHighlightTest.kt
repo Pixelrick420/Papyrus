@@ -5,7 +5,6 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** Which matches are orange vs yellow, and how a block's current match splits across its pieces. */
 class FindHighlightTest {
 
     private fun colours(text: String, highlight: FindHighlight?) =
@@ -86,7 +85,6 @@ class FindHighlightTest {
 
     @Test
     fun `the current match lands in exactly one of a block's pieces`() {
-        // Three cells holding 2, 1 and 3 matches. Whichever match is current, exactly one cell paints it.
         val cells = listOf("q q", "q", "q q q")
         for (current in 0 until 6) {
             var before = 0

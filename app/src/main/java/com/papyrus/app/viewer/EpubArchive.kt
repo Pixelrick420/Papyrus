@@ -7,66 +7,41 @@ import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.io.InputStream
 
-/** The file is not a usable EPUB: not a ZIP, no package, or an archive built to hurt the reader. */
 class EpubFormatException(message: String, cause: Throwable? = null) : IOException(message, cause)
 
-/** The book is DRM-protected: its text is encrypted and would read as garbage. */
 class EpubProtectedException : IOException("EPUB content is protected")
 
-/**
- * Every bound on reading an EPUB, in one value so a test can use small ones. The defaults sit far above a
- * real book (a long novel is a few MB of XHTML in a few hundred entries) and far below what would hurt.
- */
+// Every bound on reading an EPUB in one value so a test can use small ones; the defaults sit far above a real book and far below what would hurt.
 data class EpubLimits(
     // The five bounds on the archive itself are the ones Word and OpenDocument files are read under.
     val maxEntries: Int = ZipLimits().maxEntries,
-    /** One entry's inflated size, and so what a single bomb entry can cost in time. */
     val maxEntryBytes: Long = ZipLimits().maxEntryBytes,
     val maxTotalBytes: Long = ZipLimits().maxTotalBytes,
-    /** Inflated bytes per compressed byte, judged once an entry is past [ratioFloorBytes]. */
     val maxRatio: Int = ZipLimits().maxRatio,
     val ratioFloorBytes: Long = ZipLimits().ratioFloorBytes,
-    /** One text part (XHTML, OPF, NCX) held in memory. */
     val maxPartBytes: Int = 16 * 1024 * 1024,
-    /** All text parts held together. */
     val maxTextBytes: Long = 64L * 1024 * 1024,
     val maxBlocks: Int = OfficeTextExtractor.MAX_BLOCKS,
     val maxTableRows: Int = OfficeTextExtractor.MAX_TABLE_ROWS,
-    /** Element nesting in one chapter; the parser keeps its own stacks, so this is about memory, not the call stack. */
     val maxDepth: Int = 200,
-    /** Places in the text a link can name (elements with an `id`), across the whole book. */
     val maxAnchors: Int = 100_000,
-    /** Elements of one SVG, drawn or not. */
     val maxSvgElements: Int = SvgLimits().maxElements,
-    /** Path operations of one SVG, over all its shapes. */
     val maxSvgOps: Int = SvgLimits().maxOps,
 ) {
-    /** The bounds an SVG in this book is read under. */
     val svgLimits: SvgLimits get() = SvgLimits(maxSvgElements, maxSvgOps, maxDepth)
 
-    /** The bounds the archive is walked under. */
     val zipLimits: ZipLimits get() = ZipLimits(maxEntries, maxEntryBytes, maxTotalBytes, maxRatio, ratioFloorBytes)
 }
 
-/** What one pass over the archive kept, and how many wanted parts it had to leave out. */
 internal class EpubScan(val parts: Map<String, ByteArray>, val skippedParts: Int)
 
-/**
- * One walk over an EPUB's ZIP with the hostile cases closed off: a name that could leave its directory
- * (zip-slip) fails the book, as does an archive with too many entries, an entry or total that inflates
- * past its cap, or one that compresses implausibly well (a bomb). All but the name check are
- * [BoundedZipInputStream]'s, which counts bytes as they come out, not the sizes the entry declares, since a
- * bomb declares what it likes.
- */
+// Closes off the hostile cases: a name that could leave its directory (zip-slip), too many entries, an entry or total inflating past its cap, an implausible ratio (a bomb).
+// Bytes are counted as they come out of [BoundedZipInputStream], not the sizes an entry declares, since a bomb declares what it likes.
 internal class EpubArchive(
     private val openStream: () -> InputStream,
     private val limits: EpubLimits,
 ) {
 
-    /**
-     * Reads the entries [wanted] accepts into memory, up to the limits, and drains the rest to count it. Ends
-     * early once [done] says the parts so far are enough; it is asked after each kept part.
-     */
     fun scan(wanted: (String) -> Boolean, done: (Map<String, ByteArray>) -> Boolean = { false }): EpubScan {
         val parts = LinkedHashMap<String, ByteArray>()
         var skipped = 0
@@ -105,10 +80,7 @@ internal class EpubArchive(
     }
 }
 
-/**
- * Whether an archive entry's name stays inside the archive: not absolute (`/etc/x`, `\x`, `C:\x`), no `..`
- * segment, no NUL. Backslashes count as separators, so `a\..\b` is caught as well as `a/../b`.
- */
+// Backslashes count as separators, so `a\..\b` is caught as well as `a/../b`.
 internal fun isSafeEntryName(name: String): Boolean {
     if (name.isEmpty() || name.contains('\u0000')) return false
     if (name.startsWith('/') || name.startsWith('\\')) return false
@@ -118,12 +90,7 @@ internal fun isSafeEntryName(name: String): Boolean {
 
 private val URL_SCHEME = Regex("^[A-Za-z][A-Za-z0-9+.-]*:")
 
-/**
- * The archive path a reference points at, or null when it points outside the book. [baseDir] is the
- * directory of the file the reference is written in, with its trailing slash (empty at the root). The
- * fragment and query are dropped, `%20` and friends decoded as UTF-8, `.` and `..` folded away; a reference
- * that climbs above the root, or names a URL (`http:`, `data:`, `file:`), is not a path of the book.
- */
+// A reference that climbs above the root, or names a URL (`http:`, `data:`, `file:`), is not a path of the book.
 internal fun resolveEpubPath(baseDir: String, href: String): String? {
     val raw = href.trim().substringBefore('#').substringBefore('?')
     if (raw.isEmpty() || URL_SCHEME.containsMatchIn(raw)) return null
@@ -140,10 +107,8 @@ internal fun resolveEpubPath(baseDir: String, href: String): String? {
     return out.takeIf { it.isNotEmpty() }?.joinToString("/")
 }
 
-/** The directory part of [path] with its trailing slash, or empty for a file at the root. */
 internal fun dirOf(path: String): String = path.substringBeforeLast('/', "").let { if (it.isEmpty()) "" else "$it/" }
 
-/** `%XX` runs decoded together as UTF-8; a `%` not followed by two hex digits stays as written. */
 internal fun percentDecode(text: String): String {
     if ('%' !in text) return text
     val bytes = ByteArrayOutputStream()
@@ -176,7 +141,6 @@ private const val HEX = 16
 
 /** A zip lookup that forgives a difference of case, as readers do, but prefers the exact name. */
 internal class EpubNames(private val parts: Map<String, ByteArray>) {
-    /** The archive name of every part that was kept. */
     val names: Set<String> get() = parts.keys
 
     private val folded: Map<String, String> by lazy { parts.keys.associateBy { it.lowercase() } }
@@ -186,12 +150,8 @@ internal class EpubNames(private val parts: Map<String, ByteArray>) {
     fun bytes(path: String): ByteArray? = find(path)?.let { parts[it] }
 }
 
-/**
- * What `META-INF/encryption.xml` says. Fonts are obfuscated with IDPF's or Adobe's algorithm by almost every
- * producer, and that is only a font: the text is readable. Anything else (the Adobe, Apple or Kobo schemes
- * all name their own algorithm) means the content cannot be read, so the book is refused rather than shown
- * as garbage. A file that cannot be parsed is refused too: failing closed beats rendering ciphertext.
- */
+// Fonts are obfuscated by almost every producer and that is only a font; any other scheme means the text cannot be read, so the book is refused.
+// A file that cannot be parsed is refused too: failing closed beats rendering ciphertext.
 internal object EpubEncryption {
 
     private val FONT_OBFUSCATION = setOf(

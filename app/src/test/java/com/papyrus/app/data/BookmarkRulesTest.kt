@@ -39,7 +39,6 @@ class BookmarkRulesTest {
     fun `text chunks tolerate two lines`() {
         assertTrue(chunk(5, 0.50f).isSameBookmarkSpot(chunk(5, 0.54f)))
         assertFalse(chunk(5, 0.50f).isSameBookmarkSpot(chunk(5, 0.60f)))
-        // The fraction is only meaningful inside one chunk.
         assertFalse(chunk(5, 0.99f).isSameBookmarkSpot(chunk(6, 0.0f)))
     }
 
@@ -107,7 +106,6 @@ class BookmarkRulesTest {
     @Test
     fun `a text place reads as the line it is on`() {
         assertEquals(LocationSummary(SummaryKind.LINE, 1), chunk(0).summary(100))
-        // Chunk 8 starts at line 321; half way down is line 341.
         assertEquals(LocationSummary(SummaryKind.LINE, 341), chunk(8, 0.5f).summary(100))
         // A full fraction stays on the chunk's last line instead of reading as the next chunk's first.
         assertEquals(LocationSummary(SummaryKind.LINE, 40), chunk(0, 1f).summary(100))
@@ -192,8 +190,6 @@ class BookmarkRulesTest {
         assertEquals(emptyList<Bookmark>(), listOf(row(1, page(1))).forFormat(DocumentFormat.UNKNOWN))
     }
 
-    // --- Label truncation ---
-
     @Test
     fun `a label of exactly the maximum is kept whole and one more is cut`() {
         val exact = "x".repeat(MAX_BOOKMARK_LABEL_CHARS)
@@ -215,7 +211,6 @@ class BookmarkRulesTest {
 
     @Test
     fun `a cut that lands on a space does not leave it at the end`() {
-        // 79 letters, a space as the 80th character, then more text.
         val cut = cleanBookmarkLabel("x".repeat(MAX_BOOKMARK_LABEL_CHARS - 1) + " tail", "Page 3")
 
         assertEquals("x".repeat(MAX_BOOKMARK_LABEL_CHARS - 1), cut)
@@ -255,8 +250,6 @@ class BookmarkRulesTest {
         assertEquals("Page 3", cleanBookmarkLabel("\n", "Page 3"))
         assertEquals("a  b", cleanBookmarkLabel("", "a  b"))
     }
-
-    // --- Duplicate detection ---
 
     @Test
     fun `duplicate detection is symmetric`() {
@@ -326,8 +319,6 @@ class BookmarkRulesTest {
         assertEquals(BookmarkDecision.ALREADY_BOOKMARKED, decideBookmark(existing, chunk(7, 0.52f)))
         assertEquals(BookmarkDecision.ADD, decideBookmark(existing, chunk(8, 0.52f)))
     }
-
-    // --- The per-document cap ---
 
     @Test
     fun `the cap is exact at one below, at, and above the limit`() {

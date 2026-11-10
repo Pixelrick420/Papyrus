@@ -73,7 +73,6 @@ class EpubExtractorTest {
         val bytes = EpubFixtures.epub(
             chapters = listOf(Chapter("text/chapter%201.xhtml", EpubFixtures.xhtml("<p>spaced</p>"))),
         ).let { original ->
-            // The archive holds the decoded name, as real ones do.
             val entries = LinkedHashMap<String, ByteArray>()
             java.util.zip.ZipInputStream(original.inputStream()).use { zip ->
                 while (true) {
@@ -153,7 +152,6 @@ class EpubExtractorTest {
         assertEquals(BookLink("OEBPS/chapter2.xhtml", "top"), inside.format.bookLink)
         assertNull(inside.format.link)
         assertEquals("inside", block.text.substring(inside.start, inside.end))
-        // The unsafe scheme is neither: its words are plain text.
         assertNull(block.spans.firstOrNull { block.text.substring(it.start, it.end) == "js" })
         assertTrue(block.spans.none { it.format.link != null && it.format.bookLink != null })
     }
@@ -254,7 +252,6 @@ class EpubExtractorTest {
         assertTrue(book.blocks[0] is OfficeBlock.Image)
         val at = book.anchors.getValue(BookLink("OEBPS/c.xhtml", "x"))
         assertEquals("anchored", (book.blocks[at] as OfficeBlock.Paragraph).text)
-        // The chapter itself still starts with its picture.
         assertEquals(0, book.anchors[BookLink("OEBPS/c.xhtml")])
     }
 
@@ -372,7 +369,6 @@ class EpubExtractorTest {
         assertEquals(listOf(Triple("Head", 0, 2), Triple("C", 2, 1)), table.rows[0].map { Triple(it.text, it.column, it.colspan) })
         assertTrue(table.rows[0].all { cell -> cell.spans.any { it.format.bold } })
         assertEquals(listOf(Triple("a", 0, 2), Triple("b", 1, 1), Triple("c", 2, 1)), table.rows[1].map { Triple(it.text, it.column, it.rowspan) })
-        // The cell above covers column 0 of the third row, so its cells start at column 1.
         assertEquals(listOf("d" to 1, "e" to 2), table.rows[2].map { it.text to it.column })
         assertEquals(OfficeBlock.Paragraph("after"), blocks[1])
     }
@@ -408,7 +404,6 @@ class EpubExtractorTest {
 
     @Test
     fun `a doctype that names a dtd is never fetched`() {
-        // The fixture's chapters all carry an XHTML 1.1 doctype; it reads without any network.
         assertEquals(listOf("ok"), texts(read(EpubFixtures.epub(listOf(chapter("<p>ok</p>"))))))
     }
 
@@ -640,7 +635,6 @@ class EpubExtractorTest {
             read(bytes)
             fail("expected a protected book")
         } catch (_: EpubProtectedException) {
-            // expected
         }
     }
 
@@ -675,7 +669,6 @@ class EpubExtractorTest {
             read(bytes, limits = limits)
             fail("expected EpubFormatException")
         } catch (_: EpubFormatException) {
-            // expected
         }
     }
 
@@ -830,7 +823,6 @@ class EpubExtractorTest {
         assertEquals(emptyList<OutlineEntry>(), explicitOutline(emptyList()))
     }
 
-    // CSS travels in the chapter's head through xhtml(head = ...), and as a .css part through `extra`.
     private fun styled(body: String, css: String = "", head: String = "", href: String = "c.xhtml") =
         EpubFixtures.Chapter(href, EpubFixtures.xhtml(body, head = "<title>t</title>" + if (css.isEmpty()) "" else "<style>$css</style>" + head))
 

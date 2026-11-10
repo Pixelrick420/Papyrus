@@ -5,10 +5,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/**
- * Table geometry: a serial number must not get a prose column's width, a table must fit a phone
- * when it can, and every cell must be as tall as its row.
- */
 class TableSizingTest {
 
     private val em = 12f

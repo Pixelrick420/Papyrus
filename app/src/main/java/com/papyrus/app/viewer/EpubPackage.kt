@@ -3,16 +3,13 @@ package com.papyrus.app.viewer
 import org.xmlpull.v1.XmlPullParser
 import org.xmlpull.v1.XmlPullParserException
 
-/** One `item` of the OPF manifest, its [path] already resolved to an archive path (null if it points outside the book). */
 internal class ManifestItem(val id: String, val path: String?, val mediaType: String, val properties: Set<String>) {
     val isDocument: Boolean
         get() = mediaType == "application/xhtml+xml" || mediaType == "text/html" ||
             (mediaType.isEmpty() && path?.substringAfterLast('.', "")?.lowercase() in DOCUMENT_EXTENSIONS)
 
-    /** Any picture: a spine item that is one alone (a cover page) is a chapter of its own. */
     val isImage: Boolean get() = mediaType.startsWith("image/")
 
-    /** A raster picture BitmapFactory can read; SVG is not one, and is drawn by [com.papyrus.app.viewer.svg.SvgRaster] instead. */
     val isRasterImage: Boolean get() = mediaType.startsWith("image/") && mediaType != "image/svg+xml"
 
     private companion object {
@@ -20,55 +17,40 @@ internal class ManifestItem(val id: String, val path: String?, val mediaType: St
     }
 }
 
-/**
- * An `itemref` of the spine; [linear] false marks auxiliary content (a footnote page, an alternate cover).
- * [properties] are the itemref's own (`rendition:layout-pre-paginated`, say).
- */
 internal class SpineItem(val idref: String, val linear: Boolean, val properties: Set<String> = emptySet())
 
-/** A spine entry with the manifest item it names, in reading order. */
 internal class ReadingItem(val item: ManifestItem, val ref: SpineItem)
 
 private const val PRE_PAGINATED = "pre-paginated"
 private const val ITEM_PRE_PAGINATED = "rendition:layout-pre-paginated"
 private const val ITEM_REFLOWABLE = "rendition:layout-reflowable"
 
-/** The reading order of an EPUB and what points at its table of contents and cover. */
 internal class EpubPackage(
     val opfPath: String,
     val manifest: Map<String, ManifestItem>,
     val spine: List<SpineItem>,
-    /** `spine@toc`: the manifest id of the EPUB 2 NCX. */
     val tocId: String?,
-    /** `<meta name="cover" content="id">`: the EPUB 2 way to name the cover image. */
     val coverMetaId: String?,
-    /** `spine@page-progression-direction`: `rtl` for a book that is turned from the right. */
     val pageProgression: String? = null,
-    /** `<meta property="rendition:layout">`: `pre-paginated` for a book whose every page is laid out by its maker. */
     val renditionLayout: String? = null,
 ) {
     private val bookIsFixed: Boolean get() = renditionLayout?.trim() == PRE_PAGINATED
 
-    /** Whether any linear page of the book is fixed: the book as a whole counts as fixed-layout then. */
     val hasFixedLayout: Boolean
         get() = bookIsFixed || spine.any { it.linear && ITEM_PRE_PAGINATED in it.properties }
 
-    /** Whether [ref] is a page of its own: its itemref says so, or says nothing and the book does. */
     fun isFixedPage(ref: SpineItem): Boolean = when {
         ITEM_REFLOWABLE in ref.properties -> false
         ITEM_PRE_PAGINATED in ref.properties -> true
         else -> bookIsFixed
     }
 
-    /** The EPUB 3 navigation document, or null. */
     fun navItem(): ManifestItem? = manifest.values.firstOrNull { "nav" in it.properties && it.path != null }
 
-    /** The EPUB 2 NCX: by `spine@toc`, else by its media type. */
     fun ncxItem(): ManifestItem? =
         tocId?.let { manifest[it] }?.takeIf { it.path != null }
             ?: manifest.values.firstOrNull { it.mediaType == "application/x-dtbncx+xml" && it.path != null }
 
-    /** The cover image: EPUB 3's `cover-image` property, else EPUB 2's `meta name="cover"`; null if neither names a raster image. */
     fun coverItem(): ManifestItem? {
         val byProperty = manifest.values.firstOrNull { "cover-image" in it.properties }
         val byMeta = coverMetaId?.let { manifest[it] }
@@ -78,27 +60,20 @@ internal class EpubPackage(
     /** The reading order: linear items as written, then the non-linear ones, which are kept rather than lost. */
     fun readingOrder(): List<ManifestItem> = readingItems().map { it.item }
 
-    /** [readingOrder] with each item's spine entry, which says how it is laid out. */
     fun readingItems(): List<ReadingItem> {
         val items = spine.mapNotNull { ref -> manifest[ref.idref]?.let { ReadingItem(it, ref) } }
         return items.filter { it.ref.linear } + items.filterNot { it.ref.linear }
     }
 }
 
-/**
- * An entry of the table of contents: a [title], where it points ([path] in the archive, null for a heading that
- * links nowhere, and the [fragment] naming an element in it, when the entry did) and its nesting.
- */
 internal class NavPoint(val title: String, val path: String?, val depth: Int, val fragment: String? = null)
 
-/** Reads the parts of an EPUB that say what is in it and in what order. */
 internal object EpubPackageReader {
 
     private const val CONTAINER_MEDIA_TYPE = "application/oebps-package+xml"
 
     private fun local(name: String?): String = name.orEmpty().substringAfter(':')
 
-    /** `full-path` of the package document named in `META-INF/container.xml`, or null if it names none. */
     fun opfPath(container: ByteArray, factory: ParserFactory): String? {
         val parser = factory(container.inputStream())
         var first: String? = null
@@ -116,7 +91,6 @@ internal object EpubPackageReader {
         return first?.let(::normalisePath)
     }
 
-    /** A path as the container writes it, folded the way every other path in the book is; null if it escapes the root. */
     private fun normalisePath(path: String): String? = resolveEpubPath("", path)
 
     @Throws(XmlPullParserException::class)
@@ -174,17 +148,12 @@ internal object EpubPackageReader {
         return EpubPackage(opfPath, manifest, spine, tocId, coverMetaId, pageProgression, renditionLayout)
     }
 
-    /**
-     * The table of contents of an EPUB 3 navigation document: the `nav` whose `epub:type` is `toc` (the first
-     * `nav` if none says so), its nested lists flattened with their depth. A label with no link is kept as a
-     * heading that goes nowhere. [navPath] is where the document lives, since its links are relative to it.
-     */
+    // The first nav of any kind stands in only when no nav says it is the table of contents; a label with no link is kept as a heading that goes nowhere.
     @Throws(XmlPullParserException::class)
     fun readNav(navPath: String, nav: ByteArray, factory: ParserFactory): List<NavPoint> {
         val base = dirOf(navPath)
         val parser = factory(nav.inputStream())
         val found = ArrayList<NavPoint>()
-        // The first nav of any kind stands in only when no nav says it is the table of contents.
         var fallback: List<NavPoint>? = null
         val tentative = ArrayList<NavPoint>()
         var insideNav = false
@@ -252,7 +221,6 @@ internal object EpubPackageReader {
         return if (tocSeen) found else fallback.orEmpty()
     }
 
-    /** The `type` attribute whatever prefix the book gave the epub namespace (`epub:type`, `ops:type`). */
     private fun typeAttribute(parser: XmlPullParser): String {
         for (i in 0 until parser.attributeCount) {
             if (local(parser.getAttributeName(i)) == "type") return parser.getAttributeValue(i)
@@ -260,7 +228,6 @@ internal object EpubPackageReader {
         return ""
     }
 
-    /** The table of contents of an EPUB 2 NCX: `navPoint`s in document order, nesting as their depth. */
     @Throws(XmlPullParserException::class)
     fun readNcx(ncxPath: String, ncx: ByteArray, factory: ParserFactory): List<NavPoint> {
         val base = dirOf(ncxPath)

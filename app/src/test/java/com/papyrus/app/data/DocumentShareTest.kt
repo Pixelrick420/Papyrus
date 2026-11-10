@@ -83,9 +83,6 @@ class DocumentShareTest {
         assertEquals("text/tab-separated-values", shareMimeType(DocumentFormat.CSV, "text/tab-separated-values"))
     }
 
-    // --- Tables: every format against every kind of provider answer ---
-
-    /** The first type each format declares, written out so the table does not borrow the code under test. */
     private val declared = mapOf(
         DocumentFormat.PDF to "application/pdf",
         DocumentFormat.MARKDOWN to "text/markdown",
@@ -146,13 +143,11 @@ class DocumentShareTest {
         assertEquals("APPLICATION/OCTET-STREAM", shareMimeType(DocumentFormat.PDF, "APPLICATION/OCTET-STREAM"))
     }
 
-    /** What a selection of files declares: each file's own type first, then the selection's. */
     private fun selection(vararg files: Pair<DocumentFormat, String?>): String =
         sharedMimeType(files.map { (format, reported) -> shareMimeType(format, reported) })
 
     @Test
     fun `a mixed selection narrows only when every file resolves to the same type`() {
-        // Same format, however the provider labelled each file.
         assertEquals(
             "application/pdf",
             selection(
@@ -161,12 +156,10 @@ class DocumentShareTest {
                 DocumentFormat.PDF to null,
             ),
         )
-        // A mislabelled markdown file and a correct one.
         assertEquals(
             "text/markdown",
             selection(DocumentFormat.MARKDOWN to "text/plain", DocumentFormat.MARKDOWN to "text/markdown"),
         )
-        // Plain text and code are both text/plain once resolved.
         assertEquals("text/plain", selection(DocumentFormat.TEXT to "text/plain", DocumentFormat.CODE to "text/plain"))
     }
 

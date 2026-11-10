@@ -7,25 +7,13 @@ import android.net.Uri
 import android.provider.DocumentsContract
 import android.provider.OpenableColumns
 
-/**
- * One version of a document's bytes. Text read under one key is only reused under an equal key, so a
- * file that was edited (a new modified time or size) is never answered from what it used to say.
- */
+// A file that was edited (new modified time or size) is never answered from what it used to say.
 data class TextCacheKey(val uri: String, val lastModified: Long, val sizeBytes: Long)
 
-/**
- * One page of one version of a document. [fromPlatform] keeps the platform engine's reading and
- * PDFBox's apart: they differ in spacing and boxes, and each reader keeps the one it always used.
- */
+// [fromPlatform] keeps the platform engine's reading and PDFBox's apart: they differ in spacing and boxes.
 data class PageTextKey(val document: TextCacheKey, val page: Int, val fromPlatform: Boolean)
 
-/**
- * The key for what [uri] holds now, or null when nothing can vouch that the bytes are unchanged: only
- * a content URI whose provider reports both a modified time and a size gets one. A file URI is never
- * keyed, which keeps the decrypted copy of a protected PDF out of anything that outlives its viewer.
- *
- * One provider query, so call it off the main thread.
- */
+// Only a content URI whose provider reports both a modified time and a size gets one; a file URI is never keyed, which keeps a protected PDF's decrypted copy out of anything that outlives its viewer.
 fun textCacheKey(context: Context, uri: Uri): TextCacheKey? {
     if (uri.scheme != ContentResolver.SCHEME_CONTENT) return null
     val columns = arrayOf(DocumentsContract.Document.COLUMN_LAST_MODIFIED, OpenableColumns.SIZE)

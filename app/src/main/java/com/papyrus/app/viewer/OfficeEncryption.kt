@@ -23,22 +23,14 @@ import javax.crypto.spec.SecretKeySpec
 /** Cache dir for decrypted office copies; swept on startup so a kill leaves no plaintext. */
 const val OFFICE_UNLOCK_DIR = "office-unlock"
 
-/** Signals a wrong password, as opposed to an unreadable or unsupported file. */
 class DocumentPasswordException : IOException("Password-protected document")
 
-/**
- * Encryption detection and password decryption for `.docx` (ECMA-376 Agile) and `.odt` (OpenDocument
- * 1.2 CBC). An unreadable file is [Party.NOT_ENCRYPTED], an unsupported scheme [Party.UNSUPPORTED].
- */
 object OfficeEncryption {
 
-    /** [openStream] must return a fresh stream on every call; the caller closes it. */
     enum class Party { NOT_ENCRYPTED, PASSWORD, UNSUPPORTED }
 
-    /**
-     * [newParserFactory] is injected because [Xml.newPullParser] is a platform stub, so a JVM unit
-     * test would get null instead of a parser (same seam `OfficeTextExtractor` uses).
-     */
+    // [newParserFactory] is injected because [Xml.newPullParser] is a platform stub, so a JVM unit
+    // test would get null instead of a parser (same seam `OfficeTextExtractor` uses).
     fun status(
         openStream: () -> InputStream,
         newParserFactory: () -> XmlPullParser = { Xml.newPullParser() },
@@ -65,10 +57,6 @@ object OfficeEncryption {
         newParserFactory: () -> XmlPullParser = { Xml.newPullParser() },
     ): Boolean = status(openStream, newParserFactory) != Party.NOT_ENCRYPTED
 
-    /**
-     * Strips encryption into [target] for the renderer. Throws [DocumentPasswordException] on a
-     * wrong password; any other failure leaves no partial copy behind.
-     */
     fun decrypt(
         openStream: () -> InputStream,
         password: String,
@@ -266,7 +254,6 @@ object OfficeEncryption {
         }
     }
 
-    /** The manifest checksum is over the first 1024 bytes of the deflated entry, before encryption. */
     private fun verifyOdfChecksum(compressed: ByteArray, encryption: OdfEncryption) {
         val expected = encryption.checksum
         if (expected == null) return
@@ -357,7 +344,6 @@ object OfficeEncryption {
         }
     }
 
-    /** H(salt + UTF-16LE password), then H(le32(i) + h) for `spinCount` rounds - per MS-OFFCRYPTO. */
     private fun deriveIteratedHash(password: String, salt: ByteArray, hashName: String, spinCount: Int): ByteArray {
         if (spinCount < 0 || spinCount > MAX_SPIN_COUNT) throw IOException("unsupported spin count")
         val md = MessageDigest.getInstance(jcaHash(hashName))
@@ -442,7 +428,6 @@ object OfficeEncryption {
         }
     }
 
-    /** Strips the block padding the producer added; the count is the final byte, 1..block size. */
     private fun unpad(data: ByteArray): ByteArray {
         if (data.isEmpty()) return data
         val pad = data[data.size - 1].toInt() and 0xFF

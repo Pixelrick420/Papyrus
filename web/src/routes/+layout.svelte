@@ -7,7 +7,6 @@
   let { children }: { children?: Snippet } = $props();
 </script>
 
-<!-- Skip to main content link for accessibility -->
 <a href="#main-content" class="skip-link"> Skip to main content </a>
 
 <div class="flex min-h-screen flex-col">

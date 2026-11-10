@@ -6,27 +6,15 @@ import org.junit.Test
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
-/**
- * The ranking arithmetic over `matchinfo 'pcnalx'` blobs.
- *
- * The blobs below that are marked "recorded" are what SQLite actually returned for the FTS4 table
- * this app creates; the rest are hand-built layouts, which is the point - each test isolates one
- * input the formula is supposed to react to.
- */
+// Blobs marked "recorded" are what SQLite actually returned for the app's FTS4 table; the rest are hand-built.
 class Bm25RankerTest {
 
-    /** A `matchinfo` blob: little-endian 32-bit integers, as SQLite writes them. */
     private fun blob(vararg values: Int): ByteArray {
         val buffer = ByteBuffer.allocate(values.size * Int.SIZE_BYTES).order(ByteOrder.LITTLE_ENDIAN)
         values.forEach(buffer::putInt)
         return buffer.array()
     }
 
-    /**
-     * One phrase, one column, [rows] documents in the table, [average] tokens per column on
-     * average, [length] tokens in this document, [frequency] occurrences here and [documents]
-     * documents containing it.
-     */
     private fun onePhrase(
         rows: Int = 100,
         average: Int = 100,
@@ -48,8 +36,7 @@ class Bm25RankerTest {
 
     @Test
     fun `recorded blobs rank the documents the way the formula says`() {
-        // Recorded from the app's own FTS4 table: one phrase, four documents, six tokens on average;
-        // the three below are five/one, fourteen/four and three/one tokens/occurrences.
+        // Recorded from the app's own FTS4 table: one phrase, four documents, six tokens on average.
         val medium = blob(1, 1, 4, 6, 5, 1, 6, 3)
         val longManyHits = blob(1, 1, 4, 6, 14, 4, 6, 3)
         val short = blob(1, 1, 4, 6, 3, 1, 6, 3)
@@ -107,7 +94,6 @@ class Bm25RankerTest {
 
     @Test
     fun `the phrases of a multi-word query add up`() {
-        // Hand-built: p=2, c=1, n=100, a=100, l=100, then two cells of (tf, total, df).
         val one = onePhrase()
         val two = blob(2, 1, 100, 100, 100, 1, 100, 1, 1, 100, 1)
 

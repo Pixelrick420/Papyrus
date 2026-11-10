@@ -2,10 +2,7 @@ package com.papyrus.app.viewer
 
 import java.util.Base64
 
-/**
- * Three-page PDFs written by qpdf 11.9, not PdfBox, which will not write these layouts: linearized and
- * xref-stream files keep `/Encrypt` in the trailer or xref stream. AES-128; user-secret / owner-secret.
- */
+// Written by qpdf 11.9, not PdfBox, which will not write these layouts (linearized, xref-stream).
 internal object PdfEncryptionFixtures {
 
     val linearizedPlain: ByteArray = decode(

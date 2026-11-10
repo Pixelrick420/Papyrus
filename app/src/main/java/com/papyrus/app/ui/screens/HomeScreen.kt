@@ -151,9 +151,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 
-/**
- * Everything the list needs in one value, so loading, empty and no-match states never disagree.
- */
 data class HomeUiState(
     val loaded: Boolean = false,
     val libraryEmpty: Boolean = false,
@@ -163,40 +160,26 @@ data class HomeUiState(
     val documents: List<DocumentEntity> = emptyList(),
     val results: List<DocumentEntity> = emptyList(),
     val selection: SelectionState = SelectionState(),
-    /** The removal waiting out its undo window, or null; [HomeViewModel.undoRemove] takes it back. */
     val pendingRemovalToken: Long? = null,
     val filter: LibraryFilter = LibraryFilter(),
     val sort: LibrarySort = LibrarySort.LAST_OPENED,
     /** The file-type groups the sheet lists: what the library has plus what is selected, so a selected group can always be unselected. */
     val groups: List<FormatGroup> = emptyList(),
     val hasStarred: Boolean = false,
-    /** The excerpt to show under each row that matched inside its text, by document id. */
     val contentHits: Map<Long, ContentHit> = emptyMap(),
-    /** A content search for [query] is still running, so an empty [results] may yet fill. */
     val searching: Boolean = false,
-    /** A multi-file Remove or Share that has run long enough to show, or null; see [trackBulk]. */
     val bulkProgress: BulkProgress? = null,
 )
 
-/**
- * One content search: the [query] it answers and its [hits], or null while the search is running.
- *
- * The query travels with the hits so a keystroke can never leave the previous query's excerpts on
- * screen under the new one - which is the failure mode a plain result list has.
- */
+// The query travels with the hits so a keystroke can never leave the previous query's excerpts on screen under the new one.
 internal data class ContentSearch(val query: String, val hits: Map<Long, ContentHit>?)
 
-/** What [HomeViewModel.uiState] needs beyond the library, its filters and its selection. */
 private data class AsyncState(
     val pendingRemovalToken: Long?,
     val content: ContentSearch?,
     val bulkProgress: BulkProgress?,
 )
 
-/**
- * What the list shows for one set of inputs. Pure and independent of the flows it reads from, so
- * [HomeViewModel.uiState] can run it off the main thread.
- */
 internal fun buildHomeUiState(
     all: List<DocumentEntity>,
     params: ViewParams,
@@ -228,18 +211,11 @@ internal fun buildHomeUiState(
     )
 }
 
-/** How many share probes run at once: enough to hide a slow provider, few enough to stay polite. */
 private const val SHARE_PROBE_PARALLELISM = 4
 
-/** How long typing has to pause before the content search runs: long enough to skip a burst. */
 private const val CONTENT_SEARCH_DEBOUNCE_MILLIS = 250L
 
-/**
- * The share pre-flight for several files, concurrently but at most [limit] at a time: each document
- * is probed once, and only a readable one is also asked its type. The result keeps [selected]'s
- * order and holds the readable documents paired with the type they reported. [onProbed] is called
- * once per document when its probe has finished, readable or not, for a progress count.
- */
+// Each document is probed once; only a readable one is also asked its type. [onProbed] fires once per document, readable or not, for the progress count.
 internal suspend fun <T> probeShareable(
     selected: List<T>,
     limit: Int = SHARE_PROBE_PARALLELISM,
@@ -259,17 +235,13 @@ internal suspend fun <T> probeShareable(
     }.awaitAll().filterNotNull()
 }
 
-/** What the list is built with, apart from the library itself. */
 internal data class ViewParams(val query: String, val filter: LibraryFilter, val sort: LibrarySort)
 
 class HomeViewModel(
     private val repository: DocumentRepository,
-    /** Searches document text; [repository] only lists documents and filters their titles. */
     private val search: SearchRepository,
     val thumbnailLoader: ThumbnailLoader,
-    /**
-     * Outlives this ViewModel, so a removal still in its undo window when Home is cleared commits here.
-     */
+    // Outlives this ViewModel, so a removal still in its undo window when Home is cleared commits here.
     private val removalScope: CoroutineScope,
     private val settings: SettingsRepository,
 ) : ViewModel() {
@@ -277,7 +249,6 @@ class HomeViewModel(
     private val _query = MutableStateFlow("")
     val query: StateFlow<String> = _query.asStateFlow()
 
-    /** The running content search, its answer, or null before the first one; see [ContentSearch]. */
     private val contentSearch = MutableStateFlow<ContentSearch?>(null)
 
     private var contentSearchJob: Job? = null
@@ -293,15 +264,11 @@ class HomeViewModel(
 
     private val _selection = MutableStateFlow(SelectionState())
 
-    /** The multi-file Remove or Share in progress, once it is slow enough to show; see [trackBulk]. */
     private val _bulkProgress = MutableStateFlow<BulkProgress?>(null)
 
     /** The multi-file Remove or Share running now, so a second tap cannot start another over it. */
     private var bulkJob: Job? = null
 
-    /**
-     * Rows removed with an undo window; hidden only until it ends, then committed in [commitRemoval].
-     */
     private val pendingRemoval = PendingRemoval<List<DocumentEntity>>(
         timer = { delayMillis, action ->
             val job = viewModelScope.launch {
@@ -314,10 +281,7 @@ class HomeViewModel(
         commit = ::commitRemoval,
     )
 
-    /**
-     * The one thing that hides rows: ids removed but not yet gone from the list. An id leaves only on
-     * Undo, a failed commit, or once the list drops the row, so the database's emission never shows it.
-     */
+    // An id leaves only on Undo, a failed commit, or once the list drops the row, so the database's emission never shows it.
     private val hiddenIds = MutableStateFlow<Set<Long>>(emptySet())
 
     init {
@@ -331,23 +295,13 @@ class HomeViewModel(
         }
     }
 
-    /**
-     * The inputs that are neither the library nor its filters, gathered into one so the typed
-     * five-argument [combine] below still fits them.
-     */
+    // Gathered into one so the typed five-argument [combine] below still fits.
     private val asyncState = combine(pendingRemoval.pending, contentSearch, _bulkProgress) { pending, content, bulk ->
         AsyncState(pending?.token, content, bulk)
     }
 
-    /**
-     * Filtered in memory; starts "not loaded" so a populated library cannot flash its empty state.
-     * Hidden rows are left out of documents and libraryEmpty too, so bulk actions agree with the screen.
-     * The filter runs on [Dispatchers.Default] so typing never waits on a large library, and
-     * [distinctUntilChanged] drops the second, identical state the prune above would otherwise publish.
-     *
-     * A content search's answer is used only while its query is still the one being typed, so a
-     * slower search for a shorter query can never add rows under the current one.
-     */
+    // Starts "not loaded" so a populated library cannot flash its empty state; hidden rows are left out of documents and libraryEmpty so bulk actions agree with the screen.
+    // Runs on [Dispatchers.Default] so typing never waits; a content answer counts only while its query is still the one typed, so a slower search for a shorter query adds no rows.
     val uiState: StateFlow<HomeUiState> = combine(
         repository.documents, viewParams, _selection, hiddenIds, asyncState,
     ) { all, params, selection, hidden, async ->
@@ -367,24 +321,16 @@ class HomeViewModel(
         .flowOn(Dispatchers.Default)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeUiState())
 
-    /**
-     * The title filter is synchronous; the content search is debounced and cancelled by the next
-     * keystroke, because it reads the database rather than scanning the list already in memory.
-     */
+    // The content search is debounced and cancelled by the next keystroke because it reads the database.
     fun onQueryChange(value: String) {
         _query.value = value
         searchContents(value.trim())
     }
 
-    /**
-     * Never blocks the list: the rows that match by title appear at once and the content hits join
-     * them when they arrive. A failed search reports once and reads as no hits, so a broken index is
-     * not indistinguishable from a library that simply does not contain the words.
-     */
+    // A failed search reports once, so a broken index is not mistaken for a library that lacks the words.
     private fun searchContents(needle: String) {
         contentSearchJob?.cancel()
         if (SearchQuery.parse(needle) == null) {
-            // Nothing searchable - empty, or punctuation only - so no query is worth running.
             contentSearch.value = ContentSearch(needle, emptyMap())
             return
         }
@@ -415,7 +361,6 @@ class HomeViewModel(
         _selection.value = _selection.value.clear()
     }
 
-    /** Applies to what the current filter shows, so "select all" means all visible rows. */
     fun toggleSelectAll(visible: Set<Long>) {
         _selection.value = _selection.value.toggleAll(visible)
     }
@@ -450,7 +395,6 @@ class HomeViewModel(
     private val _messages = Channel<UiText>(Channel.BUFFERED)
     val messages = _messages.receiveAsFlow()
 
-    /** One file opens straight away; several are only added, leaving the person on Home. */
     fun onDocumentsPicked(uris: List<Uri>, open: (Long) -> Unit, onAdded: () -> Unit) {
         if (uris.isEmpty()) return
         viewModelScope.launch {
@@ -484,22 +428,17 @@ class HomeViewModel(
         }
     }
 
-    /** Hides the row and starts its undo window; the real removal happens when the window ends. */
     fun remove(document: DocumentEntity) {
         hiddenIds.update { it + document.id }
         pendingRemoval.begin(listOf(document))
     }
 
-    /** Takes back the removal [token] names; a stale token does nothing. */
     fun undoRemove(token: Long) {
         val entry = pendingRemoval.pending.value?.takeIf { it.token == token } ?: return
         if (pendingRemoval.undo(token)) hiddenIds.update { it - entry.item.mapTo(HashSet()) { document -> document.id } }
     }
 
-    /**
-     * Releases the grant, deletes the row and the owned copy, on [removalScope] since [PendingRemoval]
-     * holds a lock; a failed removal is the one case that takes the row back out of [hiddenIds].
-     */
+    // Runs on [removalScope] since [PendingRemoval] holds a lock; a failed removal is the one case that takes the row back out of [hiddenIds].
     private fun commitRemoval(documents: List<DocumentEntity>) {
         removalScope.launch {
             for (document in documents) {
@@ -508,24 +447,17 @@ class HomeViewModel(
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
-                    // Nothing was removed, so the list gets the row back instead of hiding it for good.
                     hiddenIds.update { it - document.id }
                 }
             }
         }
     }
 
-    /**
-     * Commits a pending removal when Home goes away; a process death leaves the row in the library.
-     */
     override fun onCleared() {
         pendingRemoval.flush()
     }
 
-    /**
-     * Bulk remove only, which is immediate because the confirmation dialog already asked. Shows its
-     * progress if it runs long, and says once, when it is done, how many files went.
-     */
+    // Immediate: the confirmation dialog already asked.
     fun removeSelected() {
         val selected = selectedDocuments()
         if (selected.isEmpty() || bulkRunning()) return
@@ -539,7 +471,6 @@ class HomeViewModel(
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: Exception) {
-                        // Skip the one that failed; the rest still go.
                     }
                     progress.advance()
                 }
@@ -570,11 +501,7 @@ class HomeViewModel(
         }
     }
 
-    /**
-     * Unreadable files are skipped and reported rather than failing the whole share. Checking the
-     * files is the slow part, so that is what shows its progress; the chooser that follows is the
-     * system's own and announces itself.
-     */
+    // Checking the files is the slow part, so that is what shows progress; the chooser is the system's own.
     fun shareSelected(onShare: (Intent) -> Unit) {
         val selected = selectedDocuments()
         if (selected.isEmpty() || bulkRunning()) return
@@ -601,7 +528,6 @@ class HomeViewModel(
     }
 }
 
-/** A plus drawn as two strokes on a 24dp grid; tinted by [Icon]. */
 private val PlusIcon: ImageVector = ImageVector.Builder(
     name = "Plus",
     defaultWidth = 24.dp,
@@ -621,10 +547,8 @@ private val PlusIcon: ImageVector = ImageVector.Builder(
     }
 }.build()
 
-/** How long a single-row removal can be undone: long enough to notice and reach the button. */
 private const val UNDO_WINDOW_MILLIS = 6_000L
 
-/** List inset; title and search pill use [TitleInset]. */
 private val ScreenPadding = 16.dp
 
 private val TitleInset = 24.dp
@@ -633,7 +557,6 @@ private val TitleInset = 24.dp
 fun HomeScreen(
     onOpenDocument: (Long, String?) -> Unit,
     onOpenSettings: () -> Unit,
-    /** The document open beside the list on a wide window, drawn as the current row; null on a phone. */
     openDocumentId: Long? = null,
     viewModel: HomeViewModel = viewModel(factory = AppViewModelProvider.Factory),
 ) {
@@ -651,7 +574,6 @@ fun HomeScreen(
     // Which row has its menu open, not a bare flag: one flag would open every row's menu at once.
     var menuFor by remember { mutableStateOf<Long?>(null) }
 
-    // The sort and filter sheet, which holds the sort order and every filter in one place.
     var sheetOpen by remember { mutableStateOf(false) }
 
     // Bulk remove confirms because it cannot be undone; the ⋮ menu's Remove can be.
@@ -684,7 +606,6 @@ fun HomeScreen(
         viewModel.shareSelected { send -> context.startActivity(Intent.createChooser(send, chooserTitle)) }
     }
 
-    // Back leaves selection before it leaves Home; only active while selecting.
     BackHandler(enabled = state.selection.active) { viewModel.exitSelection() }
 
     LaunchedEffect(viewModel) {
@@ -741,7 +662,6 @@ fun HomeScreen(
                 .padding(padding)
                 // Consuming the Scaffold padding first stops the navigation-bar inset being counted twice.
                 .consumeWindowInsets(padding)
-                // Taps nothing else claimed (gaps, empty space) put the keyboard away.
                 .pointerInput(Unit) { detectTapGestures(onTap = { dismissKeyboard() }) },
         ) {
             // Row padding keeps the bar as tall as the bare title was, and the icon's end padding
@@ -802,7 +722,6 @@ fun HomeScreen(
                             if (listState.canScrollBackward) scope.launch { listState.scrollToItem(0) }
                         },
                         hint = stringResource(R.string.home_search_hint),
-                        // Search keeps the filter and just puts the keyboard away.
                         onSearch = dismissKeyboard,
                         modifier = Modifier.weight(1f),
                         trailing = {
@@ -875,13 +794,11 @@ fun HomeScreen(
                             },
                             onShare = { shareDocument(doc) },
                             onToggleStarred = { viewModel.toggleStarred(doc) },
-                            // Filtering, removing and re-sorting glide instead of snapping.
                             modifier = Modifier.animateItem(),
                         )
                     }
                 }
 
-                // Overlaid to allow row fade-outs; held back during content search until search completes.
                 EmptyStateOverlay(
                     visible = state.loaded && state.results.isEmpty() && !state.searching,
                     libraryEmpty = state.libraryEmpty && state.query.isEmpty(),
@@ -948,11 +865,7 @@ fun HomeScreen(
     }
 }
 
-/**
- * Takes the search pill's slot while selecting: back, count, remove/share/select-all. While a bulk
- * action runs ([progress]) the count gives way to how far it has got, and the buttons that would
- * start another are off.
- */
+// While a bulk action runs the count gives way to progress, and the buttons that would start another are off.
 @Composable
 internal fun SelectionHeader(
     count: Int,
@@ -1049,10 +962,7 @@ private fun EmptyStateOverlay(
     }
 }
 
-/**
- * Clear button that fades in and out inside a constant-size slot; extracted because
- * AnimatedVisibility needs a Column/Row receiver, as in [EmptyStateOverlay].
- */
+// Extracted because AnimatedVisibility needs a Column/Row receiver, as in [EmptyStateOverlay].
 @Composable
 private fun ClearSearchButton(
     visible: Boolean,
@@ -1077,7 +987,6 @@ private fun ClearSearchButton(
     }
 }
 
-/** The empty states: a first-run library is centred; a search or filter that hides everything sits near the top. */
 @Composable
 private fun EmptyState(
     title: String,
@@ -1124,7 +1033,6 @@ private fun EmptyState(
 @Composable
 private fun DocumentRow(
     doc: DocumentEntity,
-    /** Where the current search matched inside this document, when it did. */
     hit: ContentHit?,
     loader: ThumbnailLoader,
     selecting: Boolean,

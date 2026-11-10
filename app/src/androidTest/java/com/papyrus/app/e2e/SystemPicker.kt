@@ -8,28 +8,17 @@ import androidx.test.uiautomator.UiObject2
 import androidx.test.uiautomator.Until
 import java.util.regex.Pattern
 
-/**
- * Drives the system's document picker, which the app opens for "Add files": a person looks for the file in the
- * folder it is in, taps it, or presses on one and taps others to take several.
- *
- * It is the one place a test leaves the app, so everything that depends on the picker's own screens is here.
- * The words are the ones of the picker's source: its roots button says "Show roots", the folder is "Downloads"
- * and the button that takes a selection says "Select".
- */
 internal class SystemPicker {
 
     private val device: UiDevice = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
 
-    /** The picker of AOSP and of the Google build, which are the same app under two package names. */
     private val picker: Pattern = Pattern.compile("com\\.(google\\.)?android\\.documentsui")
 
-    /** Takes [name] alone: a tap on a file hands it back at once. */
     fun chooseOne(name: String) {
         arriveAt(name)
         find(By.pkg(picker).text(name)).click()
     }
 
-    /** Takes every one of [names]: press the first, tap the rest, then confirm. */
     fun chooseSeveral(names: List<String>) {
         arriveAt(names.first())
         find(By.pkg(picker).text(names.first())).longClick()
@@ -37,7 +26,6 @@ internal class SystemPicker {
         find(By.pkg(picker).text("Select")).click()
     }
 
-    /** Waits for the picker, then makes sure it is showing Downloads, where [name] was put. */
     private fun arriveAt(name: String) {
         if (device.wait(Until.hasObject(By.pkg(picker)), OPEN_TIMEOUT_MS) != true) {
             throw AssertionError("The system picker did not open. On screen: ${onScreen()}")
@@ -66,7 +54,6 @@ internal class SystemPicker {
     private companion object {
         const val OPEN_TIMEOUT_MS = 10_000L
 
-        /** How long a folder gets to list its files before the picker is taken to be somewhere else. */
         const val LOOK_MS = 3_000L
     }
 }

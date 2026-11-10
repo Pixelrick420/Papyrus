@@ -1,45 +1,31 @@
 package com.papyrus.app.viewer
 
-/**
- * Colours as Word's binary format writes them: an `ico` palette index, a COLORREF, or a SHD that
- * pairs a foreground with a background under a pattern. All results are `0xRRGGBB`, [COLOR_AUTO] for
- * "the theme's own", or null where the file says nothing.
- */
 internal object DocColors {
 
-    /** `ico` 1 to 16 of Word's 16-colour palette; 0 is automatic. Null for an index past it. */
     fun ico(index: Int): Int? = when (index) {
         0 -> COLOR_AUTO
         in 1..ICO.size -> ICO[index - 1]
         else -> null
     }
 
-    /** A COLORREF at [at]: red, green, blue, then 0xFF if the colour is automatic. */
     fun colorRef(buf: ByteArray, at: Int): Int {
         if (at < 0 || at + 4 > buf.size) return COLOR_AUTO
         if (buf[at + 3].toInt() and 0xFF == AUTO_FLAG) return COLOR_AUTO
         return ((buf[at].toInt() and 0xFF) shl 16) or ((buf[at + 1].toInt() and 0xFF) shl 8) or (buf[at + 2].toInt() and 0xFF)
     }
 
-    /** A 10-byte SHD at [at]: foreground and background COLORREFs, then the pattern. */
     fun shd(buf: ByteArray, at: Int): Int? {
         if (at < 0 || at + SHD_BYTES > buf.size) return null
         return fill(colorRef(buf, at), colorRef(buf, at + 4), u16(buf, at + 8))
     }
 
-    /** A 2-byte SHD80: 5-bit foreground and background `ico`s, then a 6-bit pattern. */
     fun shd80(value: Int): Int? {
         val fore = ico(value and ICO_MASK) ?: COLOR_AUTO
         val back = ico((value ushr BACK_SHIFT) and ICO_MASK) ?: COLOR_AUTO
         return fill(fore, back, value ushr PATTERN_SHIFT)
     }
 
-    /**
-     * The colour a shading paints, or null if it paints none. Clear shows the background and solid the
-     * foreground; a percentage pattern is the two blended by its coverage, which is how it reads at
-     * text size. Line patterns (stripes, crosshatch) have no single colour and count as clear.
-     * Automatic is black for a foreground and white for a background.
-     */
+    // A percentage pattern is the two colours blended by coverage; line patterns have no single colour and count as clear.
     private fun fill(fore: Int, back: Int, pattern: Int): Int? {
         val foreRgb = if (fore == COLOR_AUTO) BLACK else fore
         val backRgb = if (back == COLOR_AUTO) WHITE else back
@@ -65,7 +51,6 @@ internal object DocColors {
         0x000080, 0x008080, 0x008000, 0x800080, 0x800000, 0x808000, 0x808080, 0xC0C0C0,
     )
 
-    /** Coverage of patterns 2 to 13: 5, 10, 20, 25, 30, 40, 50, 60, 70, 75, 80 and 90 percent. */
     private val PERCENT = intArrayOf(5, 10, 20, 25, 30, 40, 50, 60, 70, 75, 80, 90)
 
     private const val AUTO_FLAG = 0xFF

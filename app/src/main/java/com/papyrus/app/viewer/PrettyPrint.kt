@@ -1,30 +1,19 @@
 package com.papyrus.app.viewer
 
-/** Which scanner [PrettyPrint] runs; keyed off the file name, like [CodeLanguages.forFileName]. */
 enum class PrettyKind { JSON, XML, HTML }
 
-/** What [PrettyPrint.formatOnOpen] hands the viewer: the text to show, and whether it is the stored one because formatting failed. */
 class PrettyOutcome(val text: String, val failed: Boolean)
 
-/**
- * Indents structured files as they open, purely in memory: only whitespace outside strings,
- * comments and text nodes is re-laid, so the stored file's content is never changed. These are
- * hand-written scanners, not a parser library, because a scanner can only ever re-lay whitespace -
- * exactly the promise - while working on JSONC comments and non-well-formed HTML alike, and it
- * never throws on weird input.
- */
+// Only whitespace outside strings, comments and text nodes is re-laid, so the stored file's content is never changed.
+// Hand-written scanners rather than a parser library: they only re-lay whitespace, handle JSONC comments and non-well-formed HTML alike, and never throw.
 object PrettyPrint {
 
-    /** Spaces per nesting level until the reader picks another in Settings. */
     const val DEFAULT_INDENT = 2
 
-    /** The widths Settings offers, narrowest first. */
     val INDENT_CHOICES = listOf(2, 3, 4, 8)
 
-    /** [spaces] if it is one of [INDENT_CHOICES], else [DEFAULT_INDENT]: a stored value is never trusted. */
     fun indentOrDefault(spaces: Int): Int = if (spaces in INDENT_CHOICES) spaces else DEFAULT_INDENT
 
-    /** Null: the name is not a formattable format - the caller must not take the string path. */
     fun kindFor(displayName: String?): PrettyKind? {
         val name = displayName?.lowercase().orEmpty()
         if (name.isEmpty()) return null
@@ -37,33 +26,20 @@ object PrettyPrint {
         }
     }
 
-    /**
-     * The most a file may weigh and still be formatted. A scanner needs the whole file as one string and
-     * builds a second for the result, so this is what a reader pays in memory; it is the limit the
-     * plain-text reader had before it streamed, so no file that was formatted before stops being.
-     */
+    // A scanner needs the whole file as one string and builds a second for the result; this is the limit the plain-text reader had before it streamed.
     const val MAX_FORMAT_BYTES = 32L * 1024 * 1024
 
-    /**
-     * The scanner to run on a file opened as [displayName] weighing [sizeBytes], or null to show it as
-     * stored: the setting is off ([enabled]), the name is not formattable, or the file is over
-     * [MAX_FORMAT_BYTES]. A size of zero or less means unknown, which passes; the read stops at the limit.
-     */
+    // A size of zero or less means unknown, which passes; the read stops at the limit.
     fun kindToApply(displayName: String?, sizeBytes: Long, enabled: Boolean): PrettyKind? {
         if (!enabled || sizeBytes > MAX_FORMAT_BYTES) return null
         return kindFor(displayName)
     }
 
-    /** Formats a file as it opens. Any failure leaves the stored text, which always opens, and says so. */
     fun formatOnOpen(kind: PrettyKind, text: String, indent: Int = DEFAULT_INDENT): PrettyOutcome {
         val formatted = format(kind, text, indent) ?: return PrettyOutcome(text, failed = true)
         return PrettyOutcome(formatted, failed = false)
     }
 
-    /**
-     * The formatted text, or null on structural failure (the caller shows raw + one snackbar). Each
-     * nesting level is [indent] spaces, [DEFAULT_INDENT] when that is not a width Settings offers.
-     */
     fun format(kind: PrettyKind, text: String, indent: Int = DEFAULT_INDENT): String? {
         val step = " ".repeat(indentOrDefault(indent))
         return when (kind) {
@@ -74,16 +50,8 @@ object PrettyPrint {
     }
 }
 
-/**
- * Whitespace between tokens is dropped and re-laid by rule: a newline + one indent step after `{`
- * and `[`, a newline + one fewer step before `}` and `]` (an empty `{}` / `[]` stays on one line),
- * a newline after `,` - kept off a preceding `//` comment's line, so the comma never lands inside
- * the comment - and exactly one space after `:`. Strings and comments are copied byte-for-byte, so
- * escapes, unicode, number lexemes (1E+3, 12345678901234567890) and key order are untouched.
- *
- * Null on structural failure: an unterminated string or block comment at EOF (the truncated-file
- * case), or a bracket left open, closed by the wrong bracket, or closed with none open.
- */
+// A newline is kept off a preceding `//` comment's line, so the comma never lands inside the comment.
+// Strings and comments are copied byte-for-byte, so escapes, number lexemes (1E+3, 12345678901234567890) and key order are untouched.
 private fun formatJson(text: String, step: String): String? {
     // Nothing to format; the stored bytes pass through, no toast.
     if (text.isBlank()) return text
@@ -155,16 +123,12 @@ private class JsonLayout(private val step: String) {
     val out = StringBuilder()
     var indent = 0
 
-    /** The next token stays on the current line: it follows a `: ` that just emitted its space. */
     var attach = false
 
-    /** The next token must start a new line; set after `,` and after a `//` comment. */
     var pendingBreak = false
 
-    /** Opened brackets still unmatched; their content decides whether the file is well-formed. */
     val opened = StringBuilder()
 
-    /** Places the next token: on the attached line after `: `, else on a fresh indented line. */
     fun startToken() {
         if (attach) {
             attach = false
@@ -175,8 +139,7 @@ private class JsonLayout(private val step: String) {
         pendingBreak = false
     }
 
-    /** Closes `}` / `]`: matches the bracket against the innermost open one. Null on a mismatch,
-     * a close with none open - both cover truncated and hand-broken files. */
+    // Null on a mismatch or a close with none open: both cover truncated and hand-broken files.
     fun closeBracket(c: Char): Boolean {
         val expected = if (c == '}') '{' else '['
         if (opened.isEmpty() || opened.last() != expected) return false
@@ -194,7 +157,6 @@ private class JsonLayout(private val step: String) {
     }
 }
 
-/** End (exclusive) of the string opened at [start]; null when it is never closed. */
 private fun jsonStringEnd(text: String, start: Int): Int? {
     var i = start + 1
     while (i < text.length) {
@@ -207,21 +169,17 @@ private fun jsonStringEnd(text: String, start: Int): Int? {
     return null
 }
 
-/** End (exclusive) of a `//` comment: the newline belongs to the whitespace rule, not the comment. */
 private fun lineCommentEnd(text: String, start: Int): Int {
     var i = start
     while (i < text.length && text[i] != '\n' && text[i] != '\r') i++
     return i
 }
 
-/** End (exclusive) of a block comment; null when its terminator never arrives. */
 private fun blockCommentEnd(text: String, start: Int): Int? {
     val end = text.indexOf("*/", start + 2)
     return if (end < 0) null else end + 2
 }
 
-/** End (exclusive) of a run of literal characters: everything that is not structure, a string or
- * a comment start, so number lexemes copy through byte-exact. */
 private fun jsonLiteralEnd(text: String, start: Int): Int {
     var i = start
     while (i < text.length && text[i].let { !it.isWhitespace() && it !in ",]}:[{\"/" }) i++
@@ -230,17 +188,8 @@ private fun jsonLiteralEnd(text: String, start: Int): Int {
 
 private fun String.nextIs(at: Int, c: Char) = at + 1 < length && this[at + 1] == c
 
-/**
- * Whitespace between constructs is dropped; every construct starts a line of its own unless it
- * directly follows non-blank text, which keeps mixed content (`<p>a <em>b</em> c</p>`) inline.
- * Tag interiors (names, attributes, `/>`), text-node characters, and comment/CDATA/PI/doctype
- * bodies are copied verbatim.
- *
- * [strict] (XML family) pushes element names and fails on mismatched nesting or an element still
- * open at EOF; lenient (HTML) tolerates void elements and implied closes like `<li>a<li>b`, and
- * copies `<script>` / `<style>` bodies raw, where `<` and `>` are code, not markup. Both fail on
- * an unterminated tag, comment, CDATA or PI at EOF - the truncated-file case.
- */
+// Every construct starts a line of its own unless it directly follows non-blank text, which keeps mixed content (`<p>a <em>b</em> c</p>`) inline.
+// Tag interiors, text nodes and comment/CDATA/PI/doctype bodies are copied verbatim.
 private fun formatMarkup(strict: Boolean, text: String, step: String): String? {
     // Nothing to format; the stored bytes pass through, no toast.
     if (text.isBlank()) return text
@@ -312,7 +261,6 @@ private fun formatMarkup(strict: Boolean, text: String, step: String): String? {
     return out.toString()
 }
 
-/** Breaks the line for a construct unless it directly follows text, then copies it verbatim. */
 private fun emit(
     out: StringBuilder,
     depth: Int,
@@ -332,21 +280,17 @@ private fun emit(
 
 private class MarkupConstruct(val end: Int, val name: String?, val closing: Boolean, val selfClosing: Boolean)
 
-/** Whether [at] starts a construct (`</`, `<!`, `<?` or a name) rather than a bare `<` in text. */
 private fun String.startsConstruct(at: Int): Boolean {
     if (at + 1 >= length) return false
     val next = this[at + 1]
     return next.isTagNameStart() || next == '/' || next == '!' || next == '?'
 }
 
-/** End (exclusive) of a construct that runs to a terminator, e.g. `<!--` … `-->`. */
 private fun delimitedEnd(text: String, start: Int, terminator: String, bodyOffset: Int): Int? {
     val close = text.indexOf(terminator, start + bodyOffset)
     return if (close < 0) null else close + terminator.length
 }
 
-/** End (exclusive) of a doctype; a `[ ... ]` subset nests, so a `>` inside it does not end the
- * declaration. */
 private fun doctypeEnd(text: String, start: Int): Int? {
     var depth = 0
     var i = start + 2
@@ -361,8 +305,6 @@ private fun doctypeEnd(text: String, start: Int): Int? {
     return null
 }
 
-/** The tag starting at [start]; null when its `>` never arrives (a truncated file). A `>` inside
- * a quoted attribute value does not end the tag. */
 private fun tagConstruct(text: String, start: Int): MarkupConstruct? {
     val closing = text.startsWith("</", start)
     var i = if (closing) start + 2 else start + 1
@@ -388,9 +330,7 @@ private fun tagConstruct(text: String, start: Int): MarkupConstruct? {
     return null
 }
 
-/** Pushes an opening element; pops on a close. XML matches strictly and fails on a mismatch or a
- * stray close; HTML never fails - a close drops its element and anything an implied close
- * (`<li>a<li>b`) left open above it. False only when [strict] cannot match. */
+// XML matches strictly and fails on a mismatch or stray close; HTML never fails: a close drops its element and anything an implied close (`<li>a<li>b`) left open above it.
 private fun applyToStack(stack: MutableList<String>, construct: MarkupConstruct, strict: Boolean): Boolean {
     val name = construct.name.orEmpty()
     if (construct.closing) {
@@ -407,8 +347,6 @@ private fun applyToStack(stack: MutableList<String>, construct: MarkupConstruct,
     return true
 }
 
-/** Where a raw-text body (`<script>` ... `</script>`) ends, case-insensitively; null when the
- * close tag never arrives. */
 private fun rawBodyEnd(text: String, from: Int, name: String): Int? {
     val needle = "</$name"
     var i = from

@@ -120,7 +120,7 @@ class OfficeModelTest {
         assertEquals("▪", displayBullet("", 2))
         assertEquals("•", displayBullet(null, 3))
         assertEquals("◦", displayBullet("o", 0))
-        assertEquals("–", displayBullet("–", 0))
+        assertEquals("-", displayBullet("-", 0))
         assertEquals("•", displayBullet("not one char", 0))
     }
 

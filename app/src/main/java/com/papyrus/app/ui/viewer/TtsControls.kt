@@ -34,15 +34,6 @@ import com.papyrus.app.ui.icons.Pause
 import com.papyrus.app.ui.icons.SkipNext
 import com.papyrus.app.ui.icons.SkipPrevious
 
-/**
- * The in-flow read-aloud bar: play/pause, skip a paragraph either way, lock the page to the line being
- * read, cycle the speed, close. Shown while a document is being spoken and while it is paused, and -
- * after an engine failure - kept up to show the reason without losing the reading position.
- *
- * Drawn as the find bar's sibling: the transport sits in an outlined pill with the same height, corner
- * radius and outline as the search pill, and the close button sits outside it on the trailing edge, the
- * same slot find puts its own close in, so the two bars read as one family.
- */
 @Composable
 fun TtsControls(
     state: TtsState,
@@ -62,7 +53,6 @@ fun TtsControls(
     val speedLabel = stringResource(R.string.tts_speed) + " " + speedValue
     // Shown as the page really is: a failed read cannot hold it, whatever was chosen before.
     val locked = state.followsVoice
-    // Labelled with what pressing does, as play/pause is.
     val lockLabel = stringResource(if (locked) R.string.tts_scroll_unlock else R.string.tts_scroll_lock)
     val playPauseIcon = if (state.isPlaying) Pause else Icons.Default.PlayArrow
     val playPauseLabel = if (state.isPlaying) {
@@ -97,7 +87,6 @@ fun TtsControls(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        // The pill's own horizontal inset, matching the search pill's leading glyph.
                         .padding(horizontal = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -146,13 +135,11 @@ fun TtsControls(
                 icon = Icons.Default.Close,
                 contentDescription = stringResource(R.string.viewer_read_aloud_stop),
                 onClick = onClose,
-                // Same 20dp close glyph as the find bar's.
                 iconSize = 20.dp,
             )
         }
     }
 }
 
-/** "1×", "1.5×", "0.5×": a whole rate drops its decimal so the chip stays narrow. */
 private fun formatSpeed(speed: Float): String =
     if (speed == speed.toInt().toFloat()) speed.toInt().toString() else speed.toString()

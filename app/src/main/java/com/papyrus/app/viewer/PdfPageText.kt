@@ -7,10 +7,8 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sqrt
 
-/** A rectangle in page-relative units: 0..1 across and down, origin at the page's top-left. */
 data class NormRect(val left: Float, val top: Float, val right: Float, val bottom: Float)
 
-/** The character nearest a point, and how far away it is, in page heights. */
 data class CharHit(val index: Int, val distance: Float)
 
 /** Page text plus 4 page-relative floats per character, NaN where a character has no glyph. */
@@ -18,11 +16,7 @@ class PdfPageText(
     val text: String,
     private val boxes: FloatArray,
     private val lineBreaks: BitSet = BitSet(),
-    /**
-     * True when the text and boxes came from the platform renderer rather than PdfBox. The platform
-     * reads and selects in the same unit, so a page that says so can have its selection handed back
-     * to the engine that read it; a PdfBox page cannot.
-     */
+    // The platform reads and selects in the same unit, so a page that says so can have its selection handed back to the engine that read it; a PdfBox page cannot.
     val fromPlatform: Boolean = false,
 ) {
 
@@ -37,14 +31,9 @@ class PdfPageText(
         return needle.isNotEmpty() && text.contains(needle, ignoreCase = true)
     }
 
-    /** A page's answer to one query: every match counted, and the leading ones drawable. */
     data class PageMatches(val count: Int, val groups: List<List<NormRect>>)
 
-    /**
-     * One scan for both the count and the rectangles: [count] includes matches past [limit] and
-     * ones whose boxes were dropped; [groups] holds one entry per match in order (empty when a
-     * match has no drawable glyph) until [limit] rectangles exist.
-     */
+    // [count] includes matches past [limit] and ones whose boxes were dropped; [groups] holds one entry per match until [limit] rectangles exist.
     fun matches(query: String, limit: Int = MAX_RECTS_PER_PAGE): PageMatches {
         val needle = normalizeQuery(query)
         if (needle.isEmpty()) return PageMatches(0, emptyList())
@@ -67,24 +56,16 @@ class PdfPageText(
         return PageMatches(count, groups ?: emptyList())
     }
 
-    /** True when glyph boxes were kept. A page past the extractor's budget holds text without them. */
     val hasBoxes: Boolean get() = boxes.isNotEmpty()
 
-    /** Roughly what this page holds on the heap: its characters, its glyph boxes and its line breaks. */
     val approxBytes: Long get() = text.length * 2L + boxes.size * 4L + lineBreaks.size() / 8 + OBJECT_OVERHEAD_BYTES
 
-    /**
-     * A scan has no text, and a page whose characters all lack a box has nowhere for a finger to
-     * land: having a box array is not enough, since every slot of it can be NaN.
-     */
+    // A scan has no text, and a page whose characters all lack a box has nowhere for a finger to
+    // land: having a box array is not enough, since every slot of it can be NaN.
     val isSelectable: Boolean by lazy {
         boxes.isNotEmpty() && text.indices.any { !text[it].isWhitespace() && !boxes[it * 4].isNaN() }
     }
 
-    /**
-     * The box nearest ([x], [y]), or null when none exists; 0 inside a box, first overlap wins.
-     * Distance is in page heights, with [aspect] (height/width) shrinking the sideways axis.
-     */
     fun nearestChar(x: Float, y: Float, aspect: Float = 1f): CharHit? {
         if (boxes.isEmpty()) return null
         val sideways = if (aspect > 0f) 1f / aspect else 1f
@@ -92,7 +73,6 @@ class PdfPageText(
         var bestSquared = Float.MAX_VALUE
         for (line in lines) {
             if (best >= 0 && line.skippable) {
-                // Skips lines whose vertical band distance already exceeds the closest char distance.
                 val dy = distanceToSpan(y, line.top, line.bottom)
                 if (dy * dy >= bestSquared) continue
             }
@@ -112,17 +92,13 @@ class PdfPageText(
         return if (best < 0) null else CharHit(best, sqrt(bestSquared))
     }
 
-    /** Caret nearest ([x], [y]) - 0..char count, by which half of the closest box; null if none. */
     fun caretAt(x: Float, y: Float, aspect: Float = 1f): Int? {
         val hit = nearestChar(x, y, aspect) ?: return null
         val o = hit.index * 4
         return if (x < (boxes[o] + boxes[o + 2]) / 2f) hit.index else hit.index + 1
     }
 
-    /**
-     * The word holding [index] as a range, or null if not a word (whitespace or off the page).
-     * The platform's own rules break it, so a Chinese run splits where a reader would.
-     */
+    // The platform's own rules break it, so a Chinese run splits where a reader would.
     fun wordAround(index: Int): IntRange? {
         if (index !in text.indices) return null
         val words = BreakIterator.getWordInstance()
@@ -134,7 +110,6 @@ class PdfPageText(
         return start until end
     }
 
-    /** One rectangle per line for [start, end); a wrapping selection is several. Both ends clamp. */
     fun selectionRects(start: Int, end: Int, limit: Int = MAX_RECTS_PER_PAGE): List<NormRect> {
         if (boxes.isEmpty()) return emptyList()
         val from = start.coerceIn(0, text.length)
@@ -143,7 +118,6 @@ class PdfPageText(
         return ArrayList<NormRect>().also { appendLineRects(from, to, it, limit) }
     }
 
-    /** Text of [start, end), clamped to the page; a wrap becomes a newline. */
     fun textBetween(start: Int, end: Int): String {
         val from = start.coerceIn(0, text.length)
         val to = end.coerceIn(from, text.length)
@@ -160,7 +134,6 @@ class PdfPageText(
         var open = false
         for (i in start until end) {
             if (lineBreaks[i]) {
-                // A wrap ends the rectangle for the line just finished.
                 if (open) {
                     out += NormRect(left, top, right, bottom)
                     open = false
@@ -193,14 +166,9 @@ class PdfPageText(
     private fun distanceToSpan(v: Float, low: Float, high: Float): Float =
         if (v < low) low - v else if (v > high) v - high else 0f
 
-    /** One line of the page: a character range plus the vertical band its boxes span. */
     private class LineBand(val start: Int, val end: Int, val top: Float, val bottom: Float, val skippable: Boolean)
 
-    /**
-     * Lines split at the recorded breaks, built once - the class is immutable, so the index is
-     * safe to hold. A line's band only vouches for chars whose box has a usable y span, so a line
-     * holding a box without one is marked unskippable and always scanned in full.
-     */
+    // A line's band only vouches for chars whose box has a usable y span, so a line holding a box without one is marked unskippable and always scanned in full.
     private val lines: List<LineBand> by lazy { buildLineBands() }
 
     private fun buildLineBands(): List<LineBand> {
@@ -239,18 +207,11 @@ class PdfPageText(
     companion object {
         const val MAX_RECTS_PER_PAGE = 2000
 
-        /** The object, its string and its arrays, apart from their contents. */
         private const val OBJECT_OVERHEAD_BYTES = 96L
 
         private val WHITESPACE_RUN = Regex("\\s+")
 
-        /**
-         * Text with per-character boxes synthesised from per-line boxes: each character takes an
-         * equal slice of its line's span, whitespace takes none, and '\n' ends a line. A line may
-         * report several boxes (a run the platform cut in two); they are unioned so every glyph
-         * stays hit-testable. [lineBoxes] holds one list per line of [text], or is empty when no
-         * geometry is known - the text then stays searchable but not selectable.
-         */
+        // Each character takes an equal slice of its line's span; a line may report several boxes, unioned so every glyph stays hit-testable. With no geometry the text stays searchable but not selectable.
         fun fromLines(
             text: String,
             lineBoxes: List<List<NormRect>>,
@@ -272,7 +233,6 @@ class PdfPageText(
             return PdfPageText(text, boxes, breaks, fromPlatform)
         }
 
-        /** Splits one line's union box evenly across its characters; a line with no span gets none. */
         private fun fillLine(text: String, start: Int, end: Int, rects: List<NormRect>, boxes: FloatArray) {
             if (rects.isEmpty() || end <= start) return
             var left = rects.first().left

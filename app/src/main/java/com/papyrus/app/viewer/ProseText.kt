@@ -1,10 +1,6 @@
 package com.papyrus.app.viewer
 
-/**
- * Whether a plain-text file is prose, the one kind worth hyphenating. A log is columns and identifiers, and
- * source is not words at all, so both keep breaking at the edge of the screen. [isCode] is how the viewer
- * opened the file; a `.txt` that looks like code is still shown as plain text, and is still prose.
- */
+// A log is columns and identifiers and source is not words, so both keep breaking at the screen edge; a `.txt` that looks like code is still prose.
 internal fun isProse(displayName: String?, isCode: Boolean): Boolean {
     if (isCode) return false
     val name = displayName?.lowercase().orEmpty()

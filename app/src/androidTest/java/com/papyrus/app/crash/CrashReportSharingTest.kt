@@ -17,10 +17,6 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 
-/**
- * What leaves the app when a crash report is shared: that report, read-only, and no other file the app keeps.
- * The provider's two shared folders are the whole of what it can hand out.
- */
 @RunWith(AndroidJUnit4::class)
 class CrashReportSharingTest {
 

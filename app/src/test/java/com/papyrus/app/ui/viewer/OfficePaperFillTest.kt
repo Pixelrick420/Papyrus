@@ -4,7 +4,6 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** A white paper fill is dropped so a table cell keeps the app's surface; a tinted fill is kept. */
 class OfficePaperFillTest {
 
     @Test

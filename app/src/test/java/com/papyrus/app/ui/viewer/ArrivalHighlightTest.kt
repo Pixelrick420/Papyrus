@@ -7,7 +7,6 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** Which word an arrival lands on, and how its one match fades out. */
 class ArrivalHighlightTest {
 
     @Test

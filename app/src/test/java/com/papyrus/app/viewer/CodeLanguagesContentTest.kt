@@ -5,7 +5,6 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Test
 
-/** The name stays authoritative; the content is a second opinion for the files it cannot place. */
 class CodeLanguagesContentTest {
 
     private fun forContent(name: String?, head: String) = CodeLanguages.forContent(name, head)
@@ -81,7 +80,6 @@ class CodeLanguagesContentTest {
         // MATLAB has no definition, so the name's answer, which is none, stands.
         assertNull(forContent("a.m", "% solve\nfunction y = f(x)\n  y = x.^2;\nend\n"))
         assertNull(forContent("a.m", "x = 1;\n"))
-        // As before: with no head at all, a .m file is plain.
         assertNull(CodeLanguages.forFileName("a.m"))
     }
 

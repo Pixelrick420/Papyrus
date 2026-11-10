@@ -1,48 +1,29 @@
 package com.papyrus.app.viewer
 
-/**
- * Footnotes for a renderer that has none: Markwon 4.6.2 knows no `[^id]` syntax, so the source is rewritten
- * before it is parsed. Each marker becomes a superscript link to its entry in a list added at the end, and each
- * entry links back. The links are in-document anchors, which the viewer scrolls to itself ([target]).
- *
- * A definition is `[^id]: text` at the start of a line, and the indented lines after it, blank ones between
- * them included, belong to it. Entries are numbered in the order they are first referenced, a reference inside
- * another entry counting after the body; a definition nothing refers to is listed last. Fenced code, inline code
- * and an escaped bracket are left alone, a marker with no definition stays as typed, and the first definition of
- * an id wins, a repeat staying where it is. A source with no definitions comes back unchanged.
- *
- * Inline code is read a line at a time, so a code span broken across lines does not shield a marker.
- */
+// Markwon 4.6.2 knows no `[^id]` syntax, so the source is rewritten before parsing: markers become superscript links to a list at the end, each entry linking back through in-document anchors the viewer scrolls to itself ([target]).
+// Entries are numbered in the order first referenced.
 object MarkdownFootnotes {
 
     private const val DEFAULT_HEADING = "Footnotes"
     private const val FOOTNOTE_PREFIX = "fn-"
     private const val BACK_PREFIX = "fnref-"
 
-    // U+2070 U+00B9 U+00B2 U+00B3 U+2074..U+2079: the superscript digits 0 to 9. A real superscript needs HTML,
-    // which the renderer does not take.
+    // A real superscript needs HTML, which the renderer does not take.
     private const val SUPERSCRIPT_DIGITS = "\u2070\u00B9\u00B2\u00B3\u2074\u2075\u2076\u2077\u2078\u2079"
 
-    // U+2191, an up arrow: the entry sits below the text that points at it.
     private const val BACK_LABEL = "\u2191"
 
-    // The label is anything but whitespace, a closing bracket or a caret, as in other Markdown dialects.
     private val DEFINITION = Regex("""^ {0,3}\[\^([^\]\s^]+)]:[ \t]*(.*)$""")
     private val REFERENCE = Regex("""\[\^([^\]\s^]+)]""")
     private val FENCE = Regex("""^ {0,3}(`{3,}|~{3,})(.*)$""")
     private val LINE_BREAK = Regex("\r?\n")
 
-    // An anchor stays a legal link destination whatever the label held. Two labels that differ only in
-    // characters this replaces would share an anchor, and a tap would land on the first.
+    // Two labels differing only in characters this replaces would share an anchor, and a tap would land on the first.
     private val UNSAFE_ANCHOR = Regex("[^A-Za-z0-9_.:-]")
 
-    /** One line of the body, and whether a marker in it may be rewritten. */
     private class BodyLine(val text: String, val scan: Boolean)
 
-    /**
-     * [source] with its footnotes moved to a list under [heading]. A source with no definitions is returned as it
-     * is, line endings and all; any other has its line endings normalised to `\n`.
-     */
+    // A source with no definitions is returned as it is, line endings and all.
     fun transform(source: String, heading: String = DEFAULT_HEADING): String {
         if (!source.contains("[^")) return source
         val lines = source.split(LINE_BREAK)
@@ -139,21 +120,15 @@ object MarkdownFootnotes {
         return out.toString()
     }
 
-    /** The link a footnote link is answered by: a marker's by its entry's way back, and that one by the marker. */
     fun counterpart(url: String): String? = when {
         url.startsWith("#$BACK_PREFIX") -> "#$FOOTNOTE_PREFIX" + url.removePrefix("#$BACK_PREFIX")
         url.startsWith("#$FOOTNOTE_PREFIX") -> "#$BACK_PREFIX" + url.removePrefix("#$FOOTNOTE_PREFIX")
         else -> null
     }
 
-    /** Whether [url] is one of the anchors this class writes, which no author typed and no reader would search for. */
     fun isAnchor(url: String): Boolean = counterpart(url) != null
 
-    /**
-     * Where a tap on a footnote link [url] should scroll to, given every link in the rendered text as its start
-     * offset and destination: the start of the link that answers it, the first if several do (a footnote cited
-     * twice has one way back and two markers). Null for any other link.
-     */
+    // The first answering link wins if several do (a footnote cited twice has one way back and two markers).
     fun target(links: List<Pair<Int, String>>, url: String): Int? {
         val answer = counterpart(url) ?: return null
         return links.filter { it.second == answer }.minOfOrNull { it.first }
@@ -171,7 +146,6 @@ object MarkdownFootnotes {
         return run.length >= open.length && trimmed.substring(run.length).isBlank()
     }
 
-    /** Strips the indent that marks a continuation: up to four spaces, or one tab. */
     private fun dedented(line: String): String {
         val spaces = line.takeWhile { it == ' ' }.length
         return if (spaces > 0) line.substring(minOf(spaces, 4)) else line.removePrefix("\t")
@@ -214,7 +188,6 @@ object MarkdownFootnotes {
         return out.toString()
     }
 
-    /** The start of the next run of exactly [length] backticks at or after [from], or -1. */
     private fun closingRun(text: String, from: Int, length: Int): Int {
         var i = from
         while (i < text.length) {
@@ -230,7 +203,6 @@ object MarkdownFootnotes {
         return -1
     }
 
-    /** One list item, its later lines indented under the number so they stay inside it, with the way back at its end. */
     private fun entry(number: Int, id: String, text: List<String>): String {
         val marker = "$number. "
         val back = "[$BACK_LABEL](#$BACK_PREFIX${anchorOf(id)})"

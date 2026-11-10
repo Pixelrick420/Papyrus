@@ -10,10 +10,7 @@ import java.io.IOException
 import java.io.InputStream
 import java.util.zip.ZipInputStream
 
-/**
- * Dependency-free .docx / .odt extraction (ZIP + XML) via java.util.zip and the platform
- * XmlPullParser; the archive is walked twice so peak memory stays proportional to the body XML.
- */
+// The archive is walked twice so peak memory stays proportional to the body XML.
 class OfficeTextExtractor(
     private val mediaDir: File?,
     private val mimeByName: (String) -> String = ::guessMimeType,
@@ -21,9 +18,7 @@ class OfficeTextExtractor(
     private val newParserFactory: () -> XmlPullParser = { Xml.newPullParser() },
 ) {
 
-    /** [openStream] must return a fresh stream on every call, once for the body and once for the
-     * media. The caller closes it. [blockBudget] bounds the body parse: the viewer keeps the full
-     * [MAX_BLOCKS], while a thumbnail needs only its first few lines. */
+    // [openStream] must return a fresh stream on every call, once for the body and once for the media. [blockBudget] bounds the body parse: the viewer keeps the full [MAX_BLOCKS], a thumbnail only its first few lines.
     fun extract(
         openStream: () -> InputStream,
         format: DocumentFormat,
@@ -62,7 +57,6 @@ class OfficeTextExtractor(
         return blocks
     }
 
-    /** Reads one part, or null past [MAX_PART_BYTES]; the next `nextEntry` skips the rest of the entry. */
     private fun readPart(zip: ZipInputStream): ByteArray? {
         val out = ByteArrayOutputStream()
         val buffer = ByteArray(MEDIA_COPY_BUFFER)
@@ -91,12 +85,10 @@ class OfficeTextExtractor(
 
     private fun newParser(stream: InputStream): XmlPullParser =
         newParserFactory().apply {
-            // Namespaces stay in the raw name ("a:blip"); the branch table matches on it.
             setFeature(XmlPullParser.FEATURE_PROCESS_NAMESPACES, false)
             setInput(stream, null)
         }
 
-    /** Reads an optional part; a malformed one is ignored rather than losing the whole document. */
     private fun <T> optionalPart(fallback: T, read: () -> T): T = try {
         read()
     } catch (_: XmlPullParserException) {
@@ -105,8 +97,6 @@ class OfficeTextExtractor(
         fallback
     }
 
-    /** `rId7 -> word/media/image3.png` for embedded targets and `rId9 -> https://...` for external
-     * ones (hyperlinks). Both empty when the rels part is absent. */
     private fun parseRels(xml: ByteArray?): DocxRels {
         if (xml == null || xml.isEmpty()) return DocxRels.EMPTY
         val targets = HashMap<String, String>()
@@ -153,8 +143,6 @@ class OfficeTextExtractor(
         val blocks = main.blocks
         if (main.noteRefs.isEmpty() && main.commentRefs.isEmpty()) return blocks
 
-        // Notes and comments live in parts of their own, read with the same machinery as the body and
-        // placed after it.
         fun readPart(entry: String): DocxBodyParser? {
             val bytes = parts[entry] ?: return null
             return optionalPart<DocxBodyParser?>(null) {
@@ -185,7 +173,6 @@ class OfficeTextExtractor(
         return blocks
     }
 
-    /** A rule, then [items]: notes and comments each sit under their own, after the body. */
     private fun appendSection(blocks: MutableList<OfficeBlock>, items: List<OfficeBlock>, blockBudget: Int) {
         if (items.isEmpty() || blocks.size >= blockBudget) return
         blocks += OfficeBlock.Divider
@@ -229,9 +216,7 @@ class OfficeTextExtractor(
         const val MAX_IMAGE_BYTES = 8 * 1024 * 1024
         const val MAX_TOTAL_MEDIA_BYTES = 24 * 1024 * 1024
 
-        /** Cap on the body XML part read into memory before parsing. */
         private const val MAX_BODY_BYTES = 32 * 1024 * 1024
-        /** Parts that only add formatting (styles, numbering, notes) are ignored past this size. */
         private const val MAX_PART_BYTES = 16 * 1024 * 1024
 
         /** Zip-slip guard: media names come from the document, so never trust their path shape. */

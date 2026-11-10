@@ -5,13 +5,8 @@ import androidx.test.core.app.ApplicationProvider
 import com.papyrus.app.MainApplication
 import java.io.File
 
-/**
- * Puts Papyrus back to a fresh install, so no test inherits another's library, settings or open document.
- * [ofRunningApp] cannot delete files under the live process, so it clears through the app's own handles.
- */
 internal object FreshInstall {
 
-    /** Clears the data of an app that has not started yet. Call before any of the app's own code runs. */
     fun beforeAppCode(context: Context) {
         clear(File(context.dataDir, DATABASES_DIR))
         clearImports(context)
@@ -20,7 +15,6 @@ internal object FreshInstall {
         clear(File(context.dataDir, SHARED_PREFS_DIR))
     }
 
-    /** Clears the running app through its own handles; instrumentation shares its process. */
     fun ofRunningApp() {
         val app = ApplicationProvider.getApplicationContext<MainApplication>()
         app.database.clearAllTables()

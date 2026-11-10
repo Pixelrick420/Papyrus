@@ -28,12 +28,7 @@ import com.papyrus.app.data.Highlight
 import com.papyrus.app.data.MAX_HIGHLIGHT_NOTE_CHARS
 import com.papyrus.app.ui.components.ControlHeight
 
-/**
- * One of the reader's marks: the page it sits on, and a note field for it. Save is the only way a
- * note is stored, so a mis-tap is dismissed rather than written; Delete removes the mark itself.
- * Everything here stays in Papyrus, and the sheet says so, since a saved copy of the PDF carries
- * highlights but not notes.
- */
+// Save is the only way a note is stored, so a mis-tap is dismissed rather than written; a saved PDF copy carries highlights but not notes, and the sheet says so.
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun PdfAnnotationSheet(
@@ -67,7 +62,6 @@ internal fun PdfAnnotationSheet(
             )
             OutlinedTextField(
                 value = note,
-                // The counter below states the limit, so the field itself never silently stops taking text.
                 onValueChange = { note = it.take(MAX_HIGHLIGHT_NOTE_CHARS) },
                 label = { Text(stringResource(R.string.viewer_annotation_field)) },
                 minLines = 3,

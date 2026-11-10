@@ -4,7 +4,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** findMatchRanges: where a match is, since an off-by-one highlights the wrong letters. */
 class FindMatchingTest {
 
     @Test

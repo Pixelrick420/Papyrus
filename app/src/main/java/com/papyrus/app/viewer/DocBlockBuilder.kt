@@ -1,19 +1,10 @@
 package com.papyrus.app.viewer
 
-/**
- * Text → blocks. A cell ends with a cell mark (0x07) and the row ends with one more, so
- * `cell\x07cell\x07\x07` is one row; nested tables arrive as plain paragraph marks. The two kinds of
- * mark look alike in the text, and so does an empty cell's, so the paragraph properties decide: a
- * paragraph in a table (`sprmPFInTable`) opens a row, and a mark flagged as the row's end (`sprmPFTtp`)
- * closes it. A document without those flags is read by the old rule that an empty cell mark ends a row.
- * Each paragraph becomes a [OfficeBlock.Heading], an [OfficeBlock.ListItem] or an
- * [OfficeBlock.Paragraph] by its style and list, numbered in reading order by [lists], and carries
- * the character formatting of its runs as spans.
- */
+// A cell ends with 0x07 and the row with one more, but those marks look like paragraph marks, so paragraph properties (`sprmPFInTable`, `sprmPFTtp`) decide;
+// a document without those flags is read by the old rule that an empty cell mark ends a row.
 internal class DocBlockBuilder(private val maxBlocks: Int, lists: DocListTables = DocListTables.EMPTY) {
     private enum class State { PARA, ROW, BETWEEN }
 
-    /** A field being read: its instruction until the separator, then its result, which a hyperlink makes a link. */
     private class Field {
         var inResult = false
         var link: String? = null
@@ -27,7 +18,6 @@ internal class DocBlockBuilder(private val maxBlocks: Int, lists: DocListTables 
     private val row = mutableListOf<RichSnapshot>()
     private val rows = mutableListOf<List<RichSnapshot>>()
 
-    /** Characters of the current run not yet handed to [paragraph] or [cell], which take a run at a time. */
     private val chunk = StringBuilder()
 
     /** Open fields, outermost first: an instruction (between 0x13 and 0x14) is not content. */
@@ -36,20 +26,16 @@ internal class DocBlockBuilder(private val maxBlocks: Int, lists: DocListTables 
     private var state = State.PARA
     private var tableUsable = true
 
-    /** Where the paragraph being read began in [cell], so its list marker can go in front of it. */
     private var cellParagraphStart = 0
 
-    /** The paragraph being read has had a character that is not whitespace: a blank one is not a block. */
     private var hasText = false
 
     /** A line or page break cut the paragraph: what follows is a continuation, not a new list item. */
     private var continuation = false
 
-    /** Set once the block budget is reached, so the piece loop stops instead of feeding a dead builder. */
     var full = false
         private set
 
-    /** Adds [text], whose characters [runs] describe in order; text past the last run has no properties. */
     fun feed(text: String, runs: Sequence<DocRun>) {
         var at = 0
         for (run in runs) {
@@ -61,7 +47,6 @@ internal class DocBlockBuilder(private val maxBlocks: Int, lists: DocListTables 
         feedRange(text, at, text.length, DocRun(text.length - at, null))
     }
 
-    /** False once the block budget is spent. */
     private fun feedRange(text: String, from: Int, to: Int, run: DocRun): Boolean {
         for (i in from until to) {
             if (blocks.size >= maxBlocks) {
@@ -125,11 +110,6 @@ internal class DocBlockBuilder(private val maxBlocks: Int, lists: DocListTables 
         }
     }
 
-    /**
-     * Starts a row, or the table's first, when the paragraph properties put the character being read in a
-     * cell: its text goes to [cell] from the first character, so a cell of several paragraphs stays whole,
-     * whichever column it is. Text already pending in [paragraph] is carried over rather than lost.
-     */
     private fun openRow() {
         cell.clear()
         if (!paragraph.isEmpty()) {
@@ -142,7 +122,6 @@ internal class DocBlockBuilder(private val maxBlocks: Int, lists: DocListTables 
         state = State.ROW
     }
 
-    /** The separator ends a field's instruction: a HYPERLINK's target now applies to the result that follows. */
     private fun beginResult(field: Field) {
         field.inResult = true
         // An instruction cut short may have lost the end of its target, so it links nowhere.
@@ -150,7 +129,6 @@ internal class DocBlockBuilder(private val maxBlocks: Int, lists: DocListTables 
         field.instruction.setLength(0)
     }
 
-    /** Hands the pending characters, all of one run, to whatever is being built. */
     private fun flushChunk(format: CharFormat) {
         if (chunk.isEmpty()) return
         val text = chunk.toString()
@@ -161,7 +139,6 @@ internal class DocBlockBuilder(private val maxBlocks: Int, lists: DocListTables 
         (if (state == State.ROW) cell else paragraph).append(text, if (link == null) format else format.copy(link = link))
     }
 
-    /** A paragraph mark, or a line or page break, which ends a fragment of a paragraph but not the paragraph. */
     private fun paragraphMark(mark: Char, para: DocParaProps?) {
         when (state) {
             State.ROW -> {
@@ -203,14 +180,9 @@ internal class DocBlockBuilder(private val maxBlocks: Int, lists: DocListTables 
         }
     }
 
-    /**
-     * Whether a cell mark ends its row. In a paragraph the properties place in a table that is its
-     * row-end flag alone, since an empty cell is no sign of one; otherwise a mark with no text since the last.
-     */
     private fun endsRow(para: DocParaProps?): Boolean =
         if (para != null && para.inTable) para.rowEnd else cell.isEmpty()
 
-    /** Ends the cell being read, empty or not, and adds it to the row. */
     private fun endCell(para: DocParaProps?) {
         endParagraphIn(cell, para)
         continuation = false
@@ -219,10 +191,6 @@ internal class DocBlockBuilder(private val maxBlocks: Int, lists: DocListTables 
         cellParagraphStart = 0
     }
 
-    /**
-     * Puts the marker of the paragraph that just ended in front of its text in [buffer], from
-     * [cellParagraphStart]. False if it was blank, which is not numbered.
-     */
     private fun endParagraphIn(buffer: RichTextBuilder, para: DocParaProps?): Boolean {
         val had = hasText
         hasText = false
@@ -257,7 +225,6 @@ internal class DocBlockBuilder(private val maxBlocks: Int, lists: DocListTables 
         continuation = afterMark(mark, emitted)
     }
 
-    /** Whether what follows [mark] continues the paragraph: only a line or page break leaves it open. */
     private fun afterMark(mark: Char, hadText: Boolean): Boolean = mark != '\r' && (hadText || continuation)
 
     private fun blockFor(text: RichSnapshot, para: DocParaProps?): OfficeBlock {
@@ -281,11 +248,6 @@ internal class DocBlockBuilder(private val maxBlocks: Int, lists: DocListTables 
         }
     }
 
-    /**
-     * The marker of a paragraph in a list, or null if it is in none. A continuation shows none, as
-     * does a level past the last (Word's "no number") and a level whose format is none; only a
-     * numbered paragraph advances the counters.
-     */
     private fun markerFor(para: DocParaProps): String? {
         if (para.ilfo <= 0 || !counters.defines(para.ilfo)) return null
         if (continuation || para.ilvl >= DocListTables.LEVELS) return ""
@@ -294,7 +256,6 @@ internal class DocBlockBuilder(private val maxBlocks: Int, lists: DocListTables 
 
     private fun isNewline(c: Char): Boolean = c == '\n'
 
-    /** [text] with the addresses written out in it made links; ones a field already linked keep their target. */
     private fun linked(text: RichSnapshot): RichSnapshot {
         val found = DocLinks.find(text.text)
         return if (found.isEmpty()) text else RichSnapshot(text.text, DocLinks.overlay(text.spans, found))

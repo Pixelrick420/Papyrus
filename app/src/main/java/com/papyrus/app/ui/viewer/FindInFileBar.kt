@@ -30,10 +30,6 @@ import androidx.compose.ui.unit.dp
 import com.papyrus.app.R
 import com.papyrus.app.ui.components.SearchPill
 
-/**
- * Find in file, drawn with the same [SearchPill] as Home. The caller places it in the layout
- * flow, above the document.
- */
 @Composable
 fun FindInFileBar(
     query: String,
@@ -71,7 +67,6 @@ fun FindInFileBar(
             text = query,
             onTextChange = onQueryChange,
             hint = stringResource(R.string.viewer_find_hint),
-            // Enter steps to the next match when there is one.
             onSearch = {
                 if (dismissKeyboardOnStep) keyboard?.hide()
                 if (canNavigate) onNext()
@@ -132,7 +127,6 @@ fun FindInFileBar(
                 keyboard?.hide()
                 onClose()
             },
-            // Same 20dp close glyph as the Home clear button.
             iconSize = 20.dp,
         )
     }

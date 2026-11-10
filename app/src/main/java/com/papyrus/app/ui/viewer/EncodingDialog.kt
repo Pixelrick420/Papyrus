@@ -25,7 +25,6 @@ import androidx.compose.ui.unit.dp
 import com.papyrus.app.R
 import com.papyrus.app.viewer.TextEncodings
 
-/** Re-reads a text file as another charset when detection got it wrong. */
 @Composable
 fun EncodingDialog(
     override: String?,

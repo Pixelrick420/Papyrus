@@ -5,10 +5,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/**
- * Equations read as typed text; these pin the shape of that text for the constructs Word actually
- * produces.
- */
 class DocxMathTest {
 
     private fun extract(body: String) = OfficeTextExtractor(
@@ -26,7 +22,6 @@ class DocxMathTest {
 
     private fun sub(base: String, low: String) = "<m:sSub>${ctrl("sSubPr")}<m:e>$base</m:e><m:sub>$low</m:sub></m:sSub>"
 
-    /** The text of a paragraph that holds only [math], as a display equation does. */
     private fun display(math: String): String {
         val body = """<w:p><m:oMathPara><m:oMath xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math">$math</m:oMath></m:oMathPara></w:p>"""
         return (extract(body).single() as OfficeBlock.Paragraph).text
@@ -196,7 +191,6 @@ class DocxMathTest {
 
         val text = (extract(body).single() as OfficeBlock.Paragraph).text
 
-        // The body after the equation still reads, and nothing exploded on the way.
         assertTrue(text.endsWith("end"))
     }
 

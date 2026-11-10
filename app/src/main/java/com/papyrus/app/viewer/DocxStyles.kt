@@ -12,7 +12,6 @@ private fun XmlPullParser.attr(name: String): String? = getAttributeValue(null, 
 
 private fun XmlPullParser.intAttr(name: String): Int? = getAttributeValue(null, name)?.toIntOrNull()
 
-/** Applies one child element of a `w:rPr` to this layer. Anything it does not know is ignored. */
 internal fun RunProps.applyDocx(p: XmlPullParser) {
     when (p.name) {
         "w:b" -> bold = p.onOff()
@@ -43,7 +42,6 @@ internal fun RunProps.applyDocx(p: XmlPullParser) {
     }
 }
 
-/** One `w:style`. Properties are what the style says itself; inheritance is [DocxStyles]'s job. */
 internal class DocxStyle(val id: String, val type: String, val isDefault: Boolean) {
     var name: String = ""
     var basedOn: String? = null
@@ -51,18 +49,15 @@ internal class DocxStyle(val id: String, val type: String, val isDefault: Boolea
     var align: BlockAlign? = null
     var indentTwips: Int? = null
 
-    /** `w:outlineLvl`, 0-based: 0 is a first-level heading, 9 is body text. */
     var outline: Int? = null
     var numId: Int? = null
     var numLevel: Int? = null
 }
 
-/** A paragraph style with its whole `basedOn` chain folded in. */
 internal class ParaStyle(
     val align: BlockAlign?,
     val indentTwips: Int?,
     val outline: Int?,
-    /** Heading level from the style's *name* ("heading 2", "Title"), or 0. */
     val namedHeading: Int,
     val numId: Int?,
     val numLevel: Int?,
@@ -80,10 +75,6 @@ private fun namedHeading(name: String): Int {
     return digit.coerceAtMost(MAX_HEADING_LEVEL)
 }
 
-/**
- * What a style id used to mean before `styles.xml` was read: "Heading2" or "Title". The fallback for
- * a document with no styles part, or an id the part does not define.
- */
 internal fun styleIdHeadingLevel(id: String): Int = when {
     id.equals("Title", true) -> 1
     id.startsWith("Heading", true) -> id.substringAfter("Heading", "1").toIntOrNull()?.coerceIn(1, MAX_HEADING_LEVEL) ?: 1
@@ -98,7 +89,6 @@ internal class DocxStyles(
     private val runCache = HashMap<String, RunProps>()
     private val paragraphCache = HashMap<String, ParaStyle>()
 
-    /** [id]'s style and everything it is based on, the root first. */
     private fun chain(id: String?): List<DocxStyle> {
         val out = ArrayList<DocxStyle>()
         var current: DocxStyle? = id?.let { styles[it] }
@@ -111,10 +101,6 @@ internal class DocxStyles(
         return out
     }
 
-    /**
-     * Character formatting a run gets before its own: document defaults, then the paragraph's style
-     * chain, then the run's character style chain. Cached, and never mutated.
-     */
     fun runProps(paragraphStyle: String?, characterStyle: String?): RunProps {
         val key = "${paragraphStyle.orEmpty()}|${characterStyle.orEmpty()}"
         return runCache.getOrPut(key) {
@@ -144,10 +130,7 @@ internal class DocxStyles(
         ParaStyle(align, indent, outline, named, numId, numLevel)
     }
 
-    /**
-     * 0 for body text. An outline level says it outright, for any style a document invents; a
-     * built-in heading's name says it where the part carries no level; the id spelling is the last resort.
-     */
+    // An outline level says it outright, for any style a document invents; a built-in heading's name says it where the part carries no level; the id spelling is the last resort.
     fun headingLevel(styleId: String?, directOutline: Int?): Int {
         val style = paragraph(styleId)
         val outline = directOutline ?: style.outline
@@ -251,7 +234,6 @@ private class DocxStylesReader(private val p: XmlPullParser) {
     }
 }
 
-/** One `w:lvl`; [symbolFont] means the bullet is a Symbol or Wingdings glyph. */
 internal class NumLevel(val format: String, val text: String, val start: Int, val symbolFont: Boolean)
 
 internal class DocxNumbering(
@@ -263,7 +245,6 @@ internal class DocxNumbering(
 
     fun level(numId: Int, ilvl: Int): NumLevel? = nums[numId]?.let { abstracts[it]?.get(ilvl) }
 
-    /** Levels this list instance restarts at a given number the first time it is used. */
     fun startOverride(numId: Int): Map<Int, Int> = startOverrides[numId].orEmpty()
 
     companion object {
@@ -361,15 +342,12 @@ private class DocxNumberingReader(private val p: XmlPullParser) {
 private const val MAX_LIST_LEVELS = 9
 private const val UNSET = Int.MIN_VALUE
 
-/**
- * Where each list has got to, in reading order. Counters belong to the *abstract* list, not a
- * `w:num`, because Word continues one numbering across every `w:num` sharing a definition.
- */
+// Where each list has got to, in reading order. Counters belong to the *abstract* list, not a
+// `w:num`, because Word continues one numbering across every `w:num` sharing a definition.
 internal class ListCounters(private val numbering: DocxNumbering) {
     private val counts = HashMap<Int, IntArray>()
     private val started = HashSet<Int>()
 
-    /** The marker for the next paragraph of [numId] at [ilvl]; null if the list is not defined. */
     fun next(numId: Int, ilvl: Int): String? {
         val abstractId = numbering.abstractId(numId) ?: return null
         val level = ilvl.coerceIn(0, MAX_LIST_LEVELS - 1)

@@ -2,20 +2,14 @@ package com.papyrus.app.viewer
 
 import java.io.InputStream
 
-/**
- * Whether a file [DocumentFormat.detect] left unclassified is still worth showing as text; reads only the head.
- * Any run of bytes with no NUL and few control characters counts, so UTF-16 needs its mark to get past that.
- */
+// Any run of bytes with no NUL and few control characters counts, so UTF-16 needs its mark to get past that.
 object TextSniffer {
 
     const val MAX_SNIFF_BYTES = 8 * 1024
 
-    /** Share of control characters other than \n \r \t above which the bytes count as binary. */
     private const val MAX_CONTROL_RATIO = 0.02
 
-    /**
-     * Checked before UTF-8 decoding: some binaries decode as valid UTF-8, a ZIP of ASCII names among them.
-     */
+    // Checked before UTF-8 decoding: some binaries decode as valid UTF-8, a ZIP of ASCII names among them.
     private val BINARY_MAGIC: List<Pair<String, ByteArray>> = listOf(
         "zip" to byteArrayOf(0x50, 0x4B, 0x03, 0x04), // PK.. also docx/odt/apk/jar
         "zip-empty" to byteArrayOf(0x50, 0x4B, 0x05, 0x06),
@@ -48,7 +42,6 @@ object TextSniffer {
         return looksLikeText(head, total)
     }
 
-    /** [length] is how many bytes of [head] are valid; the rest of the array is ignored. */
     fun looksLikeText(head: ByteArray, length: Int = head.size): Boolean {
         if (length <= 0) return false
         val bytes = if (length == head.size) head else head.copyOf(length)

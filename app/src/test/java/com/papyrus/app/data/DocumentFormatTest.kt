@@ -5,7 +5,6 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** Detection drives which viewer opens a file; a mistake means the file will not open. */
 class DocumentFormatTest {
 
     @Test
@@ -58,7 +57,6 @@ class DocumentFormatTest {
 
     @Test
     fun `word variants open as docx and odf templates as odt`() {
-        // Same package layout as .docx, so the same extractor reads them.
         listOf("memo.docm", "letter.dotx", "letter.dotm", "MEMO.DOCM").forEach { name ->
             assertEquals("expected DOCX for $name", DocumentFormat.DOCX, DocumentFormat.detect(name, null))
         }
@@ -109,7 +107,6 @@ class DocumentFormatTest {
 
     @Test
     fun `source files are CODE rather than plain text`() {
-        // CODE differs from TEXT only in the home-list label; the viewer renders both alike.
         listOf("Main.kt", "app.py", "index.ts", "run.sh", "Cargo.toml", "styles.css", "a.diff")
             .forEach { name ->
                 assertEquals("expected CODE for $name", DocumentFormat.CODE, DocumentFormat.detect(name, null))

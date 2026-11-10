@@ -27,7 +27,6 @@ class ChunkProviderTest {
         ByteArrayInputStream(bytes, offset.toInt(), bytes.size - offset.toInt())
     }
 
-    /** Hands out one byte per read, so every terminator pair and character is split across reads. */
     private class OneByteAtATime(input: InputStream) : FilterInputStream(input) {
         override fun read(buffer: ByteArray, offset: Int, length: Int): Int =
             if (length == 0) 0 else super.read(buffer, offset, 1)
@@ -436,7 +435,6 @@ class ChunkProviderTest {
         }
     }
 
-    /** Skips nothing, as a stream over a pipe may: only reading gets it anywhere. */
     private class NoSkip(input: InputStream) : FilterInputStream(input) {
         override fun skip(n: Long): Long = 0
     }

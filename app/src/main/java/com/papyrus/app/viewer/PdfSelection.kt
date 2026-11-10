@@ -1,26 +1,18 @@
 package com.papyrus.app.viewer
 
-/** A caret in the document: [index] characters into the text of page [page], both counted from 0. */
 data class PdfTextPos(val page: Int, val index: Int) : Comparable<PdfTextPos> {
     override fun compareTo(other: PdfTextPos): Int =
         if (page != other.page) page.compareTo(other.page) else index.compareTo(other.index)
 }
 
-/** The characters of one page a selection covers: [from] up to, not including, [to]. */
 data class PageSpan(val from: Int, val to: Int)
 
-/**
- * The text between two carets, which may be on different pages. Build it with [between], which orders
- * the carets and refuses an empty one, so they are always in reading order and never equal.
- */
+// Build it with [between], which orders the carets and refuses an empty one.
 data class PdfSelection(val start: PdfTextPos, val end: PdfTextPos) {
 
     val pages: IntRange get() = start.page..end.page
 
-    /**
-     * What of [page] is selected, null if none of it. A middle page is `to == Int.MAX_VALUE` rather
-     * than its length, so it can be reported before that page's text is read; consumers clamp to it.
-     */
+    // A middle page is `to == Int.MAX_VALUE` rather than its length, so it can be reported before that page's text is read; consumers clamp.
     fun spanOn(page: Int): PageSpan? {
         if (page !in pages) return null
         return PageSpan(
@@ -30,7 +22,6 @@ data class PdfSelection(val start: PdfTextPos, val end: PdfTextPos) {
     }
 
     companion object {
-        /** The selection between two carets given in either order; null for the same caret, which selects nothing. */
         fun between(a: PdfTextPos, b: PdfTextPos): PdfSelection? = when {
             a < b -> PdfSelection(a, b)
             b < a -> PdfSelection(b, a)
@@ -39,16 +30,8 @@ data class PdfSelection(val start: PdfTextPos, val end: PdfTextPos) {
     }
 }
 
-/**
- * A point on a page in page-relative units, 0..1 across and down from the top-left. [aspect] is height
- * over width, so distances match what the reader sees.
- */
 data class PagePoint(val page: Int, val x: Float, val y: Float, val aspect: Float)
 
-/**
- * Where pages sit relative to one another, enough to tell which page a finger is on once a drag leaves
- * the page it started on, so a selection can cross a page break without asking the layout.
- */
 class PdfPageGeometry(
     private val pageCount: Int,
     widthPx: Float,
@@ -59,10 +42,6 @@ class PdfPageGeometry(
 
     fun heightOf(page: Int): Float = (widthPx * aspectOf(page)).coerceAtLeast(1f)
 
-    /**
-     * [xPx], [yPx] pixels from page [page]'s top-left, however far outside it, as a point on the page it
-     * actually lies over. Off the ends or in a gap it lands on the nearer page.
-     */
     fun locate(page: Int, xPx: Float, yPx: Float): PagePoint {
         val last = (pageCount - 1).coerceAtLeast(0)
         var at = page.coerceIn(0, last)

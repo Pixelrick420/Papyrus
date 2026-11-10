@@ -22,38 +22,22 @@ enum class ThemeMode {
 
 data class AppSettings(
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
-    /** Documents another app hands over are copied into the library as they open. */
     val autosaveExternal: Boolean = false,
-    /** Password-protected PDFs saved to the library on open; off, the menu offers Save to library. */
     val autosaveEncrypted: Boolean = false,
-    /** Reopen a library document where the reader stopped. Off, the position is neither read nor
-     * written and stored values apply again when it is back on. */
     val rememberPosition: Boolean = true,
-    /** Text, logs and code wrap at the screen's edge; off, lines stay on one row and the view scrolls sideways. */
     val wrapLines: Boolean = false,
-    /** Plain-text prose splits a long word at a syllable where it wraps; logs and code never do, whatever this says. */
     val hyphenation: Boolean = true,
     val showLineNumbers: Boolean = false,
-    /** Colour for comments, strings and keywords in source files that have a language definition. */
     val syntaxHighlighting: Boolean = true,
-    /** JSON, XML, HTML and SVG files are indented as they open; off, they show exactly as stored. */
     val prettyPrint: Boolean = true,
-    /** Spaces per nesting level in pretty-printed files; always one of [PrettyPrint.INDENT_CHOICES]. */
     val tabSize: Int = PrettyPrint.DEFAULT_INDENT,
     val colorblindMode: Boolean = false,
-    /** PDF pages are drawn with their colours inverted. */
     val nightMode: Boolean = false,
-    /** How Home orders the library. */
     val librarySort: LibrarySort = LibrarySort.LAST_OPENED,
-    /**
-     * The library's documents are read in the background so search can find words inside them. Off,
-     * nothing new is read and what is already indexed stays searchable.
-     */
     val contentIndexing: Boolean = true,
 )
 
-/** App preferences in plain SharedPreferences, read synchronously so a forced theme is known
- * before the first frame. */
+// Plain SharedPreferences, read synchronously so a forced theme is known before the first frame.
 class SettingsRepository(context: Context) {
 
     private val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -61,7 +45,6 @@ class SettingsRepository(context: Context) {
     private val _settings = MutableStateFlow(read())
     val settings: StateFlow<AppSettings> = _settings.asStateFlow()
 
-    /** The latest values, for code that is not collecting the flow. */
     val current: AppSettings get() = _settings.value
 
     fun setThemeMode(mode: ThemeMode) {
@@ -135,18 +118,14 @@ class SettingsRepository(context: Context) {
         _settings.update { it.copy(contentIndexing = enabled) }
     }
 
-    /**
-     * Whether the read-aloud notification permission has already been asked for. Asked once, at the
-     * first Read aloud; a refusal is an answer, and the system settings remain the way to change it.
-     */
+    // Asked once, at the first Read aloud; a refusal is an answer.
     fun notificationPromptShown(): Boolean = prefs.getBoolean(KEY_NOTIFICATION_PROMPT_SHOWN, false)
 
     fun markNotificationPromptShown() {
         prefs.edit { putBoolean(KEY_NOTIFICATION_PROMPT_SHOWN, true) }
     }
 
-    /** Every value back to a fresh install's, in the file and in memory, since clearing the file alone
-     * leaves the values this process already read in place. */
+    // Clearing the file alone leaves values this process already read in place.
     fun resetToDefaults() {
         prefs.edit { clear() }
         _settings.value = AppSettings()

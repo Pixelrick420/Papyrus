@@ -2,24 +2,15 @@ package com.papyrus.app.viewer
 
 import java.io.File
 
-/**
- * Horizontal alignment of a block. Justified text is read as [START]: it opens wide gaps at phone
- * widths, and the reader can already wrap freely.
- */
+// Justified text is read as [START]: it opens wide gaps at phone widths, and the reader can already wrap freely.
 enum class BlockAlign { START, CENTER, END }
 
-/**
- * Which way a block's text runs. A model enum of its own, not the UI toolkit's: extraction must not depend on it.
- * A block that says nothing (null where it is held) inherits the document's.
- */
+// A model enum of its own, not the UI toolkit's: extraction must not depend on it. A block that says nothing inherits the document's.
 enum class BlockDirection { LTR, RTL }
 
 enum class ScriptShift { NONE, SUPER, SUB }
 
-/**
- * Character formatting of a run of text. Colours are `0xRRGGBB`; null means "the theme's own", so a
- * document that says "automatic" is not pinned to black on a dark background.
- */
+// Colours are `0xRRGGBB`; null means "the theme's own", so a document that says "automatic" is not pinned to black on a dark background.
 data class CharFormat(
     val bold: Boolean = false,
     val italic: Boolean = false,
@@ -31,7 +22,6 @@ data class CharFormat(
     val background: Int? = null,
     /** Only ever http(s), mailto or tel: see [safeLink]. */
     val link: String? = null,
-    /** A place inside the same book (an EPUB's chapter link); never set together with [link]. */
     val bookLink: BookLink? = null,
 ) {
     val isPlain: Boolean get() = this == PLAIN
@@ -41,33 +31,23 @@ data class CharFormat(
     }
 }
 
-/**
- * [format] applies to `text[start, end)` of the block that owns this span. Spans are an overlay: the
- * block's `text` is the same string with or without them, which is what keeps every find offset valid.
- */
+// Spans are an overlay: the block's `text` is the same string with or without them, which keeps every find offset valid.
 data class TextSpan(val start: Int, val end: Int, val format: CharFormat)
 
-/**
- * A single table cell. A cell covered by a rowspan above is absent entirely: the renderer reads the
- * merge off the origin cell, so a repeated blank would shift every later cell in the row.
- */
+// A cell covered by a rowspan above is absent: the renderer reads the merge off the origin cell, so a repeated blank would shift every later cell.
 data class OfficeCell(
     val text: String,
     val column: Int = 0,
     val colspan: Int = 1,
     val rowspan: Int = 1,
     val spans: List<TextSpan> = emptyList(),
-    /** `0xRRGGBB` fill, or null for the theme's. */
     val background: Int? = null,
     val align: BlockAlign = BlockAlign.START,
 ) {
     val lastColumn: Int get() = column + colspan - 1
 }
 
-/**
- * One laid-out piece of an Office document. Not pixel-accurate to Word/LibreOffice: headings,
- * paragraphs, lists, tables and inline images in document order is the fidelity targeted.
- */
+// Not pixel-accurate to Word/LibreOffice: headings, paragraphs, lists, tables and inline images in document order is the fidelity targeted.
 sealed interface OfficeBlock {
     data class Heading(
         val text: String,
@@ -77,7 +57,6 @@ sealed interface OfficeBlock {
         val direction: BlockDirection? = null,
     ) : OfficeBlock
 
-    /** [indent] is in steps (see [indentLevel]), not twips: the renderer picks the step width. */
     data class Paragraph(
         val text: String,
         val spans: List<TextSpan> = emptyList(),
@@ -86,10 +65,7 @@ sealed interface OfficeBlock {
         val direction: BlockDirection? = null,
     ) : OfficeBlock
 
-    /**
-     * One list paragraph. [marker] ("•", "2.", "a)") is drawn beside [text], never inside it, so find
-     * offsets stay on the document's own words. It is empty for a continuation paragraph of an item.
-     */
+    // [marker] is drawn beside [text], never inside it, so find offsets stay on the document's own words.
     data class ListItem(
         val text: String,
         val marker: String,
@@ -99,34 +75,20 @@ sealed interface OfficeBlock {
         val direction: BlockDirection? = null,
     ) : OfficeBlock
 
-    /**
-     * A table flattened into rows; [OfficeCell.column] is where a cell starts, so a rowspan-covered
-     * cell is absent from its row. Nested tables flatten into the surrounding block list.
-     */
     data class Table(val rows: List<List<OfficeCell>>) : OfficeBlock
 
-    /**
-     * Media written to [file]; the viewer downsamples on decode, so the bytes are not held resident.
-     * [widthDp] is the size the document asked for, when it said; [altText] its description, if any.
-     */
+    // The viewer downsamples on decode, so the bytes are not held resident.
     data class Image(
         val file: File,
         val mimeType: String,
         val widthDp: Float? = null,
         val altText: String? = null,
-        /** Line art with no colours of its own (a drawn SVG): the viewer paints it in the text colour. */
         val tintable: Boolean = false,
-        /** Width over height of a page-sized picture, which then keeps its shape; null for any other image. */
         val aspectRatio: Float? = null,
     ) : OfficeBlock
 
-    /** A rule: separates the notes from the body. */
     data object Divider : OfficeBlock
 
-    /**
-     * A footnote, endnote or comment, gathered after the body. [label] matches the marker left in the
-     * text. [byline] is who wrote a comment and when; footnotes and endnotes have none.
-     */
     data class Note(
         val label: String,
         val text: String,
@@ -136,7 +98,6 @@ sealed interface OfficeBlock {
     ) : OfficeBlock
 }
 
-/** The direction a block asked for, or null when it says nothing (and for a block that has none: a table, a picture). */
 internal val OfficeBlock.direction: BlockDirection?
     get() = when (this) {
         is OfficeBlock.Heading -> this.direction
@@ -146,15 +107,11 @@ internal val OfficeBlock.direction: BlockDirection?
         is OfficeBlock.Table, is OfficeBlock.Image, OfficeBlock.Divider -> null
     }
 
-/** One drawn line of text with the spans that fall inside it, re-based to the line's own start. */
 data class LineText(val text: String, val spans: List<TextSpan>)
 
 internal class RichSnapshot(val text: String, val spans: List<TextSpan>)
 
-/**
- * Text and its formatting built together, so every span offset is taken from the string it
- * describes; equal-format appends (a run split by spell-check or revision ids) coalesce into one.
- */
+// Every span offset is taken from the string it describes; equal-format appends (a run split by spell-check or revision ids) coalesce into one.
 internal class RichTextBuilder {
     private val text = StringBuilder()
     private val spans = ArrayList<TextSpan>()
@@ -184,10 +141,7 @@ internal class RichTextBuilder {
         valueSpans.forEach { spans += TextSpan(it.start + offset, it.end + offset, it.format) }
     }
 
-    /**
-     * Inserts [value] at [offset], plain. A span that sits wholly after it moves along; one that
-     * straddles it (a bold run that spans two paragraphs, say) grows to cover it.
-     */
+    // A span wholly after the insertion moves along; one that straddles it grows to cover it.
     fun insert(offset: Int, value: String) {
         if (value.isEmpty()) return
         val at = offset.coerceIn(0, text.length)
@@ -207,7 +161,6 @@ internal class RichTextBuilder {
         spans.clear()
     }
 
-    /** The text so far with [trim] characters removed from both ends, spans cut to match. */
     fun snapshot(trim: (Char) -> Boolean = { false }): RichSnapshot {
         val whole = text.toString()
         var from = 0
@@ -219,7 +172,6 @@ internal class RichTextBuilder {
     }
 }
 
-/** The part of [spans] inside `[from, to)`, re-based so [from] becomes 0. */
 internal fun sliceSpans(spans: List<TextSpan>, from: Int, to: Int): List<TextSpan> {
     if (spans.isEmpty()) return spans
     val out = ArrayList<TextSpan>()
@@ -234,10 +186,7 @@ internal fun sliceSpans(spans: List<TextSpan>, from: Int, to: Int): List<TextSpa
 internal fun shiftSpans(spans: List<TextSpan>, by: Int): List<TextSpan> =
     spans.map { TextSpan(it.start + by, it.end + by, it.format) }
 
-/**
- * Splits on newlines, dropping empty lines, the way a cell's paragraphs are drawn: each its own text.
- * The texts match `text.split('\n').filter { it.isNotEmpty() }` exactly.
- */
+// Matches splitting on newlines and dropping empty lines exactly: each line is its own text, the way a cell's paragraphs are drawn.
 internal fun splitLines(text: String, spans: List<TextSpan>): List<LineText> {
     val out = ArrayList<LineText>()
     var from = 0
@@ -254,10 +203,7 @@ internal fun splitLines(text: String, spans: List<TextSpan>): List<LineText> {
 /** Marks "no colour": an explicit reset to the theme's, as opposed to "not said", which is null. */
 internal const val COLOR_AUTO = -1
 
-/**
- * A character-formatting layer that may say nothing about any given property. Layers are merged
- * most specific over least: document defaults, paragraph style, character style, direct formatting.
- */
+// Layers merge most specific over least: document defaults, paragraph style, character style, direct formatting.
 internal class RunProps {
     var bold: Boolean? = null
     var italic: Boolean? = null
@@ -268,7 +214,6 @@ internal class RunProps {
     var color: Int? = null
     var background: Int? = null
 
-    /** This layer's property wherever it has one, [base]'s elsewhere; neither is changed. */
     fun mergedOver(base: RunProps): RunProps {
         val out = RunProps()
         out.bold = bold ?: base.bold
@@ -295,7 +240,6 @@ internal class RunProps {
     )
 }
 
-/** `RRGGBB` (a leading `#` is fine) to `0xRRGGBB`; null for anything else, "auto" included. */
 internal fun parseHexColor(raw: String?): Int? {
     val hex = raw?.trim()?.removePrefix("#") ?: return null
     if (hex.length != HEX_COLOR_LENGTH) return null
@@ -312,7 +256,6 @@ private val HIGHLIGHTS = mapOf(
     "darkGray" to 0x808080, "lightGray" to 0xC0C0C0, "black" to 0x000000, "white" to 0xFFFFFF,
 )
 
-/** Word's named highlighter colours; null for a name it does not have. */
 internal fun highlightColor(name: String?): Int? = HIGHLIGHTS[name]
 
 private val MONO_HINTS = listOf(
@@ -327,31 +270,22 @@ internal fun isMonoFont(name: String?): Boolean {
 
 private val SAFE_SCHEMES = listOf("http://", "https://", "mailto:", "tel:")
 
-/**
- * A document chooses where its links go, and a tap opens them, so only schemes that cannot run
- * anything are let through: no `javascript:`, `intent:`, `file:` or `content:`.
- */
+// A document chooses where its links go, and a tap opens them, so only schemes that cannot run
+// anything are let through: no `javascript:`, `intent:`, `file:` or `content:`.
 internal fun safeLink(url: String?): String? {
     val trimmed = url?.trim().orEmpty()
     val lower = trimmed.lowercase()
     return if (SAFE_SCHEMES.any { lower.startsWith(it) }) trimmed else null
 }
 
-/**
- * A destination inside the book: the archive [path] of a chapter and, when the link named one, the
- * [fragment] (an element's `id`). It never leaves the app, so it needs no scheme check of its own.
- */
+// It never leaves the app, so it needs no scheme check of its own.
 data class BookLink(val path: String, val fragment: String? = null)
 
-/**
- * Left-indent in twips (1/1440 inch) to a quarter-inch step, so a block quote and a deeper one differ.
- */
 internal fun indentLevel(twips: Int?): Int = ((twips ?: 0) / INDENT_STEP_TWIPS).coerceIn(0, MAX_INDENT_STEPS)
 
 private const val INDENT_STEP_TWIPS = 360
 private const val MAX_INDENT_STEPS = 6
 
-/** A CSS-style length ("0.5in", "1.27cm", "12pt") in twips; null for a unit not understood. */
 internal fun lengthToTwips(value: String?): Int? {
     val text = value?.trim() ?: return null
     val unitStart = text.indexOfFirst { !(it.isDigit() || it == '.' || it == '-') }
@@ -368,12 +302,10 @@ internal fun lengthToTwips(value: String?): Int? {
     return (amount * perUnit).toInt()
 }
 
-/** Twips to density-independent pixels: 1440 twips to the inch, 160 dp to the inch. */
 internal fun twipsToDp(twips: Int): Float = twips / TWIPS_PER_DP
 
 private const val TWIPS_PER_DP = 9f
 
-/** Alignment as either format writes it; `both`/`justify` read as [BlockAlign.START]. */
 internal fun alignOf(value: String?): BlockAlign? = when (value) {
     "center" -> BlockAlign.CENTER
     "right", "end" -> BlockAlign.END
@@ -386,10 +318,7 @@ private val DEFAULT_BULLETS = arrayOf("•", "◦", "▪")
 private const val PRIVATE_USE_FIRST = 0xE000
 private const val PRIVATE_USE_LAST = 0xF8FF
 
-/**
- * The bullet to draw. A Symbol/Wingdings glyph in the private-use area, an empty glyph, or anything
- * not one character falls back to a plain bullet that steps down with the level.
- */
+// A Symbol/Wingdings glyph in the private-use area, an empty glyph, or anything not one character falls back to a plain bullet that steps down with the level.
 internal fun displayBullet(raw: String?, level: Int): String {
     val fallback = DEFAULT_BULLETS[level.coerceAtLeast(0) % DEFAULT_BULLETS.size]
     val glyph = raw?.trim().orEmpty()
@@ -402,7 +331,6 @@ internal fun displayBullet(raw: String?, level: Int): String {
     }
 }
 
-/** [format] is an OOXML `numFmt`: decimal, decimalZero, lower/upperLetter, lower/upperRoman. */
 internal fun formatListNumber(n: Int, format: String): String = when (format) {
     "lowerLetter" -> letters(n)
     "upperLetter" -> letters(n).uppercase()

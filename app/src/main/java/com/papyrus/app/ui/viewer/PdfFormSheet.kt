@@ -42,12 +42,7 @@ import com.papyrus.app.ui.components.ControlHeight
 import com.papyrus.app.viewer.PdfFieldKind
 import com.papyrus.app.viewer.PdfFormField
 
-/**
- * The document's form widgets, in page order, with the value each one holds now. Edits apply to the
- * open document only; saving is a separate, explicit copy through the system picker, so the reader's
- * file is never written to. A check box or radio button switches on tap; a text or choice field opens
- * a dialog for its value.
- */
+// Edits apply to the open document only; saving is a separate copy through the system picker, so the reader's file is never written to.
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun PdfFormSheet(
@@ -122,7 +117,6 @@ internal fun PdfFormSheet(
     }
 }
 
-/** One widget: its label, what it holds, and the control that changes it. */
 @Composable
 private fun FormFieldRow(
     field: PdfFormField,
@@ -195,7 +189,6 @@ private fun FormFieldRow(
     }
 }
 
-/** Edits a text field. Multi-line widgets keep their line breaks; the keyboard's Done saves a one-line one. */
 @Composable
 private fun FormTextDialog(
     field: PdfFormField,
@@ -223,10 +216,6 @@ private fun FormTextDialog(
     )
 }
 
-/**
- * Picks from a choice field's list: radio buttons when the document allows one, check boxes when it
- * allows several. Nothing is changed until Save, so a wrong tap is only dismissed.
- */
 @Composable
 private fun FormChoiceDialog(
     field: PdfFormField,
@@ -276,5 +265,4 @@ private fun FormChoiceDialog(
     )
 }
 
-/** Lines a multi-line field opens with, enough to see a few sentences without filling the dialog. */
 private const val MULTILINE_FIELD_LINES = 4

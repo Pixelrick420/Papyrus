@@ -7,7 +7,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import com.papyrus.app.R
 
-/** "Removing 3 of 12": what the selection header says while a bulk action runs, in place of the count. */
 @Composable
 internal fun BulkProgress.label(): String = stringResource(
     when (action) {
@@ -18,14 +17,7 @@ internal fun BulkProgress.label(): String = stringResource(
     total,
 )
 
-/**
- * The bar under the selection header while a bulk action runs.
- *
- * Drawn for the eyes only. A progress bar that TalkBack can see is announced as it moves, so a
- * 40-file remove would be read out as a running tally and then once more when it finished. The text
- * beside it, [label], carries the same information for anyone who moves to it, and the single
- * announcement when the action ends comes from the snackbar.
- */
+// Drawn for the eyes only: TalkBack announces a moving progress bar, so a 40-file remove would be read out as a running tally; the snackbar announces the end.
 @Composable
 internal fun BulkProgressBar(progress: BulkProgress, modifier: Modifier = Modifier) {
     LinearProgressIndicator(

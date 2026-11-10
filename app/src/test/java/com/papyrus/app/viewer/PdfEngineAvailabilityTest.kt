@@ -5,10 +5,6 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/**
- * The engine matrix: which platform renderer each API level and PDF SDK extension pair gets, and
- * which capabilities come with it. Pure, so this covers releases no CI device runs.
- */
 class PdfEngineAvailabilityTest {
 
     @Test

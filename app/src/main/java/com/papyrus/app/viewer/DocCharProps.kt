@@ -1,14 +1,6 @@
 package com.papyrus.app.viewer
 
-/**
- * Character sprms (CHPX, and the character half of a style) laid over a [RunProps]. Sprms apply in
- * order onto what is already there, which is what a toggle needs: `0x81` means "the opposite of what the
- * style gives", so it can only be read against the value so far.
- *
- * What is read: bold, italic, underline, strike and double strike, superscript and subscript, colour,
- * highlight and shading, and whether the face is monospaced. What is not, because [CharFormat] has no
- * place for it: size, small caps, hidden text, character spacing.
- */
+// Sprms apply in order onto what is already there, which a toggle needs: `0x81` means "the opposite of what the style gives".
 internal object DocCharProps {
     const val CISTD = 0x4A30
     const val CPLAIN = 0x2A33
@@ -33,7 +25,6 @@ internal object DocCharProps {
     private const val ISS_SUPER = 1
     private const val ISS_SUB = 2
 
-    /** Applies the character sprms in `buf[from, end)` to [props]; [fonts] says which faces are monospaced. */
     fun apply(props: RunProps, buf: ByteArray, from: Int, end: Int, fonts: DocFontTable) {
         // Colour, highlight and face each arrive as more than one sprm, the finer one preferred whatever
         // order they come in, so they are settled after the walk.
@@ -55,7 +46,6 @@ internal object DocCharProps {
                     ISS_SUB -> ScriptShift.SUB
                     else -> ScriptShift.NONE
                 }
-                // Raised or lowered text; writers that build super/subscript out of a shift and a smaller size use it.
                 CHPSPOS -> {
                     val shift = reader.i16()
                     props.script = when {
@@ -68,7 +58,6 @@ internal object DocCharProps {
                 CCV -> colorRef = DocColors.colorRef(buf, reader.operand)
                 CHIGHLIGHT -> highlight = DocColors.ico(reader.u8())
                 CSHD80 -> shading = DocColors.shd80(reader.u16())
-                // A variable-size operand: a length byte, then the 10-byte SHD.
                 CSHD -> shading = DocColors.shd(buf, reader.operand + 1)
                 CRGFTC0 -> asciiFont = reader.u16()
                 CRGFTC2 -> otherFont = reader.u16()
@@ -88,7 +77,6 @@ internal object DocCharProps {
         else -> current
     }
 
-    /** The character style and plain-reset sprms of a CHPX, which the resolver acts on before the rest. */
     class Scan(val styleIstd: Int, val plain: Boolean)
 
     fun scan(buf: ByteArray, from: Int, end: Int): Scan {

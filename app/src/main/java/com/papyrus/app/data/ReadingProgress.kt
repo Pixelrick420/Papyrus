@@ -6,10 +6,7 @@ import androidx.room.ForeignKey
 import androidx.room.PrimaryKey
 import androidx.room.Query
 
-/**
- * Where a document was last read, one row per document in its own table: a save here never re-emits
- * Home's list, and the numbers-only anchor leaves no plaintext of an unlocked document behind.
- */
+// One row per document in its own table so a save never re-emits Home's list; the numbers-only anchor leaves no plaintext of an unlocked document.
 @Entity(
     tableName = "reading_progress",
     foreignKeys = [
@@ -22,7 +19,6 @@ import androidx.room.Query
     ],
 )
 data class ReadingProgressEntity(
-    /** The primary key doubles as the index the foreign key needs. */
     @PrimaryKey val documentId: Long,
     /** [LocationKind.code]; a number so an unknown future code is ignored, never crash a read. */
     val locationKind: Int,
@@ -31,7 +27,6 @@ data class ReadingProgressEntity(
     /** Units when saved; lets a restore clamp the anchor without opening the document. */
     val unitCount: Int,
     val zoomScale: Float,
-    /** 0..1, derived when saved. */
     val progress: Float,
     val updatedAt: Long,
 )
@@ -42,10 +37,7 @@ interface ReadingProgressDao {
     @Query("SELECT * FROM reading_progress WHERE documentId = :documentId")
     suspend fun get(documentId: Long): ReadingProgressEntity?
 
-    /**
-     * Replaces the document's previous position; safe because nothing references this table.
-     * `WHERE EXISTS` makes a save for a meantime-removed document a no-op, not a foreign-key failure.
-     */
+    // Safe to replace since nothing references this table; WHERE EXISTS makes a save for a removed document a no-op, not a foreign-key failure.
     @Query(
         "INSERT OR REPLACE INTO reading_progress " +
             "(documentId, locationKind, locationUnit, locationFraction, unitCount, zoomScale, progress, updatedAt) " +

@@ -10,10 +10,7 @@ import androidx.room.Query
 import androidx.room.Transaction
 import kotlinx.coroutines.flow.Flow
 
-/**
- * A reader's bookmark in one library document; transient documents (negative ids) never get one.
- * [label] is typed or positional ("Page 12"), never an excerpt: an unlocked document leaks no text.
- */
+// [label] is typed or positional, never an excerpt: an unlocked document leaks no text.
 @Entity(
     tableName = "bookmarks",
     foreignKeys = [
@@ -39,10 +36,7 @@ data class BookmarkEntity(
 @Dao
 interface BookmarkDao {
 
-    /**
-     * Scoped to one document, so a bookmark added elsewhere never re-emits this list. The order is a
-     * convenience: the screen orders again with [forFormat], which also drops rows of a foreign kind.
-     */
+    // The screen re-orders with [forFormat], which also drops rows of a foreign kind.
     @Query(
         "SELECT * FROM bookmarks WHERE documentId = :documentId " +
             "ORDER BY locationUnit, locationFraction, createdAt, id",
@@ -62,11 +56,7 @@ interface BookmarkDao {
     @Query("DELETE FROM bookmarks WHERE id = :id")
     suspend fun delete(id: Long)
 
-    /**
-     * Puts a deleted bookmark back under its old id, for Undo. `WHERE EXISTS` turns a document removed in
-     * the meantime into a no-op instead of a foreign-key failure, and `OR IGNORE` an id that is back already.
-     * Only this table is written: nothing here can touch `documents` or what cascades from it.
-     */
+    // WHERE EXISTS makes a since-removed document a no-op, not an FK failure; OR IGNORE covers an id that is back already.
     @Query(
         "INSERT OR IGNORE INTO bookmarks (id, documentId, locationKind, locationUnit, locationFraction, label, createdAt) " +
             "SELECT :id, :documentId, :locationKind, :locationUnit, :locationFraction, :label, :createdAt " +
@@ -82,10 +72,7 @@ interface BookmarkDao {
         createdAt: Long,
     )
 
-    /**
-     * Adds a bookmark unless the spot is bookmarked already or the document is full. Read and write share
-     * one transaction, so two quick taps cannot both pass the check.
-     */
+    // One transaction, so two quick taps cannot both pass the check.
     @Transaction
     suspend fun addIfAllowed(
         documentId: Long,

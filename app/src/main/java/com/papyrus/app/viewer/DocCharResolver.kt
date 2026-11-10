@@ -1,10 +1,6 @@
 package com.papyrus.app.viewer
 
-/**
- * Turns a run's direct character sprms into the [CharFormat] it draws with, by layering what Word
- * layers: the paragraph's style, then a character style if the run names one, then the sprms. A run
- * says what it is by its bytes and its paragraph's style alone, so results are cached by both.
- */
+// A run's format depends on its bytes and its paragraph's style alone, so results are cached by both.
 internal class DocCharResolver(private val styles: DocStyleSheet, private val fonts: DocFontTable) {
 
     private class Key(val istd: Int, val sprms: ByteArray) {
@@ -17,7 +13,6 @@ internal class DocCharResolver(private val styles: DocStyleSheet, private val fo
     private val formats = HashMap<Key, CharFormat>()
     private val plain = HashMap<Int, CharFormat>()
 
-    /** The format of a run in a paragraph of style [paraIstd] with direct sprms `page[from, end)`; none if [page] is null. */
     fun format(paraIstd: Int, page: ByteArray?, from: Int, end: Int): CharFormat {
         if (page == null || end <= from) return plain.getOrPut(paraIstd) { copyOf(paragraphBase(paraIstd)).toFormat(null) }
         if (formats.size >= MAX_CACHED) formats.clear()
@@ -36,7 +31,6 @@ internal class DocCharResolver(private val styles: DocStyleSheet, private val fo
         return props.toFormat(null)
     }
 
-    /** What the paragraph style gives its text before any run says anything. */
     private fun paragraphBase(paraIstd: Int): RunProps {
         val istd = if (styles.has(paraIstd)) paraIstd else 0
         return paragraphBases.getOrPut(istd) {
@@ -46,7 +40,6 @@ internal class DocCharResolver(private val styles: DocStyleSheet, private val fo
         }
     }
 
-    /** A layer that may be changed without changing the cached one. */
     private fun copyOf(base: RunProps): RunProps = base.mergedOver(RunProps())
 
     private companion object {

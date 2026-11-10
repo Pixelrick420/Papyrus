@@ -4,10 +4,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
 
-/**
- * The policy every surface shares for what a document-supplied link may become when opened.
- * Pure string handling, so a JVM test is the whole story - no Uri, no Context, no Android.
- */
 class LinkTargetsTest {
 
     @Test

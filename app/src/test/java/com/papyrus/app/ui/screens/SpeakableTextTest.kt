@@ -7,7 +7,6 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 import java.io.File
 
-/** What the viewer can tell about a document's own text: enough to read aloud, nothing, or not known. */
 class SpeakableTextTest {
 
     @Test

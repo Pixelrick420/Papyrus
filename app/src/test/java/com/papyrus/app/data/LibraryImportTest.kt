@@ -13,7 +13,6 @@ import java.io.File
 import java.io.IOException
 import java.io.InputStream
 
-/** The name chain and the copy's failure contract: no partial file survives a failed copy. */
 class LibraryImportTest {
 
     @get:Rule
@@ -243,7 +242,6 @@ class LibraryImportTest {
     private fun candidate(bytes: ByteArray): File =
         File(temp.newFolder("imports"), "doc.pdf").apply { writeBytes(bytes) }
 
-    /** One byte, then failure, so the partial write path is exercised rather than a clean open. */
     private fun oneByteThenFails(): InputStream = object : InputStream() {
         private var reads = 0
         override fun read(): Int = if (reads++ == 0) 'x'.code else throw IOException("boom")

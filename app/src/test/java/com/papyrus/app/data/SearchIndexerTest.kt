@@ -15,20 +15,12 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/**
- * The indexer's queue behaviour: what it reads, in what order it extracts, and what it writes.
- *
- * The database is the queue by design, so these tests are about what the indexer does with one
- * answer: a batch is drained until it comes back empty, a document removed while it was being read
- * is skipped, and a failed extraction is written down so the queue cannot stall on it.
- */
 class SearchIndexerTest {
 
     private val dao = FakeSearchDao()
     private val extracted = mutableListOf<Long>()
 
     private companion object {
-        /** A size the eager pass reads, and one just past it. */
         const val SMALL = 1_000L
         const val LARGE = SearchIndexer.EAGER_MAX_BYTES + 1
     }
@@ -43,7 +35,6 @@ class SearchIndexerTest {
         lastOpenedAt = 0,
     )
 
-    /** Text for every document, remembering the order extraction was asked in. */
     private fun extraction(text: (DocumentEntity) -> String = { "text of ${it.title}" }) =
         SearchIndexer(
             dao = dao,
@@ -54,7 +45,6 @@ class SearchIndexerTest {
             library = emptyFlow(),
         )
 
-    /** A library over time, as the indexer is told of it: each list is every document's id and size. */
     private fun indexerOver(vararg libraries: List<Pair<Long, Long>>) =
         SearchIndexer(
             dao = dao,
@@ -65,7 +55,6 @@ class SearchIndexerTest {
             library = flowOf(*libraries),
         )
 
-    /** How many times the eager pass is woken by [libraries], one after another. */
     private fun wakeups(vararg libraries: List<Pair<Long, Long>>) = runBlocking {
         flowOf(*libraries).eagerArrivals(SearchIndexer.EAGER_MAX_BYTES).toList().size
     }
@@ -103,7 +92,6 @@ class SearchIndexerTest {
         runBlocking { extraction().indexPending() }
 
         assertEquals(20, dao.written.size)
-        // Two batches and the empty read that ends the pass: 16, 4, then nothing left.
         assertEquals(3, dao.pendingQueries.size)
         assertEquals(SearchIndexer.INDEX_VERSION, dao.pendingQueries.first().first)
         assertTrue("a batch should be bounded", dao.pendingQueries.first().second < 20)
@@ -182,7 +170,6 @@ class SearchIndexerTest {
 
         runBlocking { indexer.start(this) }
 
-        // One pass for the start-up call and one for the emission; each starts with an empty read.
         assertTrue("the change should have been acted on", dao.pendingQueries.size >= 2)
     }
 
@@ -197,9 +184,6 @@ class SearchIndexerTest {
         assertEquals(1, dao.pendingQueries.size)
     }
 
-    // --- Only what is new or changed ---
-
-    /** An indexed document and the modified time its text was read at. */
     private fun indexedWith(id: Long, modified: Long) = IndexedDocument(document(id), modified)
 
     @Test
@@ -244,7 +228,6 @@ class SearchIndexerTest {
             dao = dao,
             extract = { doc -> extracted += doc.id; ExtractedText("x", TextIndexState.INDEXED) },
             library = emptyFlow(),
-            // No answer for one, and zero, which a provider uses for "unknown", for the other.
             lastModified = { doc -> if (doc.id == 1L) null else 0 },
         )
 
@@ -266,7 +249,6 @@ class SearchIndexerTest {
         runBlocking { indexer.indexChanged() }
 
         assertEquals((1L..20L).toList(), extracted)
-        // 16, 4, then the empty read that ends it.
         assertEquals(3, dao.indexedQueries)
     }
 
@@ -307,18 +289,12 @@ class SearchIndexerTest {
             lastModified = { 500 },
         )
 
-        // Finishes by itself: the library flow is finite, and each change settles for a second first.
         runBlocking { indexer.start(this) }
 
-        // The start-up pass and one for each change were all asked for the queue...
         assertTrue("a library change should still run a pass", dao.pendingQueries.size >= 3)
-        // ...but only the first walked the indexed rows: a full page, then the empty read that ends it.
         assertEquals(2, dao.indexedQueries)
     }
 
-    // --- Only while it may ---
-
-    /** Runs [body] while [indexer] is started on this scope, then stops whatever it left running. */
     private fun whileIndexing(indexer: SearchIndexer, body: suspend CoroutineScope.() -> Unit) = runBlocking {
         indexer.start(this)
         try {
@@ -384,7 +360,6 @@ class SearchIndexerTest {
             dao = dao,
             extract = { doc ->
                 extracted += doc.id
-                // The reader opens a document while the first one is being read.
                 if (doc.id == 1L) open.value = false
                 ExtractedText("text", TextIndexState.INDEXED)
             },
@@ -395,7 +370,6 @@ class SearchIndexerTest {
 
         whileIndexing(indexer) {
             delay(100)
-            // The one in flight is finished and written; the next is not started.
             assertEquals(listOf(1L), extracted)
             assertEquals(listOf(1L), dao.written.map { it.documentId })
 
@@ -480,7 +454,6 @@ class SearchIndexerTest {
 
     @Test
     fun `turning the setting on reads a small file even while the gate stays closed`() {
-        // The gate is closed for another reason, such as battery saver, which small files ignore.
         dao.queue +=
             listOf(document(1, size = 4_096), document(2, size = SearchIndexer.EAGER_MAX_BYTES + 1))
         val enabled = MutableStateFlow(false)
@@ -497,7 +470,6 @@ class SearchIndexerTest {
             assertTrue("nothing should be read while the setting is off", extracted.isEmpty())
 
             enabled.value = true
-            // Past the import settle delay the eager pass waits out before it runs.
             delay(1_300)
         }
 
@@ -512,7 +484,6 @@ class SearchIndexerTest {
             dao = dao,
             extract = { doc ->
                 extracted += doc.id
-                // The person turns the setting off while the first document is being read.
                 if (doc.id == 1L) enabled.value = false
                 ExtractedText("text", TextIndexState.INDEXED)
             },
@@ -554,7 +525,6 @@ class SearchIndexerTest {
 
     @Test
     fun `a document leaving the library does not`() {
-        // The first list is the one wake-up; the removal adds nothing to read.
         assertEquals(1, wakeups(listOf(1L to SMALL, 2L to SMALL), listOf(1L to SMALL)))
     }
 
@@ -567,9 +537,7 @@ class SearchIndexerTest {
     @Test
     fun `a size change wakes it only when the file is small afterwards`() {
         assertEquals(2, wakeups(listOf(1L to SMALL), listOf(1L to SMALL + 1)))
-        // Grew past the limit: nothing left for the eager pass to read.
         assertEquals(1, wakeups(listOf(1L to SMALL), listOf(1L to LARGE)))
-        // Shrank under it: now there is.
         assertEquals(1, wakeups(listOf(1L to LARGE), listOf(1L to SMALL)))
     }
 
@@ -584,7 +552,6 @@ class SearchIndexerTest {
     fun `a library change that adds only large files does not run the eager pass again`() {
         runBlocking { indexerOver(emptyList(), listOf(1L to LARGE)).start(this) }
 
-        // The start-up pass alone.
         assertEquals(1, dao.eagerPendingQueries.size)
     }
 
@@ -592,7 +559,6 @@ class SearchIndexerTest {
     fun `a library change that adds a small file runs the eager pass again`() {
         runBlocking { indexerOver(emptyList(), listOf(1L to SMALL)).start(this) }
 
-        // The start-up pass, then the one the import woke.
         assertEquals(2, dao.eagerPendingQueries.size)
     }
 
@@ -603,7 +569,6 @@ class SearchIndexerTest {
 
         whileIndexing(gatedIndexer(open, lastModified = { 500 })) {
             delay(100)
-            // A full walk: the one page, then the empty read that ends it.
             assertEquals(2, dao.indexedQueries)
 
             open.value = false
@@ -623,7 +588,6 @@ class SearchIndexerTest {
             dao = dao,
             extract = { doc ->
                 extracted += doc.id
-                // The reader opens a document while the first changed one is being read.
                 if (doc.id == 1L && extracted.size == 1) open.value = false
                 ExtractedText("text", TextIndexState.INDEXED)
             },
@@ -644,8 +608,6 @@ class SearchIndexerTest {
         assertTrue("the second changed document was never read", 2L in extracted)
     }
 
-    // --- Eager indexing against the real gate and the setting ---
-
     private val enabled = MutableStateFlow(true)
     private val reading = MutableStateFlow(false)
     private val batterySaver = MutableStateFlow(false)
@@ -653,7 +615,6 @@ class SearchIndexerTest {
     private val small = 4_096L
     private val large = SearchIndexer.EAGER_MAX_BYTES + 1
 
-    /** An indexer behind the real [IndexingGate], with the eager limit left at its default. */
     private fun behindGate() = SearchIndexer(
         dao = dao,
         extract = { doc -> extracted += doc.id; ExtractedText("text", TextIndexState.INDEXED) },

@@ -12,7 +12,6 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** The list's states: what the query hides, what removal hides, and what the empty text refers to. */
 class HomeUiStateTest {
 
     private fun doc(id: Long, title: String, format: DocumentFormat = DocumentFormat.PDF) = DocumentEntity(
@@ -29,7 +28,6 @@ class HomeUiStateTest {
     private val notes = doc(2, "meeting notes.txt")
     private val library = listOf(report, notes)
 
-    /** Every builder input, so each test only names the one it varies. */
     private fun homeState(
         all: List<DocumentEntity> = library,
         query: String = "",
@@ -173,7 +171,6 @@ class HomeUiStateTest {
 
     @Test
     fun `a content hit the filter hides does not come back`() {
-        // The chips narrow what a search can surface, exactly as they narrow the browsing list.
         val notes = doc(2, "meeting notes.txt", DocumentFormat.TEXT)
         val pdfOnly = LibraryFilter().toggled(FormatGroup.PDF)
 

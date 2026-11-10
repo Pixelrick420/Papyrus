@@ -12,7 +12,6 @@ class SyntaxHighlighterTest {
     private fun language(fileName: String): CodeLanguage = CodeLanguages.forFileName(fileName)
         ?: error("no language for $fileName")
 
-    /** `KIND:text` per token, so an expectation reads like the source it describes. */
     private fun tokens(fileName: String, text: String, state: Int = 0): List<String> {
         val found = SyntaxHighlighter.tokenize(language(fileName), text, state)
         return (0 until found.size).map { "${found.kind(it)}:${text.substring(found.start(it), found.end(it))}" }
@@ -221,7 +220,6 @@ class SyntaxHighlighterTest {
         for (extension in sample) assertNotNull(extension, CodeLanguages.forFileName("file.$extension"))
     }
 
-    /** Whatever the input, tokens stay ordered and in range, and the scan ends. */
     @Test
     fun `every language survives garbage and keeps its tokens ordered and in range`() {
         val pieces = listOf(

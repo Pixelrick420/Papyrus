@@ -19,22 +19,15 @@ import io.noties.markwon.image.data.DataUriSchemeHandler
 import io.noties.markwon.syntax.SyntaxHighlight
 import org.commonmark.node.Node
 
-/** The body size Markdown is laid out at before zoom, in sp. */
 internal const val MARKDOWN_BASE_TEXT_SP = 16f
 
-/** How each [TokenKind] looks inside a Markdown code block: an ARGB colour and whether it is slanted. */
 internal class CodeTokenStyles(val colors: IntArray, val italics: BooleanArray)
 
-/**
- * The result of [MarkdownRenderer.create]: the Markwon instance for synchronous rendering plus the
- * [LatexSpanFactory] holding detected $$...$$ ranges for asynchronous RaTeX span creation.
- */
 internal data class MarkdownRenderResult(
     val markwon: Markwon,
     val latexFactory: LatexSpanFactory,
 )
 
-/** Builds the [Markwon] used to render one Markdown document. */
 internal object MarkdownRenderer {
 
     /** An image decoded larger than this is scaled down first: every image in a document loads at once. */
@@ -46,11 +39,6 @@ internal object MarkdownRenderer {
     private const val CHECKBOX_OUTLINE = 0xFF8B949E.toInt()
     private const val CHECKBOX_MARK = 0xFFFFFFFF.toInt()
 
-    /**
-     * Builds Markwon for [source] and detects any $$...$$ LaTeX formulas in it.
-     *
-     * @param source the full Markdown document text, scanned for math ranges.
-     */
     fun create(context: Context, source: String): MarkdownRenderResult {
         return MarkdownRenderResult(
             markwon = Markwon.builder(context)
@@ -63,8 +51,7 @@ internal object MarkdownRenderer {
                         // Offline security constraint: handlers are stripped so no build can fetch remote images.
                         images.removeSchemeHandler("http")
                         images.removeSchemeHandler("https")
-                        // A drawing is a `data:image/svg+xml` URI. Markwon decodes bitmaps and has no SVG, so the subset
-                        // renderer the EPUB reader draws with draws it; every other `data:` URI is Markwon's.
+                        // Markwon has no SVG, so the subset renderer the EPUB reader draws with handles `data:image/svg+xml`; every other `data:` URI is Markwon's.
                         images.addSchemeHandler(SvgDataUriSchemeHandler(DataUriSchemeHandler.create()))
                         images.defaultMediaDecoder(DefaultDownScalingMediaDecoder.create(context.resources, MAX_IMAGE_PX, MAX_IMAGE_PX))
                         images.errorHandler { _, _ -> null }
@@ -77,17 +64,10 @@ internal object MarkdownRenderer {
     }
 }
 
-/**
- * The parts of a rendered document that depend on the theme, which can change while the document is open and
- * after it was parsed: the colours of the tokens in fenced code blocks.
- *
- * Code is coloured by the app's own tokenizer, the one behind source files, so a block in Markdown looks the
- * same as the same code in a `.kt` file. A fence is coloured by the language it names; no name, or one with no
- * definition, shows the block plain.
- */
+// Theme-dependent token colours are applied after parsing because the theme can change while the document is open.
+// Code is coloured by the app's own tokenizer, so a block looks the same as in a `.kt` file; no name, or one with no definition, shows plain.
 internal class MarkdownStylePlugin : AbstractMarkwonPlugin(), SyntaxHighlight {
 
-    /** Null until the viewer supplies a palette; the tokens then draw in the surrounding text colour. */
     @Volatile
     var codeStyles: CodeTokenStyles? = null
         private set
@@ -124,13 +104,8 @@ internal class MarkdownStylePlugin : AbstractMarkwonPlugin(), SyntaxHighlight {
     }
 
     override fun beforeSetText(textView: TextView, markdown: Spanned) {
-        // No per-document plugin state to apply here.
     }
 
-    /**
-     * Brings the theme-dependent colours up to date for the text already in [view]; the viewer calls it
-     * whenever it composes, so it does nothing unless the code styles actually changed.
-     */
     fun applyTheme(view: TextView, styles: CodeTokenStyles) {
         if (styles === codeStyles) return
         codeStyles = styles
@@ -138,7 +113,6 @@ internal class MarkdownStylePlugin : AbstractMarkwonPlugin(), SyntaxHighlight {
     }
 
     private companion object {
-        /** Characters of fenced code coloured in one render; a few hundred thousand tokens is the heap this allows. */
         const val HIGHLIGHT_BUDGET_CHARS = 256 * 1024
     }
 }

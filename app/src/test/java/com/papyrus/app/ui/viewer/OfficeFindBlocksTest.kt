@@ -8,7 +8,6 @@ import com.papyrus.app.viewer.TextSpan
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
-/** Find-in-file over the block kinds that carry formatting, lists and notes. */
 class OfficeFindBlocksTest {
 
     private val bold = CharFormat(bold = true)

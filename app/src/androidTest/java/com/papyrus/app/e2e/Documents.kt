@@ -5,13 +5,8 @@ import java.util.Locale
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
-/**
- * The bytes of documents too structured to write inline. Each is the smallest file the viewer's reader accepts,
- * built like the unit tests' own fixtures, which is also what keeps them readable in a diff.
- */
 internal object Documents {
 
-    /** A PDF with a page for each of [pages], each showing its text in a standard font. */
     fun pdf(vararg pages: String): ByteArray {
         val objects = ArrayList<String>()
         objects += "<< /Type /Catalog /Pages 2 0 R >>"
@@ -36,7 +31,6 @@ internal object Documents {
 
     private fun String.pdfEscaped() = replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
 
-    /** A Word file with [body] as the content of `w:body`. */
     fun docx(body: String): ByteArray = zip(
         "[Content_Types].xml" to DOCX_CONTENT_TYPES,
         "word/document.xml" to """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -45,7 +39,6 @@ internal object Documents {
             </w:document>""",
     )
 
-    /** A paragraph of a Word file; a [style] of "Heading1" makes it a heading. */
     fun docxParagraph(text: String, style: String? = null): String {
         val properties = style?.let { """<w:pPr><w:pStyle w:val="$it"/></w:pPr>""" }.orEmpty()
         return "<w:p>$properties<w:r><w:t>${text.xmlEscaped()}</w:t></w:r></w:p>"
@@ -57,7 +50,6 @@ internal object Documents {
         }
     }
 
-    /** A text document with [body] as the content of `office:text`. */
     fun odt(body: String): ByteArray = zip(
         "mimetype" to "application/vnd.oasis.opendocument.text",
         "content.xml" to """<?xml version="1.0" encoding="UTF-8"?>
@@ -73,10 +65,7 @@ internal object Documents {
 
     fun odtParagraph(text: String) = "<text:p>${text.xmlEscaped()}</text:p>"
 
-    /**
-     * A text document that declares an encrypted entry in its manifest, which is all the app reads to tell that
-     * a file is password protected. The entry's bytes are never decrypted by anything here, so they are plain.
-     */
+    // Declares an encrypted entry in its manifest, which is all the app reads to tell that a file is password protected.
     fun encryptedOdt(): ByteArray = zip(
         "mimetype" to "application/vnd.oasis.opendocument.text",
         "content.xml" to """<?xml version="1.0" encoding="UTF-8"?>
@@ -88,10 +77,8 @@ internal object Documents {
         "META-INF/manifest.xml" to ENCRYPTED_ODF_MANIFEST,
     )
 
-    /** One chapter of a book: [href] is relative to the package folder, [body] is the XHTML inside `body`. */
     class Chapter(val href: String, val body: String)
 
-    /** A book of [chapters] in reading order, with a table of contents of ([title], chapter href) entries. */
     fun epub(chapters: List<Chapter>, contents: List<Pair<String, String>> = emptyList()): ByteArray {
         val manifest = chapters.mapIndexed { index, chapter ->
             """<item id="c$index" href="${chapter.href}" media-type="application/xhtml+xml"/>"""

@@ -12,7 +12,6 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** When a multi-file Remove or Share shows how far it has got, and when it stays quiet. */
 class BulkProgressTest {
 
     private val published = mutableListOf<BulkProgress?>()
@@ -39,9 +38,7 @@ class BulkProgressTest {
 
         assertEquals(
             listOf(
-                // Revealed after the delay with the one step already done...
                 BulkProgress(BulkAction.REMOVE, 1, 3),
-                // ...then each step after it.
                 BulkProgress(BulkAction.REMOVE, 2, 3),
                 BulkProgress(BulkAction.REMOVE, 3, 3),
                 null,

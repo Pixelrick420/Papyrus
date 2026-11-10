@@ -9,12 +9,10 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** Hit computation and active-hit derivation, shared by all three viewer surfaces. */
 class FindInFileTest {
 
     @Test
     fun `a blank query has no hits`() {
-        // An empty query must match nothing, or the whole document paints as a match.
         assertEquals(emptyList<Int>(), findChunkHits(listOf("alpha", "beta"), ""))
         assertEquals(emptyList<Int>(), findChunkHits(listOf("alpha", "beta"), "   "))
     }
@@ -103,7 +101,6 @@ class FindInFileTest {
                 listOf(OfficeCell("first needle\nsecond needle", 0), OfficeCell("needle", 1)),
             ),
         )
-        // 2 in the first cell, 1 + 1 in the two paragraphs of the next, then 1 in the last: 5 in all.
         assertEquals(listOf(0, 0, 0, 0, 0), findBlockHits(listOf(table), "needle"))
     }
 
@@ -154,7 +151,6 @@ class FindInFileTest {
 
     @Test
     fun `there is no active hit when the cursor is outside the hit list`() {
-        // "No hits yet" and "cursor past the end" are both null, not index 0.
         assertNull(FindState().activeIndex)
         assertNull(FindState(hits = emptyList(), position = 0).activeIndex)
         assertNull(FindState(hits = listOf(2), position = 5).activeIndex)
@@ -179,7 +175,6 @@ class FindInFileTest {
 
     @Test
     fun `occurrences are counted per match, not per chunk`() {
-        // Markdown has no chunks, so the counter comes from raw occurrences.
         assertEquals(3, countOccurrences("alpha beta alpha gamma alpha", "alpha"))
         assertEquals(1, countOccurrences("alpha beta", "beta"))
         assertEquals(0, countOccurrences("alpha beta", "gamma"))
@@ -190,7 +185,6 @@ class FindInFileTest {
         // "aa" in "aaaa" is two matches, not three: the page shows two highlights.
         assertEquals(2, countOccurrences("aaaa", "aa"))
         assertEquals(1, countOccurrences("aaaa", "aaaa"))
-        // Five a's hold two whole "aa" matches; the fifth is a leftover, not a third.
         assertEquals(2, countOccurrences("aaaaa", "aa"))
     }
 
@@ -208,7 +202,6 @@ class FindInFileTest {
 
     @Test
     fun `an in-place-only match set reports a count but cannot navigate`() {
-        // Markdown has occurrences but no hit list; the bar reads both.
         val state = FindState(open = true, query = "alpha", hits = emptyList(), position = -1, occurrences = 7)
 
         assertEquals(7, state.count)

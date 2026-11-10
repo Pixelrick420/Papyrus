@@ -13,22 +13,11 @@ import com.papyrus.app.viewer.BookLink
 import com.papyrus.app.viewer.resolvedLink
 import io.noties.markwon.core.spans.LinkSpan
 
-/**
- * How a document surface asks for a link to be opened. A viewer provides one so every surface in it
- * reports an unhandled link the same way; the default does nothing.
- */
 internal val LocalLinkOpener = staticCompositionLocalOf<(String) -> Unit> { { _ -> } }
 
-/**
- * The same for a link to a place inside the open book, which the viewer scrolls to itself and never hands
- * to the system; the default does nothing, so a surface outside a viewer keeps working.
- */
 internal val LocalBookLinkOpener = staticCompositionLocalOf<(BookLink) -> Unit> { { _ -> } }
 
-/**
- * Opens [url] in whichever app handles it, `false` when none did. Filtered through [resolvedLink] first
- * so a document can never send the reader to a `javascript:`, `file:` or `intent:` address.
- */
+// Filtered through [resolvedLink] so a document can never send the reader to a `javascript:`, `file:` or `intent:` address.
 internal fun openLink(context: Context, url: String): Boolean {
     val resolved = resolvedLink(url) ?: return false
     val intent = Intent(Intent.ACTION_VIEW, Uri.parse(resolved))
@@ -42,10 +31,7 @@ internal fun openLink(context: Context, url: String): Boolean {
     }
 }
 
-/**
- * A [LinkMovementMethod] that hands a tapped link to [onLink] instead of the span's own resolver,
- * which catches only `ActivityNotFoundException` and so would crash on a `file://` tap.
- */
+// The span's own resolver catches only ActivityNotFoundException and would crash on a `file://` tap.
 internal class GuardedLinkMovementMethod(private val onLink: (String) -> Unit) : LinkMovementMethod() {
 
     override fun onTouchEvent(widget: TextView, buffer: Spannable, event: MotionEvent): Boolean {

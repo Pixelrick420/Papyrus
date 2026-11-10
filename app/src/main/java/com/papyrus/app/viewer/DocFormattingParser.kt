@@ -2,30 +2,17 @@ package com.papyrus.app.viewer
 
 import java.io.IOException
 
-/**
- * [length] consecutive characters of a piece that share one paragraph's properties and one
- * [format]. [para] is null when the document carries no paragraph properties at all, which is how
- * plain text is told apart from text whose paragraphs were all in the default style.
- */
+// [para] is null when the document carries no paragraph properties at all, which is how plain text is told apart from text whose paragraphs were all in the default style.
 internal class DocRun(val length: Int, val para: DocParaProps?, val format: CharFormat = CharFormat.PLAIN)
 
-/**
- * Where a document keeps its formatting, and the way into it: the style sheet, and the paragraph
- * (PAPX) and character (CHPX) property runs found through a piece's `fc`. Everything here is optional
- * enrichment, so a structure that is missing or damaged is dropped and the text is read without it.
- */
+// Everything here is optional enrichment, so a missing or damaged structure is dropped and the text is read without it.
 internal class DocFormattingParser private constructor(
     private val styles: DocStyleSheet,
     private val papx: DocFkpIndex?,
     private val chpx: DocFkpIndex?,
     private val chars: DocCharResolver,
 ) {
-    /**
-     * The runs of the [charCount] characters whose first sits at byte offset [fcFrom] of the
-     * `WordDocument` stream, each character [bytesPerChar] bytes wide: one per stretch over which
-     * neither the paragraph nor the character properties change. Lazy: a piece can hold 16 million
-     * characters and the block budget usually ends the walk long before.
-     */
+    // Lazy: a piece can hold 16 million characters and the block budget usually ends the walk long before.
     fun runs(fcFrom: Long, charCount: Int, bytesPerChar: Int): Sequence<DocRun> {
         if (papx == null && chpx == null) return sequenceOf(DocRun(charCount, null))
         return sequence {
@@ -60,14 +47,12 @@ internal class DocFormattingParser private constructor(
 
     private fun <T> Iterator<T>.nextOrNull(): T? = if (hasNext()) next() else null
 
-    /** A PAPX is the paragraph's `istd` then its direct sprms; a paragraph with none is in Normal. */
     private fun paragraphOf(run: DocFkpIndex.Run): DocParaProps {
         val page = run.page ?: return styles.ofStyle(0)
         return styles.paragraph(u16(page, run.start), page, run.start + 2, run.end)
     }
 
     companion object {
-        /** FibRgFcLcb97 indexes of fcPlcfBteChpx and fcPlcfBtePapx. */
         const val PAIR_BTE_CHPX = 12
         const val PAIR_BTE_PAPX = 13
 
@@ -90,11 +75,7 @@ internal fun CompoundFile.readOrNull(name: String, offset: Long, length: Int): B
         null
     }
 
-/**
- * 512-byte FKP pages of the `WordDocument` stream. Pages are read a few at a time, since a document
- * stores its formatting pages one after another and a [CompoundFile] read costs a pass over the
- * stream; a page that cannot be read is remembered as absent.
- */
+// Pages are read a few at a time: a document stores its formatting pages one after another and a [CompoundFile] read costs a pass over the stream.
 internal class DocPageReader(private val cfb: CompoundFile, private val streamSize: Long) {
     private val cache = HashMap<Int, ByteArray?>()
 
@@ -123,30 +104,20 @@ internal class DocPageReader(private val cfb: CompoundFile, private val streamSi
     }
 }
 
-/**
- * A PlcBtePapx or PlcBteChpx: `n + 1` ascending file positions, then `n` page numbers, so entry `i`
- * names the FKP page that holds the properties for characters at `[fc[i], fc[i + 1])`. A page is
- * `crun` run boundaries (4 bytes each, one more than there are runs), then per run an entry
- * pointing at its properties, with `crun` in the page's last byte. A paragraph entry is 13 bytes (a
- * word offset, then a 12-byte PHE) and a character entry is 1 byte (a word offset); offset 0 means
- * the run has no properties of its own.
- */
+// A PlcBtePapx or PlcBteChpx: `n + 1` ascending file positions, then `n` FKP page numbers. A paragraph entry is 13 bytes (word offset, 12-byte PHE), a character entry 1 byte.
 internal class DocFkpIndex private constructor(
     private val bteFc: LongArray,
     private val pageNumbers: IntArray,
     private val reader: DocPageReader,
     private val paragraph: Boolean,
 ) {
-    /** `[from, to)` in file positions; its properties are `page[start, end)`, or none when [page] is null. */
     class Run(val from: Long, val to: Long, val page: ByteArray?, val start: Int, val end: Int)
 
     private val entryBytes = if (paragraph) PAPX_ENTRY_BYTES else CHPX_ENTRY_BYTES
     private val maxRuns = (DocPageReader.PAGE - 1 - 4) / (4 + entryBytes)
 
-    /**
-     * Runs covering file positions `[fcFrom, fcTo)` in order, with a property-less run wherever the
-     * file says nothing, so the result always spans the whole range.
-     */
+    // Runs covering file positions `[fcFrom, fcTo)` in order, with a property-less run wherever the
+    // file says nothing, so the result always spans the whole range.
     fun runs(fcFrom: Long, fcTo: Long): Sequence<Run> = sequence {
         var pos = fcFrom
         var entry = entryAt(fcFrom)
@@ -197,7 +168,6 @@ internal class DocFkpIndex private constructor(
         if (pos < fcTo) yield(Run(pos, fcTo, null, 0, 0))
     }
 
-    /** Index of the last entry starting at or before [fc]; 0 if [fc] precedes them all. */
     private fun entryAt(fc: Long): Int {
         var lo = 0
         var hi = pageNumbers.size - 1
@@ -214,7 +184,6 @@ internal class DocFkpIndex private constructor(
         return found
     }
 
-    /** The bytes of run [index]'s properties in [page], or null if it has none or points outside the page. */
     private fun propertiesOf(page: ByteArray, crun: Int, index: Int): IntRange? {
         val entryOffset = (crun + 1) * 4 + index * entryBytes
         val word = page[entryOffset].toInt() and 0xFF
@@ -249,7 +218,6 @@ internal class DocFkpIndex private constructor(
         private const val MAX_BTE_BYTES = 4 * 1024 * 1024
         private const val PAGE_NUMBER_MASK = 0x3FFFFFL
 
-        /** Reads the Plcf at FibRgFcLcb97 entry [pair], or null if it is absent, malformed, or not ascending. */
         fun open(cfb: CompoundFile, fib: DocFib, pair: Int, reader: DocPageReader, paragraph: Boolean): DocFkpIndex? {
             val lcb = fib.lcb(pair)
             // n + 1 four-byte positions and n four-byte page numbers: 8n + 4 bytes.

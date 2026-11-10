@@ -7,10 +7,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlin.random.Random
 
-/**
- * What reaches FTS4 as a MATCH expression, and what must never reach it: the reader's text is
- * untrusted input, and FTS4 throws on syntax it does not understand.
- */
 class SearchQueryTest {
 
     private fun expression(input: String) = SearchQuery.parse(input)?.expression
@@ -101,12 +97,9 @@ class SearchQueryTest {
     fun `nothing searchable parses to null`() {
         assertNull(SearchQuery.parse(""))
         assertNull(SearchQuery.parse("   "))
-        assertNull(SearchQuery.parse("!?.,;:-–-()[]{}'\"*/\\"))
+        assertNull(SearchQuery.parse("!?.,;:---()[]{}'\"*/\\"))
     }
 
-    // --- Properties, over seeded random input so a failure reproduces ---
-
-    /** Everything a reader, a paste or a keyboard can put in the box, FTS4 syntax and odd Unicode included. */
     private val alphabet: List<String> = listOf(
         "a", "b", "z", "Q", "0", "7", "é", "Ü", "ß", "日", "本", "Ω", "٣",
         " ", " ", "  ", "\t", "\n", "\r\n", "\u00A0", "\u3000", "\u0000",
@@ -120,7 +113,6 @@ class SearchQueryTest {
 
     private val inputs: List<String> = Random(20240607).let { random -> List(2_000) { randomInput(random) } }
 
-    /** A word that parses to itself, so a query can be rebuilt from words and compared. */
     private val words = listOf("paper", "Scaling", "naïve", "日本", "2024", "ab", "Über", "x1")
 
     @Test

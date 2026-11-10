@@ -9,21 +9,14 @@ import java.util.BitSet
 import kotlin.math.abs
 import kotlin.coroutines.cancellation.CancellationException
 
-/**
- * Each page's text plus the box of every character, so find-in-file can highlight matches. Rebuilt
- * from glyphs because [PDFTextStripper.getText] normalises and positions stop lining up.
- */
+// Rebuilt from glyphs because [PDFTextStripper.getText] normalises and positions stop lining up.
 object PdfTextExtractor {
 
-    /**
-     * Characters document-wide whose boxes are kept (16 bytes each, about 32 MB); past it pages stay
-     * searchable but not highlightable.
-     */
+    // Characters document-wide whose boxes are kept (16 bytes each, about 32 MB); past it pages stay
+    // searchable but not highlightable.
     private const val MAX_BOXED_CHARS = 2_000_000
 
-    /**
-     * Box height as a fraction of font size; PdfBox's `heightDir` is ~20% short of the real ascender.
-     */
+    // Box height as a fraction of font size; PdfBox's `heightDir` is ~20% short of the real ascender.
     private const val ASCENT_FRACTION = 0.8f
     private const val DESCENT_FRACTION = 0.22f
 
@@ -33,11 +26,7 @@ object PdfTextExtractor {
     /** A shift off the baseline past this fraction of the font size starts a new line. */
     private const val LINE_SHIFT_FRACTION = 0.5f
 
-    /**
-     * One [PdfPageText] per page; a page that fails to parse is empty, not fatal. A page [known]
-     * already has is taken as it is and not read again; it does not count against the box budget,
-     * which is for what this call itself reads.
-     */
+    // A page [known] already has is taken as it is and does not count against the box budget, which is for what this call itself reads.
     fun extract(document: PDDocument, known: (Int) -> PdfPageText? = { null }): List<PdfPageText> {
         val collector = PageCollector()
         var boxedChars = 0
@@ -48,14 +37,9 @@ object PdfTextExtractor {
         }
     }
 
-    /**
-     * Just page [pageIndex] (from 0), for a reader pointing at one page of an unsearched document.
-     * Boxes are always kept: the budget in [extract] is for a whole document read at once.
-     */
     fun extractPage(document: PDDocument, pageIndex: Int): PdfPageText =
         collect(PageCollector(), document, pageIndex, trackBoxes = true)
 
-    /** Reads one page into [collector]; a page that fails to parse is empty, not an error. */
     private fun collect(collector: PageCollector, document: PDDocument, page: Int, trackBoxes: Boolean): PdfPageText {
         collector.reset(trackBoxes)
         collector.startPage = page + 1
@@ -70,7 +54,6 @@ object PdfTextExtractor {
         }
     }
 
-    /** One glyph's origin, writing direction and advance, in the unrotated page frame (y up). */
     private class Placement {
         var originX = 0f
         var originY = 0f
@@ -96,13 +79,11 @@ object PdfTextExtractor {
         private val lineBreaks = BitSet()
         private var boxes = FloatArray(INITIAL_BOXES)
 
-        // Scratch for the glyph being measured, reused so extraction does not allocate per glyph.
         private val box = FloatArray(4)
         private val current = Placement()
         private val previous = Placement()
         private var hasPrevious = false
 
-        // The page's crop-box size and rotation, for turning glyph coordinates into display fractions.
         private var frame = PdfPageFrame(1f, 1f, 0f, 0f, 0)
 
         var trackingBoxes = true
@@ -153,12 +134,10 @@ object PdfTextExtractor {
             }
         }
 
-        /** Reads [position]'s origin and writing direction from its text matrix into [current]. */
         private fun place(position: TextPosition) {
             val matrix = position.textMatrix
             current.originX = matrix.translateX
             current.originY = matrix.translateY
-            // Writing direction, counter-clockwise from +x with y up: 0 left-to-right, 90 upward, ...
             when (position.dir.toInt()) {
                 90 -> { current.dirX = 0f; current.dirY = 1f }
                 180 -> { current.dirX = -1f; current.dirY = 0f }
@@ -175,7 +154,6 @@ object PdfTextExtractor {
             val dx = current.originX - previous.originX
             val dy = current.originY - previous.originY
             val along = dx * current.dirX + dy * current.dirY
-            // Perpendicular to the writing direction: how far off the previous glyph's baseline.
             val across = -dx * current.dirY + dy * current.dirX
             val size = maxOf(previous.size, current.size)
             if (abs(across) > size * LINE_SHIFT_FRACTION) return LINE_BREAK
@@ -184,20 +162,15 @@ object PdfTextExtractor {
             return if (gap < -size) LINE_BREAK else if (gap > size * WORD_GAP_FRACTION) WORD_BREAK else NO_BREAK
         }
 
-        /** Ends the line: one separator (reusing a space already there) flagged as a wrap point. */
         private fun markLineBreak() {
             if (chars.isEmpty()) return
             appendSeparator()
             lineBreaks.set(chars.length - 1)
         }
 
-        /**
-         * [current]'s box as page-relative (left, top, right, bottom). Built from the text matrix, not
-         * `xDirAdj`/`yDirAdj`, which follow the text's direction and misplace boxes on a rotated page.
-         */
+        // Built from the text matrix, not `xDirAdj`/`yDirAdj`, which follow the text's direction and misplace boxes on a rotated page.
         private fun boxOfCurrent(): FloatArray {
             val size = current.size
-            // The glyph's "up" is the writing direction turned a quarter turn counter-clockwise.
             val upX = -current.dirY
             val upY = current.dirX
             val ascent = maxOf(current.height, size * ASCENT_FRACTION)
@@ -206,7 +179,6 @@ object PdfTextExtractor {
             box[1] = Float.MAX_VALUE
             box[2] = -Float.MAX_VALUE
             box[3] = -Float.MAX_VALUE
-            // Corners: [0, advance] along the writing direction by [-descent, ascent] up.
             corner(upX, upY, 0f, -descent)
             corner(upX, upY, 0f, ascent)
             corner(upX, upY, current.advance, -descent)
@@ -214,7 +186,6 @@ object PdfTextExtractor {
             return box
         }
 
-        /** Folds one corner into [box], going from the unrotated page frame to the displayed one. */
         private fun corner(upX: Float, upY: Float, along: Float, up: Float) {
             val x = current.originX + current.dirX * along + upX * up
             val y = current.originY + current.dirY * along + upY * up

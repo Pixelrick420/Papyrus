@@ -11,10 +11,8 @@ import androidx.compose.ui.graphics.Color
 /** The app's blue, `primary` in *both* schemes, so the same blue shows in light and dark. */
 private val Blue = Color(0xFF326AE3)
 
-/**
- * Fixed, not wallpaper-derived: Android 12's dynamic scheme tinted every surface with the wallpaper
- * hue, so a white page sat on a coloured field. Accents are [Blue]; neutrals are true greys.
- */
+// Fixed, not wallpaper-derived: Android 12's dynamic scheme tinted every surface with the wallpaper
+// hue, so a white page sat on a coloured field. Accents are [Blue]; neutrals are true greys.
 private val LightColors: ColorScheme = lightColorScheme(
     primary = Blue,
     onPrimary = Color(0xFFFFFFFF), // 4.9:1 on Blue
@@ -31,7 +29,6 @@ private val LightColors: ColorScheme = lightColorScheme(
     onTertiary = Color(0xFFFFFFFF),
     tertiaryContainer = Color(0xFFDCE3FB),
     onTertiaryContainer = Color(0xFF0A2472),
-    // The role `Scaffold` paints its background from. This was the lavender.
     background = Color(0xFFFBFBFB),
     onBackground = Color(0xFF1A1A1A),
     surface = Color(0xFFFCFCFC),
@@ -52,10 +49,8 @@ private val LightColors: ColorScheme = lightColorScheme(
     outlineVariant = Color(0xFFE5E5E5),
 )
 
-/**
- * Colour-blind safe: accents come from the Okabe-Ito palette, separable by hue alone under
- * protanopia, deuteranopia and tritanopia; surfaces match [LightColors] so a page still reads as paper.
- */
+// Colour-blind safe: accents come from the Okabe-Ito palette, separable by hue alone under
+// protanopia, deuteranopia and tritanopia; surfaces match [LightColors] so a page still reads as paper.
 private val ColorblindColors: ColorScheme = lightColorScheme(
     primary = Color(0xFF0072B2),
     onPrimary = Color(0xFFFFFFFF), // 5.2:1 on #0072B2

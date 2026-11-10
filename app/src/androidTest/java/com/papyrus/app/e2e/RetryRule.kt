@@ -7,22 +7,7 @@ import org.junit.rules.TestRule
 import org.junit.runner.Description
 import org.junit.runners.model.Statement
 
-/**
- * Runs a test again when it fails, so a lost tap or a frame that arrived late on the CI emulator does not
- * fail the build. A test that fails on every attempt still fails, with the earlier attempts attached to its
- * stack trace as suppressed exceptions, so nothing about the failures is lost.
- *
- * Put outside [FreshInstallRule] (see [E2eTest]) so each attempt starts from the same fresh install as the first.
- *
- * Retries are not free, and they must not hide a broken build, so two limits apply:
- *  - a test gets at most [attempts] attempts, and
- *  - the whole run gets at most [MAX_RETRIES_PER_RUN] retries between all its tests. A build that is wrong
- *    rather than flaky fails nearly everything; without this cap each of those tests would be run [attempts]
- *    times and the job would end at its timeout instead of at a report.
- *
- * A test that fails and then passes is reported to logcat under [TAG] as `FLAKY ...`; CI lists those in the job
- * summary, because a retry that goes unseen is a flake nobody gets to fix.
- */
+// Reruns a failed test so a lost tap or a late frame on the CI emulator does not fail the build; a test that fails every attempt still fails.
 class RetryRule(private val attempts: Int = DEFAULT_ATTEMPTS) : TestRule {
 
     init {
@@ -56,7 +41,6 @@ class RetryRule(private val attempts: Int = DEFAULT_ATTEMPTS) : TestRule {
         }
     }
 
-    /** The failure's type and first line of message: enough to tell flakes apart in logcat, short enough to grep. */
     private fun Throwable.summary(): String {
         val firstLine = message.orEmpty().lineSequence().firstOrNull { it.isNotBlank() }.orEmpty()
         return "${javaClass.simpleName}: $firstLine".take(SUMMARY_CHARS)
@@ -71,7 +55,6 @@ class RetryRule(private val attempts: Int = DEFAULT_ATTEMPTS) : TestRule {
         /** Retries left for the whole run: the instrumentation process lives for the suite, so a static is the run. */
         val retriesLeft = AtomicInteger(MAX_RETRIES_PER_RUN)
 
-        /** Takes one retry from the run's budget; false once it is spent. */
         fun claimRetry(): Boolean = retriesLeft.getAndUpdate { maxOf(it - 1, 0) } > 0
     }
 }

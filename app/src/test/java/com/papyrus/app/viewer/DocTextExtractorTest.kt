@@ -5,7 +5,6 @@ import org.junit.Assert.assertThrows
 import org.junit.Test
 import java.io.IOException
 
-/** Piece-table decoding, table/field text syntax, and every corruption the extractor must reject. */
 class DocTextExtractorTest {
 
     private fun extract(bytes: ByteArray): List<OfficeBlock> =

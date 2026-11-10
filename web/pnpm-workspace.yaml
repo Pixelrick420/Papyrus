@@ -1,22 +1,14 @@
-# pnpm 11+ reads project settings from this file. The "pnpm" field in
-# package.json is no longer read, which is why onlyBuiltDependencies moved here.
-#
-# Only the root package is part of this workspace, so no `packages` field.
+# pnpm 11+ reads project settings from here, not from the "pnpm" field in package.json.
 allowBuilds:
   esbuild: true
   sharp: true
 
-# pnpm 12 enables a built-in 24h minimumReleaseAge (release cooldown) and
-# verifies every locked entry against it. tslib@2.9.1 is an optional,
-# wasm32-only transitive dependency of @tailwindcss/oxide-wasm32-wasi and was
-# published inside that window, which made every install fail with
-# ERR_PNPM_MINIMUM_RELEASE_AGE_VIOLATION. Exempt that one pinned version;
-# this entry can be dropped once 2.9.1 is no longer a fresh release.
+# pnpm 12's 24h minimumReleaseAge failed every install on tslib@2.9.1 (ERR_PNPM_MINIMUM_RELEASE_AGE_VIOLATION).
+# Drop this exemption once 2.9.1 is no longer a fresh release.
 minimumReleaseAgeExclude:
   - tslib@2.9.1
 
-# eslint and typescript-eslint ask for ^10.2.x; 11 keeps the same glob API, so the whole tree
-# uses one copy of minimatch rather than a split between major versions.
+# 11 keeps the glob API eslint and typescript-eslint need, so the tree uses one copy of minimatch.
 overrides:
   minimatch: ^11.0.1
   # deepmerge >= 4.2.0 has a prototype poisoning bug with no fixed release; 4.1.2 predates it.

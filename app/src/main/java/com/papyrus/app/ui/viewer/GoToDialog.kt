@@ -27,12 +27,6 @@ import com.papyrus.app.viewer.parseGoToNumber
 /** More digits than any page count has; stops a held key from growing the field without end. */
 private const val MAX_DIGITS = 9
 
-/**
- * Asks for a number from 1 to [max] and hands it to [onGo]. One dialog for every "go to" the viewer
- * has: the caller supplies the words ([title], [label], [error], which is given [max]) and what the
- * number means. The count is shown beside the field ("of 200"), the error appears as soon as what is
- * typed cannot be accepted, and the keyboard's Go key does what the button does.
- */
 @Composable
 internal fun GoToDialog(
     title: String,
@@ -43,7 +37,6 @@ internal fun GoToDialog(
     onDismiss: () -> Unit,
 ) {
     var input by remember { mutableStateOf("") }
-    // An empty field is not an error until Go is pressed on it.
     var attempted by remember { mutableStateOf(false) }
     val value = parseGoToNumber(input, max)
     val showError = value == null && (attempted || input.isNotEmpty())

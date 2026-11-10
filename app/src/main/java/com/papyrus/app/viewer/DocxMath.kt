@@ -1,12 +1,9 @@
 package com.papyrus.app.viewer
 
-/**
- * Linearises one OMML equation to text - Papyrus has no maths renderer, so `(a+b)/c`, `x²`, `√(x+1)`
- * rather than Word's layout. Unknown elements contribute their children's text.
- */
+// Linearises one OMML equation to text - Papyrus has no maths renderer, so `(a+b)/c`, `x²`, `√(x+1)`
+// rather than Word's layout. Unknown elements contribute their children's text.
 internal class OmmlLinearizer {
 
-    /** One open element; [parts] are finished children that name a role (`m:num`, `m:e`, ...). */
     private class Node(val name: String) {
         val text = StringBuilder()
         val parts = ArrayList<Pair<String, String>>()
@@ -23,10 +20,8 @@ internal class OmmlLinearizer {
     private var untracked = 0
     private var written = 0
 
-    /** True from the opening `m:oMath` to its close. */
     val active: Boolean get() = stack.isNotEmpty()
 
-    /** [value] is the element's `m:val`, which settings like `m:chr` carry. */
     fun start(name: String, value: String?) {
         if (name in SETTINGS) {
             // A setting belongs to the element whose `...Pr` it sits in (`m:chr` in `m:naryPr` in `m:nary`).
@@ -47,7 +42,6 @@ internal class OmmlLinearizer {
         written += value.length
     }
 
-    /** The equation, when [name] closes the outermost element; null while it is still open. */
     fun end(name: String): String? {
         if (name in SETTINGS) return null
         if (untracked > 0) {
@@ -91,7 +85,6 @@ internal class OmmlLinearizer {
         }
     }
 
-    /** `∑`, `∏`, `∫` and kin with their limits; the integral sign is the format's default. */
     private fun nary(node: Node): String {
         val symbol = node.props["m:chr"] ?: "\u222B"
         val limits = script(node.part("m:sub"), up = false) + script(node.part("m:sup"), up = true)
@@ -99,7 +92,6 @@ internal class OmmlLinearizer {
         return symbol + limits + if (operand.isEmpty()) "" else " $operand"
     }
 
-    /** `m:d` holds one `m:e` per item, joined by the delimiter character. */
     private fun delimited(node: Node): String {
         val open = node.props["m:begChr"] ?: "("
         val close = node.props["m:endChr"] ?: ")"
@@ -119,13 +111,10 @@ internal class OmmlLinearizer {
         const val MAX_DEPTH = 64
         const val MAX_CHARS = 20_000
 
-        /** Elements that hold characters; `w:t` is how ordinary text inside an equation is written. */
         val TEXT_ELEMENTS = setOf("m:t", "w:t")
 
-        /** Settings read from `m:val`: leaves, never opened as elements of their own. */
         val SETTINGS = setOf("m:chr", "m:begChr", "m:endChr", "m:sepChr")
 
-        /** Children that fill a named slot of their parent, rather than adding text to it. */
         val ROLES = setOf(
             "m:e", "m:num", "m:den", "m:sup", "m:sub", "m:deg", "m:lim", "m:fName", "m:mr",
         )
@@ -142,14 +131,11 @@ internal class OmmlLinearizer {
         val SUPER_MAP: Map<Char, Char> = PLAIN_SUPERSCRIPTABLE.zip(SUPERSCRIPTS).toMap()
         val SUB_MAP: Map<Char, Char> = PLAIN_SUBSCRIPTABLE.zip(SUBSCRIPTS).toMap()
 
-        /** One word or number reads as a unit; anything with an operator or space needs brackets. */
         fun group(part: String): String =
             if (part.length <= 1 || part.all { it.isLetterOrDigit() || it == '.' }) part else "($part)"
 
-        /**
-         * A raised or lowered part: the real character where one exists (`x²`), else `^`/`_` with
-         * brackets (`x^(n+1)`), since a half-converted exponent would read as a different number.
-         */
+        // A raised or lowered part: the real character where one exists (`x²`), else `^`/`_` with
+        // brackets (`x^(n+1)`), since a half-converted exponent would read as a different number.
         fun script(part: String, up: Boolean): String {
             if (part.isEmpty()) return ""
             val map = if (up) SUPER_MAP else SUB_MAP

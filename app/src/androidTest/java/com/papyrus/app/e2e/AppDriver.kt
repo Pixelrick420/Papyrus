@@ -13,20 +13,11 @@ import androidx.test.uiautomator.UiObject2
 import androidx.test.uiautomator.Until
 import kotlin.math.abs
 
-/**
- * Drives the installed app the way a person does: by what is on the screen, with taps and typed text.
- *
- * Nothing here calls into the app. UI Automator reads the accessibility tree, so the same tests run against
- * the minified release build, where R8 has renamed or removed whatever an in-process test would have named
- * (Compose's own test rule included). Selectors are the words on screen, which is also what TalkBack reads.
- */
 internal class AppDriver {
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
     private val device: UiDevice = UiDevice.getInstance(instrumentation)
     val context: Context = instrumentation.targetContext
     private val packageName: String = context.packageName
-
-    // Every selector is scoped to the app's package, so nothing the system draws can match.
 
     fun text(value: String): BySelector = By.pkg(packageName).text(value)
 
@@ -36,17 +27,14 @@ internal class AppDriver {
 
     fun descStartsWith(value: String): BySelector = By.pkg(packageName).descStartsWith(value)
 
-    /** Words drawn by a `Text`, as opposed to a field that is holding the same words. */
     fun label(value: String): BySelector = By.pkg(packageName).clazz(TEXT_VIEW).textContains(value)
 
     fun field(): BySelector = By.pkg(packageName).clazz(EDIT_TEXT)
 
-    /** Anything at all of the app's: gone once its last screen has closed. */
     fun anything(): BySelector = By.pkg(packageName)
 
     fun launchHome() = launch(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER))
 
-    /** Another app handing Papyrus a document: the intent a file manager sends. */
     fun openFromAnotherApp(file: Fixture) =
         launch(Intent(Intent.ACTION_VIEW, file.uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
 
@@ -57,12 +45,10 @@ internal class AppDriver {
         if (device.wait(Until.hasObject(By.pkg(packageName).depth(0)), LAUNCH_TIMEOUT_MS) != true) {
             throw AssertionError("Papyrus did not come to the front within ${LAUNCH_TIMEOUT_MS}ms. ${whoHasTheScreen()}")
         }
-        // The package is on screen as soon as the splash window is, and a tap that lands while the system
-        // swaps the splash for the activity is dropped. Waiting for the events to stop lets the swap finish.
+        // Wait for events to stop before tapping: a tap that lands while the system swaps the splash for the activity is dropped.
         device.waitForIdle(SETTLE_TIMEOUT_MS)
     }
 
-    /** The first node matching [selector], waiting for it to appear. */
     fun find(selector: BySelector, timeoutMs: Long = UI_TIMEOUT_MS): UiObject2 =
         device.wait(Until.findObject(selector), timeoutMs)
             ?: throw AssertionError("Nothing matched $selector within ${timeoutMs}ms. On screen: ${onScreen()}")
@@ -74,18 +60,13 @@ internal class AppDriver {
         find(selector, timeoutMs)
     }
 
-    /** Fails unless [selector] is, or soon is, off the screen: the app may take a frame to take something away. */
     fun assertGone(selector: BySelector, timeoutMs: Long = SETTLE_TIMEOUT_MS) {
         if (!waitGone(selector, timeoutMs)) throw AssertionError("Still on screen: $selector. On screen: ${onScreen()}")
     }
 
     fun tap(selector: BySelector) = retryStale { find(selector).click() }
 
-    /**
-     * Taps [target] and waits for [expected], tapping again if nothing came of the first tap. A tap can be lost
-     * to a window that is still changing, and it leaves no trace: the screen just stays as it was. The second
-     * tap only happens while [target] is still on screen, so one that did land is never repeated.
-     */
+    // A tap can be lost to a window that is still changing and leaves no trace, so it is repeated if nothing came of it.
     fun tapUntilShown(target: BySelector, expected: BySelector, timeoutMs: Long = UI_TIMEOUT_MS) {
         repeat(TAP_ATTEMPTS - 1) {
             tap(target)
@@ -98,10 +79,7 @@ internal class AppDriver {
 
     fun longPress(selector: BySelector) = retryStale { find(selector).longClick() }
 
-    /**
-     * Taps the lowest match. A sheet slides up over the list it was opened from, and the list's thumbnails
-     * can carry the same words as the sheet's chips; the sheet is the one lower on the screen.
-     */
+    // The sheet is the lowest match: the list it slid over can carry the same words in its thumbnails.
     fun tapLowest(selector: BySelector) {
         assertShown(selector)
         retryStale {
@@ -111,14 +89,12 @@ internal class AppDriver {
         }
     }
 
-    /** Sets a field's text in one step, which is how an accessibility service types. */
     fun typeInto(selector: BySelector, value: String) = retryStale { find(selector).setText(value) }
 
     fun back() {
         device.pressBack()
     }
 
-    /** Presses Back until the app has left the screen: a document it was handed gets a task of its own. */
     fun leaveTheApp() {
         repeat(BACK_ATTEMPTS) {
             if (!device.hasObject(By.pkg(packageName))) return
@@ -128,11 +104,7 @@ internal class AppDriver {
         if (device.hasObject(By.pkg(packageName))) throw AssertionError("The app is still on screen: ${onScreen()}")
     }
 
-    /**
-     * Scrolls the screen's list until [selector] is on it; a screen that fits needs no scrolling. A column
-     * keeps the rows it has scrolled past, so a match only counts once some of it is inside the screen.
-     * Looks down the list first and then back up it, so a row is found wherever the list was left.
-     */
+    // A column keeps the rows it has scrolled past, so a match only counts once some of it is on screen.
     fun scrollTo(selector: BySelector): UiObject2 {
         findVisible(selector)?.let { return it }
         scrollThrough(selector) { scrollDown() }?.let { return it }
@@ -140,16 +112,7 @@ internal class AppDriver {
         return find(selector, SETTLE_TIMEOUT_MS)
     }
 
-    /**
-     * Steps through the list with [scroll] until [selector] is on screen; null once the list has no more to show
-     * that way.
-     *
-     * A scroll request is only applied on the app's next frame, and on a slow emulator that is seconds away, so
-     * the row can show up long after a fixed wait has run out. Each step therefore waits for the screen to
-     * change before it looks for [selector] or asks for another step. Asking again while the first request is
-     * still on its way is wasted, and once the first lands the list can be at its end and refuse the second,
-     * which reads as "nothing more to scroll" with the row still unseen.
-     */
+    // A scroll request is applied on the app's next frame, so a step is confirmed by the screen changing.
     private fun scrollThrough(selector: BySelector, scroll: () -> Boolean): UiObject2? {
         repeat(MAX_SCROLLS) {
             val before = screenText()
@@ -159,7 +122,6 @@ internal class AppDriver {
         return null
     }
 
-    /** The words on screen, or null if the tree could not be read; a scroll has landed once this reads differently. */
     private fun screenText(): String? {
         repeat(STALE_RETRIES) {
             runCatching {
@@ -170,11 +132,6 @@ internal class AppDriver {
         return null
     }
 
-    /**
-     * Waits for the screen to change from [before] after a scroll request, then to stop changing, so that what
-     * is on it is where the list ended up. False if nothing changed within [SCROLL_LAND_TIMEOUT_MS]: the list
-     * had nowhere to go.
-     */
     private fun awaitScreenChange(before: String?): Boolean {
         val until = SystemClock.uptimeMillis() + SCROLL_LAND_TIMEOUT_MS
         var latest = before
@@ -194,7 +151,6 @@ internal class AppDriver {
         return changed
     }
 
-    /** One accessibility scroll step up. */
     private fun scrollUp(): Boolean {
         val list = awaitScrollable() ?: return false
         if (!list.performAction(AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD)) return false
@@ -202,10 +158,8 @@ internal class AppDriver {
         return true
     }
 
-    /**
-     * The first match that is inside the screen. The tree is rebuilt after a scroll, so it can be
-     * missing or unreadable for a moment; [timeoutMs] keeps looking until it settles.
-     */
+    // The first match that is inside the screen. The tree is rebuilt after a scroll, so it can be
+    // missing or unreadable for a moment; [timeoutMs] keeps looking until it settles.
     private fun findVisible(selector: BySelector, timeoutMs: Long = 0L): UiObject2? {
         val until = SystemClock.uptimeMillis() + timeoutMs
         while (true) {
@@ -216,11 +170,7 @@ internal class AppDriver {
         }
     }
 
-    /**
-     * Scrolls the list down one step through its own scroll action, the way an accessibility service does,
-     * instead of injecting a drag. An injected drag whose fling outlasts the wait leaves its pointer held
-     * down, and the system then rejects every later touch on the device.
-     */
+    // Scrolls through the list's own scroll action, as an accessibility service does; an injected drag whose fling outlasts the wait can overshoot.
     private fun scrollDown(): Boolean {
         val list = awaitScrollable() ?: return false
         if (!list.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)) return false
@@ -228,11 +178,7 @@ internal class AppDriver {
         return true
     }
 
-    /**
-     * The app's scrollable list, waiting for it to exist. Right after a screen change the active window can still
-     * be the previous screen, or have no tree yet, and a missing list then says nothing about whether the one
-     * being scrolled has reached its end: only a scroll action that is refused says that.
-     */
+    // Right after a screen change the active window can still be the previous screen or have no tree yet, so wait for the list.
     private fun awaitScrollable(): AccessibilityNodeInfo? {
         val until = SystemClock.uptimeMillis() + SCROLLABLE_TIMEOUT_MS
         while (true) {
@@ -243,7 +189,6 @@ internal class AppDriver {
         }
     }
 
-    /** The first scrollable node of the app's, wherever it sits below [node]. */
     private fun findScrollable(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
         if (node.isScrollable && node.packageName?.toString() == packageName) return node
         for (index in 0 until node.childCount) {
@@ -258,10 +203,8 @@ internal class AppDriver {
         tap(selector)
     }
 
-    /** Where [selector] sits on the screen, retried if the node is replaced while it is being read. */
     fun centerYOf(selector: BySelector): Int = retryStale { find(selector).visibleCenter.y }
 
-    /** Opens the "More options" menu of the Home row titled [title]: the button nearest it, as every row has one. */
     fun openRowMenu(title: String) = retryStale {
         val titleY = find(text(title)).visibleCenter.y
         val button = device.findObjects(desc("More options")).minByOrNull { abs(it.visibleCenter.y - titleY) }
@@ -269,16 +212,11 @@ internal class AppDriver {
         button.click()
     }
 
-    /** The viewer's overflow menu, then [item] from it. */
     fun chooseFromViewerMenu(item: String) {
         tap(desc("More options"))
         tap(text(item))
     }
 
-    /**
-     * Another app hands over [file] and the reader saves it to the library, which leaves that document open.
-     * Launching Home afterwards shows it in the list.
-     */
     fun addToLibrary(file: Fixture) {
         openFromAnotherApp(file)
         assertShown(text(file.name), LOAD_TIMEOUT_MS)
@@ -286,11 +224,7 @@ internal class AppDriver {
         assertShown(text("Saved to your library"))
     }
 
-    /**
-     * What the device showed when the app never appeared: the window that has input focus, and the words every
-     * window is drawing, whichever app drew them. A system dialog over the app (an ANR box above all) takes the
-     * focus and hides the app from the accessibility tree, and nothing else in the failure would say so.
-     */
+    // On a failed launch: the focused window and the words every window draws, since a system dialog over the app can be the cause.
     private fun whoHasTheScreen(): String {
         val focus = Shell.run("dumpsys window").lineSequence()
             .filter { it.contains("mCurrentFocus") || it.contains("mFocusedApp") }
@@ -299,7 +233,6 @@ internal class AppDriver {
         val words = runCatching {
             device.findObjects(By.clazz(TEXT_VIEW))
                 .mapNotNull { node ->
-                    // One line: a failure's message is reported by its first line alone.
                     node.text?.takeIf { it.isNotBlank() }
                         ?.let { "${node.applicationPackage}: ${it.take(MAX_WORDS_SHOWN).replace('\n', ' ')}" }
                 }
@@ -309,7 +242,6 @@ internal class AppDriver {
         return "Focus: ${focus.ifEmpty { "(unknown)" }}. All windows: ${words.ifEmpty { "(no text)" }}"
     }
 
-    /** Everything the app is showing, as the message of a test that failed: the screen it was looking at. */
     fun onScreen(): String = runCatching {
         device.findObjects(By.pkg(packageName))
             .mapNotNull { node -> (node.text ?: node.contentDescription)?.takeIf { it.isNotBlank() }?.take(MAX_WORDS_SHOWN) }
@@ -330,7 +262,6 @@ internal class AppDriver {
     }
 
     companion object {
-        /** What Compose reports for a `Text` and for a text field; the platform class names TalkBack reads. */
         private const val TEXT_VIEW = "android.widget.TextView"
         private const val EDIT_TEXT = "android.widget.EditText"
 
@@ -340,46 +271,33 @@ internal class AppDriver {
 
         const val LAUNCH_TIMEOUT_MS = 15_000L
 
-        /** Most things settle well inside this, on a slow emulator too. */
         const val UI_TIMEOUT_MS = 10_000L
 
-        /** Opening a document: a PDF is rendered, a book unpacked, and the first run has nothing warm. */
         const val LOAD_TIMEOUT_MS = 20_000L
 
-        /** How long to wait for something that should already be on its way out. */
         const val SETTLE_TIMEOUT_MS = 3_000L
 
         private const val MAX_SCROLLS = 15
 
-        /** Covers the list settling between one scroll step and the next. */
         private const val SCROLL_SETTLE_MS = 1_000L
 
-        /**
-         * How long a scroll request may take to show on screen. The app applies it on a frame, and frames on the
-         * CI emulator (software rendering) have been seen a second apart; a scroll there has taken over 2.8s.
-         */
+        // Frames on the CI emulator (software rendering) have been seen a second apart, so a scroll request gets slack.
         private const val SCROLL_LAND_TIMEOUT_MS = 10_000L
 
-        /** How long the screen must hold still after a scroll before the scroll counts as finished. */
         private const val SCROLL_STILL_MS = 600L
 
-        /** Poll interval while waiting for the accessibility tree to rebuild after a scroll. */
         private const val FIND_POLL_MS = 100L
         private const val STALE_RETRIES = 3
         private const val MAX_WORDS_SHOWN = 80
 
-        /** Lines of other windows' text a failed launch reports: enough to recognise a dialog, short enough to read. */
         private const val MAX_WINDOW_WORDS = 20
         private const val MAX_FOCUS_LINES = 4
 
-        /** How long a tap gets to show its effect before it is taken as lost. */
         private const val TAP_RESPONSE_MS = 3_000L
         private const val TAP_ATTEMPTS = 3
 
-        /** Backs a task can need to unwind before the app is gone, one per screen and its document. */
         private const val BACK_ATTEMPTS = 4
 
-        /** How long to wait for the screen's list to appear, which a screen that has none never does. */
         private const val SCROLLABLE_TIMEOUT_MS = 5_000L
     }
 }

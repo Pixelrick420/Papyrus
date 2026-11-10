@@ -15,14 +15,8 @@ import io.noties.markwon.image.AsyncDrawableSpan
 // Match with indexOf(ignoreCase = true), never lowercase() both sides: lower-casing can
 // change a string's length and shift every later match offset.
 
-/**
- * Advances past the whole match, so "aa" in "aaaa" is two hits, not three -- the editor convention,
- * and the only one where the visible highlights match the count the find bar shows.
- *
- * If [text] is [Spanned] (e.g. rendered Markdown), spans with unrendered matching text (such as links
- * with target URLs or images/formulas with source destinations) whose rendered counterpart exists are
- * also included when no direct match already covers them.
- */
+// Advances past the whole match, so "aa" in "aaaa" is two hits: the only convention where the visible highlights match the count the bar shows.
+// For a [Spanned], spans whose unrendered text matches (link targets, image sources) are included when no direct match covers them.
 fun findMatchRanges(text: CharSequence, query: String): List<IntRange> {
     if (query.isEmpty()) return emptyList()
     val str = text.toString()
@@ -44,7 +38,6 @@ fun findMatchRanges(text: CharSequence, query: String): List<IntRange> {
     return (direct + spanRanges).sortedWith(compareBy<IntRange> { it.first }.thenBy { it.last })
 }
 
-/** Matches in text with explicit [TextSpan] formatting (e.g. Office documents). */
 fun findMatchRanges(text: String, spans: List<TextSpan>, query: String): List<IntRange> {
     val direct = findMatchRanges(text, query)
     if (spans.isEmpty() || query.isEmpty()) return direct
@@ -102,7 +95,6 @@ internal fun extractSpanHiddenText(span: Any): String? {
     return null
 }
 
-/** For Markdown, which has no chunks to jump between. Follows [findMatchRanges] so both agree. */
 fun countOccurrences(text: CharSequence, query: String): Int {
     if (query.isEmpty()) return 0
     if (text is Spanned) return findMatchRanges(text, query).size
@@ -120,11 +112,7 @@ fun countOccurrences(text: CharSequence, query: String): Int {
 internal fun countOccurrences(text: String, spans: List<TextSpan>, query: String): Int =
     findMatchRanges(text, spans, query).size
 
-/**
- * One hit per match, not per chunk, so the find bar steps each match once; a hit is the chunk the match
- * starts in. [limit] caps the list (a short query in a large file matches millions of times); [shouldStop]
- * is polled per chunk. See [searchChunks] for matches that run over the end of a chunk.
- */
+// One hit per match, not per chunk; a hit is the chunk the match starts in. [limit] caps the list (a short query in a large file matches millions of times).
 fun findChunkHits(
     chunks: List<String>,
     query: String,
@@ -132,7 +120,6 @@ fun findChunkHits(
     shouldStop: () -> Boolean = { false },
 ): List<Int> = searchChunks(chunks, query, limit, shouldStop).map { it.chunk }
 
-/** Same shape as [findChunkHits]: a block's index repeats once per match rendered inside it. */
 fun findBlockHits(blocks: List<OfficeBlock>, query: String): List<Int> {
     if (query.isBlank()) return emptyList()
     val hits = ArrayList<Int>()
@@ -140,10 +127,7 @@ fun findBlockHits(blocks: List<OfficeBlock>, query: String): List<Int> {
     return hits
 }
 
-/**
- * The separate pieces of text a block draws, in reading order; matches are found inside one piece,
- * never across two, because that is how they are painted.
- */
+// Matches are found inside one piece, never across two, because that is how they are painted.
 internal fun officeBlockLines(block: OfficeBlock): List<String> = when (block) {
     is OfficeBlock.Heading -> listOf(block.text)
     is OfficeBlock.Paragraph -> listOf(block.text)
@@ -158,7 +142,6 @@ internal fun officeBlockLines(block: OfficeBlock): List<String> = when (block) {
 /** The extractor joins a cell's paragraphs with newlines; each one is drawn as its own `Text`. */
 internal fun officeCellLines(cell: OfficeCell): List<String> = cell.text.split('\n').filter { it.isNotEmpty() }
 
-/** [officeCellLines] with each line's formatting spans, which is what a cell actually draws. */
 internal fun officeCellRichLines(cell: OfficeCell): List<LineText> = splitLines(cell.text, cell.spans)
 
 internal fun countOccurrences(block: OfficeBlock, query: String): Int = when (block) {

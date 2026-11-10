@@ -10,11 +10,6 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/**
- * When the library and a document share the window. Sizes are in dp, as the system reports them for
- * the window, not the screen: a phone, a tablet, a foldable open or closed, and a window resized by
- * split screen are all just a width and a height.
- */
 @OptIn(ExperimentalMaterial3WindowSizeClassApi::class)
 class WindowLayoutTest {
 

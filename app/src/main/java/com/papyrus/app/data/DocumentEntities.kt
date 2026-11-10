@@ -14,21 +14,16 @@ enum class DocumentFormat(
     MARKDOWN("MD", setOf("md", "markdown", "mdown"), setOf("text/markdown", "text/x-markdown")),
     TEXT("TXT", setOf("txt", "text", "log"), setOf("text/plain")),
 
-    /**
-     * Comma-, semicolon-, tab- and pipe-separated text, drawn as a table through the Office pipeline; see
-     * `DelimitedFile`. One format for both extensions: the delimiter is read from the file, not the format.
-     */
+    // One format for both extensions: the delimiter is read from the file.
     CSV("CSV", setOf("csv", "tsv"), setOf("text/csv", "text/comma-separated-values", "text/tab-separated-values")),
     DOC("DOC", setOf("doc"), setOf("application/msword")),
-    // Macro-enabled files and templates share the .docx layout (`word/document.xml`); nothing runs a macro here.
     // `.dot` is out: it is also Graphviz's extension, so a text file is not read as a Word 97 template.
     DOCX(
         "DOCX", setOf("docx", "docm", "dotx", "dotm"),
         setOf(
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             "application/vnd.openxmlformats-officedocument.wordprocessingml.template",
-            // Providers disagree on case for these two (IANA writes macroEnabled, MimeTypeMap lowercases
-            // it), and the picker filter compares case-sensitively, so both spellings are offered.
+            // Providers disagree on case (IANA vs MimeTypeMap) and the picker filter is case-sensitive, so both are offered.
             "application/vnd.ms-word.document.macroEnabled.12",
             "application/vnd.ms-word.document.macroenabled.12",
             "application/vnd.ms-word.template.macroEnabled.12",
@@ -40,7 +35,7 @@ enum class DocumentFormat(
         setOf("application/vnd.oasis.opendocument.text", "application/vnd.oasis.opendocument.text-template"),
     ),
 
-    /** Read as reflowed text through the Office pipeline; see `EpubExtractor`. A ZIP, so never sniffed as text. */
+    // A ZIP, so never sniffed as text.
     EPUB("EPUB", setOf("epub"), setOf("application/epub+zip")),
 
     /** Split from TEXT only so the home list labels a .py file CODE; it renders identically. */
@@ -63,17 +58,13 @@ enum class DocumentFormat(
     UNKNOWN("?", emptySet(), emptySet());
 
     companion object {
-        /**
-         * Picker MIME filter; octet-stream and the text wildcard cover providers that mislabel .md/.docx.
-         */
+        // Picker MIME filter; octet-stream and the text wildcard cover providers that mislabel .md/.docx.
         val pickerMimeTypes: Array<String> =
             (entries.filter { it != UNKNOWN }.flatMap { it.mimeTypes } + "text/*" + "application/octet-stream")
                 .toTypedArray()
 
-        /**
-         * Extension beats MIME; the whole name is matched only when there is no dot, or `report.conf.txt`
-         * claims `conf`.
-         */
+        // Extension beats MIME; the whole name is matched only when there is no dot, or `report.conf.txt`
+        // claims `conf`.
         fun detect(displayName: String?, mimeType: String?): DocumentFormat {
             val name = displayName?.lowercase().orEmpty()
             val ext = name.substringAfterLast('.', "").let { if (name.contains('.')) it else "" }
@@ -86,37 +77,24 @@ enum class DocumentFormat(
     }
 }
 
-/**
- * No MIME type, page count or `lastOpenedAt` index: the info sheet reads the first two live, and the one
- * list query reads every row (sorting and filtering happen in memory, in [libraryView]), so an index
- * would buy nothing.
- */
+// No MIME type, page count or lastOpenedAt index: the info sheet reads the first two live and the library sorts in memory.
 @Entity(
     tableName = "documents",
     indices = [Index(value = ["uri"], unique = true)],
 )
 data class DocumentEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
-    /** SAF content URI (document or tree child). */
     val uri: String,
     val title: String,
     val format: DocumentFormat,
     val sizeBytes: Long,
     val createdAt: Long,
     val lastOpenedAt: Long,
-    /**
-     * Starred by the reader. The column keeps the name it was created with; `upsertByUri` copies the
-     * row so the flag survives re-opening and re-granting.
-     */
+    // The column keeps the name it was created with.
     @ColumnInfo(name = "isFavourite", defaultValue = "0") val isStarred: Boolean = false,
 )
 
-/**
- * This row as it is after being opened again as [fresh]: what the provider reports now (name, format,
- * size) and the new open time. Everything the reader owns survives: the id (so progress and bookmarks keep
- * their parent), when it was added, the stored URI and the star flag. Never replace the row instead:
- * a replace is a delete plus an insert and would cascade that away.
- */
+// Never replace the row instead: a replace is a delete plus an insert and would cascade away progress and bookmarks.
 fun DocumentEntity.reopenedWith(fresh: DocumentEntity): DocumentEntity = copy(
     title = fresh.title,
     format = fresh.format,

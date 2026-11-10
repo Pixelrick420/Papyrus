@@ -8,10 +8,6 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/**
- * Find-in-file state transitions: query echo, stale-result rejection, hit highlighting. Split out of
- * ZoomAnchoringTest, which covers zoom anchoring and gesture arbitration.
- */
 class FindStateTest {
 
     @Test
@@ -91,9 +87,6 @@ class FindStateTest {
         val state = FindState(query = "a", hits = listOf(2), pageMatches = matches)
         assertEquals(matches, state.withQueryEchoed("ab").pageMatches)
     }
-
-    // Hits hold one entry per match, so a container with several matches repeats. These cover how the
-    // cursor over that list becomes "the second match in that container".
 
     @Test
     fun `each match is its own step, so the count is the number of matches`() {

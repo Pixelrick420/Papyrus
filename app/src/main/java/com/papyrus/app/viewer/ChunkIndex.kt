@@ -9,13 +9,8 @@ private const val CR = '\r'.code.toByte()
 private const val INDEX_READ_CHARS = 8 * 1024
 private const val INITIAL_CHECKPOINTS = 64
 
-/**
- * How a large file is carved up and kept. A chunk is [linesPerChunk] lines, the unit saved positions and
- * bookmarks are in; the index remembers where one starts every [checkpointBytes] bytes or [checkpointChunks]
- * chunks, whichever comes first, so a chunk is at most one such span of decoding away. A chunk longer than
- * [maxChunkBytes] ends the read there, like the in-memory limit did for the whole file. Decoded chunks are
- * kept while they fit in [cacheChunks] and [cacheChars].
- */
+// The index remembers where a chunk starts every [checkpointBytes] bytes or [checkpointChunks] chunks, so a chunk is at most one span of decoding away.
+// A chunk longer than [maxChunkBytes] ends the read there.
 internal data class ChunkLayout(
     val linesPerChunk: Int = TEXT_LINES_PER_CHUNK,
     val checkpointBytes: Int = 64 * 1024,
@@ -25,34 +20,23 @@ internal data class ChunkLayout(
     val cacheChars: Int = 4 * 1024 * 1024,
 )
 
-/** Told where chunks begin and end as bytes pass through a [ChunkSplitter]. */
 internal interface ChunkListener {
-    /** Chunk [index] begins at byte [offset]. */
     fun chunkStarted(index: Int, offset: Long)
 
-    /** Chunk [index] is the bytes from [start] to [end], where the terminator that closes it begins. */
     fun chunkEnded(index: Int, start: Long, end: Long)
 }
 
-/**
- * [LineAssembler]'s line rules over raw bytes, so a chunk's extent is known without decoding it: lines end
- * at `\n`, `\r\n` or a lone `\r`, `\r\n` counted once even across a feed edge; a chunk ends at its
- * [linesPerChunk]th terminator, which belongs to neither chunk; the bytes after a final terminator that
- * closes a chunk are not another. Safe for UTF-8 and single-byte charsets, where those bytes are never
- * part of a longer character. The index pass and the decoder of a span both run this, so they cannot
- * disagree about a boundary.
- */
+// Byte-level line rules mirror [LineAssembler] so a chunk's extent is known without decoding; safe for UTF-8 and single-byte charsets.
+// The index pass and a span's decoder both run this, so they cannot disagree.
 internal class ChunkSplitter(
     private val linesPerChunk: Int,
     startOffset: Long,
     startChunk: Int,
     private val listener: ChunkListener,
 ) {
-    /** The offset of the next byte. */
     var position = startOffset
         private set
 
-    /** Terminators seen, so `lineCount - 1`. */
     private var terminators = 0L
     private var chunkIndex = startChunk
     private var chunkStart = startOffset
@@ -68,7 +52,6 @@ internal class ChunkSplitter(
         listener.chunkStarted(startChunk, startOffset)
     }
 
-    /** How many more bytes the chunk in progress may take before it is [cap] long. */
     fun roomIn(cap: Long): Long = if (starting) cap else chunkStart + cap - position
 
     fun feed(bytes: ByteArray, offset: Int, length: Int) {
@@ -101,7 +84,6 @@ internal class ChunkSplitter(
         position++
     }
 
-    /** Ends the chunk in progress at the last byte fed, unless the data ended on a chunk's final terminator. */
     fun finish() {
         if (starting) return
         // An empty file is one empty chunk; after that, no chunk is empty.
@@ -109,17 +91,11 @@ internal class ChunkSplitter(
     }
 }
 
-/**
- * Where chunks start, sparsely: a checkpoint is a chunk and the byte it begins at, kept every
- * [ChunkLayout.checkpointBytes] bytes or [ChunkLayout.checkpointChunks] chunks. The chunks from one checkpoint
- * up to the next are a span, the most that is decoded to reach any chunk in it. A chunk's first line is
- * `chunk * linesPerChunk + 1`, so the index holds no line numbers of its own.
- */
+// A chunk's first line is `chunk * linesPerChunk + 1`, so the index holds no line numbers of its own.
 internal class ChunkIndex(
     val chunkCount: Int,
     val lineCount: Int,
     val maxLineColumns: Int,
-    /** The offset the read ended at: the file's end, or where a chunk over the limit was cut. */
     val contentEnd: Long,
     val truncated: Boolean,
     val linesPerChunk: Int,
@@ -128,7 +104,6 @@ internal class ChunkIndex(
 ) {
     val spanCount: Int get() = checkpointChunks.size
 
-    /** The span chunk [chunk] is in. */
     fun spanOf(chunk: Int): Int {
         require(chunk in 0 until chunkCount) { "chunk $chunk of $chunkCount" }
         val at = checkpointChunks.binarySearch(chunk)
@@ -137,20 +112,13 @@ internal class ChunkIndex(
 
     fun firstChunkOf(span: Int): Int = checkpointChunks[span]
 
-    /** One past the span's last chunk. */
     fun endChunkOf(span: Int): Int = if (span + 1 < spanCount) checkpointChunks[span + 1] else chunkCount
 
     fun startOffsetOf(span: Int): Long = checkpointOffsets[span]
 
-    /** Where the span's bytes end: the next span's start, which is just past its last chunk's terminator. */
     fun endOffsetOf(span: Int): Long = if (span + 1 < spanCount) checkpointOffsets[span + 1] else contentEnd
 }
 
-/**
- * One streaming pass over [input], which is [charset] text from [startOffset], that notes where chunks start
- * and how wide the widest line is, and keeps no text. A chunk that would pass [ChunkLayout.maxChunkBytes]
- * ends the pass there and the index is [ChunkIndex.truncated]. [ensureActive] runs before every read.
- */
 internal fun buildChunkIndex(
     input: InputStream,
     charset: Charset,
@@ -221,10 +189,6 @@ private class IndexBuilder(private val layout: ChunkLayout) : ChunkListener {
     )
 }
 
-/**
- * Passes bytes to the [splitter] on their way to the decoder, and ends the stream when the chunk in
- * progress is [chunkCap] bytes long with more to come: [cut].
- */
 private class IndexingStream(
     private val source: InputStream,
     private val splitter: ChunkSplitter,

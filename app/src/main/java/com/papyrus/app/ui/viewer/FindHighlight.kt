@@ -15,13 +15,7 @@ internal val OtherMatchColor = Color(0xFFFFEB3B)
 /** Fixed, not inherited: the dark theme's text colour is pale and reads as invisible here. */
 internal val MatchTextColor = Color.Black
 
-/**
- * Marks every occurrence, the current one ([activeOccurrence], 0-based within this text) in orange,
- * the rest yellow. A match out of range paints nothing.
- *
- * [alpha] fades the whole mark, and [onlyActive] drops every other occurrence: a search result
- * arriving lights the one match it landed on and lets it fade, where find lights every match.
- */
+// [onlyActive] drops every other occurrence: a search result arriving lights the one match it landed on and lets it fade, where find lights every match.
 @Immutable
 data class FindHighlight(
     val query: String,
@@ -38,25 +32,16 @@ internal fun findHighlightFor(
 ): FindHighlight? =
     if (query.isBlank()) null else FindHighlight(query, activeOccurrence, alpha, onlyActive)
 
-/**
- * The same highlight for text following [consumed] matches of the block, such as a table row's second
- * cell: a match is numbered across the block's whole text.
- */
+// A match is numbered across the block's whole text, so text after [consumed] matches (a table row's second cell) needs an offset.
 internal fun FindHighlight.skipping(consumed: Int): FindHighlight =
     FindHighlight(query, activeOccurrence?.minus(consumed)?.takeIf { it >= 0 }, alpha, onlyActive)
 
-/** Range of the current match in [text], or null if it is not in this text. */
 internal fun FindHighlight.activeRange(text: String): IntRange? =
     activeOccurrence?.let { findMatchRanges(text, query).getOrNull(it) }
 
-/** Whether match [index] is painted at all: [onlyActive] drops every match but the current one. */
 internal fun FindHighlight.paints(index: Int): Boolean = !onlyActive || index == activeOccurrence
 
-/**
- * The style for match [index]: orange behind the current one, yellow behind the rest. Its text is
- * [MatchTextColor] against [baseTextColor], so a fade returns the text to the document's own colour
- * as the mark leaves - at [alpha] 1 the style is exactly the one find has always drawn.
- */
+// At [alpha] 1 the style is exactly the one find has always drawn; a fade returns the text to [baseTextColor].
 internal fun FindHighlight.styleFor(index: Int, baseTextColor: Color): SpanStyle =
     if (index == activeOccurrence) activeSpan(alpha, baseTextColor) else otherSpan(alpha, baseTextColor)
 
@@ -71,10 +56,7 @@ private fun matchSpan(background: Color, alpha: Float, baseTextColor: Color): Sp
     return SpanStyle(background = background.copy(alpha = faded), color = matchTextColor(faded, baseTextColor))
 }
 
-/**
- * Black at full strength, the document's own colour once faded. A caller with no concrete base colour
- * keeps black and lets it go transparent with the background, rather than guessing a theme colour.
- */
+// A caller with no concrete base colour keeps black and lets it go transparent with the background, rather than guessing a theme colour.
 private fun matchTextColor(alpha: Float, baseTextColor: Color): Color =
     if (baseTextColor == Color.Unspecified) {
         if (alpha <= 0f) Color.Unspecified else MatchTextColor.copy(alpha = alpha)

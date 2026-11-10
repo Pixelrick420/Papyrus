@@ -9,7 +9,6 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.io.File
 
-/** A decrypted copy is plaintext in cache, so a copy the viewer lets go of must not be left behind. */
 class UnlockedCopyTest {
 
     @get:Rule

@@ -6,22 +6,15 @@ import android.os.Environment
 import android.provider.MediaStore
 import androidx.test.platform.app.InstrumentationRegistry
 
-/**
- * Files in the device's Downloads folder, which is where the system picker looks for them.
- *
- * Picking a file hands the app a persistable grant, and only the system picker can make one, so the files a test
- * picks have to be somewhere the picker can list. Every name carries [PREFIX], and a run removes only those.
- */
+// Picking a file hands the app a persistable grant, and only the system picker can make one.
 internal object PublicDownloads {
 
     private const val PREFIX = "papyrus-e2e-"
 
     private val resolver get() = InstrumentationRegistry.getInstrumentation().targetContext.contentResolver
 
-    /** The Downloads collection exists from Android 10; a run on anything older skips what needs it. */
     val available: Boolean get() = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
 
-    /** Writes [content] as [name] and returns the name the picker will show, which carries the prefix. */
     fun put(name: String, mimeType: String, content: ByteArray): String {
         val values = ContentValues().apply {
             put(MediaStore.MediaColumns.DISPLAY_NAME, PREFIX + name)
@@ -38,7 +31,6 @@ internal object PublicDownloads {
         } ?: PREFIX + name
     }
 
-    /** Removes the files earlier calls made. */
     fun removeAll() {
         if (!available) return
         resolver.delete(

@@ -10,13 +10,7 @@ import androidx.room.PrimaryKey
 import androidx.room.Query
 import kotlinx.coroutines.flow.Flow
 
-/**
- * A reader's highlight on one page of a library PDF; one that crosses a page break is a row per page.
- * Only an overlay is stored and the file is never written to. [rects] holds the line boxes of the run
- * (see [encodeRects]), so the row has no page text: an unlocked document leaves the page's plaintext
- * out of the database. [note] holds the reader's own words about the run, nothing from the file.
- * Transient documents (negative ids) never get one.
- */
+// Only an overlay is stored, never the file; [rects] hold boxes, not text, so an unlocked document leaves no plaintext in the database.
 @Entity(
     tableName = "highlights",
     foreignKeys = [
@@ -34,9 +28,8 @@ data class HighlightEntity(
     val documentId: Long,
     val page: Int,
     val rects: String,
-    /** [HighlightKind.code]; the default is the value every row written before notes existed has. */
+    // Defaults to the value every row written before notes existed has.
     @ColumnInfo(defaultValue = "1") val kind: Int = HighlightKind.HIGHLIGHT.code,
-    /** The note the reader typed, or null for a plain highlight; added in schema version 8. */
     val note: String? = null,
 )
 
@@ -46,11 +39,9 @@ internal fun HighlightEntity.toHighlight() =
 @Dao
 interface HighlightDao {
 
-    /** Scoped to one document, so a highlight added elsewhere never re-emits this list. */
     @Query("SELECT * FROM highlights WHERE documentId = :documentId ORDER BY id")
     fun observe(documentId: Long): Flow<List<HighlightEntity>>
 
-    /** Fails with a foreign-key error for a document that is gone, as a bookmark insert does. */
     @Insert
     suspend fun insert(rows: List<HighlightEntity>)
 

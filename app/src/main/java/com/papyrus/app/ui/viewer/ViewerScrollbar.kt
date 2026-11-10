@@ -35,17 +35,12 @@ import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.hypot
 
-/** Scroll position of a scrollable surface, in pixels, as the scrollbar needs to see it. */
 data class ScrollGeometry(val offset: Float, val viewport: Float, val content: Float) {
     val scrollable: Boolean get() = content > viewport + 1f
     val maxScroll: Float get() = (content - viewport).coerceAtLeast(0f)
 }
 
-/**
- * Height records persist per index so a visible-only mean cannot shift (and teleport the thumb)
- * as items enter; a size mismatch means zoom or reflow, so every record is retaken. The offset
- * reads prefix sums, never a walk over every index below the first visible one.
- */
+// Height records persist per index so a visible-only mean cannot teleport the thumb as items enter; a size mismatch means zoom or reflow, so every record is retaken.
 @Composable
 fun rememberLazyScrollGeometry(state: LazyListState): State<ScrollGeometry> {
     val geometry = remember { mutableStateOf(ScrollGeometry(0f, 0f, 0f)) }
@@ -62,7 +57,6 @@ fun rememberLazyScrollGeometry(state: LazyListState): State<ScrollGeometry> {
             val knownSum = measured.total
             val average = if (measured.size == 0) viewport else knownSum.toFloat() / measured.size
             val first = state.firstVisibleItemIndex
-            // Unmeasured indices below the first visible one take the average, as the walk did.
             val offset = measured.sumBelow(first) + average * (first - measured.countBelow(first)) +
                 state.firstVisibleItemScrollOffset
             ScrollGeometry(
@@ -76,17 +70,12 @@ fun rememberLazyScrollGeometry(state: LazyListState): State<ScrollGeometry> {
     return geometry
 }
 
-/**
- * Measured item heights with running prefix sums, so an offset to any index is a logarithmic
- * query instead of a per-frame walk over everything measured so far. Arrays grow by doubling
- * (a rebuild, not a per-frame allocation) and keep their capacity across a reflow [clear].
- */
+// Prefix sums make an offset to any index a logarithmic query instead of a per-frame walk.
 private class MeasuredHeights {
     private val heights = mutableMapOf<Int, Int>()
     private var sums = IntArray(INITIAL_CAPACITY)
     private var counts = IntArray(INITIAL_CAPACITY)
 
-    /** Measured heights summed, and how many indices hold one. */
     var total = 0
         private set
 
@@ -101,7 +90,6 @@ private class MeasuredHeights {
         total = 0
     }
 
-    /** One measurement; an unchanged value costs no tree walk, a re-measured one is a delta. */
     fun record(index: Int, height: Int) {
         val previous = heights.put(index, height)
         val delta = height - (previous ?: 0)
@@ -119,10 +107,8 @@ private class MeasuredHeights {
         }
     }
 
-    /** Recorded height of every index below [index]; holes are the caller's average. */
     fun sumBelow(index: Int): Int = walkBelow(index, sums)
 
-    /** How many indices below [index] hold a measurement. */
     fun countBelow(index: Int): Int = walkBelow(index, counts)
 
     private fun walkBelow(index: Int, tree: IntArray): Int {
@@ -135,7 +121,6 @@ private class MeasuredHeights {
         return sum
     }
 
-    /** Doubles until [index] fits, re-adding every record into the fresh trees. */
     private fun growTo(index: Int) {
         var capacity = sums.size
         while (capacity < index + 2) capacity *= 2
@@ -158,7 +143,6 @@ private class MeasuredHeights {
     }
 }
 
-/** Geometry for a plain [ScrollState] (Markdown), which knows its content height exactly. */
 @Composable
 fun rememberScrollGeometry(state: ScrollState): State<ScrollGeometry> {
     val geometry = remember { mutableStateOf(ScrollGeometry(0f, 0f, 0f)) }
@@ -174,12 +158,7 @@ fun rememberScrollGeometry(state: ScrollState): State<ScrollGeometry> {
     return geometry
 }
 
-/**
- * Fast-scroll knob, Google-Files style: hidden at rest, shown once scroll speed passes [showVelocity],
- * pinned while dragged. A zoom's reflow reads as scroll speed, so a zoom holds it hidden for a beat.
- * [onGrab] is told when the knob is picked up (true) and let go (false), for a readout that is only wanted
- * while it is held.
- */
+// A zoom's reflow reads as scroll speed, so a zoom holds the knob hidden for a beat.
 @Composable
 fun Modifier.autoHideScrollbar(
     geometry: State<ScrollGeometry>,
@@ -200,14 +179,12 @@ fun Modifier.autoHideScrollbar(
     var dragging by remember { mutableStateOf(false) }
     LaunchedEffect(dragging) { currentOnGrab(dragging) }
     var trackHeightPx by remember { mutableFloatStateOf(0f) }
-    // Shared by the fade loop and the drag handler.
     var lastFastNs by remember { mutableLongStateOf(0L) }
     val alphaTarget = when {
         dragging -> KNOB_GRAB_ALPHA
         visible -> IDLE_ALPHA
         else -> 0f
     }
-    // The badges' timing: quick in, slow out.
     val alpha by animateFloatAsState(
         targetValue = alphaTarget,
         animationSpec = if (alphaTarget == 0f) ReadoutFadeOut else ReadoutFadeIn,
@@ -257,7 +234,6 @@ fun Modifier.autoHideScrollbar(
     val knobPx = with(density) { KNOB_DIAMETER.toPx() }
     val clearanceTopPx = with(density) { topClearance.toPx() }
     val clearanceBottomPx = with(density) { bottomClearance.toPx() }
-    // The edge inset is the floor; a larger clearance takes over.
     val trackTopPx = maxOf(knobInsetPx, clearanceTopPx)
     val trackBottomPx = maxOf(knobInsetPx, clearanceBottomPx)
     val grabSlopPx = with(density) { GRAB_SLOP.toPx() }
@@ -269,15 +245,12 @@ fun Modifier.autoHideScrollbar(
             val maxScroll = g.maxScroll.coerceAtLeast(1f)
             val travel = ((size.height - trackTopPx - trackBottomPx) - knobPx).coerceAtLeast(0f)
             val y = travel * (g.offset / maxScroll).coerceIn(0f, 1f)
-            // Hugs the right edge, overlapping the page margin.
             val radius = knobPx / 2f
             val center = Offset(size.width - knobInsetPx - radius, y + trackTopPx + radius)
             val border = with(density) { KNOB_BORDER.toPx() }
             val arrowScale = knobPx / SVG_VIEWBOX
             onDrawBehind {
                 if (alpha >= 0.01f) {
-                    // Grows out of its own centre as it fades in, like the badges. Both states sit
-                    // at or above the grab alpha, so the coerce pins the scale at full size.
                     val pop = lerp(READOUT_POP_SCALE, 1f, (alpha / KNOB_GRAB_ALPHA).coerceIn(0f, 1f))
                     withTransform({ scale(pop, pop, pivot = center) }) {
                         drawCircle(color = Color.White.copy(alpha = alpha), radius = radius, center = center)
@@ -358,7 +331,6 @@ fun Modifier.autoHideScrollbar(
                                 }
                                 dragging = true
                                 if (!onKnob) {
-                                    // Jump re-centres the knob under the finger before the drag continues.
                                     val target = ((position.y - trackTopPx - thumbHeight / 2f) / travel * g.maxScroll)
                                         .coerceIn(0f, g.maxScroll)
                                     // Rebased: the next move would measure from the old offset and yank back.
@@ -405,21 +377,16 @@ private const val ZOOM_QUIET_NANOS = 250_000_000L
 
 private const val KNOB_GRAB_ALPHA = 0.8f
 
-/** Readout material opacity: the knob at rest and the badges both draw opaque at it. */
 const val IDLE_ALPHA = 1f
 
-/** Fixed diameter: a scrubber, not a proportional bar. */
 private val KNOB_DIAMETER = 46.dp
 
-/** Gap between the knob and the strip edges; the floor under any clearance. */
 private val KNOB_INSET = 6.dp
 
-/** White ring that keeps the black knob outlined wherever it lands. */
 private val KNOB_BORDER = 1.dp
 
 private const val SVG_VIEWBOX = 48f
 
-/** Up/down arrows from the Google knob SVG, in 48-unit viewBox coordinates. */
 private val KnobArrows: Path = Path().apply {
     moveTo(24f, 14f)
     lineTo(28f, 18f)
@@ -442,5 +409,4 @@ val ScrollbarTouchTarget = KNOB_DIAMETER + KNOB_INSET * 2
 /** Reserved at the top of the strip for ViewerScreen's zoom badge, so the knob stops below it. */
 val ZoomBadgeTopClearance = 46.dp
 
-/** Around-knob tolerance that makes a touch a grab rather than a jump. */
 private val GRAB_SLOP = 8.dp

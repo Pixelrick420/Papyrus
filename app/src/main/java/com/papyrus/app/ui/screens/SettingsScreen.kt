@@ -93,7 +93,6 @@ class SettingsViewModel(private val repository: SettingsRepository) : ViewModel(
     fun setTabSize(spaces: Int) = repository.setTabSize(spaces)
 }
 
-/** Same inset as Home and the viewer, so cards line up with the Home list. */
 private val ScreenPadding = 16.dp
 
 private val CardCorner = 16.dp
@@ -127,8 +126,7 @@ fun SettingsScreen(
     var tabSizeDialogOpen by remember { mutableStateOf(false) }
     var viewportHeightPx by remember { mutableIntStateOf(0) }
 
-    // Opened in the person's browser; Papyrus itself still never touches the network. The viewer's
-    // opener is reused so every link opens the same way and refuses any scheme but http(s), mailto, tel.
+    // Reuses the viewer's opener, so every link opens the same way and refuses any scheme but http(s), mailto, tel.
     val openUrl: (String) -> Unit = { openLink(context, it) }
 
     Scaffold { padding ->
@@ -312,7 +310,6 @@ fun SettingsScreen(
     }
 }
 
-/** Flat title row, the same shape as the viewer's header. */
 @Composable
 private fun SettingsHeader(onBack: () -> Unit, modifier: Modifier = Modifier) {
     Row(
@@ -348,7 +345,6 @@ private fun SectionLabel(text: String, first: Boolean = false) {
     )
 }
 
-/** Rounded surface matching Home's document rows; clips its rows' ripples to the corners. */
 @Composable
 private fun SettingsCard(content: @Composable ColumnScope.() -> Unit) {
     Surface(
@@ -387,7 +383,6 @@ private fun SettingsRow(title: String, value: String, modifier: Modifier = Modif
     }
 }
 
-/** The whole row toggles, not just the switch, and the switch itself stays out of the click handling. */
 @Composable
 private fun SwitchRow(
     title: String,
@@ -453,7 +448,6 @@ private fun ThemeDialog(
     )
 }
 
-/** The indent each nesting level gets in pretty-printed JSON, XML, HTML and SVG. */
 @Composable
 private fun TabSizeDialog(
     selected: Int,

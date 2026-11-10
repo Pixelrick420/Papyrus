@@ -3,34 +3,17 @@ package com.papyrus.app.data
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-/** One document whose text contains the searched words, with the excerpt to show for it. */
 data class ContentHit(
     val documentId: Long,
-    /** The excerpt, with [SearchDao.SNIPPET_START] and [SearchDao.SNIPPET_END] removed. */
     val snippet: String,
-    /** The parts of [snippet] that matched, as ranges to draw emphasised. */
     val highlightRanges: List<IntRange>,
-    /** BM25, higher is better. Only comparable between hits of the same search. */
     val score: Double,
 )
 
-/**
- * Content search across the library: the two-phase query, ranked, with an excerpt for each hit.
- *
- * Phase one asks the index which documents match and for their `matchinfo` only - no document text
- * is read, so ranking a large result set stays cheap. Phase two asks for excerpts, for the handful
- * of documents that survived ranking, because `snippet` reads the content row.
- *
- * Deliberately narrower than a general search service: it takes the reader's text rather than a
- * MATCH expression, so no caller has to know FTS4 syntax or its escaping rules.
- */
+// Phase one asks the index which documents match using `matchinfo` only; phase two fetches excerpts for the survivors, since `snippet` reads the content row.
 class SearchRepository(private val dao: SearchDao) {
 
-    /**
-     * The best [limit] documents containing [input], best first, or an empty list when [input] holds
-     * nothing searchable. Never returns a hit whose excerpt went missing: a result that cannot show
-     * why it matched is worse than no result.
-     */
+    // Never returns a hit whose excerpt went missing: a result that cannot show why it matched is worse than none.
     suspend fun search(input: String, limit: Int = DEFAULT_LIMIT): List<ContentHit> =
         withContext(Dispatchers.IO) {
             val query = SearchQuery.parse(input) ?: return@withContext emptyList()
@@ -53,16 +36,11 @@ class SearchRepository(private val dao: SearchDao) {
             }
         }
 
-    /** One candidate's rank before the order is fixed. */
     private data class RawScore(val documentId: Long, val score: Double)
 
-    /** An excerpt ready for display: the words, and which parts of them matched. */
     private class Excerpt(val text: String, val highlightRanges: List<IntRange>)
 
-    /**
-     * Strips the markers `snippet` wrapped around the matches, recording the ranges they spanned.
-     * An unterminated marker - the excerpt was cut short - highlights the rest of the text.
-     */
+    // An unterminated marker (the excerpt was cut short) highlights the rest of the text.
     private fun withMarkersRemoved(raw: String): Excerpt {
         val text = StringBuilder()
         val ranges = mutableListOf<IntRange>()
@@ -81,13 +59,11 @@ class SearchRepository(private val dao: SearchDao) {
         return Excerpt(text.toString(), ranges)
     }
 
-    /** Adds [from] until [to], skipping the empty range adjacent markers can produce. */
     private fun MutableList<IntRange>.addRange(to: Int, from: Int) {
         if (to > from) add(from until to)
     }
 
     companion object {
-        /** Hits shown for one search; enough to choose from, few enough to read at a glance. */
         const val DEFAULT_LIMIT = 20
     }
 }

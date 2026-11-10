@@ -4,7 +4,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** Pure: when the page follows the voice, and by how much. */
 class TtsFollowTest {
 
     private val viewport = 1000f

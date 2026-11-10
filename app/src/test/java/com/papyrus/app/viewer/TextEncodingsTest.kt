@@ -59,14 +59,14 @@ class TextEncodingsTest {
 
     @Test
     fun `bytes that are not utf-8 fall back to windows-1252, which decodes every byte`() {
-        // "café – “quoted”" in Windows-1252: é is E9 (invalid as UTF-8), the dash and quotes are in 0x80-0x9F.
-        val data = "café – “quoted”".toByteArray(TextEncodings.WINDOWS_1252)
+        // "café - “quoted”" in Windows-1252: é is E9 (invalid as UTF-8), the dash and quotes are in 0x80-0x9F.
+        val data = "café - “quoted”".toByteArray(TextEncodings.WINDOWS_1252)
 
         val found = detect(data)
 
         assertEquals(TextEncodings.WINDOWS_1252, found.charset)
         assertEquals(EncodingSource.FALLBACK, found.source)
-        assertEquals("café – “quoted”", String(data, found.charset))
+        assertEquals("café - “quoted”", String(data, found.charset))
     }
 
     @Test

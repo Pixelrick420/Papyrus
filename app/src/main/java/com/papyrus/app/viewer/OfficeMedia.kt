@@ -11,46 +11,25 @@ import java.util.zip.ZipInputStream
 
 private const val PNG_MIME = "image/png"
 
-/** Copy buffer for archive entries; also the first guess for the size of one whose length is unknown. */
 internal const val MEDIA_COPY_BUFFER = 64 * 1024
 
-/** What goes to disk for an archive entry: [bytes] as they will be written, after any change of format. */
 internal class PreparedImage(val bytes: ByteArray, val mimeType: String, val tintable: Boolean = false)
 
-/**
- * The image pass every ZIP-based format shares (DOCX, ODT, EPUB): the images a parser noted as
- * [PendingImage]s are read from the archive in a second walk, charged to one byte budget, written to
- * [mediaDir], and put back into the block list where they appeared. Without a directory there are no
- * images and the text renders alone. An entry is read, optionally changed by a transform (an SVG becomes a
- * PNG), and only then charged and written, so the budget counts what is stored and a refused image leaves no file.
- */
+// Images a parser noted as [PendingImage]s are read in a second walk, charged to one byte budget and written to [mediaDir]; an entry is changed by a transform (an SVG becomes a PNG) before it is charged, so the budget counts what is stored and a refused image leaves no file.
 internal class OfficeMedia(
     private val mediaDir: File?,
     private val mimeByName: (String) -> String,
 ) {
 
-    /**
-     * What an insertion did: [at] is the original position (as recorded in [PendingImage.index]) of every
-     * image that went in, ascending, so a caller holding block indices of its own can shift them; [dropped]
-     * counts references that could not be placed (not in the archive, over budget, block limit reached).
-     */
+    // [at] lets a caller holding block indices of its own shift them; [dropped] counts references that could not be placed.
     class Result(val at: List<Int>, val dropped: Int) {
-        /** [index] moved down by the images that went in before it, in the list as it is now. */
         fun shifted(index: Int): Int = index + at.count { it < index }
 
-        /**
-         * Where the block that was at [index] is now: a picture recorded at the same position came before it,
-         * so it moves down past those too. [shifted] is for a place that starts with such a picture.
-         */
+        // A picture recorded at the same position came before the block, so it moves down past those too; [shifted] is for a place that starts with such a picture.
         fun shiftedPast(index: Int): Int = index + at.count { it <= index }
     }
 
-    /**
-     * [openStream] must return a fresh stream; the caller owns nothing it returns. Images go in at their
-     * recorded positions, not appended, and a block list already at [blockBudget] takes none. [transform]
-     * may change an entry's bytes and type before it is stored (null drops it); the default keeps it as it is.
-     * A [PendingImage] that carries a scene is drawn by [rasterise] against the same budget and directory.
-     */
+    // Images go in at their recorded positions, not appended.
     fun insertImages(
         openStream: () -> InputStream,
         pending: List<PendingImage>,
@@ -111,13 +90,10 @@ internal class OfficeMedia(
 
     private class Written(val prepared: PreparedImage, val file: File)
 
-    /** Byte budget so photographs cannot fill the disk or heap. Reserve then consume: [canReserve] is
-     * the cheap pre-check, [consume] the authoritative charge. */
     private class MediaBudget {
         private var remaining = OfficeTextExtractor.MAX_TOTAL_MEDIA_BYTES
         private var count = 0
 
-        /** True when an entry of [declaredSize] (-1 when unknown) could plausibly be accepted. */
         fun canReserve(declaredSize: Long): Boolean {
             if (count >= OfficeTextExtractor.MAX_IMAGES) return false
             if (declaredSize > OfficeTextExtractor.MAX_IMAGE_BYTES) return false
@@ -162,9 +138,7 @@ internal class OfficeMedia(
         }
     }
 
-    /** Streams wanted entries to [sink], changed by [transform] and charged to the budget as each arrives
-     * rather than buffered all together. The per-entry cap counts bytes, not `entry.size`, which can be -1
-     * when streamed; what is charged is the final size, so a change of format cannot get past the budget. */
+    // The per-entry cap counts bytes, not `entry.size`, which can be -1 when streamed; the final size is charged, so a change of format cannot get past the budget.
     private fun readMedia(
         openStream: () -> InputStream,
         wanted: Set<String>,
@@ -194,7 +168,6 @@ internal class OfficeMedia(
         }
     }
 
-    /** Reads one entry, capped at the smaller of its declared size and [OfficeTextExtractor.MAX_IMAGE_BYTES]; null if over. */
     private fun readBounded(zip: ZipInputStream, declaredSize: Long, buffer: ByteArray): ByteArray? {
         val out = ByteArrayOutputStream(
             if (declaredSize in 1..OfficeTextExtractor.MAX_IMAGE_BYTES) declaredSize.toInt() else MEDIA_COPY_BUFFER,

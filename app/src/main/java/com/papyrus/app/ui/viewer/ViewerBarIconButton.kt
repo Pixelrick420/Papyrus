@@ -13,10 +13,7 @@ import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
-/**
- * The icon button both in-flow viewer bars draw with - find and read-aloud - so they share one tint
- * and one disabled treatment: a muted glyph that dims rather than vanishes when it has nothing to do.
- */
+// Shared by both in-flow bars so they have one tint and one disabled treatment.
 @Composable
 internal fun ViewerBarIconButton(
     icon: ImageVector,
@@ -36,10 +33,6 @@ internal fun ViewerBarIconButton(
     )
 }
 
-/**
- * The same button for an icon that is a drawable resource. [activeTint] is for a toggle that is on,
- * so its state shows in the colour as well as the glyph; a disabled button ignores it and dims.
- */
 @Composable
 internal fun ViewerBarIconButton(
     painter: Painter,

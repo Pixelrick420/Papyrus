@@ -41,10 +41,6 @@ import com.papyrus.app.data.FormatGroup
 import com.papyrus.app.data.LibraryFilter
 import com.papyrus.app.data.LibrarySort
 
-/**
- * Home's sort and filter sheet: every sort order, every file-type group and the starred filter in one
- * place. The count of matching files sits inside it, so a filter never hides rows without saying so.
- */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun FilterSortSheet(
@@ -141,10 +137,6 @@ fun FilterSortSheet(
     }
 }
 
-/**
- * The button beside the search pill that opens the sheet. The badge counts active filters so the button reads
- * as one thing: the order and how many filters are narrowing the list.
- */
 @Composable
 fun SortFilterButton(
     sort: LibrarySort,
@@ -184,7 +176,6 @@ fun SortFilterButton(
     }
 }
 
-/** A section heading inside the sheet; the same label style the info sheet gives a field's name. */
 @Composable
 private fun SectionLabel(text: String) {
     Text(
@@ -194,7 +185,6 @@ private fun SectionLabel(text: String) {
     )
 }
 
-/** Selected chips are blue only; width stays constant. */
 @Composable
 private fun ChoiceChip(label: String, selected: Boolean, onClick: () -> Unit) {
     FilterChip(

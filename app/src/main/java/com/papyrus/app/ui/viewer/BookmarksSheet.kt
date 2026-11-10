@@ -56,10 +56,6 @@ import com.papyrus.app.data.SummaryKind
 import com.papyrus.app.data.summary
 import kotlinx.coroutines.launch
 
-/**
- * "Page 12", "Line 340" or "45%" in words. One place for the viewer's default label and the sheet's
- * location line, so a bookmark that was never renamed reads the same in both.
- */
 internal fun LocationSummary.asText(context: Context): String = context.getString(
     when (kind) {
         SummaryKind.PAGE -> R.string.bookmark_summary_page
@@ -69,11 +65,7 @@ internal fun LocationSummary.asText(context: Context): String = context.getStrin
     number,
 )
 
-/**
- * The document's bookmarks in document order; tapping one jumps there and closes the sheet. [unitCount] is
- * the size of what is open, which only the percentage summaries need. Delete takes effect at once and
- * offers Undo from a snackbar of the sheet's own: the viewer's sits behind a modal sheet, out of sight.
- */
+// Delete offers Undo from the sheet's own snackbar: the viewer's sits behind a modal sheet, out of sight.
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun BookmarksSheet(
@@ -210,11 +202,7 @@ private fun BookmarkRow(
     }
 }
 
-/**
- * Edits a label. What is typed is the reader's own and the only free text a bookmark ever holds; the
- * viewer's own labels are positions. Emptying the field falls back to the position (see
- * `cleanBookmarkLabel`), and the keyboard's Done saves.
- */
+// The typed label is the only free text a bookmark ever holds; emptying the field falls back to the position (see `cleanBookmarkLabel`).
 @Composable
 private fun RenameBookmarkDialog(
     current: String,

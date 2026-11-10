@@ -2,8 +2,7 @@ package com.papyrus.app.viewer
 
 import com.tom_roush.pdfbox.pdmodel.PDPage
 
-/** A page's crop box and rotation, turning PDF rectangles (y up) into page-relative fractions.
- *  [of] folds the crop origin out; [forGlyphs] must not, since PdfBox reports glyphs crop-relative. */
+// [of] folds the crop origin out; [forGlyphs] must not, since PdfBox reports glyphs crop-relative.
 internal class PdfPageFrame(
     private val cropWidth: Float,
     private val cropHeight: Float,
@@ -12,7 +11,6 @@ internal class PdfPageFrame(
     private val rotation: Int,
 ) {
 
-    /** The rectangle as page-relative fractions, or null if empty or not finite. */
     fun toNorm(x0: Float, y0: Float, x1: Float, y1: Float): NormRect? {
         if (!x0.isFinite() || !y0.isFinite() || !x1.isFinite() || !y1.isFinite()) return null
         val box = floatArrayOf(Float.MAX_VALUE, Float.MAX_VALUE, -Float.MAX_VALUE, -Float.MAX_VALUE)
@@ -26,8 +24,7 @@ internal class PdfPageFrame(
         return NormRect(left.coerceIn(0f, 1f), top.coerceIn(0f, 1f), right.coerceIn(0f, 1f), bottom.coerceIn(0f, 1f))
     }
 
-    /** Folds ([x], [y]) (y up) into [box] as left/top/right/bottom fractions, widening its min/max.
-     *  Seed [box] with MAX, MAX, -MAX, -MAX; it runs per glyph corner, so it must stay allocation-free. */
+    // Runs per glyph corner, so it must stay allocation-free; seed [box] with MAX, MAX, -MAX, -MAX.
     fun include(x: Float, y: Float, box: FloatArray) {
         // Into the unrotated page's top-left frame first, then turn clockwise a quarter at a time.
         val nx = (x - cropX) / cropWidth
@@ -47,7 +44,6 @@ internal class PdfPageFrame(
     }
 
     companion object {
-        /** The frame of [page] for raw page-space input such as a link's `/Rect`. */
         fun of(page: PDPage): PdfPageFrame {
             val crop = page.cropBox
             return PdfPageFrame(
@@ -59,8 +55,7 @@ internal class PdfPageFrame(
             )
         }
 
-        /** The frame of [page] for glyph coordinates, which PdfBox reports crop-relative, so the origin
-         *  is zero. Passing raw page-space coordinates here is wrong on a page whose crop box is not at (0, 0). */
+        // Passing raw page-space coordinates here is wrong on a page whose crop box is not at (0, 0).
         fun forGlyphs(page: PDPage): PdfPageFrame {
             val crop = page.cropBox
             return PdfPageFrame(

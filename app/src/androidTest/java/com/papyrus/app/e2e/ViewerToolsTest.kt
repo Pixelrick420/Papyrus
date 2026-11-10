@@ -4,7 +4,6 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Test
 import org.junit.runner.RunWith
 
-/** What the viewer's menu offers on a document that is open: find, go to, and file info. */
 @RunWith(AndroidJUnit4::class)
 class ViewerToolsTest : E2eTest() {
 

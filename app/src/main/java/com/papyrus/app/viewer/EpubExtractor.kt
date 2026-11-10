@@ -10,15 +10,7 @@ import java.io.File
 import java.io.IOException
 import java.io.InputStream
 
-/**
- * An EPUB as the Office viewer shows it: [blocks] in reading order, an [outline] from the book's own table of
- * contents (null when it has none the reader can use, so the headings stand in), and whether anything was
- * left out ([incomplete]): a chapter that could not be read, or a limit that was reached. [anchors] maps every
- * place a link inside the book can name (a chapter, or an element of it by `id`) to the block it lands on.
- * [direction] is the book's own: right to left when its spine says pages turn from the right, which is what a
- * block that says nothing of its own is set in. A [fixedLayout] book has one page per spine item that is one, and
- * [pageStarts] holds the first block of each: the same place [outline] and [anchors] take a chapter's start to be.
- */
+// [outline] is null when the book has no usable table of contents, so the headings stand in; [direction] is right to left when the spine says pages turn from the right.
 class EpubBook(
     val blocks: List<OfficeBlock>,
     val outline: List<OutlineEntry>?,
@@ -29,30 +21,18 @@ class EpubBook(
     val pageStarts: Set<Int> = emptySet(),
 )
 
-/**
- * EPUB extraction with the platform XML parser and `java.util.zip`: the container names the package, the
- * package's spine gives the reading order, and each XHTML chapter becomes [OfficeBlock]s, so find, outline,
- * zoom, reading position and bookmarks all work as they do for a Word file. The parser comes through
- * [newParserFactory] for the same reason as in [OfficeTextExtractor]: the platform's is a stub in JVM tests.
- */
+// The parser comes through [newParserFactory] for the same reason as in [OfficeTextExtractor]: the platform's is a stub in JVM tests.
 class EpubExtractor(
     private val mediaDir: File?,
     private val mimeByName: (String) -> String = { OfficeTextExtractor.guessMimeType(it) },
     private val newParserFactory: () -> XmlPullParser = { Xml.newPullParser() },
     private val limits: EpubLimits = EpubLimits(),
     private val blockBudget: Int = OfficeTextExtractor.MAX_BLOCKS,
-    /** Draws an SVG's scene as a PNG; a test can hand in one of its own. */
     private val rasteriser: SvgRasteriser = SvgRaster,
 ) {
 
-    /**
-     * [openStream] must return a fresh stream on every call: the archive is walked once for the text and once
-     * more for the images. A [previewChapters] count reads only that many chapters and no images, for a
-     * thumbnail's first lines, and without ever holding the whole book.
-     *
-     * @throws EpubProtectedException if the book is DRM-protected.
-     * @throws EpubFormatException if the file is not a usable EPUB.
-     */
+    // [openStream] must return a fresh stream on every call: the archive is walked once for the text and once more for the images.
+    // [previewChapters] reads only that many chapters and no images, for a thumbnail, without ever holding the whole book.
     fun extract(openStream: () -> InputStream, previewChapters: Int? = null): EpubBook {
         val archive = EpubArchive(openStream, limits)
         val factory: ParserFactory = { newParser(it) }
@@ -76,11 +56,8 @@ class EpubExtractor(
         val pending = ArrayList<PendingImage>()
         val sink = EpubSink(blocks, pending, limits)
         val bookRules = bookStyles(names)
-        // Where each chapter's first block is, before any image goes in; the table of contents jumps there.
         val starts = HashMap<String, Int>()
-        // The archive's own spelling of each chapter's path, which the parser records its anchors under.
         val spelledAs = HashMap<String, String>()
-        // The chapters that are a page of their own, in a fixed-layout book.
         val pagePaths = HashSet<String>()
         for (entry in toRead) {
             val item = entry.item
@@ -153,10 +130,6 @@ class EpubExtractor(
         return EpubBook(blocks, outline, incomplete, anchors, bookDirection(pkg), fixed, pageStarts)
     }
 
-    /**
-     * An archive entry as it is stored: a picture as it is, an SVG drawn once into a PNG (null when it cannot be
-     * read or drawn, which drops that picture and nothing else).
-     */
     private fun prepareImage(zipName: String, bytes: ByteArray, listedAsSvg: Boolean, factory: ParserFactory): PreparedImage? {
         if (!listedAsSvg && !zipName.lowercase().endsWith(".svg")) return PreparedImage(bytes, mimeByName(zipName))
         val scene = try {
@@ -170,10 +143,8 @@ class EpubExtractor(
         return PreparedImage(png, "image/png", tintable = scene.tintable)
     }
 
-    /**
-     * The rules of every `.css` in the archive, whether or not the package lists it, read in name order so the
-     * cascade does not depend on how the ZIP was packed. A part is not scoped to the chapters that link it.
-     */
+    // The rules of every `.css` in the archive, whether or not the package lists it, read in name order so the
+    // cascade does not depend on how the ZIP was packed. A part is not scoped to the chapters that link it.
     private fun bookStyles(names: EpubNames): List<CssRule> {
         val sheets = names.names.filter { it.lowercase().endsWith(".css") }.sorted()
         if (sheets.isEmpty()) return emptyList()
@@ -181,7 +152,6 @@ class EpubExtractor(
         return parseCss(text)
     }
 
-    /** The first block of each page, as the chapter starts everything else jumps to are, shifted past the images. */
     private fun pageStartsOf(pages: Set<String>, starts: Map<String, Int>, media: OfficeMedia.Result, blockCount: Int): Set<Int> =
         pages.mapNotNull { starts[it] }.map(media::shifted).filterTo(HashSet()) { it < blockCount }
 
@@ -189,10 +159,8 @@ class EpubExtractor(
     private fun bookDirection(pkg: EpubPackage): BlockDirection =
         if (pkg.pageProgression?.trim()?.lowercase() == "rtl") BlockDirection.RTL else BlockDirection.LTR
 
-    /**
-     * Every place a link can name, as the block it lands on once the images are in: each `id` the chapters
-     * noted, and each chapter's own start. An anchor at the very end of the book names no block and is dropped.
-     */
+    // Every place a link can name, as the block it lands on once the images are in: each `id` the chapters
+    // noted, and each chapter's own start. An anchor at the very end of the book names no block and is dropped.
     private fun anchorsOf(
         sink: EpubSink,
         starts: Map<String, Int>,
@@ -211,10 +179,6 @@ class EpubExtractor(
         return out
     }
 
-    /**
-     * The cover image's bytes if the package names one, reading only the package and then that one entry; null
-     * when there is none, it is not a raster image, or the file cannot be read. Nothing else is extracted.
-     */
     fun readCover(openStream: () -> InputStream): ByteArray? = try {
         val archive = EpubArchive(openStream, limits.copy(maxPartBytes = OfficeTextExtractor.MAX_IMAGE_BYTES))
         val names = EpubNames(archive.scan(wanted = ::isStructurePart).parts)
@@ -224,7 +188,6 @@ class EpubExtractor(
         null
     }
 
-    /** Takes back everything a chapter that failed part way had already put in the sink. */
     private fun rollBack(sink: EpubSink, blockMark: Int, pendingMark: Int, anchorMark: Int) {
         sink.blocks.subList(blockMark, sink.blocks.size).clear()
         sink.pending.subList(pendingMark, sink.pending.size).clear()
@@ -261,7 +224,6 @@ class EpubExtractor(
         }
     }
 
-    /** The book's own table of contents as outline entries, or null if it has none that leads anywhere. */
     private fun outlineOf(
         pkg: EpubPackage,
         names: EpubNames,
@@ -291,7 +253,6 @@ class EpubExtractor(
         return explicitOutline(entries)
     }
 
-    /** EPUB 3's navigation document if it yields entries, else EPUB 2's NCX; a part that cannot be read counts as absent. */
     private fun readPoints(pkg: EpubPackage, names: EpubNames, factory: ParserFactory): List<NavPoint> {
         val fromNav = pkg.navItem()?.path?.let { path ->
             names.find(path)?.let { actual ->
@@ -322,13 +283,11 @@ class EpubExtractor(
 
         private val TEXT_SUFFIXES = listOf(".xhtml", ".html", ".htm", ".xml", ".opf", ".ncx", ".css")
 
-        /** The parts read into memory for a whole book: markup and styles of every kind, never pictures or fonts. */
         internal fun isTextPart(name: String): Boolean {
             val lower = name.lowercase()
             return TEXT_SUFFIXES.any { lower.endsWith(it) }
         }
 
-        /** The parts that say what a book contains, without its chapters. */
         internal fun isStructurePart(name: String): Boolean {
             val lower = name.lowercase()
             return lower.endsWith(".opf") || lower == CONTAINER.lowercase() ||

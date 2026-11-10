@@ -31,13 +31,11 @@ class LineLocationTest {
 
     @Test
     fun `the last line is in the last chunk, measured by that chunk's own lines`() {
-        // 100 lines: chunks of 40, 40 and 20. Line 100 is the 20th of the last, so 19/20 of the way down it.
         val target = locate(100, 100)
 
         assertEquals(2, target.chunk)
         assertEquals(19, target.lineInChunk)
         assertEquals(0.95f, target.fraction, 1e-6f)
-        // The first line of that chunk is still at its top.
         assertEquals(0f, locate(81, 100).fraction, 0f)
     }
 

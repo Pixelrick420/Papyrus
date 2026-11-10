@@ -8,7 +8,6 @@ import org.junit.Test
 
 class BoundedCacheTest {
 
-    /** Every value costs 10 bytes, so the budget reads as a count: 30 holds three. */
     private fun cache(maxBytes: Long = 30L) = BoundedCache<String, String>(maxBytes) { 10L }
 
     @Test

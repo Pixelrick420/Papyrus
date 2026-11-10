@@ -2,28 +2,19 @@ package com.papyrus.app.viewer
 
 import java.io.ByteArrayOutputStream
 
-/**
- * Word 97-2003 documents with formatting: a style sheet and the paragraph property pages (PAPX) that
- * point paragraphs at it, laid out the way Word does so the extractor reads them through the same
- * offsets. Text is one piece (or two, to cross a piece boundary) placed by [DocFixtures.doc].
- */
 internal object DocRichFixtures {
 
-    /** A style-sheet entry. [papx] is the sprms of a paragraph style; [base] is the `istd` it is based on. */
     class Style(
         val name: String,
         val sti: Int,
         val base: Int = NO_BASE,
         val papx: ByteArray = ByteArray(0),
         val sgc: Int = SGC_PARAGRAPH,
-        /** Character sprms the style gives its text (a paragraph style's UpxChpx, a character style's only UPX). */
         val chpx: ByteArray = ByteArray(0),
     )
 
-    /** A stretch of a paragraph's text with its own direct character sprms. */
     class Run(val text: String, val chpx: ByteArray = ByteArray(0))
 
-    /** One paragraph: its [runs] without the [mark] that ends it, its style and its direct sprms. */
     class Para(
         val runs: List<Run>,
         val istd: Int = 0,
@@ -36,16 +27,12 @@ internal object DocRichFixtures {
         val text: String get() = runs.joinToString("") { it.text }
     }
 
-    /** A list level: number format [nfc] (0 decimal, 4 lower letter, 0x17 bullet, 0xFF none) and its template. */
     class ListLevel(val nfc: Int, val text: String, val start: Int = 1)
 
-    /** A list definition (an LSTF and its LVLs): [levels] has nine entries, or one when [simple]. */
     class ListDef(val lsid: Long, val levels: List<ListLevel>, val simple: Boolean = false)
 
-    /** An instance's change to one level: restart it at [startAt], and/or replace its formatting with [format]. */
     class LevelOverride(val level: Int, val startAt: Int? = null, val format: ListLevel? = null)
 
-    /** An LFO: the `ilfo` of the n-th instance is n + 1. */
     class ListInstance(val lsid: Long, val overrides: List<LevelOverride> = emptyList())
 
     val NORMAL = Style("Normal", sti = 0)
@@ -53,27 +40,19 @@ internal object DocRichFixtures {
     val HEADING_2 = Style("Heading 2", sti = 2, base = 0)
     val HEADING_3 = Style("Heading 3", sti = 3, base = 0)
 
-    /** `istd` 0 to 3, as Word numbers them. */
     val DEFAULT_STYLES = listOf(NORMAL, HEADING_1, HEADING_2, HEADING_3)
 
-    /** Bullets at every level: the Symbol glyph Word stores, in the private-use area. */
     fun bullets(lsid: Long) = ListDef(lsid, List(LEVELS) { ListLevel(NFC_BULLET, "\uF0B7") })
 
-    /** "1." then "a)" then "i." and decimals below: the shape of Word's default numbered list. */
     fun numbered(lsid: Long) = ListDef(
         lsid,
         listOf(ListLevel(0, "\u0000."), ListLevel(4, "\u0001)"), ListLevel(2, "\u0002.")) +
             (3 until LEVELS).map { ListLevel(0, "${it.toChar()}.") },
     )
 
-    /** A paragraph in list instance [ilfo] at [ilvl]. */
     fun item(text: String, ilfo: Int, ilvl: Int = 0, istd: Int = 0, mark: Char = '\r') =
         Para(text, istd, grpprl(sprmWord(PILFO, ilfo), sprm(PILVL, ilvl)), mark)
 
-    /**
-     * A document of [paras]. A null entry in [styles] is an unused slot (`cbStd` 0). [splitAt] cuts the text
-     * into two pieces at that character, the second UTF-16 whatever [compressed] says.
-     */
     fun doc(
         paras: List<Para>,
         styles: List<Style?> = DEFAULT_STYLES,
@@ -97,7 +76,6 @@ internal object DocRichFixtures {
         val entries = ArrayList<PapxEntry>()
         val charEntries = ArrayList<ChpxEntry>()
         var consumed = 0
-        // Each character's width depends on the piece it falls in; the split piece is UTF-16.
         fun widthOf(from: Int, chars: Int): Long =
             (from until from + chars).sumOf { index -> if (splitAt != null && index >= splitAt) 2L else width.toLong() }
         for (para in paras) {
@@ -127,21 +105,16 @@ internal object DocRichFixtures {
         return DocFixtures.doc(pieces = pieces, wordTail = papx.pages + (if (hasChpx) chpx.pages else ByteArray(0)), tableParts = parts)
     }
 
-    /** A sprm with a 1-byte operand. */
     fun sprm(opcode: Int, operand: Int): ByteArray = byteArrayOf(lo(opcode), hi(opcode), operand.toByte())
 
-    /** A sprm with a 2-byte operand. */
     fun sprmWord(opcode: Int, operand: Int): ByteArray = byteArrayOf(lo(opcode), hi(opcode), lo(operand), hi(operand))
 
-    /** A sprm with a 4-byte operand. */
     fun sprmDword(opcode: Int, operand: Long): ByteArray =
         byteArrayOf(lo(opcode), hi(opcode)) + ByteArray(4) { ((operand shr (it * 8)) and 0xFF).toByte() }
 
-    /** A sprm with a length-prefixed operand. */
     fun sprmVar(opcode: Int, operand: ByteArray): ByteArray =
         byteArrayOf(lo(opcode), hi(opcode), operand.size.toByte()) + operand
 
-    /** A COLORREF sprm operand for `0xRRGGBB`; [auto] writes the automatic flag instead. */
     fun sprmColor(opcode: Int, rgb: Int, auto: Boolean = false): ByteArray =
         byteArrayOf(lo(opcode), hi(opcode), (rgb shr 16).toByte(), (rgb shr 8).toByte(), rgb.toByte(), if (auto) 0xFF.toByte() else 0)
 
@@ -168,19 +141,17 @@ internal object DocRichFixtures {
     const val PILVL = 0x260A
     const val PILFO = 0x460B
 
-    /** The two list tables as the table stream holds them: [lst] runs on past its recorded length [lstLcb]. */
     class ListBytes(val lst: ByteArray, val lstLcb: Int, val lfo: ByteArray)
 
-    /** PlfLst (whose recorded length stops before the LVLs that follow it) and PlfLfo. */
     fun listBytes(lists: List<ListDef>, instances: List<ListInstance>): ListBytes {
         val plfLst = ByteArrayOutputStream()
         plfLst.u16(lists.size)
         for (def in lists) {
             plfLst.u32(def.lsid)
-            plfLst.u32(0) // tplc
-            repeat(LEVELS) { plfLst.u16(NO_BASE) } // rgistd: no linked styles
+            plfLst.u32(0)
+            repeat(LEVELS) { plfLst.u16(NO_BASE) }
             plfLst.write(if (def.simple) 1 else 0)
-            plfLst.write(0) // grfhic
+            plfLst.write(0)
         }
         val lstfBytes = plfLst.size()
         for (def in lists) for (level in def.levels) plfLst.write(lvl(level))
@@ -191,11 +162,11 @@ internal object DocRichFixtures {
             plfLfo.u32(instance.lsid)
             plfLfo.u32(0)
             plfLfo.u32(0)
-            plfLfo.write(instance.overrides.size) // clfolvl
+            plfLfo.write(instance.overrides.size)
             repeat(3) { plfLfo.write(0) }
         }
         for (instance in instances) {
-            plfLfo.u32(0xFFFFFFFFL) // cp
+            plfLfo.u32(0xFFFFFFFFL)
             for (override in instance.overrides) {
                 plfLfo.u32((override.startAt ?: 0).toLong() and 0xFFFFFFFFL)
                 var flags = override.level
@@ -217,7 +188,6 @@ internal object DocRichFixtures {
         )
     }
 
-    /** An LVL: a 28-byte LVLF (no paragraph or character sprms), then the number text. */
     private fun lvl(level: ListLevel): ByteArray {
         val out = ByteArrayOutputStream()
         out.u32(level.start.toLong() and 0xFFFFFFFFL)
@@ -232,7 +202,6 @@ internal object DocRichFixtures {
 
     private class PapxPages(val pages: ByteArray, val firstFcs: List<Long>)
 
-    /** The STSH: a Stshi of 18 bytes, then each style's `cbStd` and STD. */
     private fun stsh(styles: List<Style?>): ByteArray {
         val out = ByteArrayOutputStream()
         out.u16(STSHI_BYTES)
@@ -259,7 +228,6 @@ internal object DocRichFixtures {
         out.u16(style.name.length)
         out.write(style.name.toByteArray(Charsets.UTF_16LE))
         out.u16(0)
-        // A paragraph style's UpxPapx is its own `istd` then the sprms; its UpxChpx follows.
         if (style.sgc == SGC_PARAGRAPH) {
             out.upx(byteArrayOf(0, 0) + style.papx)
             out.upx(style.chpx)
@@ -269,18 +237,13 @@ internal object DocRichFixtures {
         return out.toByteArray()
     }
 
-    /** A UPX is its length and its bytes, padded to an even length. */
     private fun ByteArrayOutputStream.upx(bytes: ByteArray) {
         u16(bytes.size)
         write(bytes)
         if (bytes.size % 2 != 0) write(0)
     }
 
-    /**
-     * PAPX FKP pages for [entries], which must tile the text. A PAPX is its size in words, the
-     * `istd` and the sprms; a page holds at most as many paragraphs as fit, 29 at the most, with
-     * the properties packed from the end of the page down and `crun` in the last byte.
-     */
+    // PAPX FKP pages must tile the text; a page holds at most 29 paragraphs, properties packed from the end.
     private fun papxPages(entries: List<PapxEntry>): PapxPages {
         val out = ByteArrayOutputStream()
         val firsts = ArrayList<Long>()
@@ -318,10 +281,7 @@ internal object DocRichFixtures {
 
     private class ChpxEntry(val from: Long, val to: Long, val grpprl: ByteArray)
 
-    /**
-     * CHPX FKP pages for [entries], which must tile the text: a run's entry is the word offset of its
-     * CHPX (a length byte and the sprms), or 0 for a run with none. A page holds up to 101 runs.
-     */
+    // CHPX FKP pages must tile the text; a page holds up to 101 runs, offset 0 meaning a run with no CHPX.
     private fun chpxPages(entries: List<ChpxEntry>): PapxPages {
         val out = ByteArrayOutputStream()
         val firsts = ArrayList<Long>()
@@ -357,11 +317,10 @@ internal object DocRichFixtures {
         return PapxPages(out.toByteArray(), firsts)
     }
 
-    /** An SttbfFfn: each FFN is a length byte, 39 bytes of metrics and the NUL-terminated face name. */
     private fun sttbfFfn(names: List<String>): ByteArray {
         val out = ByteArrayOutputStream()
         out.u16(names.size)
-        out.u16(0) // cbExtra
+        out.u16(0)
         for (name in names) {
             val face = name.toByteArray(Charsets.UTF_16LE)
             out.write(FFN_METRICS_BYTES + face.size + 2)
@@ -377,7 +336,6 @@ internal object DocRichFixtures {
         return if (props % 2 == 1) 1 + props else 2 + props
     }
 
-    /** A PlcBtePapx: where each page starts, where the last ends, then the page numbers. */
     private fun bte(firstFcs: List<Long>, end: Long, firstPage: Int): ByteArray {
         val out = ByteArrayOutputStream()
         for (fc in firstFcs) out.u32(fc)

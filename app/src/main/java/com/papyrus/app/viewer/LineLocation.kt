@@ -1,23 +1,13 @@
 package com.papyrus.app.viewer
 
-/**
- * The lines a reader counts in a file the reader found [lineCount] lines in: a file ending in a newline has
- * an empty line after it that no gutter numbers and no one goes to. [lineCount] is [TextChunks.lineCount].
- */
+// A file ending in a newline has an empty line after it that no gutter numbers and no one goes to.
 fun numberedLines(lineCount: Int, endsWithNewline: Boolean): Int =
     if (lineCount > 1 && endsWithNewline) lineCount - 1 else lineCount
 
-/**
- * Where a line is among the chunks: the chunk, the line's place in it counting from 0, and how far down the
- * chunk that is, from 0 to just under 1, which is how the viewer is told to scroll there. Chunks are a fixed
- * number of lines, so this is arithmetic and no chunk is read; the index only matters when the chunk is.
- */
+// Chunks are a fixed number of lines, so this is arithmetic and no chunk is read.
 class LineTarget(val chunk: Int, val lineInChunk: Int, val fraction: Float)
 
-/**
- * Where the one-based [line] of a file of [lines] numbered lines is, or null when there is no such line.
- * The last chunk is shorter than the rest, so it is measured by its own lines.
- */
+// The last chunk is shorter than the rest, so it is measured by its own lines.
 fun locateLine(line: Int, lines: Int, linesPerChunk: Int = TEXT_LINES_PER_CHUNK): LineTarget? {
     if (line !in 1..lines) return null
     val chunk = (line - 1) / linesPerChunk
@@ -26,11 +16,7 @@ fun locateLine(line: Int, lines: Int, linesPerChunk: Int = TEXT_LINES_PER_CHUNK)
     return LineTarget(chunk, lineInChunk, lineInChunk / linesInChunk.toFloat())
 }
 
-/**
- * The line a [fraction] of the way down chunk [chunk] is at, which is [locateLine] the other way: where the
- * top of the screen is, in lines. A position past the end, as the notice after the last chunk is, is the last
- * line. The nudge keeps a fraction [locateLine] made from rounding down to the line before it.
- */
+// The nudge keeps a fraction [locateLine] made from rounding down to the line before it; a position past the end is the last line.
 fun lineAt(chunk: Int, fraction: Float, lines: Int, linesPerChunk: Int = TEXT_LINES_PER_CHUNK): Int {
     if (lines < 1) return 1
     val first = chunk.coerceAtLeast(0).toLong() * linesPerChunk
@@ -42,14 +28,9 @@ fun lineAt(chunk: Int, fraction: Float, lines: Int, linesPerChunk: Int = TEXT_LI
 
 private const val LINE_NUDGE = 1e-3f
 
-/** How much of a line [lineSnippet] shows. */
 const val SNIPPET_CHARS = 32
 
-/**
- * A look at the line [lineInChunk], counting from 0, of [chunk]: its text without the indent, cut to [max]
- * characters with an ellipsis if there is more, and empty for a blank line or one the chunk does not have.
- * Reads no further than [max] characters into the line, so a line that is a whole minified file costs the same.
- */
+// Reads no further than [max] characters into the line, so a minified file costs the same as a short one.
 fun lineSnippet(chunk: String, lineInChunk: Int, max: Int = SNIPPET_CHARS): String {
     var start = 0
     repeat(lineInChunk.coerceAtLeast(0)) {

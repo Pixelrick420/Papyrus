@@ -11,7 +11,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
-/** The real rasteriser, on a device: Bitmap and Canvas are only real there. */
 @RunWith(AndroidJUnit4::class)
 class SvgRasterTest {
 

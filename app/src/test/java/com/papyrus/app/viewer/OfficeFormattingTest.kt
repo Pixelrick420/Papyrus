@@ -9,10 +9,6 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.io.File
 
-/**
- * How the extractor reads text look and arrangement (formatting, lists, links, alignment, notes,
- * shading, image metadata), unlike [OfficeTextExtractorTest]'s geometry checks.
- */
 class OfficeFormattingTest {
 
     @get:Rule
@@ -33,7 +29,6 @@ class OfficeFormattingTest {
     private fun part(root: String, inner: String) =
         """<?xml version="1.0" encoding="UTF-8"?><w:$root xmlns:w="$W">$inner</w:$root>"""
 
-    /** A DOCX whose optional parts are given as the inner XML of their root element. */
     private fun docx(
         body: String,
         styles: String? = null,

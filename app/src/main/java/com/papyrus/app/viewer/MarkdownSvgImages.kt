@@ -13,13 +13,7 @@ import java.io.InputStream
 
 private const val PNG_TYPE = "image/png"
 
-/**
- * Markwon's `data:` handler, except that a `data:image/svg+xml` URI is drawn by [renderSvgDataUri], which is
- * how an EPUB's drawings are drawn, and handed on as the PNG it makes. Markwon decodes a bitmap and has no
- * SVG, and its own handler does not unescape the text form. A URI that cannot be drawn throws, which Markwon
- * turns into the picture's alt text, as it does for any image the reader cannot show; every other URI is the
- * [standard] handler's.
- */
+// A URI that cannot be drawn throws, which Markwon turns into the picture's alt text; Markwon's own handler does not unescape the text form.
 internal class SvgDataUriSchemeHandler(
     private val standard: SchemeHandler,
     private val draw: (String) -> ByteArray? = ::drawOnPlatform,

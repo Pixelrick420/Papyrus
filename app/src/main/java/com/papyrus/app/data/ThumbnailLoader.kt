@@ -33,7 +33,6 @@ import kotlin.coroutines.cancellation.CancellationException
 sealed interface ThumbnailResult {
     data class Image(val bitmap: Bitmap) : ThumbnailResult
 
-    /** A lost SAF grant needs a re-pick, never an empty tile. */
     data object NoAccess : ThumbnailResult
 
     data class Unavailable(val reason: String) : ThumbnailResult
@@ -49,7 +48,6 @@ class ThumbnailLoader(private val context: Context) {
     /** Renders are blocking and each may open a PDF, so a fast scroll must not start one per row at once. */
     private val renderSlots = Semaphore(MAX_CONCURRENT_RENDERS)
 
-    /** Memory pressure: everything when [evictAll], otherwise down to half the budget, oldest first. */
     fun trimMemory(evictAll: Boolean) {
         if (evictAll) cache.evictAll() else cache.trimToSize(cache.maxSize() / 2)
     }
@@ -74,7 +72,6 @@ class ThumbnailLoader(private val context: Context) {
                 cached(document)?.let { return@withLock ThumbnailResult.Image(it) }
                 val bitmap = try {
                     renderSlots.withPermit {
-                        // A row scrolled away while it waited has cancelled this load; skip its render.
                         ensureActive()
                         render(document)
                     }
@@ -149,10 +146,6 @@ class ThumbnailLoader(private val context: Context) {
         .take(4)
         .toList()
 
-    /**
-     * The cover when the package names one, read as that one entry and nothing else; otherwise the same text
-     * tile as any other document, from the first chapters only. Nothing is written to disk.
-     */
     private fun renderEpub(uri: Uri): Bitmap? {
         val open = { openStream(uri) ?: throw FileNotFoundException(uri.toString()) }
         val extractor = EpubExtractor(mediaDir = null, blockBudget = THUMBNAIL_BLOCK_BUDGET)
@@ -160,11 +153,7 @@ class ThumbnailLoader(private val context: Context) {
         return drawTextTile(previewLines(extractor.extract(open, previewChapters = EPUB_PREVIEW_CHAPTERS).blocks))
     }
 
-    /**
-     * Decodes a cover without ever holding it at full size: the dimensions first (a picture that claims more
-     * than [MAX_COVER_PIXELS] is refused), then a power-of-two subsample down to about twice the tile, then a
-     * fill of the tile, anchored at the top so a tall cover keeps its title.
-     */
+    // Never holds the cover at full size: refuses a picture claiming more than [MAX_COVER_PIXELS], subsamples, then fills the tile anchored at the top so a tall cover keeps its title.
     private fun decodeCover(bytes: ByteArray): Bitmap? {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
@@ -207,7 +196,6 @@ class ThumbnailLoader(private val context: Context) {
         return if (total == 0) null else out.toByteArray()
     }
 
-    /** No wrapping, since a thumbnail is a glance; lines past the tile height are clipped. */
     private fun drawTextTile(lines: List<String>): Bitmap? {
         if (lines.isEmpty()) return null
         val bitmap = createBitmap(THUMBNAIL_WIDTH_PX, THUMBNAIL_HEIGHT_PX)

@@ -10,7 +10,6 @@ import java.io.IOException
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
-/** The one stream every Word, OpenDocument and EPUB reader walks a ZIP through. */
 class ZipGuardTest {
 
     private class Refused(reason: String) : IOException(reason)
@@ -23,7 +22,6 @@ class ZipGuardTest {
         ratioFloorBytes = 100,
     )
 
-    /** Bytes that do not compress, so only the size limits can be what a test reaches. */
     private fun noise(size: Int) = kotlin.random.Random(SEED).nextBytes(size)
 
     private fun zip(vararg entries: Pair<String, ByteArray>): ByteArray {

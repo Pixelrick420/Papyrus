@@ -17,7 +17,6 @@ import java.io.IOException
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 
-/** Background work that fails must be reported, not allowed to end the process. */
 class BackgroundScopeTest {
 
     private val reported = LinkedBlockingQueue<Throwable>()

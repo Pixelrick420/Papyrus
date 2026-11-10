@@ -5,12 +5,6 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/**
- * A Markdown file that is one very long line: minified output, a pasted export, a log with no breaks.
- * Every scan that reads the source runs over all of it at once, so each must stay linear and must not
- * recurse per character. The sizes are a few megabytes and the bound is generous: it fails on a scan
- * that went quadratic, not on a slow machine.
- */
 class MarkdownLongLineTest {
 
     private fun timed(label: String, block: () -> Unit) {
@@ -21,8 +15,6 @@ class MarkdownLongLineTest {
     }
 
     private val prose = "lorem ipsum dolor sit amet "
-
-    // --- Autolinks ---
 
     @Test
     fun `a long line with no address in it is settled quickly`() {
@@ -69,8 +61,6 @@ class MarkdownLongLineTest {
         timed("dotted hosts") { assertEquals(40_000, Autolinks.find(line).size) }
     }
 
-    // --- Footnotes ---
-
     @Test
     fun `references with no definition leave a long line as it is`() {
         val line = "see [^a] and [^b] ".repeat(100_000)
@@ -96,8 +86,6 @@ class MarkdownLongLineTest {
 
         timed("open markers") { assertTrue(MarkdownFootnotes.transform(line) == line) }
     }
-
-    // --- Formulas ---
 
     @Test
     fun `a long line with no formula has no ranges`() {

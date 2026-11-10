@@ -3,24 +3,17 @@ package com.papyrus.app.data
 import java.text.Collator
 import java.util.Locale
 
-/** How Home orders the library. The choice is kept in [SettingsRepository]. */
 enum class LibrarySort {
-    /** Most recently opened first: what the list has always shown. */
     LAST_OPENED,
     NAME_ASC,
     NAME_DESC,
 
-    /** Newest addition first. */
     DATE_ADDED,
 
-    /** Largest first. */
     SIZE,
 }
 
-/**
- * The formats a reader tells apart, not the ones the code does: Word's two generations are one chip,
- * and a file with no viewer ([DocumentFormat.UNKNOWN]) belongs to none, so a format filter hides it.
- */
+// Word's two generations are one chip; a file with no viewer ([DocumentFormat.UNKNOWN]) belongs to no group.
 enum class FormatGroup {
     PDF,
     WORD,
@@ -30,7 +23,6 @@ enum class FormatGroup {
     TEXT,
     CSV,
 
-    /** The tab-separated half of [DocumentFormat.CSV]; the group follows the file name, not the format. */
     TSV,
     CODE,
     ;
@@ -51,18 +43,11 @@ enum class FormatGroup {
     }
 }
 
-/**
- * The name's extension, lower-cased after the last dot, or empty if there is none.
- */
 private fun extensionOf(title: String): String {
     val name = title.lowercase()
     return if (name.contains('.')) name.substringAfterLast('.') else ""
 }
 
-/**
- * The filters Home has selected. Format groups widen (PDF and Word); Starred narrows to starred
- * documents only.
- */
 data class LibraryFilter(
     val groups: Set<FormatGroup> = emptySet(),
     val starredOnly: Boolean = false,
@@ -85,21 +70,12 @@ data class LibraryFilter(
     }
 }
 
-/** The groups the library actually has, in chip order, so a chip never leads to an empty list. */
 fun availableGroups(documents: List<DocumentEntity>): List<FormatGroup> {
     val present = documents.mapNotNullTo(HashSet()) { FormatGroup.of(it) }
     return FormatGroup.entries.filter { it in present }
 }
 
-/**
- * What Home shows: [documents] kept by the title [query] (case-insensitive), by [filter],
- * and by [alsoMatching] - ids a content search found [query] inside, whose titles may not match it -
- * then put in [sort] order. Pure, so every combination is unit-tested; sorting in memory is fine at
- * library sizes.
- *
- * When searching, matches of filenames appear first, followed by matches of content. Within each group,
- * rows follow the chosen [sort] order.
- */
+// Filename matches come first, then content matches; each group follows [sort].
 fun libraryView(
     documents: List<DocumentEntity>,
     query: String,
@@ -121,11 +97,7 @@ fun libraryView(
     return filenameMatches.sortedWith(comparator) + contentMatches.sortedWith(comparator)
 }
 
-/**
- * Ties never fall to the database's whim: whatever the order asks for, equal documents come most recently
- * opened first and then by id, so the list is the same on every emission and `animateItem` only moves a
- * row when something about it changed.
- */
+// Equal documents tie-break by most recently opened, then id, so the list is stable across emissions and animateItem moves only changed rows.
 internal fun comparatorFor(sort: LibrarySort, locale: Locale = Locale.getDefault()): Comparator<DocumentEntity> {
     val tail = compareByDescending<DocumentEntity> { it.lastOpenedAt }.thenBy { it.id }
     return when (sort) {
@@ -143,13 +115,8 @@ internal fun comparatorFor(sort: LibrarySort, locale: Locale = Locale.getDefault
     }
 }
 
-/**
- * File names the way a person sorts them: `file2` before `file10`, `a` beside `A`, and letters by the
- * locale's own alphabet (a Swedish reader finds Å after Z). Runs of ASCII digits compare as numbers of any
- * length; everything between them goes to a [Collator] at secondary strength, which ignores case but not
- * accents. Digits sort before letters. Two names that differ only in leading zeros (`file02`, `file2`)
- * compare equal here and are left to the caller's tie-break.
- */
+// `file2` before `file10`; letters by the locale's alphabet. Digit runs compare as numbers, the rest via a secondary-strength Collator.
+// Names differing only in leading zeros compare equal and are left to the caller's tie-break.
 internal class NaturalNameComparator(locale: Locale) : Comparator<String> {
 
     private val collator: Collator = Collator.getInstance(locale).apply { strength = Collator.SECONDARY }
@@ -172,7 +139,6 @@ internal class NaturalNameComparator(locale: Locale) : Comparator<String> {
             i = endA
             j = endB
         }
-        // One name is used up: the one with more left after the common part comes second.
         return (a.length - i).compareTo(b.length - j)
     }
 

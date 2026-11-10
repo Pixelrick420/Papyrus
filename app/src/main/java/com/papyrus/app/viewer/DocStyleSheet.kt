@@ -1,42 +1,25 @@
 package com.papyrus.app.viewer
 
-/**
- * The style sheet (STSH) from the table stream: each style's identity, what it is based on, and its
- * paragraph sprms. An unreadable sheet is an empty one, so a damaged style table costs a document its
- * headings and nothing else.
- *
- * STSH is `cbStshi`, the Stshi (whose first fields are `cstd`, the style count, and
- * `cbSTDBaseInFile`, the size of each STD's fixed part), then `cstd` times a 2-byte `cbStd` and an STD
- * of that size; a `cbStd` of 0 is an unused slot. An STD is the fixed StdfBase (`sti`, `sgc`,
- * `istdBase`, `cupx`), a length-prefixed name and its terminator, then `cupx` UPXs, each a 2-byte
- * length and its bytes, padded to an even length.
- */
+// An unreadable sheet is an empty one, so a damaged style table costs a document its headings and nothing else.
 internal class DocStyleSheet private constructor(private val styles: Array<Style?>) {
 
     private class Style(
-        /** Built-in style identifier: 1 to 9 are Heading 1 to 9 in every language. */
         val sti: Int,
-        /** Style group (`sgc`): 1 for a paragraph style. */
         val kind: Int,
-        /** `istd` of the style this one is based on. */
         val base: Int,
         val name: String,
-        /** Sprms of a paragraph style's UpxPapx, past its own `istd`. */
         val papx: ByteArray?,
-        /** Sprms of the style's UpxChpx: the text formatting a paragraph or character style gives. */
         val chpx: ByteArray?,
     )
 
     private val resolved = arrayOfNulls<DocParaProps>(styles.size)
 
-    /** Properties of a paragraph in style [istd], with its direct sprms `buf[from, end)` applied over the style's. */
     fun paragraph(istd: Int, buf: ByteArray, from: Int, end: Int): DocParaProps {
         val out = ofStyle(istd).copyFor(istd)
         out.applyGrpprl(buf, from, end)
         return out
     }
 
-    /** What paragraph style [istd] gives a paragraph before its own sprms; Normal's if there is no such style. */
     fun ofStyle(istd: Int): DocParaProps {
         val index = if (styles.getOrNull(istd) != null) istd else 0
         resolved.getOrNull(index)?.let { return it }
@@ -51,10 +34,6 @@ internal class DocStyleSheet private constructor(private val styles: Array<Style
         return props
     }
 
-    /**
-     * Character sprms of style [istd] and of every style it is based on, root first, so applying them in
-     * order gives the style's formatting. None for a style the sheet lacks.
-     */
     fun charSprms(istd: Int): List<ByteArray> {
         val chain = chainOf(istd)
         return chain.indices.reversed().mapNotNull { styles[chain[it]]?.chpx }
@@ -73,7 +52,6 @@ internal class DocStyleSheet private constructor(private val styles: Array<Style
         return out
     }
 
-    /** The first heading in [chain]: a style based on Heading 2 is a second-level heading too. */
     private fun headingLevelOf(chain: List<Int>): Int {
         for (istd in chain) {
             val style = styles[istd] ?: continue
@@ -90,17 +68,14 @@ internal class DocStyleSheet private constructor(private val styles: Array<Style
     }
 
     companion object {
-        /** FibRgFcLcb97 index of fcStshf. */
         const val PAIR_STSHF = 1
 
         val EMPTY = DocStyleSheet(emptyArray())
 
         private const val MAX_STSH_BYTES = 4 * 1024 * 1024
 
-        /** Two bytes of `cbStshi`, then the Stshi's `cstd` and `cbSTDBaseInFile`. */
         private const val MIN_STSH_BYTES = 6
 
-        /** `istd` is 12 bits wide. */
         private const val MAX_STYLES = 4096
         private const val MAX_CHAIN = 64
         private const val STDF_BASE_BYTES = 10
@@ -115,7 +90,6 @@ internal class DocStyleSheet private constructor(private val styles: Array<Style
         private const val BASE_SHIFT = 4
         private val HEADING_NAME = Regex("^heading ([1-9])$", RegexOption.IGNORE_CASE)
 
-        /** Reads the STSH, or returns [EMPTY] if the FIB has none or it is unusable. */
         fun parse(cfb: CompoundFile, fib: DocFib): DocStyleSheet {
             val lcb = fib.lcb(PAIR_STSHF)
             if (lcb < MIN_STSH_BYTES || lcb > MAX_STSH_BYTES) return EMPTY
@@ -123,7 +97,6 @@ internal class DocStyleSheet private constructor(private val styles: Array<Style
             return parse(data)
         }
 
-        /** Parses an STSH already in memory; styles past a truncation are simply absent. */
         fun parse(data: ByteArray): DocStyleSheet {
             if (data.size < MIN_STSH_BYTES) return EMPTY
             val cbStshi = u16(data, 0)

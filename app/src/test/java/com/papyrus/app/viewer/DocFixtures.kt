@@ -3,33 +3,18 @@ package com.papyrus.app.viewer
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 
-/**
- * In-memory Word 97-2003 builders: a `.doc` is binary, so a fixture cannot be reviewed in a diff.
- * [compound]'s FAT serves both the mini and regular stream paths, as a real document of that size would.
- */
 internal object DocFixtures {
 
     fun streamFactory(bytes: ByteArray): () -> java.io.InputStream = { ByteArrayInputStream(bytes) }
 
-    /** One piece-table entry: its own character count and byte encoding. */
     class Piece(val text: String, val compressed: Boolean = true)
 
-    /**
-     * A structure appended to the table stream after the Clx and named by FibRgFcLcb97 entry [pair].
-     * [lcb] is what the FIB records; it is shorter than [bytes] for a structure with data trailing it.
-     */
     class TablePart(val pair: Int, val bytes: ByteArray, val lcb: Int = bytes.size)
 
-    /** Where a structure that follows the text of [textBytes] bytes starts in `WordDocument`: FKP pages are 512-aligned. */
     fun tailOffset(textBytes: Int): Int = (FIB_SIZE + textBytes + PAGE - 1) / PAGE * PAGE
 
-    /** Size of `WordDocument` up to its first text byte; piece text is laid out from here. */
     const val TEXT_OFFSET = 0x382
 
-    /**
-     * A complete single-table-stream `.doc`. Corruption knobs cover every rejection the extractor
-     * performs; [pieces] replaces the single-text-piece default for mixed-encoding tests.
-     */
     fun doc(
         text: String = "Hello",
         pieces: List<Piece>? = null,
@@ -88,16 +73,13 @@ internal object DocFixtures {
         return compound(streams)
     }
 
-    /** Wraps a Pcdt in a Prc grpprl chunk, the form the Clx walk must skip over. */
     private fun prcChunk(): ByteArray {
         val grpprl = byteArrayOf(0x01, 0x02)
         return byteArrayOf(CLXT_PRC.toByte(), grpprl.size.toByte(), 0x00) + grpprl
     }
 
-    /** Little-endian u32 bytes, for tests that hand-build a malformed CLX. */
     fun u32Bytes(value: Long): ByteArray = ByteArray(4) { i -> ((value shr (i * 8)) and 0xFF).toByte() }
 
-    /** File offset of the first FAT sector, whose entry 0 the chain-cycle test overwrites. */
     fun firstFatSectorOffset(bytes: ByteArray): Int {
         val id = (bytes[0x4C].toLong() and 0xFF) or
             ((bytes[0x4D].toLong() and 0xFF) shl 8) or
@@ -115,10 +97,8 @@ internal object DocFixtures {
             piece.text.toByteArray(Charsets.UTF_16LE)
         }
 
-    /**
-     * Inverse of the extractor's FcCompressed mapping. Unencodable characters fail the fixture
-     * loudly: a compressed piece never carried them in the first place.
-     */
+    // Inverse of the extractor's FcCompressed mapping. Unencodable characters fail the fixture
+    // loudly: a compressed piece never carried them in the first place.
     private fun compressedByte(c: Char): Int {
         SPECIAL_TO_BYTE[c]?.let { return it }
         val code = c.code
@@ -141,9 +121,9 @@ internal object DocFixtures {
             out.writeU32(cp.toLong())
         }
         for (piece in laid) {
-            out.writeU16(0) // PCD flags
+            out.writeU16(0)
             out.writeU32(piece.fc)
-            out.writeU16(0) // PCD prm
+            out.writeU16(0)
         }
         return out.toByteArray()
     }
@@ -161,10 +141,10 @@ internal object DocFixtures {
         putU16(fib, 0x00, wIdent)
         putU16(fib, 0x02, nFib)
         putU16(fib, 0x0A, flags)
-        putU16(fib, 0x20, 14) // csw
-        putU16(fib, 0x3E, 22) // cslw
-        putU32(fib, 0x4C, ccpText.toLong()) // FibRgLw97[3], the ccpText slot
-        putU16(fib, 0x98, 93) // cbRgFcLcb
+        putU16(fib, 0x20, 14)
+        putU16(fib, 0x3E, 22)
+        putU32(fib, 0x4C, ccpText.toLong())
+        putU16(fib, 0x98, 93)
         putU32(fib, 0x1A2, fcClx.toLong())
         putU32(fib, 0x1A6, lcbClx.toLong())
         for ((pair, location) in pairs) {
@@ -178,8 +158,6 @@ internal object DocFixtures {
         val sectorSize = 512
         val perFat = sectorSize / 4
 
-        // Streams under the mini cutoff are packed into 64-byte mini sectors inside the root's
-        // mini stream, each with its own mini-FAT chain ending at ENDOFCHAIN.
         val mini = ByteArrayOutputStream()
         val miniStart = LinkedHashMap<String, Int>()
         val miniChains = mutableListOf<Pair<Int, Int>>()
@@ -243,17 +221,17 @@ internal object DocFixtures {
         val out = ByteArray(HEADER_SIZE + total * sectorSize)
         val header = ByteArray(HEADER_SIZE)
         OLE_SIGNATURE.forEachIndexed { i, byte -> header[i] = byte.toByte() }
-        putU16(header, 0x18, 0x003E) // minor version
-        putU16(header, 0x1A, 0x0003) // major version 3
-        putU16(header, 0x1C, 0xFFFE) // little-endian byte order
-        putU16(header, 0x1E, 9) // sector shift: 512-byte sectors
-        putU16(header, 0x20, 6) // mini sector shift: 64-byte mini sectors
+        putU16(header, 0x18, 0x003E)
+        putU16(header, 0x1A, 0x0003)
+        putU16(header, 0x1C, 0xFFFE)
+        putU16(header, 0x1E, 9)
+        putU16(header, 0x20, 6)
         putU32(header, 0x2C, fatCount.toLong())
         putU32(header, 0x30, chains.getValue(KEY_DIR).first().toLong())
         putU32(header, 0x38, MINI_CUTOFF.toLong())
         putU32(header, 0x3C, (chains[KEY_MINI_FAT]?.first() ?: ENDOFCHAIN).toLong())
         putU32(header, 0x40, (chains[KEY_MINI_FAT]?.size ?: 0).toLong())
-        putU32(header, 0x44, ENDOFCHAIN.toLong()) // no DIFAT sectors beyond the header's 109
+        putU32(header, 0x44, ENDOFCHAIN.toLong())
         putU32(header, 0x48, 0)
         for (i in 0 until fatCount) putU32(header, 0x4C + i * 4, (dataSectors + i).toLong())
         for (i in fatCount until DIFAT_HEADER_ENTRIES) putU32(header, 0x4C + i * 4, FREESECT.toLong())
@@ -300,9 +278,9 @@ internal object DocFixtures {
         val nameBytes = name.toByteArray(Charsets.UTF_16LE)
         val copied = minOf(64, nameBytes.size)
         nameBytes.copyInto(entry, 0, 0, copied)
-        putU16(entry, 0x40, copied + 2) // length including the UTF-16 terminator
+        putU16(entry, 0x40, copied + 2)
         entry[0x42] = type.toByte()
-        entry[0x43] = 1 // black
+        entry[0x43] = 1
         putU32(entry, 0x74, start.toLong() and 0xFFFFFFFFL)
         putU32(entry, 0x78, size.toLong())
         return entry

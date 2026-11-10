@@ -78,23 +78,17 @@ import kotlin.math.sqrt
 
 private const val LOW_RES_DIVISOR = 4
 
-/**
- * The width a page is rasterised at: the width it is shown at, which already has the committed zoom
- * in it, held to [maxPixels] for a page of the given [aspect] (height over width). Never below
- * [floorWidthPx], the page at 100%, which has to be sharp whatever the budget says.
- */
+// Never below [floorWidthPx], the page at 100%, which has to be sharp whatever the budget says.
 internal fun renderWidthFor(displayWidthPx: Int, aspect: Float, maxPixels: Int, floorWidthPx: Int): Int {
     if (aspect <= 0f || maxPixels <= 0) return displayWidthPx.coerceAtLeast(1)
     val budgetWidth = sqrt(maxPixels / aspect.toDouble()).toInt()
     return minOf(displayWidthPx, maxOf(budgetWidth, floorWidthPx)).coerceAtLeast(1)
 }
 
-/** Pages kept rendered on each side of the visible ones, so a short scroll back needs no re-render. */
 private const val CACHED_PAGES_AROUND_VIEW = 3
 
 private val PAGE_HIT_BORDER = 3.dp
 
-/** Gap between pages, and the margin above the first one, at 100%. */
 private val PAGE_GAP = 8.dp
 
 /** Each drag frame's size change queues a rasterisation behind the source's mutex. */
@@ -103,7 +97,6 @@ private const val RESIZE_SETTLE_MILLIS = 150L
 /** The keyboard animates in over a few hundred ms, resizing the viewport each frame. */
 private const val VIEWPORT_SETTLE_MILLIS = 150L
 
-/** Zoom feeds the cached render width; back is handled here. */
 @Composable
 internal fun PdfViewer(
     source: PdfPageSource,
@@ -114,20 +107,16 @@ internal fun PdfViewer(
     nightMode: Boolean = false,
     pageHits: List<Int> = emptyList(),
     pageMatches: Map<Int, List<List<NormRect>>> = emptyMap(),
-    /** The reader's own marks, by page; unrelated to find's matches. */
     highlights: Map<Int, List<Highlight>> = emptyMap(),
     activePage: Int? = null,
     activeOccurrence: Int? = null,
     loadLinks: suspend (Int) -> List<PdfPageLink>? = { null },
     onLinkTarget: (PdfLinkTarget) -> Unit = {},
-    /** A tap on one of the reader's marks: it opens that mark's note. */
     onMark: (Highlight) -> Unit = {},
     position: PositionHooks = PositionHooks.None,
     speaking: TtsHighlight? = null,
     ttsLocked: Boolean = false,
-    /** 1 at full strength, 0 gone: the animated fade of a search arrival's mark. */
     highlightAlpha: Float = 1f,
-    /** Only the current match is painted: an arrival lights the one place it landed on. */
     onlyActive: Boolean = false,
 ) {
     val restoreTarget = rememberRestoredTarget(LocationKind.PAGE, source.pageCount, position)
@@ -148,10 +137,8 @@ internal fun PdfViewer(
     // One state for the whole document; per-page state would reset the offset on every page change.
     val hScroll = rememberScrollState()
 
-    // Hits repeat a page once per match; the page only needs to be known once.
     val hitPages = remember(pageHits) { pageHits.toSet() }
 
-    // Whether a page should also carry its text for a screen reader; asked once for the document.
     val readsPages = accessibilityEnabled()
 
     BackHandler(enabled = selectionState.hasSelection) { selectionState.clear() }
@@ -176,8 +163,6 @@ internal fun PdfViewer(
             ?.let { listState.scrollToItemUnlessVisible(it) }
     }
 
-    // Read aloud, lock on: the page being read is brought in, and the page then scrolls to its own
-    // line. Unlocked, the reader is left wherever they are.
     val spokenPage = speaking?.anchor
     LaunchedEffect(spokenPage, ttsLocked) {
         if (ttsLocked && spokenPage != null && spokenPage in 0 until source.pageCount) {
@@ -205,7 +190,6 @@ internal fun PdfViewer(
 
     LazyPositionEffects(listState, LocationKind.PAGE, source.pageCount, zoom, position, restoreTarget)
 
-    // Pages that scrolled far away give their bitmaps back; only the visible pages and a few around them stay.
     LaunchedEffect(listState, source) {
         snapshotFlow {
             val first = listState.firstVisibleItemIndex
@@ -225,7 +209,6 @@ internal fun PdfViewer(
         // Scaled with the pages. Fixed gaps would put the layout at the new scale off the preview by
         // (ratio - 1) of a gap per page, which adds up across the pages that are in view.
         val pageGap = PAGE_GAP * scale
-        // Lets a drag that leaves its page say which page it is over, from sizes alone.
         val pageGeometry = rememberUpdatedState(
             PdfPageGeometry(
                 pageCount = source.pageCount,
@@ -246,9 +229,7 @@ internal fun PdfViewer(
                     .horizontalScroll(hScroll, enabled = !zoom.isScrollLocked)
                     .zoomable(zoom)
                     .anchorBridge(hAnchor),
-                // Locked to the voice, the reader cannot scroll; the list still moves for the follow.
                 userScrollEnabled = !zoom.isScrollLocked && !ttsLocked,
-                // Trailing padding clears the scrollbar; the bottom clears the page indicator.
                 contentPadding = PaddingValues(start = 0.dp, top = pageGap, end = 20.dp, bottom = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(pageGap),
             ) {
@@ -263,7 +244,6 @@ internal fun PdfViewer(
                             scrolling = scrolling,
                             isHit = index in hitPages,
                             nightMode = nightMode,
-                            // Only the active page knows which of its matches is current.
                             activeMatch = activeOccurrence.takeIf { index == activePage },
                             matches = pageMatches[index].orEmpty(),
                             highlights = highlights[index].orEmpty(),
@@ -299,7 +279,6 @@ internal fun PdfViewer(
                     ),
             )
 
-            // Matches the scroll knob, alpha included. Shown on a page change, gone a beat after.
             ReadoutBadge(
                 text = stringResource(R.string.viewer_page_indicator, centeredPage + 1, source.pageCount),
                 visible = pageIndicatorVisible,
@@ -314,18 +293,14 @@ internal fun PdfViewer(
 
 private const val DEFAULT_ASPECT = 1.414f
 
-/** The knob's bottom stop: the page indicator (~29dp label) plus font-scale headroom. */
 private val PAGE_INDICATOR_CLEARANCE = 56.dp
 
-/** [matches] is one rectangle list per match; [activeMatch] its index, or null if absent. */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun PdfPage(
     source: PdfPageSource,
     index: Int,
-    /** The width the page is shown at, committed zoom included. */
     widthPx: Int,
-    /** The width at 100%: the least a page is ever rasterised at. */
     baseWidthPx: Int,
     aspect: Float,
     scrolling: Boolean,
@@ -338,7 +313,6 @@ private fun PdfPage(
     onlyActive: Boolean,
     reveal: RevealTicket?,
     selectionState: PdfSelectionState,
-    /** An accessibility service is on, so the page should have its text read for it. */
     readsPages: Boolean,
     pageGeometry: State<PdfPageGeometry>,
     loadLinks: suspend (Int) -> List<PdfPageLink>?,
@@ -360,7 +334,6 @@ private fun PdfPage(
     var settledWidthPx by remember(source, index) { mutableIntStateOf(rasterWidthPx) }
     LaunchedEffect(source, index, rasterWidthPx) {
         if (rasterWidthPx == settledWidthPx) return@LaunchedEffect
-        // A width rendered before (zooming back out) is already in hand: nothing to wait for or draw again.
         source.cached(index, rasterWidthPx)?.let {
             bitmap = it
             settledWidthPx = rasterWidthPx
@@ -401,14 +374,12 @@ private fun PdfPage(
         )
     }
 
-    // A page a selection spans reads its own text as it scrolls in: only shown pages cost.
     val current = selectionState.selection
     val span = current?.spanOn(index)
     val pageText = selectionState.textOf(index)
     LaunchedEffect(selectionState, index, span != null) {
         if (span != null) selectionState.ensureText(index)
     }
-    // Accessibility needs page text so TalkBack reads content rather than a bare "Page N" bitmap stop.
     LaunchedEffect(selectionState, index, readsPages) {
         if (readsPages) selectionState.ensureText(index)
     }
@@ -416,8 +387,6 @@ private fun PdfPage(
         if (span != null && pageText != null) pageText.selectionRects(span.from, span.to) else emptyList()
     }
 
-    // Read aloud: the voice read this page's own text, so its glyph boxes place the sentence and word.
-    // The text is read once for the page being read, through the same cache selection uses.
     LaunchedEffect(selectionState, index, speaking != null) {
         if (speaking != null) selectionState.ensureText(index)
     }
@@ -493,13 +462,11 @@ private fun PdfPage(
                     stringResource(R.string.cd_pdf_page_with_text, index + 1, spoken)
                 },
                 contentScale = ContentScale.FillBounds,
-                // Filtered as it is drawn, so the page is not re-rendered.
                 colorFilter = if (nightMode) PdfNightMode.Invert else null,
                 modifier = Modifier.fillMaxSize(),
             )
         }
         if (highlights.isNotEmpty()) {
-            // Right over the page and under everything else, so a match, a link or the selection reads through it.
             Canvas(Modifier.fillMaxSize()) { drawHighlights(highlights) }
             // A note's dot is its own stop, so a screen reader can reach the note a stroke cannot describe.
             for (mark in highlights) {
@@ -522,7 +489,6 @@ private fun PdfPage(
             }
         }
         if (matches.isNotEmpty() && (!onlyActive || activeMatch != null)) {
-            // Matched words in page-relative units, so they stay put at any width. Translucent.
             val otherColor = OtherMatchColor.copy(alpha = matchAlpha)
             val activeColor = ActiveMatchColor.copy(alpha = matchAlpha)
             val corner = with(LocalDensity.current) { 2.dp.toPx() }
@@ -538,7 +504,6 @@ private fun PdfPage(
                     }
                 }
                 if (!onlyActive) matches.forEachIndexed { i, rects -> if (i != activeMatch) drawMatch(rects, otherColor) }
-                // Last, so the current match sits on top of any neighbour it touches.
                 activeMatch?.let { matches.getOrNull(it) }?.let { drawMatch(it, activeColor) }
             }
         }
@@ -569,11 +534,7 @@ private const val MATCH_ALPHA = 0.5f
 
 private val ACTIVE_HIT_BORDER = 5.dp
 
-/**
- * A note's run as its own touch and screen-reader stop. The wash and the rule are a Canvas, which
- * cannot be focused or described; this box covers the run, carries the note's words and opens it.
- * Its own stop rather than a dot-sized one: a fingertip target has to be the passage, not the dot.
- */
+// A Canvas cannot be focused or described, so this box covers the note's run as its own touch and screen-reader stop: a fingertip target has to be the passage, not the dot.
 @Composable
 private fun NoteStop(mark: Highlight, pageSize: IntSize, onMark: (Highlight) -> Unit) {
     if (mark.rects.isEmpty() || pageSize == IntSize.Zero) return
@@ -596,11 +557,7 @@ private fun NoteStop(mark: Highlight, pageSize: IntSize, onMark: (Highlight) -> 
     )
 }
 
-/**
- * Whether a screen reader is running. Asked of the system service rather than Compose's own
- * accessibility manager, which exposes only timeout calculations. The answer is re-read whenever
- * the service turns on or off, so pages start carrying text without the document being reopened.
- */
+// Asked of the system service rather than Compose's accessibility manager, which exposes only timeout calculations; re-read when the service toggles.
 @Composable
 private fun accessibilityEnabled(): Boolean {
     val context = LocalContext.current

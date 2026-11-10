@@ -7,39 +7,29 @@ import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
 
-/** What one drawing may cost: elements read, path operations kept, and how deeply its groups nest. */
 data class SvgLimits(
-    /** Elements of one SVG, drawn or not. */
     val maxElements: Int = 20_000,
-    /** Path operations of one SVG, over all its shapes. */
     val maxOps: Int = 50_000,
     val maxDepth: Int = 200,
 )
 
-/** Reads attributes by name, so one builder serves both the pull parser inside a chapter and an `.svg` file. */
 internal fun interface SvgAttributeReader {
     fun attribute(name: String): String?
 }
 
-/** Turns a scene into the PNG the viewer draws; null when it cannot. Behind an interface so a test can fake it. */
 fun interface SvgRasteriser {
     fun rasterise(scene: SvgScene): ByteArray?
 }
 
-/** The only drawing this subset has: straight lines. Rectangles, circles and polygons are flattened to these. */
 sealed interface PathOp {
     data class MoveTo(val x: Float, val y: Float) : PathOp
     data class LineTo(val x: Float, val y: Float) : PathOp
     data object Close : PathOp
 }
 
-/** One drawable: [fill] and [stroke] are `0xRRGGBB` or null for none; coordinates are in the scene's units. */
 class SvgShape(val ops: List<PathOp>, val closed: Boolean, val fill: Int?, val stroke: Int?, val strokeWidth: Float)
 
-/**
- * What an SVG draws, [width] by [height] in its own units with the origin at the top left. [tintable] is true
- * when no shape named a colour of its own, so the viewer may draw it in the text colour.
- */
+// [tintable] is true when no shape named a colour of its own, so the viewer may draw it in the text colour.
 class SvgScene(val width: Float, val height: Float, val shapes: List<SvgShape>, val tintable: Boolean) {
     val aspect: Float get() = width / height
 }
@@ -59,7 +49,6 @@ private class SvgFrame(
     val fill: Paint,
     val stroke: Paint,
     val strokeWidth: Float,
-    /** This element and everything in it is dropped. */
     val skipped: Boolean,
 )
 
@@ -75,12 +64,7 @@ private val NAMED_COLORS = mapOf(
     "olive" to 0x808000, "navy" to 0x000080, "purple" to 0x800080, "teal" to 0x008080, "orange" to 0xFFA500,
 )
 
-/**
- * Builds a [SvgScene] from the start and end of elements as a parser meets them. It draws `rect`, `line`,
- * `polyline`, `polygon`, `circle`, `ellipse` and straight `path`s (`M L H V Z`), under `g` and a plain
- * `translate`; whatever it cannot draw faithfully (a curve, a rotation, text, a gradient) is dropped whole,
- * never half drawn. Past [maxElements] or [maxOps] it stops growing; nothing throws.
- */
+// Whatever it cannot draw faithfully (a curve, a rotation, text, a gradient) is dropped whole, never half drawn. Past [maxElements] or [maxOps] it stops growing; nothing throws.
 internal class SvgSceneBuilder(
     private val maxElements: Int = SvgLimits().maxElements,
     private val maxOps: Int = SvgLimits().maxOps,
@@ -97,7 +81,6 @@ internal class SvgSceneBuilder(
     private var width: Float? = null
     private var height: Float? = null
 
-    /** False when this element and its subtree are dropped; [end] must still be called for it. */
     fun start(rawName: String, attrs: SvgAttributeReader): Boolean {
         val name = rawName.substringAfter(':')
         val parent = stack.lastOrNull()
@@ -130,7 +113,6 @@ internal class SvgSceneBuilder(
     /** Text is not drawn: its glyphs are not shapes, and its words are already in the text flow. */
     fun text(@Suppress("UNUSED_PARAMETER") value: String) = Unit
 
-    /** What was drawn so far, even if elements were left open; null when nothing was. */
     fun scene(): SvgScene? {
         if (shapes.isEmpty()) return null
         val w = width ?: (shapes.maxOf { s -> s.ops.maxOf { op -> xOf(op) } }.coerceAtLeast(DEFAULT_SIZE))
@@ -298,7 +280,6 @@ internal class SvgSceneBuilder(
                         ops += PathOp.MoveTo(cx + ox, cy + oy)
                         sx = cx
                         sy = cy
-                        // Further pairs after a move are lines.
                         command = if (relative) 'l' else 'L'
                     } else {
                         ops += PathOp.LineTo(cx + ox, cy + oy)
@@ -323,7 +304,6 @@ internal class SvgSceneBuilder(
     private fun hidden(attrs: SvgAttributeReader): Boolean =
         attrs.attribute("display")?.trim() == "none" || styleOf(attrs.attribute("style"))["display"] == "none"
 
-    /** The shift a `transform` makes: none when absent, a plain `translate(x[, y])` read, and null for any other. */
     private fun translateOf(transform: String?): Pair<Float, Float>? {
         val text = transform?.trim().orEmpty()
         if (text.isEmpty()) return 0f to 0f
@@ -350,7 +330,6 @@ internal class SvgSceneBuilder(
 
     private fun lengthOf(raw: String): Float? = raw.trim().removeSuffix("px").toFloatOrNull()
 
-    /** [value] over what is [inherited]; a colour the book names is explicit, the default and `currentColor` are not. */
     private fun paintOf(value: String?, inherited: Paint): Paint {
         val text = value?.trim()?.lowercase()
         return when {
@@ -390,10 +369,6 @@ internal class SvgSceneBuilder(
     }
 }
 
-/**
- * The scene of an `.svg` file, or null when it draws nothing. A file that is not well formed throws
- * [XmlPullParserException], which the caller treats as an image that cannot be shown.
- */
 @Throws(XmlPullParserException::class)
 internal fun parseSvg(bytes: ByteArray, factory: ParserFactory, limits: SvgLimits = SvgLimits()): SvgScene? {
     val parser = factory(bytes.inputStream())

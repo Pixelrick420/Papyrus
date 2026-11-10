@@ -8,12 +8,8 @@ import org.junit.Test
 import java.util.BitSet
 import kotlin.math.sqrt
 
-/**
- * Match-to-rectangle mapping (which characters a match covers, where it splits) and selection (where a point lands).
- */
 class PdfPageTextTest {
 
-    /** One line of characters charWidth apart; spaces get no box, as the extractor emits. */
     private fun line(text: String, top: Float = 0.10f, bottom: Float = 0.12f, charWidth: Float = 0.01f) =
         text.mapIndexed { i, ch ->
             if (ch == ' ') floatArrayOf(Float.NaN, Float.NaN, Float.NaN, Float.NaN)
@@ -27,10 +23,8 @@ class PdfPageTextTest {
             BitSet().apply { breaks.forEach { set(it) } },
         )
 
-    /** Match count, including matches whose boxes were dropped. */
     private fun PdfPageText.countMatches(query: String): Int = matches(query, limit = 0).count
 
-    /** One entry per match in order; a match with no drawable glyph keeps an empty entry. */
     private fun PdfPageText.matchGroups(query: String, limit: Int = PdfPageText.MAX_RECTS_PER_PAGE) =
         matches(query, limit).groups
 
@@ -54,7 +48,6 @@ class PdfPageTextTest {
 
     @Test
     fun `a phrase spanning words is one rectangle across the gap`() {
-        // The space between the words has no box; the rectangle must still run across it.
         val text = "a quick brown fox"
         val rects = page(text, line(text)).matchGroups("quick brown").flatten()
 
@@ -65,9 +58,8 @@ class PdfPageTextTest {
 
     @Test
     fun `a match that wraps is one rectangle per line`() {
-        // The wrap space is flagged as a line break, so the words between lines are not painted.
         val text = "two lines of a long paragraph"
-        val wrapAt = text.indexOf("a long") + 1 // the space after "a"
+        val wrapAt = text.indexOf("a long") + 1
         val boxes = text.mapIndexed { i, ch ->
             val second = i > wrapAt
             val top = if (second) 0.30f else 0.10f
@@ -84,7 +76,6 @@ class PdfPageTextTest {
 
     @Test
     fun `wrapping works the same when the lines run sideways`() {
-        // Rotated a quarter turn, the next line is across, so only the recorded break splits it.
         val text = "ab cd"
         val boxes = listOf(
             floatArrayOf(0.10f, 0.10f, 0.12f, 0.11f),
@@ -134,17 +125,13 @@ class PdfPageTextTest {
 
     @Test
     fun `a typed fi finds a ligature and extra spaces collapse`() {
-        // The extractor normalises glyphs to NFKC, so the page text holds "fi"; the query gets the
-        // same treatment so what the reader types and what the page holds meet in the middle.
+        // The extractor normalises glyphs to NFKC, so the page text holds "fi"; the query gets the same treatment.
         assertEquals("fi", PdfPageText.normalizeQuery("\uFB01"))
         assertEquals("a b c", PdfPageText.normalizeQuery("a   b \n c"))
         val text = "a fine day"
         assertTrue(page(text, line(text)).contains("fi"))
         assertTrue(page(text, line(text)).contains("a  fine"))
     }
-
-    // Rectangles are grouped per match: a wrapped match is several rectangles but one match, so the
-    // find bar's count (matches) and its colouring (which rectangles are orange) can both be right.
 
     @Test
     fun `each match is its own group`() {
@@ -196,13 +183,11 @@ class PdfPageTextTest {
 
     @Test
     fun `counting does not overlap matches`() {
-        // "aa" in "aaaaa" paints two highlights, so it is two matches.
         assertEquals(2, PdfPageText("aaaaa", FloatArray(0)).countMatches("aa"))
     }
 
     @Test
     fun `a page past the box budget still counts every match but has no groups`() {
-        // Searchable but not highlightable: the count feeds the find bar, the groups feed the page.
         val page = PdfPageText("needle needle needle", FloatArray(0))
 
         assertEquals(3, page.countMatches("needle"))
@@ -243,9 +228,6 @@ class PdfPageTextTest {
         assertEquals(50, page(text, line(text)).countMatches("a"))
     }
 
-    // Selecting: pointing at a page, finding the word under the finger, and getting its text back.
-
-    /** Two lines, the second wrapped from the first at [wrapAt] (a space flagged as a break). */
     private fun wrapped(text: String, wrapAt: Int): PdfPageText {
         val boxes = text.mapIndexed { i, ch ->
             val second = i > wrapAt
@@ -262,7 +244,7 @@ class PdfPageTextTest {
         val text = "hello world"
         val hit = requireNotNull(page(text, line(text)).nearestChar(0.065f, 0.11f))
 
-        assertEquals(6, hit.index) // the "w"
+        assertEquals(6, hit.index)
         assertEquals(0f, hit.distance, 0.0001f)
     }
 
@@ -271,12 +253,10 @@ class PdfPageTextTest {
         val text = "hello world"
         val page = page(text, line(text))
 
-        // Straight below the "w": the gap is the vertical distance and nothing else.
         val below = requireNotNull(page.nearestChar(0.065f, 0.16f))
         assertEquals(6, below.index)
         assertEquals(0.04f, below.distance, 0.0001f)
 
-        // Past the end of the line, level with it: the last letter, by the sideways gap.
         val right = requireNotNull(page.nearestChar(0.50f, 0.11f))
         assertEquals(10, right.index)
         assertEquals(0.39f, right.distance, 0.0001f)
@@ -287,7 +267,6 @@ class PdfPageTextTest {
         val text = "ab cd"
         val page = page(text, line(text))
 
-        // Over the space at index 2, nearer the "b" than the "c".
         assertEquals(1, page.nearestChar(0.0235f, 0.11f)?.index)
         assertEquals(3, page.nearestChar(0.0305f, 0.11f)?.index)
     }
@@ -297,7 +276,6 @@ class PdfPageTextTest {
         val text = "two lines of a long paragraph"
         val page = wrapped(text, wrapAt = text.indexOf("a long") + 1)
 
-        // First line at 0.10..0.12, second at 0.30..0.32.
         assertTrue(requireNotNull(page.nearestChar(0.005f, 0.14f)).index <= text.indexOf("a long"))
         assertTrue(requireNotNull(page.nearestChar(0.005f, 0.27f)).index > text.indexOf("a long"))
     }
@@ -307,9 +285,7 @@ class PdfPageTextTest {
         val text = "hello"
         val page = page(text, line(text))
 
-        // 0.04 past the last box across a page twice as tall as wide: 0.02 of its height.
         assertEquals(0.02f, requireNotNull(page.nearestChar(0.09f, 0.11f, aspect = 2f)).distance, 0.0001f)
-        // On a page wider than tall the same step is a larger share of the height.
         assertEquals(0.08f, requireNotNull(page.nearestChar(0.09f, 0.11f, aspect = 0.5f)).distance, 0.0001f)
     }
 
@@ -329,7 +305,6 @@ class PdfPageTextTest {
         val nan = floatArrayOf(Float.NaN, Float.NaN, Float.NaN, Float.NaN)
         val page = page("hello", List(5) { nan })
 
-        // The box array exists, but there is no character a finger could land on.
         assertTrue(page.hasBoxes)
         assertFalse(page.isSelectable)
         assertNull(page.nearestChar(0.5f, 0.5f))
@@ -358,8 +333,8 @@ class PdfPageTextTest {
         val text = "hello"
         val page = page(text, line(text))
 
-        assertEquals(2, page.caretAt(0.022f, 0.11f)) // left half of the "l" at 0.02..0.03
-        assertEquals(3, page.caretAt(0.028f, 0.11f)) // right half
+        assertEquals(2, page.caretAt(0.022f, 0.11f))
+        assertEquals(3, page.caretAt(0.028f, 0.11f))
     }
 
     @Test
@@ -387,8 +362,8 @@ class PdfPageTextTest {
         val text = "don't stop."
         val page = page(text, line(text))
 
-        assertEquals(0..4, page.wordAround(2)) // don't
-        assertEquals(6..9, page.wordAround(7)) // stop, without its full stop
+        assertEquals(0..4, page.wordAround(2))
+        assertEquals(6..9, page.wordAround(7))
     }
 
     @Test
@@ -414,7 +389,7 @@ class PdfPageTextTest {
     @Test
     fun `a selection covers only the characters asked for`() {
         val text = "hello world"
-        val rects = page(text, line(text)).selectionRects(6, 9) // "wor"
+        val rects = page(text, line(text)).selectionRects(6, 9)
 
         assertEquals(1, rects.size)
         assertEquals(0.06f, rects[0].left, 0.0001f)
@@ -464,10 +439,6 @@ class PdfPageTextTest {
         assertEquals("of a\nlong paragraph", copied)
     }
 
-    // Equivalence: the line index must answer exactly what the brute-force scan answers, ties included.
-    // The reference works off the same synthetic boxes, since the page's own arrays are private.
-
-    /** The pre-index algorithm, verbatim: every character, strict-less-than keeps the first hit. */
     private fun referenceNearestChar(boxes: List<FloatArray>, x: Float, y: Float, aspect: Float = 1f): CharHit? {
         val sideways = if (aspect > 0f) 1f / aspect else 1f
         var best = -1
@@ -509,7 +480,6 @@ class PdfPageTextTest {
         val page = page(text, boxes, setOf(wrap1, wrap2, wrap3))
 
         val probes = listOf(
-            // inside glyphs, between glyphs, between lines, off every edge
             0.02f to 0.14f, 0.05f to 0.14f, 0.07f to 0.20f, 0.02f to 0.34f,
             0.31f to 0.54f, 0.05f to 0.84f, -0.4f to 0.14f, 0.9f to 0.14f,
             0.5f to -0.3f, 0.5f to 1.4f, 0.0f to 0.0f, 1.0f to 1.0f,
@@ -554,7 +524,6 @@ class PdfPageTextTest {
 
     @Test
     fun `the line index agrees with a full scan on equidistant ties, same line and across lines`() {
-        // Two identical glyphs with a point exactly between them: the earlier index must win.
         val tieBoxes = listOf(
             floatArrayOf(0.10f, 0.10f, 0.20f, 0.20f),
             floatArrayOf(0.30f, 0.10f, 0.40f, 0.20f),
@@ -563,7 +532,6 @@ class PdfPageTextTest {
         assertEquals(0, tie.nearestChar(0.25f, 0.15f)?.index)
         assertEquals(referenceNearestChar(tieBoxes, 0.25f, 0.15f), tie.nearestChar(0.25f, 0.15f))
 
-        // The same glyph shape on two lines, point equidistant between the bands: earlier line wins.
         val acrossBoxes = listOf(
             floatArrayOf(0.10f, 0.10f, 0.20f, 0.20f),
             floatArrayOf(0.10f, 0.30f, 0.20f, 0.40f),

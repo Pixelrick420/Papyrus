@@ -3,53 +3,32 @@ package com.papyrus.app.data
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 
-/**
- * A [SearchDao] with no database behind it: the queue and the two read phases are lists the test
- * fills in, and every call is recorded so a test can assert what the indexer or the repository
- * asked for.
- *
- * The interface's signatures use no Android type, which is what makes this possible under plain
- * JUnit: the real SQL is a separate concern, covered only by running the app.
- */
 internal class FakeSearchDao : SearchDao {
 
-    /** What [pending] will answer with, in order; each call takes up to its `limit` off the front. */
     val queue = mutableListOf<DocumentEntity>()
 
-    /**
-     * When true, [pending] behaves like the database: a document stays in the queue until a row has
-     * been written for it, rather than leaving it the moment it is read.
-     */
+    // When true, [pending] behaves like the database: a document stays in the queue until a row has been written for it.
     var queueUntilWritten = false
 
-    /** Every `(version, limit)` pair [pending] was asked for, in order. */
     val pendingQueries = mutableListOf<Pair<Int, Int>>()
 
-    /** Every `(maxBytes, limit)` pair [pendingUpTo] was asked for, in order. */
     val eagerPendingQueries = mutableListOf<Pair<Long, Int>>()
 
-    /** What [indexedWithModified] answers from, by document id; each call takes the rows after its `afterId`. */
     var indexedRows = listOf<IndexedDocument>()
     var indexedQueries = 0
 
-    /** Ids [existingId] reported as still in the library; null means every id is. */
     var existingIds: Set<Long>? = null
 
-    /** Rows written through [insertText], which [replace] also goes through. */
     val written = mutableListOf<DocumentTextEntity>()
 
-    /** Ids deleted with [deleteText], the delete half of [replace]. */
     val deleted = mutableListOf<Long>()
 
-    /** What [observeTextSummary] answers with, and the ids it was asked. */
     var textSummaryRows = listOf<TextSummaryRow>()
     val textSummaryQueries = mutableListOf<Long>()
 
-    /** What [candidates] answers with, and the MATCH expressions it was asked. */
     var candidateRows = listOf<RawContentMatch>()
     val candidateQueries = mutableListOf<String>()
 
-    /** What [snippets] answers with, filtered to the ids asked for; the queries are recorded too. */
     var snippetRows = listOf<SnippetRow>()
     val snippetQueries = mutableListOf<Pair<String, List<Long>>>()
 

@@ -11,15 +11,10 @@ import androidx.customview.widget.ExploreByTouchHelper
 import io.noties.markwon.core.spans.HeadingSpan
 import io.noties.markwon.image.AsyncDrawableSpan
 
-/**
- * Markdown is one TextView, so its headings and images are spans TalkBack cannot see. This gives each heading a
- * virtual child marked as a heading, which is what TalkBack's heading navigation steps through, and each image
- * that has alt text a virtual child that reads it. An image without alt text gets none, as in EPUB, DOCX and ODT.
- */
+// Markdown is one TextView, so TalkBack cannot see its heading and image spans: each heading gets a virtual child marked as a heading, and each image with alt text one that reads it.
 internal fun TextView.exposeMarkdownSemantics(): ExploreByTouchHelper =
     MarkdownSemantics(this).also { ViewCompat.setAccessibilityDelegate(this, it) }
 
-/** Re-reads the headings and images after the view's text was replaced. */
 internal fun TextView.refreshMarkdownSemantics() {
     (ViewCompat.getAccessibilityDelegate(this) as? ExploreByTouchHelper)?.invalidateRoot()
 }
@@ -29,7 +24,6 @@ private const val OBJECT_REPLACEMENT = "\uFFFC"
 
 private class MarkdownSemantics(private val host: TextView) : ExploreByTouchHelper(host) {
 
-    /** One thing a screen reader can stop on: the [range] of text it covers and the words it reads. */
     private class Item(val range: IntRange, val label: String, val isImage: Boolean)
 
     private fun items(): List<Item> {

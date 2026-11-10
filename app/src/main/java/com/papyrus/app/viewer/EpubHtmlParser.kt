@@ -4,21 +4,11 @@ import com.papyrus.app.viewer.svg.SvgSceneBuilder
 import org.xmlpull.v1.XmlPullParser
 import java.io.IOException
 
-/** One chapter cannot be read (malformed, or nested past the limit); the book goes on without it. */
 internal class EpubChapterException(message: String) : IOException(message)
 
-/**
- * Where a link's target sits: the block that was next to be emitted when the element began ([block], before
- * any image went in), and whether the element is itself an image, which the media pass places differently.
- */
 internal class Anchor(val block: Int, val onImage: Boolean)
 
-/**
- * Where chapters put what they read. [blocks] is the book's one list, [pending] the images seen, to be
- * placed by the shared media pass, [anchors] the places a link can name. A block past
- * [EpubLimits.maxBlocks] is dropped and [truncated] set, which is how a limit reaches the reader as the
- * incomplete-document notice instead of silence.
- */
+// A block past [EpubLimits.maxBlocks] is dropped and [truncated] set, so a limit reaches the reader as the incomplete-document notice instead of silence.
 internal class EpubSink(
     val blocks: MutableList<OfficeBlock>,
     val pending: MutableList<PendingImage>,
@@ -55,7 +45,6 @@ internal class EpubSink(
     }
 }
 
-/** HTML whitespace: the five characters a browser collapses. A no-break space is not one of them. */
 internal fun isHtmlSpace(c: Char): Boolean = c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\u000C'
 
 private const val MARK_BACKGROUND = 0xFFF59D
@@ -66,34 +55,22 @@ private const val MAX_ALT_CHARS = 200
 private const val MAX_QUOTE_INDENT = 6
 private val HEADING_LEVEL = mapOf("h1" to 1, "h2" to 2, "h3" to 3, "h4" to 4, "h5" to 5, "h6" to 6)
 
-/** Whole subtrees that are not reading matter: code, styling, embedded players and the document head. */
 private val IGNORED = setOf(
     "script", "style", "iframe", "object", "embed", "head", "title", "template", "audio", "video", "canvas",
     "svg", "rt", "rp", "applet", "noscript", "select", "datalist",
 )
 
-/** Elements that end the paragraph before them and start a new one. */
 private val BLOCKS = setOf(
     "p", "div", "section", "article", "header", "footer", "aside", "main", "figure", "figcaption", "address",
     "details", "summary", "dl", "dt", "dd", "center", "fieldset", "form", "caption", "nav", "hgroup", "body",
 )
 
-/** OOXML `numFmt` names, which [formatListNumber] speaks, for an `ol`'s `type`. */
 private val LIST_TYPES = mapOf("a" to "lowerLetter", "A" to "upperLetter", "i" to "lowerRoman", "I" to "upperRoman")
 
-/**
- * One XHTML chapter as [OfficeBlock]s, appended to a sink. The platform pull parser reads the markup as XML
- * (so it must be well formed; HTML's named entities are taught to it first, see [EpubEntities]) and this
- * class keeps every stack it needs by hand, so a hostile nesting costs memory it bounds and never the call
- * stack. Reading is for text: nothing is fetched, and scripts, players, frames and hidden elements are skipped
- * as whole subtrees. Of the styles only bold, italic and alignment are read, from the [sheet] and an element's
- * `style`; colours and fonts stay the app's. A link to another place in the book becomes a [BookLink], and every
- * element with an `id` is noted in [EpubSink.anchors]. One instance reads one chapter.
- */
+// Keeps every stack by hand, so hostile nesting costs bounded memory and never the call stack. Nothing is fetched; scripts, players, frames and hidden elements are skipped as whole subtrees.
 internal class EpubHtmlParser(
     private val factory: ParserFactory,
     private val sink: EpubSink,
-    /** The chapter's styles; null reads the markup alone, as before. */
     private val sheet: CssSheet? = null,
 ) {
     private class Frame(val tag: String) {
@@ -113,7 +90,6 @@ internal class EpubHtmlParser(
         var row: ArrayList<OfficeCell>? = null
         var column = 0
 
-        /** Column to how many more rows a cell above still covers it. */
         val covered = HashMap<Int, Int>()
     }
 
@@ -141,7 +117,6 @@ internal class EpubHtmlParser(
     private var direction: BlockDirection? = null
     private var css = CssDecl.EMPTY
 
-    /** Reads [bytes], a chapter at [chapterPath], whose relative references resolve against its own directory. */
     fun parse(bytes: ByteArray, chapterPath: String) {
         chapter = chapterPath
         val dir = dirOf(chapterPath)
@@ -208,11 +183,7 @@ internal class EpubHtmlParser(
         pushCss(p, tag, frame)
     }
 
-    /**
-     * Lays this element's styles over what it inherits (bold, italic and alignment all pass down). An element
-     * that is bold or italic in its own markup (`b`, `th`) keeps that against a style it only inherited; one
-     * the style names itself says what it says.
-     */
+    // An element that is bold or italic in its own markup (`b`, `th`) keeps that against a style it only inherited; one the style names itself says what it says.
     private fun pushCss(p: XmlPullParser, tag: String, frame: Frame) {
         val rules = sheet ?: return
         val classes = p.getAttributeValue(null, "class")?.split(' ', '\t', '\n', '\r')?.filter { it.isNotEmpty() }?.toSet().orEmpty()
@@ -232,10 +203,7 @@ internal class EpubHtmlParser(
         )
     }
 
-    /**
-     * `dir` on any element (`html`, a `div`, a `bdo`) sets the direction of the blocks inside it until the
-     * element ends; `auto` would need a look at the text, so it leaves what was inherited alone.
-     */
+    // `auto` would need a look at the text, so it leaves what was inherited alone.
     private fun applyDirection(p: XmlPullParser, frame: Frame) {
         val next = when (p.getAttributeValue(null, "dir")?.trim()?.lowercase()) {
             "rtl" -> BlockDirection.RTL
@@ -247,11 +215,7 @@ internal class EpubHtmlParser(
         direction = next
     }
 
-    /**
-     * Notes the place this element names with its `id` (an `<a>` may use `name` as well) as the block about to
-     * be emitted, which is where what the element opens will land: the paragraph around a `span`, the first
-     * block of a `div`, an image's own slot. An element in a skipped subtree never gets here.
-     */
+    // The place an element names is the block about to be emitted, which is where what the element opens will land.
     private fun captureAnchor(p: XmlPullParser, tag: String) {
         val names = if (tag == "a") listOf("id", "name") else listOf("id")
         for (name in names) {
@@ -320,7 +284,6 @@ internal class EpubHtmlParser(
         frame.cssRestore?.let { css = it }
     }
 
-    /** A drawing that came to something is a picture where it stood, placed by the media pass like an `<img>`. */
     private fun endSvg() {
         val scene = svg?.scene()
         svg = null
@@ -408,26 +371,18 @@ internal class EpubHtmlParser(
         else -> null
     }
 
-    /**
-     * A link opens the app's own handlers, so it is one of two things only: a web, mail or phone address that
-     * [safeLink] lets through, or a place in this book. The two are never both set; anything else is plain text.
-     */
+    // Only a safe web, mail or phone address or a place in this book, never both; anything else is plain text.
     private fun linkFormat(href: String?, dir: String): CharFormat? {
         safeLink(href)?.let { return format.copy(link = it, bookLink = null) }
         return bookLinkOf(dir, href, chapter)?.let { format.copy(link = null, bookLink = it) }
     }
 
-    /** What to cut from the ends of a paragraph: all whitespace, except in `pre`, where only line breaks go. */
     private fun trimmable(): (Char) -> Boolean {
         val keepSpaces = preDepth > 0
         return { c: Char -> if (keepSpaces) c == '\n' || c == '\r' else isHtmlSpace(c) }
     }
 
-    /**
-     * Ends the paragraph being built and emits it as what the surrounding markup says it is: a heading, a
-     * list item (the first one of an `li` carries its marker) or a paragraph indented by its block quotes.
-     * Inside a table cell, blocks are not blocks but lines of the cell.
-     */
+    // Inside a table cell, blocks are lines of the cell.
     private fun flushBlock() {
         if (cell != null) {
             cellBreak()
@@ -584,7 +539,6 @@ internal class EpubHtmlParser(
         if (rows.isNotEmpty()) sink.add(OfficeBlock.Table(rows))
     }
 
-    /** A table inside a cell is not drawn as one: its pieces become words of the cell, set apart by a space. */
     private fun separateNested() {
         val current = cell ?: return
         if (!lastSpace) {
@@ -593,7 +547,6 @@ internal class EpubHtmlParser(
         }
     }
 
-    /** The value of the attribute called [name] under any namespace prefix (`href`, `xlink:href`, `xl:href`). */
     private fun attribute(p: XmlPullParser, name: String): String? {
         for (i in 0 until p.attributeCount) {
             if (p.getAttributeName(i).substringAfter(':') == name) return p.getAttributeValue(i)
@@ -601,7 +554,6 @@ internal class EpubHtmlParser(
         return null
     }
 
-    /** `hidden`, or a `display:none` style: the author asked for it not to be shown. */
     private fun isHidden(p: XmlPullParser): Boolean {
         if (p.getAttributeValue(null, "hidden") != null) return true
         val style = p.getAttributeValue(null, "style") ?: return false

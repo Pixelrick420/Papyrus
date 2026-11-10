@@ -5,10 +5,8 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** The guesses made when a name says nothing: a wrong one colours a file wrongly, so null is the answer to doubt. */
 class LanguageDetectorTest {
 
-    /** A name no table knows, so only the content-based rules apply. */
     private fun detect(head: String, extension: String = "") = LanguageDetector.detect(head, extension)
 
     @Test
@@ -255,9 +253,7 @@ class LanguageDetectorTest {
     fun `only the start of a long file is read`() {
         val filler = "\n".repeat(TextSniffer.MAX_SNIFF_BYTES + 10)
         assertEquals(ContentKind.OBJC, detect("@interface Foo\n@end\n$filler", "m"))
-        // The same marker past the limit is not seen.
         assertNull(detect("$filler@interface Foo\n@end\n", "m"))
-        // Nor is a comment that comes after it: this is plain json as far as the head goes.
         assertEquals(ContentKind.JSON, detect("{\"a\": 1" + " ".repeat(TextSniffer.MAX_SNIFF_BYTES) + "// late\n}"))
     }
 

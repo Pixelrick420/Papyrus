@@ -3,10 +3,7 @@ package com.papyrus.app.viewer
 import java.io.IOException
 import java.io.InputStream
 
-/**
- * Minimal OLE2/CFB reader shared by the Word `.doc` extractor and the encrypted-OOXML unwrapper.
- * Read-only and bounds-checked: a truncated or cyclic file throws instead of looping or over-allocating.
- */
+// Read-only and bounds-checked: a truncated or cyclic file throws instead of looping or over-allocating.
 internal class CompoundFile(private val openStream: () -> InputStream, private val fileLength: Long) {
     private class Entry(val name: String, val type: Int, val start: Int, val size: Long)
     private class Chunk(val fileOffset: Long, val dest: Int, val length: Int)
@@ -19,13 +16,11 @@ internal class CompoundFile(private val openStream: () -> InputStream, private v
     private val firstMiniFat: Int
     private val root: Entry?
 
-    /** Sector ids of the mini FAT, or null when the file has no mini stream to reach. */
     private val miniFat: IntArray? by lazy {
         if (firstMiniFat == ENDOFCHAIN) return@lazy null
         join(rawMany(chain(firstMiniFat, fat, totalSectors, "mini FAT").map(::sectorOffset), sectorSize))
     }
 
-    /** Sector ids of the root entry's stream, which mini streams are byte slices of. */
     private val miniRoot: List<Int> by lazy {
         val r = root ?: throw IOException("missing root entry")
         if (r.start == ENDOFCHAIN || r.size == 0L) throw IOException("missing mini stream")
@@ -88,7 +83,6 @@ internal class CompoundFile(private val openStream: () -> InputStream, private v
     fun hasStream(name: String): Boolean =
         entries.any { it.type == ENTRY_STREAM && it.name.equals(name, ignoreCase = true) }
 
-    /** Declared size of a stream, or null when there is no such stream. */
     fun streamSize(name: String): Long? =
         entries.firstOrNull { it.type == ENTRY_STREAM && it.name.equals(name, ignoreCase = true) }?.size
 
@@ -217,7 +211,6 @@ internal class CompoundFile(private val openStream: () -> InputStream, private v
 
     private fun raw(offset: Long, length: Int): ByteArray = rawMany(listOf(offset), length)[0]
 
-    /** Several absolute reads through one open, sorted by offset so the stream only moves forward. */
     private fun rawMany(offsets: List<Long>, length: Int): List<ByteArray> {
         if (offsets.isEmpty()) return emptyList()
         val order = offsets.indices.sortedBy { offsets[it] }
@@ -304,7 +297,6 @@ private val OLE_SIGNATURE = intArrayOf(0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A,
 private const val ENDOFCHAIN = -2 // 0xFFFFFFFE
 private const val FREESECT = 0xFFFFFFFFL
 
-// Header field offsets (CFB spec, fixed across v3/v4).
 private const val BYTE_ORDER_OFFSET = 0x1C
 private const val SECTOR_SHIFT_OFFSET = 0x1E
 private const val MINI_SECTOR_SHIFT_OFFSET = 0x20
@@ -316,7 +308,6 @@ private const val NUM_DIFAT_SECTORS_OFFSET = 0x48
 private const val FIRST_DIFAT_SECTOR_OFFSET = 0x44
 private const val DIFAT_OFFSET = 0x4C
 
-// Directory entry field offsets.
 private const val ENTRY_NAME_LENGTH_OFFSET = 0x40
 private const val ENTRY_TYPE_OFFSET = 0x42
 private const val ENTRY_START_OFFSET = 0x74

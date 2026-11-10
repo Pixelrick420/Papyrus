@@ -19,11 +19,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/**
- * The outline reader on documents built in memory, as [PdfLinkExtractorTest] does. Most of what is
- * tested here is damage: an outline is whatever its author wrote, and none of it may throw, hang or
- * lose the bookmarks around the bad one.
- */
 class PdfOutlineReaderTest {
 
     private val opened = ArrayList<PDDocument>()

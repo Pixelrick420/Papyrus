@@ -7,17 +7,12 @@ import androidx.room.Query
 import androidx.room.Transaction
 import kotlinx.coroutines.flow.Flow
 
-/** One FTS candidate: the document and the raw `matchinfo` blob used to rank it. */
 data class RawContentMatch(
     val documentId: Long,
     val matchInfo: ByteArray,
 )
 
-/**
- * One document's place in the index, without its text: how extraction ended and how much it left.
- * The viewer asks this to know whether a document has words at all (see
- * `DocumentRepository.observeTextSummary`), so it never has to read a whole PDF to find out.
- */
+// Lets the viewer know whether a document has words without reading a whole PDF.
 data class TextSummaryRow(
     val state: TextIndexState,
     val charCount: Int,
@@ -25,37 +20,21 @@ data class TextSummaryRow(
     val sourceSize: Long,
 )
 
-/** A library document whose indexed text carries a recorded modified time, with that time. */
 data class IndexedDocument(
     @Embedded val document: DocumentEntity,
-    /** [DocumentTextEntity.sourceModified] of its text row; never 0 here. */
     val sourceModified: Long,
 )
 
-/**
- * One excerpt request's answer. [snippet] carries [SearchDao.SNIPPET_START] and
- * [SearchDao.SNIPPET_END] around each matched word.
- */
 data class SnippetRow(
     val documentId: Long,
     val snippet: String?,
 )
 
-/**
- * The index's only write path and both read phases.
- *
- * Writes go to `document_text` exclusively: the external-content FTS table is maintained by Room's
- * generated triggers, so `document_text_fts` has no insert or update here.
- */
+// Writes go to `document_text` only; Room's triggers maintain the FTS table.
 @Dao
 interface SearchDao {
 
-    /**
-     * The next documents to index, oldest first: no text row, one written by an older index version,
-     * or one written for a file of another size than the library now records for it (the document was
-     * opened again after an edit). Bounded by [limit] so one pass never has to hold the whole library
-     * at once. Writing a row stores the size it was read at, so a document leaves this list once indexed.
-     */
+    // Includes rows written by an older index version or for a file whose size changed. Bounded by [limit] so one pass never holds the whole library.
     @Query(
         "SELECT d.* FROM documents d LEFT JOIN document_text t ON t.rowid = d.id " +
             "WHERE t.rowid IS NULL OR t.indexVersion < :version OR t.sourceSize != d.sizeBytes " +
@@ -63,10 +42,7 @@ interface SearchDao {
     )
     suspend fun pending(version: Int, limit: Int): List<DocumentEntity>
 
-    /**
-     * The same queue as [pending], narrowed to documents of at most [maxBytes] so large files cannot
-     * hide small ones.
-     */
+    // Narrowed by size so large files cannot hide small ones.
     @Query(
         "SELECT d.* FROM documents d LEFT JOIN document_text t ON t.rowid = d.id " +
             "WHERE (t.rowid IS NULL OR t.indexVersion < :version OR t.sourceSize != d.sizeBytes) " +
@@ -75,11 +51,7 @@ interface SearchDao {
     )
     suspend fun pendingUpTo(version: Int, maxBytes: Long, limit: Int): List<DocumentEntity>
 
-    /**
-     * Up to [limit] indexed documents after [afterId], by id, that have a recorded modified time: the
-     * ones whose file can be checked for an edit without being opened. Paged by id rather than by
-     * offset because the pass rewrites rows as it goes. Reads no text.
-     */
+    // Paged by id rather than offset because the pass rewrites rows as it goes.
     @Query(
         "SELECT d.*, t.sourceModified AS sourceModified FROM documents d " +
             "JOIN document_text t ON t.rowid = d.id " +
@@ -88,15 +60,10 @@ interface SearchDao {
     )
     suspend fun indexedWithModified(version: Int, afterId: Long, limit: Int): List<IndexedDocument>
 
-    /** The row again if it is still in the library; the indexer re-checks before writing. */
     @Query("SELECT id FROM documents WHERE id = :id")
     suspend fun existingId(id: Long): Long?
 
-    /**
-     * How [id] stands in the index, observed: at most one row, and none while the document has not
-     * been indexed yet. Reads only the summary columns, never the text, so asking costs nothing even
-     * for a document at the character cap.
-     */
+    // Reads only the summary columns, never the text.
     @Query("SELECT state, charCount, sourceSize FROM document_text WHERE rowid = :id")
     fun observeTextSummary(id: Long): Flow<List<TextSummaryRow>>
 
@@ -106,25 +73,14 @@ interface SearchDao {
     @Query("DELETE FROM document_text WHERE rowid = :id")
     suspend fun deleteText(id: Long)
 
-    /**
-     * Deletes then inserts, never `REPLACE`: a REPLACE is a delete plus an insert at the SQLite level
-     * but skips the delete triggers unless recursive triggers are on, which would leave the document
-     * searchable by its old text. The explicit delete fires the FTS4 sync trigger first.
-     */
+    // Never REPLACE: it skips the delete triggers unless recursive triggers are on, leaving the document searchable by its old text.
     @Transaction
     suspend fun replace(row: DocumentTextEntity) {
         deleteText(row.documentId)
         insertText(row)
     }
 
-    /**
-     * Phase one of a search: every document matching [match], with the ranking data and no content
-     * read. `matchinfo` reads only the inverted index, so this stays cheap on a large library.
-     *
-     * Deliberately unlimited, because a limit here would pick the candidates by rowid rather than
-     * relevance and could drop the best match before it is ever scored. The cost is bounded by the
-     * library, not by the index: four small integers per phrase per column per matching document.
-     */
+    // Deliberately unlimited: a limit would pick candidates by rowid rather than relevance and could drop the best match before scoring.
     @Query(
         "SELECT document_text_fts.rowid AS documentId, " +
             "matchinfo(document_text_fts, 'pcnalx') AS matchInfo " +
@@ -134,12 +90,7 @@ interface SearchDao {
     )
     suspend fun candidates(match: String): List<RawContentMatch>
 
-    /**
-     * Phase two: excerpts for the best-ranked ids only, since `snippet` reads the content row.
-     *
-     * The marker characters are repeated in Kotlin as [SNIPPET_START] and [SNIPPET_END]; Room
-     * cannot template a query string, so the two copies have to be kept in step by hand.
-     */
+    // The marker characters are duplicated as [SNIPPET_START] and [SNIPPET_END]; Room cannot template a query, so keep them in step by hand.
     @Query(
         "SELECT document_text_fts.rowid AS documentId, " +
             "snippet(document_text_fts, char(1), char(2), '…', -1, 32) AS snippet " +
@@ -149,10 +100,8 @@ interface SearchDao {
     suspend fun snippets(match: String, ids: List<Long>): List<SnippetRow>
 
     companion object {
-        /** Opens a matched word in a `snippet`: `char(1)` in the query above. */
         const val SNIPPET_START = '\u0001'
 
-        /** Closes a matched word in a `snippet`: `char(2)` in the query above. */
         const val SNIPPET_END = '\u0002'
     }
 }

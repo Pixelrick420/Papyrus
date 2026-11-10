@@ -5,7 +5,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
-/** The library: saving a document into it, then finding, ordering and removing what is there. */
 @RunWith(AndroidJUnit4::class)
 class LibraryTest : E2eTest() {
 
@@ -193,7 +192,6 @@ class LibraryTest : E2eTest() {
         app.assertShown(app.text("No documents yet"))
     }
 
-    /** Opens the sort and filter sheet, taps [chip] in it and closes it again. */
     private fun chooseInSortAndFilter(chip: String) {
         app.tap(app.descStartsWith("Sort:"))
         app.tapLowest(app.text(chip))

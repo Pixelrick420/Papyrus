@@ -105,7 +105,6 @@ class DelimitedFileTest {
     @Test
     fun `a byte-order mark is not part of the first cell`() {
         assertEquals(listOf(listOf("name", "age")), rows("\uFEFFname,age"))
-        // Still a quote opener behind the mark.
         assertEquals(listOf(listOf("a,b", "c")), rows("\uFEFF\"a,b\",c"))
     }
 
@@ -255,7 +254,6 @@ class DelimitedFileTest {
         assertEquals(2, table.rows.size)
         assertEquals(listOf(0, 1), table.rows[0].map { it.column })
         assertEquals(listOf(TextSpan(0, 4, CharFormat(bold = true))), table.rows[0][0].spans)
-        // Nothing to make bold in an empty header cell, and the body is plain.
         assertEquals(emptyList<TextSpan>(), table.rows[0][1].spans)
         assertEquals(emptyList<TextSpan>(), table.rows[1][0].spans)
         assertEquals("42", table.rows[1][1].text)
@@ -296,8 +294,6 @@ class DelimitedFileTest {
         assertEquals("likes \"quotes\"\nand lines", table.rows[1][2].text)
         assertEquals(listOf("2", "Bo", ""), table.rows[2].map { it.text })
     }
-
-    // --- Unterminated quotes, in every delimiter and place ---
 
     @Test
     fun `an unterminated quote in a tab separated file runs to the end like a comma separated one`() {
@@ -357,7 +353,6 @@ class DelimitedFileTest {
         assertEquals(1, read.rows.size)
         assertEquals(2, read.rows.single().size)
         assertEquals("a", read.rows.single()[0])
-        // What fits, then the ellipsis that says the rest was dropped.
         assertTrue(read.rows.single()[1] == body.take(DelimitedFile.MAX_CELL_CHARS) + "…")
         assertTrue(read.truncated)
         assertTrue("took ${(System.nanoTime() - started) / 1_000_000} ms", System.nanoTime() - started < 5_000_000_000L)

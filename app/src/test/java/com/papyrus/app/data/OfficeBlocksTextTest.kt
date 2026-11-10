@@ -7,7 +7,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
 
-/** The shape of the indexed text for Office/EPUB documents: one block per line. */
 class OfficeBlocksTextTest {
 
     private fun paragraph(text: String) = OfficeBlock.Paragraph(text)

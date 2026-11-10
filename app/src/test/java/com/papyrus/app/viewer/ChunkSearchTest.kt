@@ -19,7 +19,6 @@ class ChunkSearchTest {
 
         assertEquals(listOf(0, 1, 2), found.chunks())
         assertEquals(listOf(6, 6, 0), found.map { it.offset })
-        // Chunk 1 starts at 11 (10 characters and a newline), chunk 2 at 28.
         assertEquals(listOf(6L, 17L, 28L), found.globals())
     }
 
@@ -136,7 +135,6 @@ class ChunkSearchTest {
 
                 assertEquals("round $round query ${query.replace("\n", "\\n")} in ${chunks}", expected, found.globals())
                 for (match in found) {
-                    // The chunk and offset really point at that character of the document.
                     val chunkStart = chunks.take(match.chunk).sumOf { it.length + 1L }
                     assertEquals(chunkStart + match.offset, match.globalOffset)
                     assertTrue(match.offset <= chunks[match.chunk].length)

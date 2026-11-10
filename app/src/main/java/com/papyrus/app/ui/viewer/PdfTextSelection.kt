@@ -46,10 +46,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 
-/*
- * A PDF page is a bitmap with no selectable text, so its extracted characters are hit-tested by
- * hand. All units are page-relative, so a selection survives zoom and can run across pages.
- */
+// A PDF page is a bitmap with no selectable text, so its extracted characters are hit-tested by hand, in page-relative units.
 
 internal val SelectionReach = 24.dp
 
@@ -60,10 +57,7 @@ internal val HandleGrabRadius = 28.dp
 
 private val HandleStem = 2.dp
 
-/**
- * What is selected in one PDF. A page's text is read on first point, or when a page scrolls into a
- * selection. Each gesture report restarts the work: only the newest position matters.
- */
+// Each gesture report restarts the work: only the newest position matters.
 @Stable
 internal class PdfSelectionState(
     private val scope: CoroutineScope,
@@ -83,7 +77,6 @@ internal class PdfSelectionState(
     private var startJob: Job? = null
     private var dragJob: Job? = null
 
-    /** The word the long-press landed on: what a drag extends from, in either direction. */
     private var anchorWord: Pair<PdfTextPos, PdfTextPos>? = null
 
     private var fixedEnd: PdfTextPos? = null
@@ -97,7 +90,6 @@ internal class PdfSelectionState(
         return loaded
     }
 
-    /** A long-press at [point]: selects the word there. [reach] is in page heights, not pixels. */
     fun startAt(point: PagePoint, reach: Float) {
         cancelWork()
         anchorWord = null
@@ -105,7 +97,6 @@ internal class PdfSelectionState(
         startJob = scope.launch(start = CoroutineStart.UNDISPATCHED) {
             val text = ensureText(point.page)
             if (text == null || !text.isSelectable) {
-                // A scan has no text at all, which is worth telling the reader.
                 onNoText()
                 return@launch
             }
@@ -157,7 +148,6 @@ internal class PdfSelectionState(
         selection = null
     }
 
-    /** Selected text, pages joined by newlines, loading any page not yet read. Null if none. */
     suspend fun selectedText(): String? {
         val current = selection ?: return null
         val out = StringBuilder()
@@ -174,7 +164,6 @@ internal class PdfSelectionState(
         return out.toString().ifEmpty { null }
     }
 
-    /** The selection's line boxes by page, loading any page not yet read; empty if nothing is selected. */
     suspend fun selectedRects(): Map<Int, List<NormRect>> {
         val current = selection ?: return emptyMap()
         val out = LinkedHashMap<Int, List<NormRect>>()
@@ -188,16 +177,7 @@ internal class PdfSelectionState(
         return out
     }
 
-    /**
-     * The engine's own reading of [span] on [page], or null when the page did not come from it, it
-     * cannot answer, or it answered with other characters than the model holds there: the text
-     * model's characters and boxes are then the answer. A middle page's open end is clamped to the
-     * text the page actually has.
-     *
-     * The engine counts characters in its own way, which need not match the model's lines joined by
-     * newlines, so its answer is only taken when it is the very passage that was asked about. Copy
-     * and highlight both hang from this, and a shifted answer would copy and mark the wrong words.
-     */
+    // Falls back to the text model's characters and boxes when the engine cannot answer or answers with other characters than the model holds there.
     private suspend fun platformSelection(page: Int, span: PageSpan, text: PdfPageText): PdfPlatformSelection? {
         if (!text.fromPlatform) return null
         val from = span.from.coerceIn(0, text.text.length)
@@ -218,16 +198,13 @@ internal class PdfSelectionState(
     }
 }
 
-/** A selection end's knob position in that page's pixels. */
 internal class HandleSpot(val x: Float, val top: Float, val bottom: Float, private val radius: Float) {
     /** Below the line, so the finger holding it does not cover the text. */
     val knob: Offset get() = Offset(x, bottom + radius)
 
-    /** The line's middle: what a caret is worked out from while it is dragged. */
     val line: Offset get() = Offset(x, (top + bottom) / 2f)
 }
 
-/** The knob taken, and the line's offset from the finger, to keep while it is dragged. */
 internal class HandleGrab(val isStart: Boolean, val toLine: Offset)
 
 internal class PageHandles(val start: HandleSpot?, val end: HandleSpot?) {
@@ -265,7 +242,6 @@ internal fun pageHandles(
     )
 }
 
-/** A faint wash plus an underline on each link rectangle, under the find highlights and the selection. */
 internal fun DrawScope.drawLinks(rects: List<NormRect>, color: Color) {
     for (rect in rects) {
         val left = rect.left * size.width
@@ -300,22 +276,15 @@ internal fun DrawScope.drawSelection(rects: List<NormRect>, handles: PageHandles
     }
 }
 
-/** A highlighter's yellow, light enough that the text under it stays readable. */
 private val HighlightWash = Color(0xFFFFEB3B).copy(alpha = 0.4f)
 
 /** A note's rule and dot: darker than the wash, so a run that carries a note is told apart at a glance. */
 private val NoteInk = Color(0xFFF57F17)
 
-/** How far a note's dot stands from the text it marks, and how big it is. */
 internal val NoteDotRadius = 4.dp
 
 private val NoteRule = 2.dp
 
-/**
- * The reader's stored marks, drawn under the find matches and the selection. A highlight is a flat
- * wash; a note keeps the wash but adds a rule under each line and a dot at the end of the run, so
- * the words stay as legible as they are in the book.
- */
 internal fun DrawScope.drawHighlights(marks: List<Highlight>) {
     val width = size.width
     val height = size.height
@@ -337,7 +306,6 @@ internal fun DrawScope.drawHighlights(marks: List<Highlight>) {
                 size = Size((rect.right - rect.left) * width, rule),
             )
         }
-        // One dot per mark, after its last line, the way a sticky note sits at the end of a passage.
         mark.rects.lastOrNull()?.let { last ->
             drawCircle(
                 color = NoteInk,
@@ -350,30 +318,22 @@ internal fun DrawScope.drawHighlights(marks: List<Highlight>) {
 
 private const val SELECTION_ALPHA = 0.3f
 
-/** Light enough not to hide the page under it. */
 private const val LINK_FILL_ALPHA = 0.12f
 private const val LINK_LINE_ALPHA = 0.6f
 
-/** Link hit slop, in page pixels. */
 internal val LinkTapSlop = 4.dp
 
 /** Mark hit slop, in page pixels: a note is a thin rule, so its run gets a little more room. */
 internal val MarkTapSlop = 6.dp
 
-/**
- * What a press turned out to be. A tap carries its release so a link tap can consume it - that is
- * what keeps the double-tap zoom above from also firing under a tap that opened a link.
- */
+// A tap carries its release so a link tap can consume it, which keeps the double-tap zoom from also firing.
 private sealed interface Press {
     class Tap(val up: PointerInputChange) : Press
     data object Long : Press
     data object Other : Press
 }
 
-/**
- * Long-press selects, drag extends, tap dismisses or follows a link, a knob moves an end. Nothing
- * is claimed until the touch is known, so scroll, pinch-zoom and double-tap zoom are unaffected.
- */
+// Nothing is claimed until the touch is known, so scroll, pinch-zoom and double-tap zoom are unaffected.
 internal fun Modifier.pdfSelectionGestures(
     state: PdfSelectionState,
     page: Int,
@@ -467,7 +427,6 @@ private fun markAt(marks: List<Highlight>, size: IntSize, point: Offset, slopPx:
     }
 }
 
-/** Classifies a press: held still, let go early, or something else. */
 private suspend fun AwaitPointerEventScope.classifyPress(down: PointerInputChange): Press {
     var verdict: Press? = null
     withTimeoutOrNull(viewConfiguration.longPressTimeoutMillis) {

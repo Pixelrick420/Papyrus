@@ -26,7 +26,6 @@ object LibraryImport {
         copyStream({ openSource(context, source) }, File(dir, name))
     }
 
-    /** Removes an app-owned copy; SAF content URIs and foreign file URIs are left alone. */
     fun deleteOwnedCopy(context: Context, uri: Uri): Boolean {
         if (uri.scheme != "file") return false
         val path = uri.path ?: return false
@@ -35,13 +34,7 @@ object LibraryImport {
         return file.delete()
     }
 
-    /**
-     * Deletes the files in [dir] that [referenced] does not name and that were last written before
-     * [modifiedBefore]: a copy whose row went first when a removal was cut short, one whose insert never
-     * ran, a temp file from a copy that was killed. The age bound keeps it off a copy still being saved,
-     * which exists a moment before its row does. A file with no readable time is kept. Returns how many
-     * files went.
-     */
+    // The age bound keeps it off a copy still being saved, which exists a moment before its row; a file with no readable time is kept.
     internal fun sweepOrphans(dir: File, referenced: Set<File>, modifiedBefore: Long): Int {
         val kept = referenced.mapNotNullTo(HashSet()) { runCatching { it.canonicalFile }.getOrNull() }
         var removed = 0
@@ -60,11 +53,7 @@ object LibraryImport {
         file.canonicalFile.parentFile == dir.canonicalFile
     }.getOrDefault(false)
 
-    /**
-     * True when [candidate] holds the same bytes the stream from [openSource] yields. A known size
-     * mismatch (0 reads as unknown) answers without opening the source; a failed read answers false
-     * so the caller falls through to its own copy.
-     */
+    // A failed read answers false so the caller falls through to its own copy.
     internal fun sameContent(candidate: File, sourceSize: Long, openSource: () -> InputStream): Boolean {
         if (sourceSize > 0 && candidate.length() != sourceSize) return false
         return runCatching {
@@ -98,7 +87,6 @@ object LibraryImport {
     private fun openSource(context: Context, source: Uri): InputStream =
         context.contentResolver.openInputStream(source) ?: throw FileNotFoundException(source.toString())
 
-    /** Streams to a temp file beside [target], then renames it in; a failure leaves nothing. */
     internal fun copyStream(openStream: () -> InputStream, target: File): File {
         val temp = File.createTempFile(TEMP_PREFIX, TEMP_SUFFIX, target.parentFile)
         var moved = false
@@ -137,11 +125,9 @@ object LibraryImport {
         }
     }
 
-    /** From the MIME type alone, via the same table format detection uses; null when unknown. */
     private fun extensionFor(mimeType: String?): String? =
         DocumentFormat.detect(null, mimeType).extensions.firstOrNull()
 
-    /** Null for blank, separator-only or `.`/`..` names; trailing dots are not extensions. */
     private fun sanitize(name: String?): String? = name
         ?.replace('/', ' ')
         ?.replace('\\', ' ')

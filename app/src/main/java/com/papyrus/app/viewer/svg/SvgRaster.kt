@@ -7,18 +7,13 @@ import android.graphics.Path
 import java.io.ByteArrayOutputStream
 import kotlin.math.roundToInt
 
-/** The longest side a drawing is rasterised to, and the shortest it is brought up to. */
 internal const val SVG_RASTER_MAX_EDGE = 1600
 internal const val SVG_RASTER_MIN_EDGE = 64
 
 private const val OPAQUE = 0xFF000000.toInt()
 private const val PNG_QUALITY = 100
 
-/**
- * The one place an SVG meets the platform: a [SvgScene] drawn with a [Path] and a [Paint] per shape into a
- * transparent bitmap, and encoded as a PNG. Nothing is parsed here and nothing is kept: the bitmap lives only
- * as long as the encode, and any failure is a null, which the caller turns into one dropped picture.
- */
+// Nothing is kept: the bitmap lives only as long as the encode, and any failure is a null, which the caller turns into one dropped picture.
 internal object SvgRaster : SvgRasteriser {
 
     override fun rasterise(scene: SvgScene): ByteArray? {

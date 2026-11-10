@@ -26,7 +26,6 @@ import kotlin.math.roundToInt
 
 class PdfPasswordException : IOException("Password-protected PDF")
 
-/** Thread-safe wrapper over one [PdfEngine], which allows one open page at a time; renders serialise and cache. */
 @OptIn(ExperimentalCoroutinesApi::class)
 class PdfPageSource private constructor(
     private val descriptor: ParcelFileDescriptor,
@@ -37,10 +36,8 @@ class PdfPageSource private constructor(
 
     val pageCount: Int = engine.pageCount
 
-    /** True when the reader may be offered filling: this engine has the API and the form is an AcroForm. */
     val hasForm: Boolean get() = capabilities.forms
 
-    /** True when a saved copy can carry the reader's highlights as page annotations. */
     val canAnnotate: Boolean get() = capabilities.annotations
 
     private val dispatcher = Dispatchers.Default.limitedParallelism(1)
@@ -49,11 +46,7 @@ class PdfPageSource private constructor(
 
     private val cacheBudgetBytes = cacheBytes()
 
-    /**
-     * The most pixels one page is rasterised at. A few zoomed pages are on screen at once and each
-     * holds its bitmap, so one page may take only a share of the cache; a page past it would be
-     * dropped from the cache as it went in, or fail to allocate and leave the page blank.
-     */
+    // A few zoomed pages are on screen at once and each holds its bitmap, so one page may take only a share of the cache; a page past it would be dropped as it went in, or fail to allocate.
     val maxRenderPixels: Int = cacheBudgetBytes / (BYTES_PER_PIXEL * PAGES_PER_CACHE)
 
     private val cache = object : LruCache<PageKey, Bitmap>(cacheBudgetBytes) {
@@ -62,7 +55,6 @@ class PdfPageSource private constructor(
         override fun sizeOf(key: PageKey, value: Bitmap): Int = value.allocationByteCount.coerceAtLeast(1)
     }
 
-    /** height / width for every page, so list items can reserve space before rendering. */
     suspend fun loadAspectRatios(): List<Float> = withContext(dispatcher) {
         lock.withLock {
             List(pageCount) { i -> engine.open(i).use { it.height.toFloat() / it.width } }
@@ -71,26 +63,18 @@ class PdfPageSource private constructor(
 
     fun cached(index: Int, widthPx: Int): Bitmap? = cache.get(PageKey(index, widthPx))
 
-    /**
-     * Drops the cached renders of pages outside [keep], so pages scrolled far away stop holding memory.
-     * Not recycled: a page on screen may still be drawing its bitmap, and the GC frees it once unused.
-     */
+    // Not recycled: a page on screen may still be drawing its bitmap, and the GC frees it once unused.
     fun evictOutside(keep: IntRange) {
         for (key in cache.snapshot().keys) {
             if (key.index !in keep) cache.remove(key)
         }
     }
 
-    /** Memory pressure: everything when [evictAll], otherwise down to half the budget, oldest first. */
     fun trimMemory(evictAll: Boolean) {
         if (evictAll) cache.evictAll() else cache.trimToSize(cache.maxSize() / 2)
     }
 
-    /**
-     * Returns null if the source was closed meanwhile, or if the page is too large to render. Renders
-     * queue behind one another, so a caller cancelled while waiting (its page scrolled away) never
-     * starts; a render already running cannot be interrupted and finishes into the cache.
-     */
+    // Renders queue behind one another, so a caller cancelled while waiting never starts; a render already running cannot be interrupted and finishes into the cache.
     suspend fun render(index: Int, widthPx: Int): Bitmap? {
         val key = PageKey(index, widthPx)
         cache.get(key)?.let { return it }
@@ -119,13 +103,8 @@ class PdfPageSource private constructor(
         }
     }
 
-    /**
-     * The page's text in the viewer's model, or null when the engine has no text API, the page
-     * fails, or what it reports is not something a finger can select from (no text, text without
-     * boxes, a stream that wraps over several lines); the caller then falls back to the PDFBox
-     * reader, which every device has. An empty answer must be null too: a page the engine cannot
-     * read is not a blank page, and handing it back as one would never reach PDFBox.
-     */
+    // Null when the engine's text is not something a finger can select from (no text, text without boxes, a stream wrapping over several lines): the caller falls back to PDFBox.
+    // An empty answer must be null too, or a page the engine cannot read would pass as blank and never reach PDFBox.
     internal suspend fun platformText(index: Int): PdfPageText? {
         if (!capabilities.text) return null
         return withPage(index) { page ->
@@ -136,10 +115,7 @@ class PdfPageSource private constructor(
         }
     }
 
-    /**
-     * The page's matches from the platform search, or null to scan the text model instead. The
-     * platform scan is exact-case, so a query with capitals stays with the case-insensitive model.
-     */
+    // The platform scan is exact-case, so a query with capitals stays with the case-insensitive model.
     internal suspend fun platformSearch(index: Int, query: String): PdfPageText.PageMatches? {
         if (!capabilities.search || query != query.lowercase()) return null
         val needle = PdfPageText.normalizeQuery(query)
@@ -153,7 +129,6 @@ class PdfPageSource private constructor(
         }
     }
 
-    /** The lines the platform selects between two boundaries, or null when it has no selection API. */
     internal suspend fun platformSelect(
         index: Int,
         start: PlatformBoundary,
@@ -167,11 +142,7 @@ class PdfPageSource private constructor(
         }
     }
 
-    /**
-     * Every form widget in the document, in page order. Read a page at a time off the main thread, so
-     * a large form never delays the first page; past [MAX_FORM_FIELDS] the rest are left out rather
-     * than holding an unbounded list for a sheet to show.
-     */
+    // Read a page at a time off the main thread; past [MAX_FORM_FIELDS] the rest are left out rather than holding an unbounded list.
     internal suspend fun formFields(): List<PdfFormField> {
         if (!capabilities.forms) return emptyList()
         val fields = ArrayList<PdfFormField>()
@@ -182,26 +153,18 @@ class PdfPageSource private constructor(
         return fields
     }
 
-    /** One page's widgets, for refreshing just that page after an edit. */
     internal suspend fun formFields(page: Int): List<PdfFormField> {
         if (!capabilities.forms) return emptyList()
         return withPage(page) { it.widgets() }.orEmpty()
     }
 
-    /** Applies [edit] to page [index] in memory; false when the engine refused or the page failed. */
     internal suspend fun applyFormEdit(index: Int, edit: PdfFormEdit): Boolean {
         if (!capabilities.forms) return false
         return withPage(index) { it.applyEdit(edit) } ?: false
     }
 
-    /**
-     * Writes the document, edits included, to [destination]; [highlights] adds one annotation per
-     * mark, by page. Runs on the render dispatcher, so it never overlaps a page being read; the
-     * source file and this renderer stay as they were.
-     *
-     * All or nothing: a page whose annotation is refused fails the whole write, rather than leaving
-     * a copy whose highlights are silently missing. The caller deletes the half-written file.
-     */
+    // Runs on the render dispatcher, so it never overlaps a page being read. All or nothing: a refused annotation fails the whole write rather than leaving a copy whose highlights are silently missing.
+    // The caller deletes the half-written file.
     internal suspend fun writeCopy(
         destination: ParcelFileDescriptor,
         highlights: Map<Int, List<List<NormRect>>> = emptyMap(),
@@ -238,7 +201,6 @@ class PdfPageSource private constructor(
         }
     }
 
-    /** Runs [attempt] on page [index], serialised with rendering; null when closed or the page fails. */
     private suspend fun <T> withPage(index: Int, attempt: (PdfEnginePage) -> T): T? =
         withContext(dispatcher) {
             lock.withLock {
@@ -260,10 +222,8 @@ class PdfPageSource private constructor(
         Log.w(TAG, "PDF page $index unavailable: ${error.javaClass.simpleName}")
     }
 
-    /**
-     * Closes after any in-flight render; the detached body is guarded so an escaping exception can't
-     * kill the process.
-     */
+    // Closes after any in-flight render; the detached body is guarded so an escaping exception can't
+    // kill the process.
     override fun close() {
         synchronized(openSources) { openSources.remove(this) }
         CoroutineScope(dispatcher).launch {
@@ -287,20 +247,17 @@ class PdfPageSource private constructor(
 
         private const val BYTES_PER_PIXEL = 4
 
-        /** Pages that may sit at the largest size together before the cache is full. */
         private const val PAGES_PER_CACHE = 3
 
         /** Weak, so a source that is never closed cannot be kept alive by the memory-pressure hook. */
         private val openSources: MutableSet<PdfPageSource> =
             Collections.newSetFromMap(WeakHashMap<PdfPageSource, Boolean>())
 
-        /** Trims every open source's page cache; the application calls this when the system is short of memory. */
         fun trimAll(evictAll: Boolean) {
             val sources = synchronized(openSources) { openSources.toList() }
             for (source in sources) source.trimMemory(evictAll)
         }
 
-        /** One sheet's worth of widgets; past this the form is not offered rather than half-listed. */
         private const val MAX_FORM_FIELDS = 300
 
         /** Upper bound on a page bitmap's height, so a degenerate page size never asks for a bitmap the device cannot hold. */
@@ -337,7 +294,6 @@ class PdfPageSource private constructor(
             }
         }
 
-        /** Opens an already-decrypted local copy; the caller owns and deletes [file]. */
         suspend fun openFile(file: File): PdfPageSource = withContext(Dispatchers.IO) {
             val pfd = ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
             try {

@@ -5,7 +5,6 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** Ordering of a selection's ends, what it covers on each page, and which page a drag has reached. */
 class PdfSelectionTest {
 
     private fun pos(page: Int, index: Int) = PdfTextPos(page, index)
@@ -53,7 +52,6 @@ class PdfSelectionTest {
         assertEquals(1..3, selection.pages)
     }
 
-    // Three pages 100 wide: heights 200, 100 and 300, 10 apart.
     private val geometry = PdfPageGeometry(
         pageCount = 3,
         widthPx = 100f,

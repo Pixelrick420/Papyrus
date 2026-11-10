@@ -4,57 +4,35 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 
-/** The engine side of playback, abstracted so the controller runs under plain JUnit with a fake. */
 interface SpeechEngine {
-    /** Queue [text] to be spoken; [utteranceId] is reported back through the engine's progress listener. */
     fun speak(text: String, utteranceId: String)
 
-    /** Stop the current utterance. Called before every jump and on pause. */
     fun stop()
 
-    /** Apply a speaking rate to the next utterance, live, without rebuilding the queue. */
     fun setSpeechRate(rate: Float)
 
-    /**
-     * False only once a real engine has permanently failed. While it is still initialising, [speak]
-     * must be tolerated and deferred: the adapter owns that wait, not the controller.
-     */
+    // While a real engine is still initialising, [speak] is tolerated and deferred: the adapter owns that wait.
     fun isAvailable(): Boolean
 }
 
-/**
- * Where the engine is inside the unit being read, in the unit's own text, for the viewer to draw.
- * Only engines that report timing ([TtsController.onRangeStart]) move it past the unit itself.
- */
 data class TtsProgress(
-    /** The unit's text, which [sentence] and [word] index. Empty when nothing is being read. */
     val text: String = "",
-    /** Where [text] begins in its anchor's own text: a chunk, a page, the rendered Markdown, a block. */
     val start: Int = 0,
-    /** The sentence being read; null until the engine reports a word, when the whole unit stands in. */
     val sentence: IntRange? = null,
-    /** The word being read; null until the engine reports one. */
     val word: IntRange? = null,
 )
 
-/** Playback-only state; the document's identity lives in [TtsSession]. */
 data class TtsPlayback(
     val isPlaying: Boolean = false,
     val isPaused: Boolean = false,
     val hasError: Boolean = false,
     val errorMessage: String = "",
-    /** Index into the unit list, or -1 before the first play and after a full stop. */
     val unitIndex: Int = -1,
-    /** The follow anchor of [unitIndex], or -1 when there is none. */
     val anchor: Int = -1,
     val speed: Float = 1.0f,
-    /** The sentence and word being read inside [unitIndex]. */
     val progress: TtsProgress = TtsProgress(),
 ) {
-    /**
-     * Whether the notification and the media session would look the same for [other]. The word
-     * moves several times a second, and neither of them has anything to say about it.
-     */
+    // The word moves several times a second, and neither the notification nor the media session cares.
     fun sameTransportAs(other: TtsPlayback): Boolean =
         isPlaying == other.isPlaying &&
             isPaused == other.isPaused &&
@@ -63,16 +41,9 @@ data class TtsPlayback(
             speed == other.speed
 }
 
-/**
- * The playback brain: a queue of [TtsUnit]s advanced one at a time as each utterance finishes, with
- * play/pause, paragraph skip and live speed. It knows nothing about Android - it drives a
- * [SpeechEngine] and publishes [TtsPlayback] - so every branch is testable with a fake engine.
- *
- * The constructor is silent: nothing is spoken until an explicit [play] or [playFrom].
- */
+// The constructor is silent: nothing is spoken until [play] or [playFrom].
 class TtsController(
     private val engine: SpeechEngine,
-    /** Shown when playback is attempted while the engine is permanently unavailable. */
     private val engineUnavailableMessage: String = "Speech is not available",
 ) {
 
@@ -85,28 +56,20 @@ class TtsController(
     private var currentUtteranceId: String? = null
     private var utteranceSeq = 0
 
-    /**
-     * The text in flight and how much of it the engine has already spoken. The engine latches the rate
-     * when an utterance is queued, so a speed change re-queues only what is left of it.
-     */
+    // The text in flight and how much of it the engine has already spoken. The engine latches the rate
+    // when an utterance is queued, so a speed change re-queues only what is left of it.
     private var currentText = ""
     private var spokenOffset = 0
     private var rangeReported = false
 
-    /**
-     * Where [currentText] begins in the unit's own text: zero, until a speed change re-queues the rest
-     * of a unit, after which the engine's offsets count from there.
-     */
+    // Zero until a speed change re-queues the rest of a unit, after which the engine's offsets count from there.
     private var spokenBase = 0
 
-    /** Whether any utterance has reported a range, so the next unit can start on its first sentence. */
     private var rangesSeen = false
 
-    /** The sentence starts of the unit last asked about, found once for it, by identity of its text. */
     private var boundsOfText: String? = null
     private var bounds = IntArray(0)
 
-    /** Replace the queue. Stops any speech and resets to the start, keeping the chosen speed. */
     fun setUnits(newUnits: List<TtsUnit>) {
         engine.stop()
         units = newUnits
@@ -114,17 +77,11 @@ class TtsController(
         _playback.value = TtsPlayback(speed = _playback.value.speed)
     }
 
-    /** Start at [index], clamped into the document; speaks immediately. */
     fun playFrom(index: Int) {
         if (units.isEmpty()) return
         speakAt(index.coerceIn(0, units.lastIndex))
     }
 
-    /**
-     * Resume where the voice left off in the current unit, or speak that unit from its start when the
-     * engine reported no word; nothing played yet starts at the beginning. A paused session never falls
-     * back to the first unit.
-     */
     fun play() {
         if (units.isEmpty()) return
         val state = _playback.value
@@ -140,11 +97,6 @@ class TtsController(
         speakAt(current)
     }
 
-    /**
-     * Resume the paused unit from the last word the engine reported, the same way a speed change
-     * re-queues only the rest of a unit. A paused word that was the unit's last means the unit is done:
-     * advance as a completion would instead of speaking it again.
-     */
     private fun resumeRemainder() {
         val spoken = spokenOffset.coerceIn(0, currentText.length)
         val remaining = currentText.substring(spoken)
@@ -166,7 +118,6 @@ class TtsController(
         speak(remaining)
     }
 
-    /** Stop the engine and remember where we were, so [play] resumes the same unit where it stopped. */
     fun pause() {
         if (!_playback.value.isPlaying) return
         engine.stop()
@@ -189,7 +140,6 @@ class TtsController(
         }
     }
 
-    /** Next paragraph. Past the last unit, playback stops; while paused it only moves the remembered unit. */
     fun skipForward() {
         if (units.isEmpty()) return
         val state = _playback.value
@@ -206,7 +156,6 @@ class TtsController(
         }
     }
 
-    /** Previous paragraph. At the first unit it stays put; while paused it only moves the remembered unit. */
     fun skipBack() {
         if (units.isEmpty()) return
         val state = _playback.value
@@ -219,12 +168,7 @@ class TtsController(
         }
     }
 
-    /**
-     * Change the rate live. The engine latches the rate when an utterance is queued, so a change
-     * mid-unit would otherwise wait for the whole paragraph; instead the rest of the unit is
-     * re-queued at the new rate from the last word the engine reported. The unit, its anchor and the
-     * position within it are untouched.
-     */
+    // The engine latches the rate when an utterance is queued, so the rest of the unit is re-queued at the new rate from the last word reported.
     fun setSpeed(rate: Float) {
         val clamped = rate.coerceIn(MIN_SPEED, MAX_SPEED)
         _playback.update { it.copy(speed = clamped) }
@@ -232,7 +176,6 @@ class TtsController(
         if (_playback.value.isPlaying && rangeReported) reQueueRemainder()
     }
 
-    /** Re-queue what is left of the unit in flight, at the rate just applied. */
     private fun reQueueRemainder() {
         val spoken = spokenOffset.coerceIn(0, currentText.length)
         val remaining = currentText.substring(spoken)
@@ -245,7 +188,6 @@ class TtsController(
         speak(remaining)
     }
 
-    /** The engine finished a unit; advance and speak the next, or stop cleanly at the end. */
     fun onUtteranceComplete(utteranceId: String) {
         if (utteranceId != currentUtteranceId) return
         val state = _playback.value
@@ -258,12 +200,7 @@ class TtsController(
         speakAt(next)
     }
 
-    /**
-     * The engine is about to speak the range from [offset] to [end] characters into the utterance in
-     * flight; an [end] that is not past [offset] means the engine gave none, and the word is read off
-     * the text. Only engines that supply timing report this; without it a speed change waits for the
-     * next unit and the viewer can only mark the whole unit.
-     */
+    // An [end] not past [offset] means the engine gave none, and the word is read off the text. Without timing the viewer can only mark the whole unit.
     fun onRangeStart(utteranceId: String, offset: Int, end: Int = -1) {
         if (utteranceId != currentUtteranceId || !_playback.value.isPlaying) return
         spokenOffset = offset
@@ -279,13 +216,11 @@ class TtsController(
         _playback.update { it.copy(progress = it.progress.copy(sentence = sentence, word = word)) }
     }
 
-    /** Engine failure on the unit in flight: stop, keep the current unit, surface the error. */
     fun onUtteranceError(utteranceId: String, message: String) {
         if (utteranceId != currentUtteranceId) return
         onError(message)
     }
 
-    /** Engine failure: stop, keep the current unit, surface the error, and speak nothing further. */
     fun onError(message: String = "Speech error") {
         engine.stop()
         _playback.update {
@@ -318,7 +253,6 @@ class TtsController(
         speak(unit.text)
     }
 
-    /** Only the remembered unit moves: nothing is spoken, so nothing but where the reader is changes. */
     private fun moveTo(index: Int) {
         val unit = units[index]
         val progress = progressAtStartOf(unit)
@@ -327,11 +261,7 @@ class TtsController(
         _playback.update { it.copy(unitIndex = index, anchor = unit.anchor, progress = progress) }
     }
 
-    /**
-     * A unit before its first word is reported. Once any utterance has reported words, the engine is
-     * known to, and the first sentence is shaded straight away; before that the whole unit is, so an
-     * engine without timing is never shown reading the wrong sentence.
-     */
+    // Once any utterance has reported words the first sentence is shaded straight away; before that the whole unit is, so an engine without timing never shows the wrong sentence.
     private fun progressAtStartOf(unit: TtsUnit): TtsProgress = TtsProgress(
         text = unit.text,
         start = unit.start,
@@ -353,7 +283,6 @@ class TtsController(
         engine.speak(text, utteranceId)
     }
 
-    /** Forget where we were in the unit in flight. */
     private fun resetPosition() {
         currentText = ""
         spokenOffset = 0
@@ -365,10 +294,8 @@ class TtsController(
         const val MIN_SPEED = 0.5f
         const val MAX_SPEED = 2.0f
 
-        /** The speeds the in-flow speed chip cycles through. */
         val SPEEDS = listOf(0.5f, 1.0f, 1.5f, 2.0f)
 
-        /** The next speed after [current] in the chip's cycle. */
         fun nextSpeed(current: Float): Float {
             val at = SPEEDS.indexOfFirst { it == current }
             return SPEEDS[(at + 1).mod(SPEEDS.size)]

@@ -32,10 +32,8 @@ import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
-/** Not zoomed; set above [MIN_SCALE] so pulling in is always deliberate. */
 const val REST_SCALE = 1f
 
-/** Far enough in to fit a wide page on a narrow screen, or read it as an overview. */
 const val MIN_SCALE = 0.5f
 
 const val MAX_SCALE = 3f
@@ -43,7 +41,6 @@ const val MAX_SCALE = 3f
 private const val DOUBLE_TAP_SCALE = 2.5f
 private const val EPSILON = 0.001f
 
-/** Rubber-band overshoot past the bounds; 0.35 stays perceptible without flying off. */
 private const val RUBBER_BAND = 0.35f
 
 /** Frames per re-anchor: maxValue lags a re-measure, so one pass clamps wrong. */
@@ -52,36 +49,28 @@ private const val REANCHOR_FRAMES = 3
 /** Residuals smaller than this are rounding; chasing them only makes the list shimmer. */
 private const val SETTLE_TOLERANCE_PX = 1f
 
-/** Scale change and its focal point; scroll offsets move by the same growth. */
 data class ScaleCommit(val from: Float, val to: Float, val focal: Offset) {
     val ratio: Float get() = if (from > 0f) to / from else 1f
 }
 
-/** Keeps the point under [focal] fixed across the scale change. */
 fun anchoredScroll(scroll: Float, focal: Float, commit: ScaleCommit): Float =
     commit.ratio * (scroll + focal) - focal
 
-/** Runs before the new scale is published, while the pinched layout is still on screen. */
 interface ZoomAnchor {
     fun onCommit(commit: ScaleCommit)
 }
 
-/** Gesture scale paints a live graphicsLayer multiplier; committed scale drives layout. */
 @Stable
 class ZoomState(private val scope: CoroutineScope, initialScale: Float = REST_SCALE) {
 
-    /** Restored reading positions open at their own zoom, in place for the first layout. */
     private val startScale = clampScale(initialScale)
 
-    /** Drives layout. Only moves when a gesture ends or a control is tapped. */
     var committedScale by mutableFloatStateOf(startScale)
         private set
 
-    /** What the fingers are doing right now, including any rubber-banded overshoot. */
     var gestureScale by mutableFloatStateOf(startScale)
         private set
 
-    /** True from the first frame of a pinch until the snap-back has settled. */
     var isZooming by mutableStateOf(false)
         private set
 
@@ -97,7 +86,6 @@ class ZoomState(private val scope: CoroutineScope, initialScale: Float = REST_SC
     var focalPoint by mutableStateOf(Offset.Unspecified)
         private set
 
-    /** The most recent commit, for the surface to re-anchor its scroll offsets against. */
     var lastCommit by mutableStateOf<ScaleCommit?>(null)
         private set
 
@@ -114,7 +102,6 @@ class ZoomState(private val scope: CoroutineScope, initialScale: Float = REST_SC
 
     val isZoomed: Boolean get() = committedScale > REST_SCALE + EPSILON
 
-    /** Pointer count decides scroll vs zoom; the centroid is read only when a pinch begins. */
     fun onPointersChanged(count: Int, centroid: Offset) {
         val pinching = count >= 2
         isPinching = pinching
@@ -143,7 +130,6 @@ class ZoomState(private val scope: CoroutineScope, initialScale: Float = REST_SC
         settleJob = scope.launch { settle() }
     }
 
-    /** [zoomChange] is the fingers' spread now over a moment ago. Ignored without a running pinch. */
     fun applyGesture(zoomChange: Float) {
         if (!isZooming || snapping || zoomChange == 1f) return
         gestureScale = rubberBand(gestureScale * zoomChange)
@@ -185,7 +171,6 @@ class ZoomState(private val scope: CoroutineScope, initialScale: Float = REST_SC
         if (change != null) lastCommit = change
     }
 
-    /** Past the bound, only RUBBER_BAND of the excess passes, so resistance grows with distance. */
     private fun rubberBand(desired: Float): Float = when {
         desired > MAX_SCALE -> MAX_SCALE + (desired - MAX_SCALE) * RUBBER_BAND
         desired < MIN_SCALE -> MIN_SCALE - (MIN_SCALE - desired) * RUBBER_BAND
@@ -205,7 +190,6 @@ class ZoomState(private val scope: CoroutineScope, initialScale: Float = REST_SC
     fun toggleZoom(focal: Offset = Offset.Unspecified) =
         if (isZoomed) set(REST_SCALE, focal) else set(DOUBLE_TAP_SCALE, focal)
 
-    /** [focal] anchors the change. Unspecified focal means a plain re-layout, right for a button. */
     fun set(value: Float, focal: Offset = Offset.Unspecified) {
         val target = clampScale(value)
         if (focal != Offset.Unspecified) focalPoint = focal
@@ -278,21 +262,12 @@ fun Modifier.zoomable(state: ZoomState): Modifier = this
         }
     }
 
-/**
- * Offset that puts the point [fraction] down an item back under [focal]; [before] is start padding.
- */
 fun lazyAnchorScrollOffset(focal: Float, fraction: Float, newItemSize: Float, before: Int): Int =
     (before - (focal - fraction * newItemSize)).roundToInt()
 
-/**
- * Distance that puts the point [fraction] down an item back under [focal]; positive moves content up.
- */
 fun lazyAnchorDelta(focal: Float, fraction: Float, itemTop: Float, itemSize: Float): Float =
     itemTop - (focal - fraction * itemSize)
 
-/**
- * Pins the item under the focal point, requesting the scroll in [onCommit] against its predicted size.
- */
 class LazyZoomAnchor(
     private val list: LazyListState,
     private val paddingScalesWithZoom: Boolean = false,
@@ -327,7 +302,6 @@ class LazyZoomAnchor(
         )
     }
 
-    /** Holds the focal fraction of the item, measured each pass: text re-wraps, the ratio does not. */
     suspend fun settle(zoom: ZoomState) {
         val pinned = pin ?: return
         pin = null
@@ -343,9 +317,6 @@ class LazyZoomAnchor(
     }
 }
 
-/**
- * Pins content under the focal point after the new scale lays out; [anchorBridge] paints owed scroll.
- */
 class ScrollZoomAnchor(private val scroll: ScrollState, val horizontal: Boolean) : ZoomAnchor {
 
     private class Goal(val target: () -> Float)
@@ -371,7 +342,6 @@ class ScrollZoomAnchor(private val scroll: ScrollState, val horizontal: Boolean)
 
     private fun Goal.reachable(): Int = target().coerceIn(0f, scroll.maxValue.toFloat()).roundToInt()
 
-    /** Px still to scroll forward to reach the anchored position; 0 once reached. */
     fun pendingShift(): Float {
         val g = goal ?: return 0f
         return (g.reachable() - scroll.value).toFloat()
@@ -393,7 +363,6 @@ class ScrollZoomAnchor(private val scroll: ScrollState, val horizontal: Boolean)
     }
 }
 
-/** Paints the scroll [anchor] still owes, as a shift of the content inside the scrolled node. */
 fun Modifier.anchorBridge(anchor: ScrollZoomAnchor): Modifier = graphicsLayer {
     val shift = anchor.pendingShift()
     if (anchor.horizontal) translationX = -shift else translationY = -shift

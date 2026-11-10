@@ -20,11 +20,9 @@ interface DocumentDao {
     @Query("SELECT * FROM documents WHERE uri = :uri LIMIT 1")
     suspend fun getByUri(uri: String): DocumentEntity?
 
-    /** The duplicate check reads only rows that could match, so title is a query, not a scan. */
     @Query("SELECT * FROM documents WHERE title = :title")
     suspend fun getByTitle(title: String): List<DocumentEntity>
 
-    /** Every stored URI, so the startup sweep can tell which files in the imports folder a row still names. */
     @Query("SELECT uri FROM documents")
     suspend fun allUris(): List<String>
 
@@ -45,17 +43,13 @@ interface DocumentDao {
     @Query("UPDATE documents SET format = :format WHERE id = :id")
     suspend fun updateFormat(id: Long, format: DocumentFormat)
 
-    /** One statement for any number of rows; an id that is gone is simply not updated. */
     @Query("UPDATE documents SET isFavourite = :starred WHERE id IN (:ids)")
     suspend fun setStarred(ids: List<Long>, starred: Boolean)
 
     @Query("DELETE FROM documents WHERE id = :id")
     suspend fun deleteById(id: Long)
 
-    /**
-     * Registering counts as opening, so the row is stamped here in the same write
-     * instead of by a second write that would re-run the library query.
-     */
+    // Stamps the open time in the same write, avoiding a second write that would re-run the library query.
     @Transaction
     suspend fun upsertByUri(document: DocumentEntity): Long {
         val existing = getByUri(document.uri) ?: return insertIgnore(document)

@@ -6,7 +6,6 @@ import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** The footnote rewrite: a wrong number or a swallowed line changes what the reader is told. */
 class MarkdownFootnotesTest {
 
     private fun transform(source: String) = MarkdownFootnotes.transform(source)

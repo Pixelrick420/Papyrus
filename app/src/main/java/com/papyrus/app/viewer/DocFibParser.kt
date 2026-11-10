@@ -2,28 +2,20 @@ package com.papyrus.app.viewer
 
 import java.io.IOException
 
-/**
- * The parts of the Word 97-2003 File Information Block the extractor reads. [ccpText] is the length
- * of the main document in characters; [fcLcb] holds the FibRgFcLcb97 `(fc, lcb)` pairs, two longs
- * each, so an offset in the table stream and its byte length are both a lookup away.
- */
+// [fcLcb] holds the FibRgFcLcb97 `(fc, lcb)` pairs, two longs each, so an offset in the table stream and its byte length are both a lookup away.
 internal class DocFib(val ccpText: Int, val tableStream: String, private val fcLcb: LongArray) {
 
-    /** Offset in the table stream of FibRgFcLcb97 entry [pair], or 0 if the FIB is too short to have it. */
     fun fc(pair: Int): Long = if (pair * 2 + 1 < fcLcb.size) fcLcb[pair * 2] else 0L
 
-    /** Byte length of FibRgFcLcb97 entry [pair], or 0 if the FIB is too short to have it. */
     fun lcb(pair: Int): Long = if (pair * 2 + 1 < fcLcb.size) fcLcb[pair * 2 + 1] else 0L
 
     companion object {
         const val WORD_DOCUMENT = "WordDocument"
 
-        /** FibRgFcLcb97 index of fcClx: fcDop(31), fcSttbfAssoc(32), fcClx(33). */
         const val PAIR_CLX = 33
     }
 }
 
-/** Reads the FIB at the head of the `WordDocument` stream, and rejects what the extractor cannot read. */
 internal object DocFibParser {
 
     fun parse(cfb: CompoundFile): DocFib {

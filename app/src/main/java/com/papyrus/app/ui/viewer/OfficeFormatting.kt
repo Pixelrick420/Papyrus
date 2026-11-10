@@ -23,19 +23,12 @@ import com.papyrus.app.viewer.ScriptShift
 import com.papyrus.app.viewer.TextSpan
 import kotlin.math.abs
 
-/**
- * What a document's formatting is drawn against: the colour behind the text and links take, so a
- * document's white-paper colours stay usable on whatever surface the app shows.
- */
 internal class FormatPalette(val surface: Color, val link: Color)
 
-/** `0xRRGGBB` as an opaque colour. */
 internal fun rgbColor(rgb: Int): Color = Color(0xFF000000.toInt() or rgb)
 
-/**
- * A fill this close to white is the document's paper, not a chosen colour: it is dropped so a cell
- * keeps the app's surface, while a tinted fill (pale blue, highlighter yellow) is kept.
- */
+// A fill this close to white is the document's paper, not a chosen colour: it is dropped so a cell
+// keeps the app's surface, while a tinted fill (pale blue, highlighter yellow) is kept.
 internal fun isPaperWhite(rgb: Int): Boolean {
     val red = (rgb shr 16) and 0xFF
     val green = (rgb shr 8) and 0xFF
@@ -48,11 +41,9 @@ private const val PAPER_CHANNEL_MIN = 0xF0
 internal fun readableOn(background: Color): Color =
     if (background.luminance() > MID_LUMINANCE) Color.Black else Color.White
 
-/** Below this luminance gap a colour is, to a reader, the colour it sits on. */
 private const val MIN_CONTRAST_GAP = 0.25f
 private const val MID_LUMINANCE = 0.5f
 
-/** Superscripts and subscripts are set smaller than the line they ride on. */
 private const val SCRIPT_SCALE = 0.75
 
 internal fun BlockAlign.toTextAlign(): TextAlign = when (this) {
@@ -103,18 +94,13 @@ private fun spanStyleFor(format: CharFormat, palette: FormatPalette): SpanStyle 
     )
 }
 
-/**
- * [text] with the document's [spans], find highlights added last so a match wins over formatting.
- * [onLink] handles a tapped link itself, so an unopenable scheme is reported instead of throwing, and
- * [onBookLink] a tapped link to a place in the same book, which is never handed to the framework.
- */
+// Find highlights are added last so a match wins over formatting; [onLink] reports an unopenable scheme instead of throwing.
 internal fun formattedText(
     text: String,
     spans: List<TextSpan>,
     highlight: FindHighlight?,
     palette: FormatPalette,
     onLink: (String) -> Unit = {},
-    /** The colour a fading match returns to; unspecified leaves the text to inherit. */
     baseTextColor: Color = Color.Unspecified,
     onBookLink: (BookLink) -> Unit = {},
 ): AnnotatedString {

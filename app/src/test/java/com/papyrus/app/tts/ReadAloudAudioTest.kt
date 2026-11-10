@@ -5,7 +5,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** Speech yields to calls and other audio, and a short interruption is undone while a lasting one is not. */
 class ReadAloudAudioTest {
 
     private class FakeFocus(var grant: Boolean = true) : AudioFocus {

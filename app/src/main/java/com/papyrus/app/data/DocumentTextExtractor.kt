@@ -20,39 +20,20 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.InputStream
 
-/** What one extraction produced: the text to index, or the reason there is none. */
 data class ExtractedText(
     val text: String,
     val state: TextIndexState,
 )
 
-/**
- * Extracts a document's searchable text with the readers the viewer already uses, so the index and
- * the screen see the same words.
- *
- * The stored text is the same text find-in-file scans, per format: PDF page texts in order joined by
- * [PdfPageTextSource.PAGE_SEPARATOR], Office/EPUB blocks through [officeBlocksToText], plain text
- * decoded from the source.
- *
- * Every failure is terminal, never thrown: the indexer's queue must always drain. Encryption is
- * checked before parsing, so a protected document is [TextIndexState.SKIPPED] and is not retried.
- */
+// Same text find-in-file scans, so the index and the screen see the same words.
+// Failures are terminal, never thrown, so the indexer's queue drains; encryption is checked first and not retried.
 class DocumentTextExtractor(
     private val context: Context,
-    /**
-     * Where the reading runs. The indexer gives it a thread of its own at background priority, so a
-     * pass over a large library never competes with the viewer for the shared IO threads.
-     */
     private val dispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val openStream: (Uri) -> InputStream,
 ) {
 
-    /**
-     * Text already extracted, by what the provider says the bytes are now (URI, modified time and
-     * size). A document queued again while those are unchanged (removed and added back, or its row
-     * lost) is not parsed again; an edited one has a new key and is. Only indexed text is kept: a
-     * failure or a skip is cheap to reach again and may not be the same next time.
-     */
+    // Keyed by what the provider says the bytes are now (URI, modified time, size); only indexed text is kept, since a failure may differ next time.
     private val extracted = BoundedCache<TextCacheKey, ExtractedText>(MAX_CACHED_BYTES) {
         it.text.length * 2L + CACHED_OVERHEAD_BYTES
     }
@@ -78,7 +59,6 @@ class DocumentTextExtractor(
         result
     }
 
-    /** Null when the format has nothing to index at all. */
     private suspend fun read(document: DocumentEntity): ExtractedText? = when (document.format) {
         DocumentFormat.PDF -> readPdf(document.uri.toUri())
         DocumentFormat.DOCX, DocumentFormat.ODT -> readOffice(document)
@@ -129,16 +109,13 @@ class DocumentTextExtractor(
         ExtractedText(text.take(MAX_INDEX_CHARS), TextIndexState.INDEXED)
 
     companion object {
-        /** Characters stored per document, the agreed cap; longer text is cut, not refused. */
         const val MAX_INDEX_CHARS = 1_000_000
 
-        /** A document above this size is [TextIndexState.TOO_LARGE] without being opened. */
         const val MAX_SOURCE_BYTES = 64L * 1024 * 1024
 
         /** Bytes read for a text format, enough for [MAX_INDEX_CHARS] even at four bytes each. */
         const val MAX_SOURCE_TEXT_BYTES = 8 * 1024 * 1024
 
-        /** Heap held by remembered extractions: a few documents at the [MAX_INDEX_CHARS] cap. */
         private const val MAX_CACHED_BYTES = 8L * 1024 * 1024
 
         /** The object and its state beside the characters, so an empty text still costs something. */

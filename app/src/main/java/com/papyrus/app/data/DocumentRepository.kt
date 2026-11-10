@@ -37,27 +37,17 @@ class DocumentRepository(
     private val crashReports = mutableMapOf<Long, DocumentEntity>()
     private var nextCrashReportId = -1000000L
 
-    /**
-     * Encryption verdict [register] reached for a PDF it handed over, so the next viewer skips the
-     * whole-file check. Read once, then forgotten; cleared past a handful of entries.
-     */
+    // Remembers the encryption verdict so the next viewer skips the whole-file check; read once, then forgotten.
     private val knownPdfEncryption = ConcurrentHashMap<String, PdfEncryption>()
 
     val documents: Flow<List<DocumentEntity>> = dao.observeAll()
 
-    /**
-     * The stored position of library document [id] as a restore request, or `null`: no row, a transient
-     * document, the setting off, or a row that no longer fits the document's [format].
-     */
     suspend fun restoreRequest(id: Long, format: DocumentFormat): RestoreRequest? {
         if (id <= 0 || !settings.current.rememberPosition) return null
         return withContext(Dispatchers.IO) { progressDao.get(id)?.toRestoreRequest(format) }
     }
 
-    /**
-     * Stores [sample] as the position of library document [id]. Writes only that table, so Home's order
-     * (`lastOpenedAt`) is untouched, and does nothing for a transient id or with the setting off.
-     */
+    // Writes only that table, so Home's order (lastOpenedAt) is untouched.
     suspend fun saveReadingProgress(id: Long, sample: PositionSample) {
         if (id <= 0 || !settings.current.rememberPosition) return
         withContext(Dispatchers.IO) {
@@ -74,14 +64,9 @@ class DocumentRepository(
         }
     }
 
-    /**
-     * The bookmarks of library document [id], live; nothing for a transient document, which has no
-     * row to hang them from. Scoped to the one document, so another document's changes never re-emit it.
-     */
     fun observeBookmarks(id: Long): Flow<List<BookmarkEntity>> =
         if (id <= 0) flowOf(emptyList()) else bookmarkDao.observe(id)
 
-    /** Adds a bookmark at [location]; see [BookmarkDao.addIfAllowed] for when it refuses. */
     suspend fun addBookmark(id: Long, location: ReadingLocation, label: String): BookmarkAdd {
         if (id <= 0) return BookmarkAdd.NotInLibrary
         return withContext(Dispatchers.IO) { bookmarkDao.addIfAllowed(id, location, label, System.currentTimeMillis(), MAX_BOOKMARKS_PER_DOCUMENT) }
@@ -91,7 +76,6 @@ class DocumentRepository(
 
     suspend fun deleteBookmark(id: Long) = withContext(Dispatchers.IO) { bookmarkDao.delete(id) }
 
-    /** Undo for a delete: the same row, id and creation time included, so the list returns to what it was. */
     suspend fun restoreBookmark(bookmark: BookmarkEntity) = withContext(Dispatchers.IO) {
         bookmarkDao.restore(
             id = bookmark.id,
@@ -104,11 +88,9 @@ class DocumentRepository(
         )
     }
 
-    /** The highlights of library document [id], live; nothing for a transient document, which has no row to hang them from. */
     fun observeHighlights(id: Long): Flow<List<HighlightEntity>> =
         if (id <= 0) flowOf(emptyList()) else highlightDao.observe(id)
 
-    /** Stores one highlight per page of [boxesByPage], each page's line boxes in page-relative units. */
     suspend fun addHighlights(id: Long, boxesByPage: Map<Int, List<NormRect>>) {
         if (id <= 0 || boxesByPage.isEmpty()) return
         val rows = boxesByPage.map { (page, boxes) -> HighlightEntity(documentId = id, page = page, rects = encodeRects(boxes)) }
@@ -120,19 +102,12 @@ class DocumentRepository(
         ids.chunked(MAX_IDS_PER_STATEMENT).forEach { highlightDao.delete(it) }
     }
 
-    /**
-     * Stores the reader's [note] on highlight [id]; a blank note clears it and turns the mark back
-     * into a plain highlight. Nothing from the document is written, only what the reader typed.
-     */
     suspend fun setHighlightNote(id: Long, note: String) = withContext(Dispatchers.IO) {
         val cleaned = cleanHighlightNote(note)
         highlightDao.setNote(id, cleaned, (if (cleaned == null) HighlightKind.HIGHLIGHT else HighlightKind.NOTE).code)
     }
 
-    /**
-     * The outline read for [document] before, or null when there is none or it may no longer match:
-     * a row is reused only while the file is the same size and the encoding's version is this build's.
-     */
+    // Reused only while the file is the same size and the encoding version matches.
     suspend fun cachedOutline(document: DocumentEntity): List<OutlineEntry>? = withContext(Dispatchers.IO) {
         if (document.id <= 0) return@withContext null
         val row = pdfOutlineDao.get(document.id) ?: return@withContext null
@@ -142,11 +117,7 @@ class DocumentRepository(
         decodeOutline(row.entries)
     }
 
-    /**
-     * Keeps [entries] for [document] so the next open does not read the bookmarks again. Only a
-     * library row can hold one; the caller must not store an outline read from an unlocked copy,
-     * since its titles come from a password-protected file.
-     */
+    // Never store an outline read from an unlocked copy: its titles come from a password-protected file.
     suspend fun storeOutline(document: DocumentEntity, entries: List<OutlineEntry>) = withContext(Dispatchers.IO) {
         if (document.id <= 0) return@withContext
         pdfOutlineDao.put(
@@ -159,12 +130,7 @@ class DocumentRepository(
         )
     }
 
-    /**
-     * How the search index sees [document]'s text, observed: null for a handed-over document, one
-     * that has not been indexed yet, or a row written for an older copy of the file. Read aloud asks
-     * this for a PDF, whose pages are read one at a time and never whole, so the viewer cannot tell
-     * from its own content whether there is anything to speak.
-     */
+    // Read aloud needs this for a PDF, whose pages are read one at a time so the viewer cannot tell if there is text.
     fun observeTextSummary(document: DocumentEntity): Flow<TextSummaryRow?> =
         if (document.id <= 0) {
             flowOf(null)
@@ -195,7 +161,6 @@ class DocumentRepository(
     suspend fun markOpened(id: Long) = dao.touch(id, System.currentTimeMillis())
     suspend fun updateFormat(id: Long, format: DocumentFormat) = dao.updateFormat(id, format)
 
-    /** Stars or unstars library documents. Only that one column is written: a star never touches the order, progress or bookmarks. */
     suspend fun setStarred(ids: List<Long>, starred: Boolean) {
         val library = ids.filter { it > 0 }
         if (library.isEmpty()) return
@@ -219,16 +184,12 @@ class DocumentRepository(
         dao.upsertByUri(entity)
     }
 
-    /**
-     * Opens a document another app passed over without indexing it; the intent's read grant lasts
-     * only for this entry.
-     */
+    // The intent's read grant lasts only for this entry.
     suspend fun openHandedOver(uri: Uri): Long = withContext(Dispatchers.IO) {
         handOver(buildEntity(uri))
     }
 
-    // Copies into filesDir/imports then indexes it; a failed insert deletes the copy again.
-    // An encrypted PDF is copied as-is; the password is never read or kept here.
+    // A failed insert deletes the copy again. An encrypted PDF is copied as-is; the password is never read or kept.
     suspend fun saveToLibrary(source: DocumentEntity): Long = withContext(Dispatchers.IO) {
         val now = System.currentTimeMillis()
         // Autosave re-saves the same file on each open, so the duplicate check runs before copying.
@@ -269,12 +230,7 @@ class DocumentRepository(
         }
     }
 
-    /**
-     * The library row already holding the document behind [source]: a same-title row whose app-owned
-     * copy holds the same bytes. A row only on [source]'s own URI is not a match - it holds no copy,
-     * so the save would not outlive the grant the document arrived with. Null when nothing matches or
-     * the source cannot be read, so the save falls through to copy-and-insert.
-     */
+    // A same-title row whose app-owned copy holds the same bytes; a row only on [source]'s own URI is no match, since it would not outlive the grant.
     private suspend fun findSavedDuplicate(source: DocumentEntity): DocumentEntity? {
         val sourceUri = source.uri.toUri()
         for (row in dao.getByTitle(source.title)) {
@@ -284,7 +240,6 @@ class DocumentRepository(
         return null
     }
 
-    /** The app-owned file behind [uri], or null for SAF and foreign URIs and missing files. */
     private fun ownedCopy(uri: String): File? {
         val parsed = uri.toUri()
         if (parsed.scheme != "file") return null
@@ -304,21 +259,14 @@ class DocumentRepository(
         LibraryImport.deleteOwnedCopy(context, document.uri.toUri())
     }
 
-    /**
-     * Deletes the app-owned copies no row points at. [remove] drops the row before the file, so a kill
-     * between the two leaves a file nothing would ever delete; so does a copy whose insert never ran.
-     * Files written at or after [startedAt] are spared, because a copy this run is saving has no row yet.
-     * Reads the rows first, so a failed read deletes nothing.
-     */
+    // [remove] drops the row before the file, so a kill between leaves an orphan. Files at or after [startedAt] are spared: a copy being saved has no row yet.
     suspend fun sweepOrphanedImports(startedAt: Long): Int = withContext(Dispatchers.IO) {
         val referenced = dao.allUris().mapNotNullTo(HashSet()) { ownedCopy(it) }
         LibraryImport.sweepOrphans(LibraryImport.importsDir(context), referenced, startedAt)
     }
 
-    /**
-     * SAF URIs share as-is. A local copy has no grant and cannot leave as a bare file:// URI, so it
-     * goes through a FileProvider.
-     */
+    // SAF URIs share as-is. A local copy has no grant and cannot leave as a bare file:// URI, so it
+    // goes through a FileProvider.
     suspend fun resolveShareUri(uri: Uri): Uri = withContext(Dispatchers.IO) {
         if (uri.scheme != "file") return@withContext uri
         val path = uri.path ?: return@withContext uri
@@ -329,32 +277,24 @@ class DocumentRepository(
         FileProvider.getUriForFile(context, "${context.packageName}$FILE_PROVIDER_SUFFIX", file)
     }
 
-    /**
-     * What opening the PDF at [uri] needs: the verdict [register] reached, if any, else a fresh check.
-     */
     suspend fun pdfEncryption(uri: Uri): PdfEncryption = withContext(Dispatchers.IO) {
         knownPdfEncryption.remove(uri.toString()) ?: PdfEncryption.status { openStream(uri) }
     }
 
-    /** Readability of a stored document, for the share action's pre-flight check. */
     suspend fun probeShare(document: DocumentEntity): SafAccess =
         withContext(Dispatchers.IO) { SafStorage.probeAccess(resolver, document.uri.toUri()) }
 
-    /** Provider's live MIME type, not a stored copy; null when it reports none or the grant is gone. */
     suspend fun mimeTypeOf(document: DocumentEntity): String? =
         withContext(Dispatchers.IO) { SafStorage.queryMimeType(resolver, document.uri.toUri()) }
 
-    /** Type the share declares: the provider's live answer resolved against the detected format. */
     suspend fun shareTypeFor(document: DocumentEntity): String {
         val reported = mimeTypeOf(document)
             ?: if (document.title.endsWith(".json", ignoreCase = true)) "application/json" else null
         return shareMimeType(document.format, reported)
     }
 
-    /**
-     * A SAF grant can only come from the user picking the file again, so the re-pick must match
-     * [matchesRepick]: same name and format.
-     */
+    // A SAF grant can only come from the user picking the file again, so the re-pick must match
+    // [matchesRepick]: same name and format.
     suspend fun regrant(expected: DocumentEntity, picked: Uri): Boolean = withContext(Dispatchers.IO) {
         val meta = SafStorage.queryMetadata(context, picked)
         val pickedFormat = resolveFormat(picked, meta.displayName, meta.mimeType)
@@ -401,7 +341,6 @@ class DocumentRepository(
         )
     }
 
-    /** Sniffs the file head on UNKNOWN, so a .conf or extension-less script still opens as text. */
     private fun resolveFormat(uri: Uri, displayName: String, mimeType: String?): DocumentFormat {
         val detected = DocumentFormat.detect(displayName, mimeType)
         if (detected != DocumentFormat.UNKNOWN) return detected
@@ -416,7 +355,6 @@ class DocumentRepository(
         const val MAX_KNOWN_PDF_STATUS = 8
         const val MAX_IDS_PER_STATEMENT = 900
 
-        /** Formats whose encryption this app can detect; others are indexed and fail on open. */
         val ENCRYPTABLE = setOf(
             DocumentFormat.PDF,
             DocumentFormat.DOCX,

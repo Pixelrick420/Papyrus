@@ -1,11 +1,6 @@
 package com.papyrus.app.viewer
 
-/**
- * A map held to a byte budget, least recently used out first. Every call locks: text is read on the
- * IO pool and asked for from the main thread.
- *
- * [sizeOf] must give the same answer for a value every time it is asked.
- */
+// Every call locks: text is read on the IO pool and asked for from the main thread. [sizeOf] must give the same answer for a value every time.
 class BoundedCache<K : Any, V : Any>(
     private val maxBytes: Long,
     private val sizeOf: (V) -> Long,
@@ -17,10 +12,7 @@ class BoundedCache<K : Any, V : Any>(
     @Synchronized
     fun get(key: K): V? = map[key]
 
-    /**
-     * Stores [value] under [key], replacing what was there. A value larger than the whole budget is
-     * not kept: it would push out everything else and then itself.
-     */
+    // A value larger than the whole budget is not kept: it would push out everything else and then itself.
     @Synchronized
     fun put(key: K, value: V) {
         map.remove(key)?.let { bytes -= sizeOf(it) }

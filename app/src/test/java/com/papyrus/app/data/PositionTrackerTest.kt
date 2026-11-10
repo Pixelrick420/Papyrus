@@ -4,7 +4,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
 
-/** The save policy: no write before a restore, none without movement, debounced, flushed on demand. */
 class PositionTrackerTest {
 
     private var clock = 0L

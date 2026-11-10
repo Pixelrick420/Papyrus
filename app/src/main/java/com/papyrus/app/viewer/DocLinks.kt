@@ -2,15 +2,10 @@ package com.papyrus.app.viewer
 
 import java.util.TreeSet
 
-/** `[start, end)` of a block's text that links to [url]. */
 internal class LinkRange(val start: Int, val end: Int, val url: String)
 
-/**
- * Where a `.doc` link points. A hyperlink is a field, `0x13 HYPERLINK "target" 0x14 shown 0x15`; that
- * is the real thing, and [hyperlinkTarget] reads its instruction. Text that only looks like a link, a
- * pasted address nothing was ever attached to, is found by [find]. Either way only the schemes
- * [safeLink] lets through ever become a link.
- */
+// A hyperlink is a field, `0x13 HYPERLINK "target" 0x14 shown 0x15`, read by [hyperlinkTarget]; text that only looks like a link is found by [find].
+// Only schemes [safeLink] lets through ever become a link.
 internal object DocLinks {
 
     /** The longest field instruction kept; a target past it is not trusted, so such a field links nowhere. */
@@ -22,11 +17,7 @@ internal object DocLinks {
     private const val HYPERLINK = "HYPERLINK"
     private const val TRAILING_PUNCTUATION = ".,;:!?'\""
 
-    /**
-     * The target of a field instruction such as `HYPERLINK "https://x.org" \o "tip"`, or null if it is
-     * not a hyperlink, has no target (a `\l` bookmark alone is a place in the document), or the target
-     * is not a safe link. The target may be quoted or bare; the switches `\l`, `\o` and `\t` take an argument.
-     */
+    // Null when there is no target: a `\l` bookmark alone is a place in the document. The switches `\l`, `\o` and `\t` take an argument.
     fun hyperlinkTarget(instruction: CharSequence): String? {
         val text = instruction.toString().trim()
         if (!text.startsWith(HYPERLINK, ignoreCase = true)) return null
@@ -54,7 +45,6 @@ internal object DocLinks {
         return pos
     }
 
-    /** The token at [from]: a quoted string without its quotes, or the run up to the next space; and where it ends. */
     private fun readToken(text: String, from: Int): Pair<String, Int> {
         if (from >= text.length) return "" to from
         if (text[from] == '"') {
@@ -66,7 +56,6 @@ internal object DocLinks {
         return text.substring(from, end) to end
     }
 
-    /** Addresses written out in [text]: `http://`, `https://`, `mailto:` and `tel:` followed by what makes up one. */
     fun find(text: String): List<LinkRange> {
         if (text.indexOf(':') < 0) return emptyList()
         val out = ArrayList<LinkRange>()
@@ -86,7 +75,6 @@ internal object DocLinks {
         return SCHEMES.first { lower.startsWith(it) }.length
     }
 
-    /** [url]'s length without the punctuation that ends a sentence or closes a bracket the address did not open. */
     private fun trimmedLength(url: String): Int {
         var end = url.length
         while (end > 0) {
@@ -99,7 +87,6 @@ internal object DocLinks {
         return end
     }
 
-    /** True if the closer [closer] at `url[end - 1]` has no opener before it in `url[0, end)`. */
     private fun unbalanced(url: String, end: Int, closer: Char): Boolean {
         val opener = when (closer) {
             ')' -> '('
@@ -113,11 +100,7 @@ internal object DocLinks {
         return depth < 0
     }
 
-    /**
-     * [spans] with each of [links] laid over the text it covers, keeping what the spans already say: a
-     * bold run that is also an address becomes bold and linked. A stretch that already links elsewhere
-     * keeps its own link. Both lists are in order and do not overlap within themselves.
-     */
+    // A stretch that already links elsewhere keeps its own link; a bold run that is also an address becomes bold and linked.
     fun overlay(spans: List<TextSpan>, links: List<LinkRange>): List<TextSpan> {
         if (links.isEmpty()) return spans
         val cuts = TreeSet<Int>()

@@ -6,10 +6,6 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/**
- * Platform page geometry becomes the viewer's per-character model: box conversion, line splitting,
- * and the match and selection rectangles drawn on top of it.
- */
 class PdfPlatformTextTest {
 
     private fun line(text: String, top: Float, bottom: Float, left: Float = 0f, right: Float) =
@@ -32,7 +28,6 @@ class PdfPlatformTextTest {
     fun `whitespace takes no box but does not collapse the line`() {
         val text = page(line("a b", top = 0f, bottom = 10f, right = 30f), height = 10f)
 
-        // The space is a third of the line, so the two letters keep their real places.
         val rect = text.selectionRects(0, 3).single()
         assertEquals(0f, rect.left, 0.0001f)
         assertEquals(0.3f, rect.right, 0.0001f)
@@ -64,7 +59,6 @@ class PdfPlatformTextTest {
             height = 20f,
         )
 
-        // y = 0.6 is the second line; x = 0.05 is the left half of its first glyph.
         assertEquals(3, text.nearestChar(0.05f, 0.6f)?.index)
         assertEquals(3, text.caretAt(0.05f, 0.6f))
     }

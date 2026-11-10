@@ -6,11 +6,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 
-/**
- * Everything the read-aloud UI needs to know: which document is being read, and how playback is going.
- * Document identity and playback are published together so the in-flow bar can tell whether the
- * document on screen is the one being spoken.
- */
+// Document identity and playback are published together so the bar can tell whether the document on screen is the one being spoken.
 data class TtsState(
     val documentId: String = "",
     val documentTitle: String = "",
@@ -22,30 +18,14 @@ data class TtsState(
     val unitIndex: Int = -1,
     val anchor: Int = -1,
     val speed: Float = 1.0f,
-    /** The sentence and word being read inside [unitIndex], for the viewer to mark. */
     val progress: TtsProgress = TtsProgress(),
-    /**
-     * Whether the page is held on the line being read: the reader cannot scroll, and the view follows
-     * the voice. Every read starts locked; the reader unlocks it to look around, and locking again
-     * brings them back to the line.
-     */
     val scrollLocked: Boolean = true,
 ) {
-    /**
-     * Whether the page is held on the voice right now: locked, and with a voice to hold it. A failed
-     * read has nothing to follow and must never leave the reader unable to scroll.
-     */
+    // A failed read has nothing to follow and must never leave the reader unable to scroll.
     val followsVoice: Boolean get() = scrollLocked && !hasError
 }
 
-/**
- * App-scoped read-aloud holder (lazy in [com.papyrus.app.MainApplication]). It survives ViewModel
- * death and rotation: the viewer collects [state], hands a document to the playback service through
- * [prepare], and the service publishes the controller's playback back through [syncPlayback].
- *
- * Controls go through here so the UI never holds a controller reference; when no service is attached
- * they are no-ops, which is exactly right - the bar is only shown while something is playing or paused.
- */
+// App-scoped so it survives ViewModel death and rotation; controls are no-ops when no service is attached, since the bar shows only while something plays or is paused.
 class TtsSession {
 
     private val _state = MutableStateFlow(TtsState())
@@ -54,7 +34,6 @@ class TtsSession {
     private var controller: TtsController? = null
     private var pending: PendingRequest? = null
 
-    /** A document waiting for the service to pick it up: the queue plus where to start. */
     data class PendingRequest(
         val documentId: String,
         val title: String,
@@ -64,7 +43,6 @@ class TtsSession {
         val speed: Float,
     )
 
-    /** Record the document to read and reset playback state; the service consumes it on start. */
     fun prepare(
         documentId: String,
         title: String,
@@ -82,7 +60,6 @@ class TtsSession {
         )
     }
 
-    /** The document the service should load, taken exactly once. */
     fun consumePending(): PendingRequest? = pending.also { pending = null }
 
     fun attachController(controller: TtsController) {
@@ -101,18 +78,13 @@ class TtsSession {
         controller?.pause()
     }
 
-    /** Stop playback and clear the document, so the control bar disappears. */
     fun stop() {
         controller?.stop()
         pending = null
         _state.value = TtsState()
     }
 
-    /**
-     * Stop and clear the session when it is reading [documentId]; another document's playback is left
-     * alone. A failed session counts too: it has neither playing nor paused set, yet the bar showing it
-     * belongs to that document's page and goes with it.
-     */
+    // A failed session counts too: it has neither playing nor paused set, yet its bar belongs to that document's page.
     fun stopFor(documentId: String) {
         if (documentId.isNotEmpty() && state.value.documentId == documentId) stop()
     }
@@ -137,7 +109,6 @@ class TtsSession {
         _state.update { it.copy(scrollLocked = !it.scrollLocked) }
     }
 
-    /** Merge the controller's playback into the published state, keeping the document identity. */
     fun syncPlayback(playback: TtsPlayback) {
         _state.update {
             it.copy(

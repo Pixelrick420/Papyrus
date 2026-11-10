@@ -5,7 +5,6 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** Bulk actions act on [SelectionState.ids], so the transitions that build it are pinned here. */
 class SelectionStateTest {
 
     @Test

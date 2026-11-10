@@ -4,10 +4,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-/**
- * Hides [T] until its undo window ends, so Undo has nothing to put back; [commit] runs exactly once
- * per [begin]. [commit] runs under this lock, so it must only start the removal, never call back in.
- */
+// [commit] runs under this lock, so it must only start the removal, never call back in.
 internal class PendingRemoval<T : Any>(
     private val timer: Timer,
     private val windowMillis: Long,
@@ -31,7 +28,6 @@ internal class PendingRemoval<T : Any>(
 
     val pending: StateFlow<Entry<T>?> = state.asStateFlow()
 
-    /** Hides [item] for the window; anything already pending is committed at once. */
     fun begin(item: T) = synchronized(lock) {
         finishLocked()
         val entry = Entry(item, nextToken++)
@@ -39,7 +35,6 @@ internal class PendingRemoval<T : Any>(
         timeout = timer.schedule(windowMillis) { expire(entry.token) }
     }
 
-    /** Brings back the entry [token] names; false once it is no longer pending. */
     fun undo(token: Long): Boolean = synchronized(lock) {
         if (state.value?.token != token) return false
         timeout?.cancel()
@@ -48,17 +43,14 @@ internal class PendingRemoval<T : Any>(
         true
     }
 
-    /** Commits whatever is pending now, for an owner about to go away; a no-op when nothing is. */
     fun flush() = synchronized(lock) { finishLocked() }
 
     private fun expire(token: Long) = synchronized(lock) {
         if (state.value?.token == token) finishLocked()
     }
 
-    /**
-     * Commits the pending entry before clearing it, so no observer sees "nothing pending" too early.
-     * Cleared even if [commit] throws, so a failure cannot lead to a second commit.
-     */
+    // Commits the pending entry before clearing it, so no observer sees "nothing pending" too early.
+    // Cleared even if [commit] throws, so a failure cannot lead to a second commit.
     private fun finishLocked() {
         val entry = state.value ?: return
         timeout?.cancel()

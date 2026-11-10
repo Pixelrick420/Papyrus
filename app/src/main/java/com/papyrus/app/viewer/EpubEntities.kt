@@ -3,13 +3,8 @@ package com.papyrus.app.viewer
 import org.xmlpull.v1.XmlPullParser
 import org.xmlpull.v1.XmlPullParserException
 
-/**
- * The named character references of HTML 4, which XML does not define. Real-world XHTML is full of
- * `&nbsp;` and `&mdash;`, and a strict parser treats each as an error that would drop the whole chapter.
- * They are handed to the parser through the standard `defineEntityReplacementText`, which Android's
- * parser and kxml2 share (Android's is a descendant of it), so a chapter reads the same in the app and in
- * a JVM test. The five XML ones (`amp`, `lt`, `gt`, `quot`, `apos`) are the parser's own.
- */
+// XML defines only five entities, and real-world XHTML is full of `&nbsp;` and `&mdash;`, each an error that would drop the whole chapter in a strict parser.
+// They go through `defineEntityReplacementText`, which Android's parser and kxml2 share, so a chapter reads the same in the app and a JVM test.
 internal object EpubEntities {
 
     /** U+00A0 to U+00FF in order: the entity of code point `0xA0 + i` is `LATIN1[i]`. */
@@ -61,7 +56,6 @@ internal object EpubEntities {
         "diams" to 9830,
     )
 
-    /** Every entity this object defines, name to its text. */
     val ALL: Map<String, String> = buildMap {
         LATIN1.forEachIndexed { i, name -> put(name, String(Character.toChars(LATIN1_START + i))) }
         GREEK_CAPITAL.forEachIndexed { i, name -> if (name != null) put(name, String(Character.toChars(GREEK_CAPITAL_START + i))) }
@@ -69,16 +63,11 @@ internal object EpubEntities {
         OTHERS.forEach { (name, code) -> put(name, String(Character.toChars(code))) }
     }
 
-    /**
-     * Teaches [parser] every entity. Call it after `setInput` (both parsers drop what was defined before it)
-     * and never with DOCTYPE processing on, which would also fetch the document's DTD. A parser that
-     * refuses is left as it was: the entities then fail the chapter, as they would have anyway.
-     */
+    // Call after `setInput` (both parsers drop what was defined before it) and never with DOCTYPE processing on, which would fetch the DTD.
     fun defineAll(parser: XmlPullParser) {
         try {
             for ((name, text) in ALL) parser.defineEntityReplacementText(name, text)
         } catch (_: XmlPullParserException) {
-            // Not fatal: see above.
         } catch (_: IllegalStateException) {
             // Android's parser says so this way when asked at the wrong moment.
         }

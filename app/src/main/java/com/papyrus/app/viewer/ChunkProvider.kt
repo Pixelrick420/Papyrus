@@ -10,31 +10,18 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 
-/** A file's bytes that can be opened again at an offset, which is what lets a chunk be decoded on demand. */
 fun interface ByteSource {
-    /** A new stream [offset] bytes in; the caller closes it. Throws [IOException] when the provider cannot. */
     fun open(offset: Long): InputStream
 }
 
-/**
- * Opens a text file as [TextChunks] whatever its size, so a reader has one path. A small file, a charset
- * whose characters can hold a line terminator's bytes (UTF-16, Shift_JIS), or a provider that will not open
- * a file twice is decoded into memory, up to [IN_MEMORY_LIMIT_BYTES]. Anything else is read once to index
- * where its chunks start and kept as bytes: [TextChunks.chunks] decodes a chunk when it is asked for, and
- * only a few stay decoded.
- */
+// Small files, charsets whose characters can hold a line terminator's bytes (UTF-16, Shift_JIS) and providers that will not open twice are decoded into memory;
+// anything else is indexed once and decoded per chunk on demand.
 object ChunkProvider {
 
-    /** The most that is held as text; past it the file is cut, as the plain-text reader always did. */
     const val IN_MEMORY_LIMIT_BYTES = 32 * 1024 * 1024
 
-    /** A file of this size or less is not worth an index. */
     const val SMALL_FILE_BYTES = 2L * 1024 * 1024
 
-    /**
-     * Reads [source] on [dispatcher], and can be cancelled between reads. [sizeHint] is the file's size when
-     * known, zero or less when not; [forced] skips charset detection.
-     */
     suspend fun open(
         source: ByteSource,
         sizeHint: Long = 0,
@@ -72,7 +59,6 @@ internal fun openChunks(
     }
 }
 
-/** The text of the file [input] is, from the first byte after any BOM, indexed and served from [source]. */
 internal fun indexChunks(
     source: ByteSource,
     input: InputStream,
@@ -85,11 +71,7 @@ internal fun indexChunks(
     return TextChunks(chunks, index.lineCount, index.maxLineColumns, encoding, index.truncated)
 }
 
-/**
- * Moves this stream [offset] bytes in, for a [ByteSource] over a provider that only opens from the start:
- * a seek where it hands out a file, and reading past the bytes where it hands out a pipe, which cannot.
- * Throws [EOFException] if the stream is shorter than [offset].
- */
+// A pipe cannot seek, so reading past the bytes stands in for a seek; throws [EOFException] if the stream is shorter than [offset].
 internal fun InputStream.skipTo(offset: Long) {
     if (offset <= 0) return
     if (this is FileInputStream) {
@@ -118,10 +100,6 @@ private fun reopen(source: ByteSource, offset: Long): InputStream? = try {
     null
 }
 
-/**
- * Whether a file in [charset] can be cut at its `\n` and `\r` bytes without cutting a character: UTF-8 and
- * the single-byte charsets that keep ASCII where it is.
- */
 internal fun byteSplittable(charset: Charset): Boolean {
     val oneByte = charset == Charsets.UTF_8 || (charset.canEncode() && charset.newEncoder().maxBytesPerChar() == 1f)
     return oneByte && String(byteArrayOf(LINE_FEED, CARRIAGE_RETURN, LETTER_A), charset) == "\n\rA"
@@ -131,12 +109,7 @@ private const val LINE_FEED: Byte = 0x0A
 private const val CARRIAGE_RETURN: Byte = 0x0D
 private const val LETTER_A: Byte = 0x41
 
-/**
- * The chunks of an indexed file as a list, decoded when read. Reaching a chunk decodes its whole span
- * (see [ChunkIndex]) and keeps what fits in the [layout]'s cache, so a scroll or a scan in order decodes
- * each byte once. Equal only to itself, because comparing two lists would decode both files. A chunk that
- * cannot be read, because the file went away, is empty rather than an exception in the middle of a draw.
- */
+// Equal only to itself, because comparing two lists would decode both files. An unreadable chunk is empty rather than an exception mid-draw.
 internal class IndexedChunks(
     private val source: ByteSource,
     private val index: ChunkIndex,
@@ -149,7 +122,6 @@ internal class IndexedChunks(
 
     override val size: Int get() = index.chunkCount
 
-    /** How many chunks are held decoded; what the cache bound is tested against. */
     val cachedCount: Int get() = synchronized(lock) { cache.size }
 
     override fun get(index: Int): String {
@@ -200,10 +172,8 @@ internal class IndexedChunks(
     override fun toString(): String = "IndexedChunks($size chunks)"
 }
 
-/** `\r\n` and a lone `\r` end a line the way `\n` does, as in [LineAssembler]'s chunks. */
 private fun String.withLineFeeds(): String = if (indexOf('\r') < 0) this else replace("\r\n", "\n").replace('\r', '\n')
 
-/** Up to [length] bytes, fewer if the file is shorter than it was when indexed. */
 private fun InputStream.readExactly(length: Long): ByteArray {
     val buffer = ByteArray(length.coerceAtMost(Int.MAX_VALUE.toLong()).toInt())
     var total = 0
@@ -215,7 +185,6 @@ private fun InputStream.readExactly(length: Long): ByteArray {
     return if (total == buffer.size) buffer else buffer.copyOf(total)
 }
 
-/** Least recently used chunks, at most [maxChunks] and [maxChars] between them, though always the latest. */
 private class ChunkCache(private val maxChunks: Int, private val maxChars: Int) {
 
     private val chunks = LinkedHashMap<Int, String>(16, 0.75f, true)

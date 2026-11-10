@@ -1,50 +1,28 @@
 package com.papyrus.app.viewer
 
-/**
- * One level of a list: its number format [nfc], where counting starts, and [text], the template the
- * marker is made from. In [text] a character 0 to 8 stands for the number of that level and any
- * other is literal, so `[0, '.']` is "1." and a bullet is the one bullet character.
- */
+// In [text] a character 0 to 8 stands for the number of that level and any other is literal, so `[0, '.']` is "1.".
 internal class DocListLevel(val nfc: Int, val start: Int, val text: String)
 
-/**
- * The list definitions (PlfLst, with its LVLs) and the list instances that paragraphs name (PlfLfo),
- * both from the table stream. A paragraph carries `ilfo`, a 1-based index into the instances; an
- * instance names a list by `lsid` and may restart a level or replace its formatting.
- *
- * PlfLst is `cLst`, then `cLst` LSTFs of 28 bytes (an `lsid`, and a flag whose low bit says the list has
- * one level rather than nine); the LVLs for every list follow in order, outside the PlfLst's own length.
- * An LVL is a 28-byte LVLF, its paragraph and character grpprls, then the length-prefixed number text.
- * PlfLfo is `lfoMac`, that many 16-byte LFOs, then per LFO a `cp` and its `clfolvl` LFOLVLs: a start
- * number, flags, and when the flags ask for it a whole LVL.
- *
- * Like the style sheet this is enrichment: anything unreadable leaves the paragraphs unnumbered.
- */
+// A paragraph carries `ilfo`, a 1-based index into the instances; an instance names a list by `lsid` and may restart a level or replace its formatting.
 internal class DocListTables private constructor(
     private val lists: List<Array<DocListLevel?>>,
     private val instances: List<Instance>,
 ) {
-    /** An LFO: the index in [lists] of the list it uses, level restarts, and replaced levels. */
     private class Instance(val list: Int, val startAt: Map<Int, Int>, val levels: Map<Int, DocListLevel>)
 
-    /** Index of the list instance [ilfo] uses, or null if there is no such instance or list. */
     fun listOf(ilfo: Int): Int? = instances.getOrNull(ilfo - 1)?.list
 
-    /** Level [level] of instance [ilfo]: the instance's own formatting if it replaces the list's. */
     fun level(ilfo: Int, level: Int): DocListLevel? {
         val instance = instances.getOrNull(ilfo - 1) ?: return null
         return instance.levels[level] ?: lists.getOrNull(instance.list)?.getOrNull(level)
     }
 
-    /** Levels instance [ilfo] restarts, by the number the first paragraph shows. */
     fun startOverrides(ilfo: Int): Map<Int, Int> = instances.getOrNull(ilfo - 1)?.startAt ?: emptyMap()
 
     companion object {
-        /** FibRgFcLcb97 indexes of fcPlfLst and fcPlfLfo. */
         const val PAIR_PLFLST = 73
         const val PAIR_PLFLFO = 74
 
-        /** Levels in a list that is not simple. */
         const val LEVELS = 9
 
         val EMPTY = DocListTables(emptyList(), emptyList())
@@ -62,7 +40,6 @@ internal class DocListTables private constructor(
         private const val FLAG_FORMATTING = 0x20
         private const val ILVL_MASK = 0x0F
 
-        /** Reads both tables, or returns [EMPTY] if either is absent or unreadable. */
         fun parse(cfb: CompoundFile, fib: DocFib): DocListTables {
             val lstLcb = fib.lcb(PAIR_PLFLST)
             val lfoLcb = fib.lcb(PAIR_PLFLFO)
@@ -77,7 +54,6 @@ internal class DocListTables private constructor(
             return parse(lst, lstLcb.toInt().coerceAtMost(lst.size), lfo)
         }
 
-        /** Parses a PlfLst of [lstLcb] bytes at the start of [lst] (LVLs after it) and a PlfLfo in [lfo]. */
         fun parse(lst: ByteArray, lstLcb: Int, lfo: ByteArray): DocListTables {
             if (lst.size < 2 || lfo.size < 4) return EMPTY
             val count = u16(lst, 0).coerceAtMost(MAX_LISTS)
@@ -133,7 +109,6 @@ internal class DocListTables private constructor(
             return out
         }
 
-        /** An LVL at [at] in [data] and where it ends, or null if it does not fit. */
         private fun readLevel(data: ByteArray, at: Int): Pair<DocListLevel, Int>? {
             if (at < 0 || at + LVLF_BYTES > data.size) return null
             val start = i32(data, at)
@@ -155,18 +130,13 @@ internal class DocListTables private constructor(
     }
 }
 
-/**
- * Numbers list paragraphs in reading order, the way Word does: a list's counters are shared by every
- * instance of it, the first paragraph of an instance applies its restarts, and a new item restarts
- * every level below it. Mirrors `ListCounters` for `.docx`.
- */
+// A list's counters are shared by every instance of it; the first paragraph of an instance applies its restarts. Mirrors `ListCounters` for `.docx`.
 internal class DocListCounters(private val tables: DocListTables) {
     private val counts = HashMap<Int, IntArray>()
     private val started = HashSet<Int>()
 
     fun defines(ilfo: Int): Boolean = (tables.listOf(ilfo) ?: -1) >= 0
 
-    /** The marker for the next paragraph of instance [ilfo] at [ilvl]; null if the level is not defined. */
     fun next(ilfo: Int, ilvl: Int): String? {
         val list = tables.listOf(ilfo)?.takeIf { it >= 0 } ?: return null
         val level = ilvl.coerceIn(0, DocListTables.LEVELS - 1)
@@ -199,7 +169,6 @@ internal class DocListCounters(private val tables: DocListTables) {
         return out.toString()
     }
 
-    /** The OOXML `numFmt` name [formatListNumber] takes for a binary `nfc`; formats it lacks count as decimal. */
     private fun formatOf(nfc: Int?): String = when (nfc) {
         NFC_UPPER_ROMAN -> "upperRoman"
         NFC_LOWER_ROMAN -> "lowerRoman"

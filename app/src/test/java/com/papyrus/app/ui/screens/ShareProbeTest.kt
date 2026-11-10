@@ -9,11 +9,6 @@ import org.junit.Test
 import java.util.Collections
 import java.util.concurrent.atomic.AtomicInteger
 
-/**
- * The share pre-flight runs concurrently, so what it must still get right is the serial contract:
- * one probe per file, a type only for readable ones, selection order kept, and a hard ceiling on
- * how many probes are in flight at once.
- */
 class ShareProbeTest {
 
     @Test
@@ -46,7 +41,6 @@ class ShareProbeTest {
         assertEquals(listOf(1, 3), types.sorted())
         // Selection order survives the concurrency: same answer as the serial filter gave.
         assertEquals(listOf(1 to "type-1", 3 to "type-3"), result)
-        // And within a document, the probe happens before its type is asked.
         for (readable in listOf(1, 3)) {
             assertTrue(
                 "probe must precede type for document $readable",

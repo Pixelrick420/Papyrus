@@ -5,7 +5,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.ByteArrayInputStream
 
-/** Both directions: a false positive shows mojibake, a false negative blocks the file. */
 class TextSnifferTest {
 
     private fun sniff(bytes: ByteArray, length: Int = bytes.size) = TextSniffer.looksLikeText(bytes, length)
@@ -20,7 +19,6 @@ class TextSnifferTest {
 
     @Test
     fun `whitespace control characters do not count against the ratio`() {
-        // Newlines, tabs and CRs are what a text file is made of, mostly indentation.
         assertTrue(sniff("def f():\n\treturn 1\r\n\n"))
     }
 
@@ -31,7 +29,6 @@ class TextSnifferTest {
 
     @Test
     fun `an empty file is not text`() {
-        // Nothing to render; a blank viewer is a worse answer than "empty".
         assertFalse(sniff(ByteArray(0)))
     }
 
@@ -52,7 +49,6 @@ class TextSnifferTest {
 
     @Test
     fun `a NUL byte means binary`() {
-        // The classic case: a truncated UTF-16 or a binary padded with zeros.
         assertFalse(sniff(byteArrayOf(0x41, 0x00, 0x42, 0x00)))
     }
 
@@ -98,7 +94,6 @@ class TextSnifferTest {
 
     @Test
     fun `invalid utf-8 that is also full of control bytes is still binary`() {
-        // Legacy text is fine, binaries are not: the control-ratio and NUL rules still apply.
         assertFalse(sniff(byteArrayOf(0xC3.toByte(), 0x28) + ByteArray(20) { 0x01 }))
         assertFalse(sniff("good text ".toByteArray() + byteArrayOf(0xFF.toByte(), 0x00, 0xFE.toByte())))
     }
@@ -108,13 +103,11 @@ class TextSnifferTest {
         assertTrue(sniff(byteArrayOf(0xFF.toByte(), 0xFE.toByte()) + "hello\n".toByteArray(Charsets.UTF_16LE)))
         assertTrue(sniff(byteArrayOf(0xFE.toByte(), 0xFF.toByte()) + "héllo\n".toByteArray(Charsets.UTF_16BE)))
         assertTrue(sniff(byteArrayOf(0xFF.toByte(), 0xFE.toByte(), 0, 0) + "hello".toByteArray(charset("UTF-32LE"))))
-        // A BOM and nothing else is an empty file.
         assertFalse(sniff(byteArrayOf(0xFF.toByte(), 0xFE.toByte())))
     }
 
     @Test
     fun `utf-16 text is not mistaken for utf-8 text`() {
-        // UTF-16LE "hi" with no mark: a NUL after every byte, and only a BOM vouches for it.
         assertFalse(sniff("hi".toByteArray(Charsets.UTF_16LE)))
     }
 

@@ -5,7 +5,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
 
-/** Reviewer-written text that must stay readable and never leak into the body. */
 class OfficeCommentsTest {
 
     private fun extractDocx(bytes: ByteArray) = OfficeTextExtractor(

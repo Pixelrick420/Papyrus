@@ -39,7 +39,6 @@ import com.papyrus.app.viewer.hasChildren
 import com.papyrus.app.viewer.initialFolds
 import com.papyrus.app.viewer.visibleOutline
 
-/** One level of heading depth, in the indent a title gets. */
 private val OUTLINE_INDENT = 16.dp
 
 /** A bookmark tree can nest far deeper than a phone can indent, so levels past this share the last indent. */
@@ -48,12 +47,7 @@ private const val MAX_INDENT_LEVELS = 6
 /** The width of the fold control, kept as a spacer on rows without one so every title lines up. */
 private val FOLD_CONTROL = 48.dp
 
-/**
- * A document's outline as a list to jump from; [entries] are never empty (the caller hides the menu item
- * then). With [collapsible] (a PDF's bookmark tree) a row with entries beneath it gets a control to
- * fold them, and a long outline starts folded to its top level; without it (an Office document's
- * headings) every entry is shown, as before. An entry with no destination is shown but cannot be chosen.
- */
+// A long outline starts folded to its top level. An entry with no destination is shown but cannot be chosen.
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun OutlineSheet(
@@ -63,7 +57,6 @@ internal fun OutlineSheet(
     onDismiss: () -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState()
-    // Folds are positions in the flat list, so they are only meaningful for this list.
     var folded by remember(entries) { mutableStateOf(if (collapsible) initialFolds(entries) else emptySet<Int>()) }
     val shown = remember(entries, folded) { visibleOutline(entries, folded) }
 
@@ -120,7 +113,6 @@ private fun OutlineRow(
                             if (isFolded) R.string.viewer_outline_expand else R.string.viewer_outline_collapse,
                             entry.title,
                         ),
-                        // The same arrow, turned to point at what a tap will reveal.
                         modifier = Modifier.rotate(if (isFolded) -90f else 0f),
                     )
                 }

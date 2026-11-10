@@ -4,7 +4,6 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Test
 import org.junit.runner.RunWith
 
-/** A setting changed on the Settings screen and its effect on the next screen the reader opens. */
 @RunWith(AndroidJUnit4::class)
 class SettingsTest : E2eTest() {
 

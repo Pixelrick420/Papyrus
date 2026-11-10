@@ -6,7 +6,6 @@ import org.junit.Test
 
 class AutolinksTest {
 
-    /** `text -> destination` per link, so an expectation reads like the sentence it describes. */
     private fun found(text: String): List<String> =
         Autolinks.find(text).map { "${text.substring(it.start, it.end)} -> ${it.destination}" }
 

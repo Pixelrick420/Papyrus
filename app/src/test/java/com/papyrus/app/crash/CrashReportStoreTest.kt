@@ -46,7 +46,6 @@ class CrashReportStoreTest {
         CrashReportStore.prune(dir)
         val remaining = CrashReportStore.list(dir)
         assertEquals(20, remaining.size)
-        // Kept the highest sorted names: 006 to 025
         assertEquals("crash-025.json", remaining.first().name)
         assertEquals("crash-006.json", remaining.last().name)
         assertFalse(File(dir, "crash-001.json").exists())

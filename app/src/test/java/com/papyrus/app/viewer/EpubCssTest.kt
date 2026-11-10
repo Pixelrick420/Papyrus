@@ -5,7 +5,6 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** The CSS subset on its own: cascade, selectors, at-rules and malformed input. */
 class EpubCssTest {
 
     private fun sheet(css: String) = CssSheet(parseCss(css))

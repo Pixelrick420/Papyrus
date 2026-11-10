@@ -1,11 +1,6 @@
 package com.papyrus.app.viewer
 
-/**
- * What a file's own text says it is. Finer than a [CodeLanguage] in places (C, C++ and Objective-C are one
- * definition today) and coarser in others (Perl and MATLAB have none), so [CodeLanguages.forContent] maps each
- * kind to the definition that exists, if one does. The three JSON kinds colour alike, and differ only in what a
- * strict parser would refuse.
- */
+// Finer than a [CodeLanguage] in places (C, C++ and Objective-C are one definition today) and coarser in others (Perl and MATLAB have none).
 enum class ContentKind {
     SHELL, POWERSHELL, PYTHON, JAVASCRIPT, RUBY, PERL, PHP, LUA, GROOVY, R,
     C, CPP, OBJC, MATLAB,
@@ -13,18 +8,11 @@ enum class ContentKind {
     JSON, JSONC, JSON5,
 }
 
-/**
- * Guesses a [ContentKind] from the start of a file, for the cases its name cannot settle: an extension that is
- * unknown or missing, or one that fits more than one language. It looks for markers cheap to find (a shebang, an
- * XML root, `@interface`, a `%` comment) and answers null rather than guess, since a wrong colour is worse than none.
- *
- * Pure, and bounded: only the first [TextSniffer.MAX_SNIFF_BYTES] characters are read, whatever it is given.
- */
+// Answers null rather than guess, since a wrong colour is worse than none; only the first [TextSniffer.MAX_SNIFF_BYTES] characters are read.
 object LanguageDetector {
 
     private const val MAX_HEAD = TextSniffer.MAX_SNIFF_BYTES
 
-    /** Extensions that fit more than one language, so the content gets a say although the name has an answer. */
     val AMBIGUOUS_EXTENSIONS: Set<String> = setOf("h", "m")
 
     private val INTERPRETERS: Map<String, ContentKind> = buildMap {
@@ -41,8 +29,6 @@ object LanguageDetector {
         add(ContentKind.R, "rscript")
     }
 
-    // The root elements of files people open that carry no extension this app knows. Matched on the local name,
-    // so `xsl:stylesheet` and `xs:schema` are found too. Any root passes when there is an XML declaration.
     private val MARKUP_ROOTS = setOf(
         "html", "svg", "project", "manifest", "rss", "feed", "plist", "configuration", "resources", "schema",
         "stylesheet", "transform", "urlset", "sitemapindex", "kml", "gpx", "testsuite", "testsuites",
@@ -50,13 +36,11 @@ object LanguageDetector {
 
     private val ROOT_ELEMENT = Regex("""^<([A-Za-z][A-Za-z0-9_.:-]*)""")
 
-    // A bare word and a colon: the first key of a JSON5 object.
     private val UNQUOTED_KEY = Regex("""^\w+\s*:""")
 
     // A JSON literal as a whole word, so the section `[true_color]` of an INI file is not one.
     private val LITERAL = Regex("""^(?:true|false|null)\b""")
 
-    // What only Objective-C writes: `#import`, the `@` directives, an `@"` string and Foundation's NSThing names.
     private val OBJC_MARKER = Regex(
         """(?m)^[ \t]*#\s*import\b|@(?:interface|implementation|protocol|property|synthesize|autoreleasepool|class|end)\b|@"|\bNS[A-Z][a-z]""",
     )
@@ -72,18 +56,11 @@ object LanguageDetector {
             """\btypename\b|\bnoexcept\b""",
     )
 
-    // Line comments with `%`, `function` at the start of a line, a bare `end`, Octave's `endfunction`, a
-    // continuation with `...`: none of them starts a line of Objective-C.
     private val MATLAB_MARKER = Regex(
         """(?m)^[ \t]*%|^[ \t]*function\b|^[ \t]*end(?:function|if|for|while|switch)?[ \t]*;?[ \t]*$|\bclassdef\b|""" +
             """^[ \t]*(?:clc|clear|close all)\b|\.\.\.[ \t]*$""",
     )
 
-    /**
-     * The kind of [head], the start of a file whose name ends in [extension] (lower case, or the whole name when
-     * it has no dot). A `.h` or `.m` file is settled between the languages that share the name; anything else is
-     * looked at for a shebang, an XML root or JSON, in that order.
-     */
     fun detect(head: String, extension: String): ContentKind? {
         val prefix = head.take(MAX_HEAD)
         return when (extension) {
@@ -93,7 +70,6 @@ object LanguageDetector {
         }
     }
 
-    /** The start of a file read as [chunks], as much of it as [detect] will look at. */
     fun headOf(chunks: List<String>): String {
         val head = StringBuilder()
         for (chunk in chunks) {
@@ -151,10 +127,7 @@ object LanguageDetector {
         return if (at < 0) null else text.substring(at + end.length)
     }
 
-    /**
-     * JSON, or the looser kinds. Read outside its strings, so a `//` in a URL is not a comment: a comment or a
-     * trailing comma makes JSONC, and an unquoted key or a single-quoted string makes JSON5, which wins.
-     */
+    // Read outside its strings, so a `//` in a URL is not a comment.
     private fun jsonKind(text: String): ContentKind? {
         // A file may open with comments (a JSONC config often does) before the brace that tells it is JSON.
         var body = text.trimStart { it == '\uFEFF' || it.isWhitespace() }
@@ -205,7 +178,6 @@ object LanguageDetector {
                     i++
                 }
                 c.isWhitespace() -> i++
-                // A bare word where a key belongs: after `{` or `,` inside an object, and followed by a colon.
                 isNameStart(c) && open.lastOrNull() == '{' && (last == '{' || last == ',') -> {
                     var end = i
                     while (end < body.length && isNamePart(body[end])) end++
@@ -228,10 +200,7 @@ object LanguageDetector {
         }
     }
 
-    /**
-     * Whether text that opens with `{` or `[` goes on like JSON. It keeps out `[section]` of an INI file,
-     * `{{ template }}`, `{% tag %}` and prose that happens to start with a brace.
-     */
+    // Keeps out an INI `[section]`, `{{ template }}`, `{% tag %}` and prose that happens to start with a brace.
     private fun startsLikeJson(body: String): Boolean {
         if (body[0] != '{' && body[0] != '[') return false
         val next = body.substring(1).trimStart()
@@ -245,7 +214,6 @@ object LanguageDetector {
         }
     }
 
-    /** The index after the string that opens at [start]; a string ends at its line, as an unclosed one would. */
     private fun endOfString(text: String, start: Int): Int {
         val quote = text[start]
         var i = start + 1

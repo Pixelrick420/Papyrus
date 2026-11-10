@@ -35,7 +35,6 @@ class MainActivity : ComponentActivity() {
         setContent {
             val appSettings by settings.settings.collectAsStateWithLifecycle()
             val darkTheme = appSettings.themeMode.isDark(isSystemInDarkTheme())
-            // Re-styled on theme change so the icons contrast with the new background.
             DisposableEffect(darkTheme) {
                 applySystemBars(darkTheme)
                 onDispose {}
@@ -73,7 +72,7 @@ class MainActivity : ComponentActivity() {
     private fun deviceInDarkMode(): Boolean =
         (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
 
-    /** Like `enableEdgeToEdge()`, but dark follows the app theme; the nav-bar scrims are the library defaults. */
+    // Like enableEdgeToEdge(), but dark follows the app theme instead of the system.
     private fun applySystemBars(dark: Boolean) {
         enableEdgeToEdge(
             statusBarStyle = SystemBarStyle.auto(Color.TRANSPARENT, Color.TRANSPARENT) { dark },

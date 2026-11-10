@@ -1,12 +1,8 @@
 package com.papyrus.app.data
 
-/** The title stored for a document whose provider reports no display name. */
 internal const val UNTITLED = "untitled"
 
-/**
- * Whether a re-picked file is the document a row or hand-over stands for. Name and format must match
- * exactly; size is deliberately not compared (the file may have been edited) and case is exact.
- */
+// Name and format must match exactly; size is deliberately not compared (the file may have been edited).
 internal fun matchesRepick(
     expectedTitle: String,
     expectedFormat: DocumentFormat,
@@ -15,10 +11,8 @@ internal fun matchesRepick(
 ): Boolean =
     pickedName.ifBlank { UNTITLED } == expectedTitle && formatsCompatible(expectedFormat, pickedFormat)
 
-/**
- * Equal formats, except a legacy UNKNOWN row counts as the CODE the sniff now resolves it to, and a .csv or
- * .tsv stored as CODE before it had a format of its own counts as the CSV it is now.
- */
+// Equal formats, except a legacy UNKNOWN row counts as the CODE the sniff now resolves it to, and a .csv or
+// .tsv stored as CODE before it had a format of its own counts as the CSV it is now.
 private fun formatsCompatible(expected: DocumentFormat, picked: DocumentFormat): Boolean =
     expected == picked ||
         (expected == DocumentFormat.UNKNOWN && picked == DocumentFormat.CODE) ||

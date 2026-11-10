@@ -98,7 +98,6 @@ class LibraryViewTest {
     @Test
     fun `a name that is a prefix of another comes first`() {
         val docs = listOf(doc(1, "reports"), doc(2, "report2"), doc(3, "report"))
-        // The bare name, then the digit that follows it, then the letter: digits sort before letters.
         assertEquals(listOf(3L, 2L, 1L), ids(view(docs, LibrarySort.NAME_ASC)))
     }
 
@@ -302,7 +301,6 @@ class LibraryViewTest {
 
     @Test
     fun `a content id the filter hides stays hidden`() {
-        // The format chips narrow what a search can surface, exactly as they narrow the browsing list.
         val docs = listOf(doc(1, "Report.pdf"), doc(2, "meeting notes.txt", DocumentFormat.TEXT))
         val pdfOnly = LibraryFilter().toggled(FormatGroup.PDF)
 

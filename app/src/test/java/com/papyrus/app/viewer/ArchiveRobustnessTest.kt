@@ -13,12 +13,6 @@ import java.io.IOException
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
-/**
- * What the Word, OpenDocument and EPUB readers do with an archive that is cut short, names files outside
- * itself, inflates without end, or holds XML that is not XML. The readers' callers catch what these throw,
- * so the contract is the type: an [IOException] or an [XmlPullParserException], never anything else, and
- * never a file written outside the media folder.
- */
 class ArchiveRobustnessTest {
 
     @get:Rule
@@ -41,7 +35,6 @@ class ArchiveRobustnessTest {
         EpubExtractor(mediaDir = null, newParserFactory = OfficeFixtures::parser, limits = limits, rasteriser = EpubFixtures.FakeRasteriser())
             .extract(OfficeFixtures.streamFactory(bytes))
 
-    /** Runs [read]; true if it returned, false if it threw one of the two types callers catch, a failure otherwise. */
     @Suppress("TooGenericExceptionCaught") // The "otherwise" case must be caught and reported, not escape the helper.
     private fun survives(label: String, read: () -> Unit): Boolean = try {
         read()
@@ -69,13 +62,9 @@ class ArchiveRobustnessTest {
 
     private fun texts(blocks: List<OfficeBlock>) = blocks.filterIsInstance<OfficeBlock.Paragraph>().map { it.text }
 
-    /**
-     * Bytes that do not compress. A run of zeros inflates a thousandfold, which the compression-ratio guard
-     * refuses before the size caps the tests below are about are reached; noise gets to them.
-     */
+    // Bytes that do not compress. A run of zeros inflates a thousandfold, which the compression-ratio guard
+    // refuses before the size caps the tests below are about are reached; noise gets to them.
     private fun noise(size: Int) = kotlin.random.Random(SEED).nextBytes(size)
-
-    // --- Truncated archives ---
 
     @Test
     fun `a docx cut at any point is an IO error or a result, never another failure`() {
@@ -144,8 +133,6 @@ class ArchiveRobustnessTest {
         }
     }
 
-    // --- Entries that name a file outside the archive ---
-
     private val slipNames = listOf(
         "../document.xml", "../../word/document.xml", "/word/document.xml", "\\word\\document.xml",
         "word/../word/document.xml", "word/../../evil.xml", "C:\\evil.xml", "word/media/../../../escaped.png",
@@ -202,8 +189,6 @@ class ArchiveRobustnessTest {
             assertTrue("'$name' gave $outcome", outcome is EpubFormatException)
         }
     }
-
-    // --- Inflation without end ---
 
     @Test
     fun `a body that inflates past its cap fails instead of being parsed from a cut`() {
@@ -306,8 +291,6 @@ class ArchiveRobustnessTest {
 
         assertEquals("implausible compression", outcome?.message)
     }
-
-    // --- XML that is not XML ---
 
     private val brokenBodies = listOf(
         "" to "empty",

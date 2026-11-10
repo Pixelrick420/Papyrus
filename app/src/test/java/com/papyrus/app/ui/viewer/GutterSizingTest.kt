@@ -4,7 +4,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** The gutter holds the longest number drawn and no more. */
 class GutterSizingTest {
 
     @Test

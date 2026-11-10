@@ -4,7 +4,6 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** Hyphenation is for words: a wrong answer either splits a log line or leaves an essay ragged. */
 class ProseTextTest {
 
     @Test

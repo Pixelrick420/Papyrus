@@ -25,19 +25,14 @@ import java.io.Closeable
 
 private const val TAG = "PdfEngine"
 
-/** Which platform PDF renderer backs a document. */
 internal enum class PdfEngineKind {
-    /** Plain [PdfRenderer], render only: every device, and the fallback when a newer API is missing. */
     LEGACY,
 
-    /** [PdfRendererPreV], backported to older releases through SDK extension 13. */
     PRE_V,
 
-    /** [PdfRenderer] with its API 35 text, form and annotation surface. */
     V35,
 }
 
-/** What the engine actually in use can do on this device. */
 internal data class PdfCapabilities(
     val kind: PdfEngineKind,
     val text: Boolean,
@@ -48,7 +43,6 @@ internal data class PdfCapabilities(
 ) {
 
     companion object {
-        /** Rendering only, for a device whose advertised platform API turned out to be missing. */
         fun legacy(): PdfCapabilities = PdfCapabilities(
             kind = PdfEngineKind.LEGACY,
             text = false,
@@ -60,20 +54,14 @@ internal data class PdfCapabilities(
     }
 }
 
-/**
- * What a device at a given API level and PDF SDK extension can do. Pure, so the whole matrix is
- * tested on the JVM instead of needing one device per release.
- */
 internal object PdfEngineAvailability {
 
-    /** The renderer a device with [sdkInt] and PDF SDK extension [extension] can use. */
     fun kindOf(sdkInt: Int, extension: Int): PdfEngineKind = when {
         sdkInt >= Build.VERSION_CODES.VANILLA_ICE_CREAM -> PdfEngineKind.V35
         sdkInt >= Build.VERSION_CODES.S && extension >= PRE_V_EXTENSION -> PdfEngineKind.PRE_V
         else -> PdfEngineKind.LEGACY
     }
 
-    /** Everything the platform API at [sdkInt] / [extension] offers. */
     fun of(sdkInt: Int, extension: Int): PdfCapabilities {
         val kind = kindOf(sdkInt, extension)
         val platform = kind != PdfEngineKind.LEGACY
@@ -93,7 +81,6 @@ internal object PdfEngineAvailability {
     private const val ANNOTATION_EXTENSION = 18
 }
 
-/** Reads this device's PDF SDK extension level, which is what decides between the platform engines. */
 internal fun devicePdfCapabilities(): PdfCapabilities {
     val extension = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
         // A module that does not know the level answers with an exception; 0 is the safe reading.
@@ -104,63 +91,46 @@ internal fun devicePdfCapabilities(): PdfCapabilities {
     return PdfEngineAvailability.of(Build.VERSION.SDK_INT, extension)
 }
 
-/** One document's platform renderer, reduced to what the viewer needs; one page open at a time. */
 internal interface PdfEngine : Closeable {
     val kind: PdfEngineKind
     val pageCount: Int
 
-    /** The document's form kind; only an AcroForm is offered for filling. */
     val formType: PdfFormType
 
     /** Opens [index]; the caller closes the page before opening another. */
     fun open(index: Int): PdfEnginePage
 
-    /**
-     * Writes the document, in-memory edits included, to [destination]; false when this engine has
-     * no write API. The source file is never touched or removed.
-     */
+    // The source file is never touched or removed.
     fun write(destination: ParcelFileDescriptor): Boolean
 }
 
-/** An open page. Text, search, forms and selection are empty on an engine that predates those APIs. */
 internal interface PdfEnginePage : Closeable {
     val index: Int
     val width: Int
     val height: Int
 
-    /** Renders the whole page into [bitmap], annotation layers included. */
     fun render(bitmap: Bitmap)
 
-    /** The page's text as lines with page-space boxes; empty when the engine has no text API. */
     fun text(): List<PlatformLine>
 
-    /** Every match of [query] in reading order; empty when the engine has no search. */
     fun search(query: String): List<PlatformMatch>
 
-    /** The lines between two boundaries, or null when the engine has no selection API. */
     fun select(start: PlatformBoundary, stop: PlatformBoundary): List<PlatformLine>?
 
-    /** The page's form widgets; empty when the engine has no form API. */
     fun widgets(): List<PdfFormField>
 
-    /** Applies [edit] to the document in memory, true when the platform accepted it. */
     fun applyEdit(edit: PdfFormEdit): Boolean
 
-    /**
-     * Adds one highlight annotation per mark, in page points. False when the engine refused or has
-     * no annotation API, so the caller does not write a copy that claims highlights it lacks.
-     */
+    // False when the engine refused or has no annotation API, so the caller does not write a copy that claims highlights it lacks.
     fun highlight(marks: List<List<NormRect>>): Boolean
 }
 
-/** A selection end: a character index into the page's text, or a point in page pixels. */
 internal sealed interface PlatformBoundary {
     data class Index(val value: Int) : PlatformBoundary
 
     data class Point(val x: Int, val y: Int) : PlatformBoundary
 }
 
-/** Opens the best engine the device advertises, or the legacy one when that API is not really there. */
 internal object PdfEngineFactory {
 
     fun create(descriptor: ParcelFileDescriptor, capabilities: PdfCapabilities): PdfEngine {
@@ -306,11 +276,7 @@ internal class PdfEngineLegacy(private val renderer: PdfRenderer) : PdfEngine {
     }
 }
 
-/**
- * Writes the reader's highlights into the document as page annotations, so a saved copy keeps them
- * in any viewer. Its own class rather than a method on the page: [HighlightAnnotation] exists only
- * where the platform's annotation API does, and the page classes load on devices without it.
- */
+// Its own class rather than a method on the page: [HighlightAnnotation] exists only where the platform's annotation API does, and the page classes load on devices without it.
 private object PdfHighlightWriter {
 
     fun add(page: PdfRenderer.Page, marks: List<List<NormRect>>): Boolean = write(marks, page.width, page.height) {
@@ -321,7 +287,6 @@ private object PdfHighlightWriter {
         page.addPageAnnotation(it)
     }
 
-    /** One annotation per mark; a negative index is the platform refusing it. */
     private fun write(
         marks: List<List<NormRect>>,
         width: Int,
@@ -341,11 +306,7 @@ private object PdfHighlightWriter {
 /** The highlighter's yellow, opaque in the file rather than washed out as it is on screen. */
 private const val HIGHLIGHT_ANNOTATION_COLOR = 0xFFFFEB3B.toInt()
 
-/**
- * Display render with every annotation layer on, so the reader sees the page as a viewer would.
- * Its own class rather than a file-level value: [RenderParams] exists only where the platform PDF
- * extension does, and this file's facade class loads on every device.
- */
+// Its own class rather than a file-level value: [RenderParams] exists only where the platform PDF extension does, and this file's facade class loads on every device.
 private object PdfDisplayParams {
     val value: RenderParams = RenderParams.Builder(RenderParams.RENDER_MODE_FOR_DISPLAY)
         .setRenderFlags(
@@ -361,13 +322,11 @@ private fun PdfPageTextContent.line(): PlatformLine = PlatformLine(text, bounds.
 
 private fun RectF.pageRect(): PageRect = PageRect(left, top, right, bottom)
 
-/** A stored box (page-relative) as the annotation API takes it: page points, top-left origin. */
 private fun NormRect.annotationRect(pageWidth: Float, pageHeight: Float): RectF =
     RectF(left * pageWidth, top * pageHeight, right * pageWidth, bottom * pageHeight)
 
 private fun Rect.centre(): Point = Point(centerX(), centerY())
 
-/** A widget as viewer terms: page-relative box, label and choices, with the indices an edit needs. */
 private fun FormWidgetInfo.field(pageIndex: Int, pageWidth: Int, pageHeight: Int): PdfFormField {
     val box = widgetRect
     val items = listItems.orEmpty()

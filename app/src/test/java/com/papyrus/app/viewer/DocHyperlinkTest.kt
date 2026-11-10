@@ -16,7 +16,6 @@ class DocHyperlinkTest {
 
     private fun link(url: String) = CharFormat(link = url)
 
-    /** `0x13 instruction 0x14 shown 0x15`, how Word stores a hyperlink. */
     private fun field(instruction: String, shown: String) = "\u0013$instruction\u0014$shown\u0015"
 
     private val bold = CharFormat(bold = true)

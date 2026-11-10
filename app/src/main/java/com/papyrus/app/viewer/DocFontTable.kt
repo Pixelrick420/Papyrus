@@ -1,17 +1,11 @@
 package com.papyrus.app.viewer
 
-/**
- * The font table (SttbfFfn): face names by the index character sprms use, kept to tell a monospaced
- * face from a proportional one. It is `cData` and `cbExtra`, then `cData` FFNs, each a length byte
- * (the size of the rest), 39 bytes of metrics, and the face name as NUL-terminated UTF-16.
- */
+// Kept to tell a monospaced face from a proportional one. Each FFN is a length byte, 39 bytes of metrics and the NUL-terminated UTF-16 face name.
 internal class DocFontTable private constructor(private val names: List<String>) {
 
-    /** True if font [index] is a monospaced face; false for one that is not, or that the table lacks. */
     fun isMono(index: Int): Boolean = isMonoFont(names.getOrNull(index))
 
     companion object {
-        /** FibRgFcLcb97 index of fcSttbfFfn. */
         const val PAIR_STTBFFFN = 15
 
         val EMPTY = DocFontTable(emptyList())
@@ -43,7 +37,6 @@ internal class DocFontTable private constructor(private val names: List<String>)
             return DocFontTable(names)
         }
 
-        /** The face name in `[from, end)`, up to its NUL; an entry too short to hold one has none. */
         private fun faceName(data: ByteArray, from: Int, end: Int): String {
             var stop = from
             while (stop + 1 < end && (data[stop].toInt() != 0 || data[stop + 1].toInt() != 0)) stop += 2

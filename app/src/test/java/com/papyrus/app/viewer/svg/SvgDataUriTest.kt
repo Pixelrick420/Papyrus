@@ -11,7 +11,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.util.Base64
 
-/** The two forms of an SVG data URI, what is refused, and the path from one to the picture. */
 class SvgDataUriTest {
 
     private val svg = EpubFixtures.svg("""<rect width="10" height="10" fill="red"/>""")

@@ -6,7 +6,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
-/** Text formats handed over by another app, the way a file manager opens them: no picker, no library. */
 @RunWith(AndroidJUnit4::class)
 class OpenTextDocumentsTest : E2eTest() {
 
@@ -35,8 +34,7 @@ class OpenTextDocumentsTest : E2eTest() {
     fun markdownIsRenderedInsteadOfShownAsSource() {
         app.openFromAnotherApp(Fixtures.text("report.md", MARKDOWN))
 
-        // The whole document is one text view, not a Compose `Text`, so one node holds everything drawn
-        // as text. Start from a body phrase: the heading is its own virtual node with only its text.
+        // The whole document is one text view, so one node holds everything drawn as text; start from a body phrase, since the heading is its own virtual node.
         val shown = app.find(app.textContains("Revenue grew 12%"), AppDriver.LOAD_TIMEOUT_MS).text
         assertTrue(shown, shown.contains("Revenue grew 12% this quarter, see the full notes."))
         assertTrue(shown, shown.contains("Cancelled item"))
@@ -77,7 +75,6 @@ class OpenTextDocumentsTest : E2eTest() {
     }
 
     private companion object {
-        /** Every construct the renderer has a plugin for, so a plugin R8 broke shows up as markup left in the text. */
         val MARKDOWN = """
             # Quarterly report
 

@@ -5,19 +5,11 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/**
- * The two-phase query's call plumbing and its answer: the order of the hits, which candidates are
- * dropped, and what the excerpt looks like once FTS4's markers are gone.
- *
- * The SQL itself is not exercised here - [FakeSearchDao] stands in for it - so this covers exactly
- * what the repository adds on top: ranking, limiting and marker stripping.
- */
 class SearchRepositoryTest {
 
     private val dao = FakeSearchDao()
     private val repository = SearchRepository(dao)
 
-    /** One `matchinfo` blob scoring [score]: p=1, c=1, n=100, a=100, l=100, x=[1, 100, df]. */
     private fun matchInfo(documentFrequency: Int): ByteArray {
         val ints = intArrayOf(1, 1, 100, 100, 100, 1, 100, documentFrequency)
         return ints.flatMap { value -> (0 until 4).map { shift -> (value shr (8 * shift)).toByte() } }

@@ -1,9 +1,5 @@
 package com.papyrus.app.e2e
 
-/**
- * Turns the device's animations off for the run and restores them afterwards, so a tap is not dropped
- * while a window transition is still playing.
- */
 internal object Animations {
 
     private val SCALES = listOf(
@@ -12,10 +8,8 @@ internal object Animations {
         "animator_duration_scale",
     )
 
-    /** The values the device had before [off], so [restore] can put them back. Null until [off] runs. */
     private var saved: Map<String, String?>? = null
 
-    /** Idempotent: only the first call reads the device and changes anything. */
     fun off() {
         if (saved != null) return
         val current = SCALES.associateWith(::read)

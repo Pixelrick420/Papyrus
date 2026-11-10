@@ -6,7 +6,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** A page boundary is room above a block's item, so the block-to-item maps must not depend on it. */
 class OfficePageUnitsTest {
 
     private fun table(rows: Int) = OfficeBlock.Table(List(rows) { listOf(OfficeCell("r$it")) })

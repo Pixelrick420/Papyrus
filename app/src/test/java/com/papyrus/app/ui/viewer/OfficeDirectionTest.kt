@@ -11,7 +11,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
 
-/** A block's direction as the viewer sets it: the style's direction, never a physical alignment. */
 class OfficeDirectionTest {
 
     private val base = TextStyle()

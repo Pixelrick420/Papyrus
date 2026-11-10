@@ -9,12 +9,7 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
 
-/**
- * One search result's excerpt, with the words that matched drawn over a highlight.
- *
- * [highlights] index the same string as [text], so nothing here has to re-run the query or guess at
- * word boundaries - the excerpt and its ranges are produced together by the search itself.
- */
+// [highlights] index the same string as [text]; excerpt and ranges come from the search together, so nothing re-runs the query.
 @Composable
 fun SnippetText(
     text: String,

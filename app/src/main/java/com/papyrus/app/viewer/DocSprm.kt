@@ -1,14 +1,6 @@
 package com.papyrus.app.viewer
 
-/**
- * Walks a grpprl: sprms packed one after another, each a 2-byte opcode and an operand. The opcode's
- * top three bits (`spra`) give the operand's size: 1, 1, 2, 4, 2, 2 bytes for 0 to 5, a length
- * byte then that many bytes for 6, and 3 bytes for 7. Two sprms break that rule, [TDEFTABLE] (a
- * 2-byte length) and [PCHGTABS] (a length of 0xFF means the size is spelled out inside).
- *
- * A grpprl comes from a file that may be damaged: a size that would run past [end] ends the walk
- * rather than throwing, so what was read before it still counts.
- */
+// The opcode's top three bits (`spra`) give the operand size; [TDEFTABLE] and [PCHGTABS] break that rule. A grpprl may be damaged: a size running past [end] ends the walk.
 internal class DocSprmReader(private val buf: ByteArray, from: Int, end: Int) {
     private val end = end.coerceAtMost(buf.size)
     private var pos = from.coerceAtLeast(0)
@@ -16,14 +8,12 @@ internal class DocSprmReader(private val buf: ByteArray, from: Int, end: Int) {
     var opcode = 0
         private set
 
-    /** Offset of the operand's first byte; for a variable-size operand, of its length prefix. */
     var operand = 0
         private set
 
     var operandSize = 0
         private set
 
-    /** Moves to the next sprm; false once the grpprl is used up or its next sprm does not fit. */
     fun next(): Boolean {
         if (pos + 2 > end) return false
         val op = u16(buf, pos)
@@ -39,13 +29,10 @@ internal class DocSprmReader(private val buf: ByteArray, from: Int, end: Int) {
         return true
     }
 
-    /** The operand byte [at] bytes in; 0 if the operand is shorter than that. */
     fun u8(at: Int = 0): Int = if (at >= 0 && at < operandSize) buf[operand + at].toInt() and 0xFF else 0
 
-    /** The little-endian 16-bit value [at] bytes into the operand; 0 if it does not reach that far. */
     fun u16(at: Int = 0): Int = if (at >= 0 && at + 2 <= operandSize) u16(buf, operand + at) else 0
 
-    /** The 16-bit value at the start of the operand, signed. */
     fun i16(): Int = u16().toShort().toInt()
 
     private fun operandSizeOf(op: Int, at: Int): Int = when (op ushr SPRA_SHIFT) {
@@ -63,7 +50,6 @@ internal class DocSprmReader(private val buf: ByteArray, from: Int, end: Int) {
         return if (cb == TAB_LIST_SIZED_INSIDE && op == PCHGTABS) tabListSize(at) else cb + 1
     }
 
-    /** Operand of a sprmPChgTabs whose length byte is 0xFF: deleted tab stops, then added ones. */
     private fun tabListSize(at: Int): Int {
         if (at + 2 > end) return -1
         val deleted = buf[at + 1].toInt() and 0xFF
@@ -75,7 +61,6 @@ internal class DocSprmReader(private val buf: ByteArray, from: Int, end: Int) {
     }
 
     companion object {
-        /** sprmTDefTable: a row's cell edges and cell descriptors. */
         const val TDEFTABLE = 0xD608
         const val PCHGTABS = 0xC615
 

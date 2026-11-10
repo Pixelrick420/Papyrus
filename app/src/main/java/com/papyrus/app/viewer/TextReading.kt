@@ -7,13 +7,8 @@ import java.io.Reader
 import java.io.SequenceInputStream
 import java.nio.charset.Charset
 
-/** Lines per `LazyColumn` item; a chunk's first line is `index * this + 1`. */
 const val TEXT_LINES_PER_CHUNK = 40
 
-/**
- * A text file as the plain-text viewer shows it. [lineCount] counts a trailing empty line, like an
- * editor; [maxLineColumns] is the widest line in monospace columns, what a no-wrap view sizes from.
- */
 class TextChunks(
     val chunks: List<String>,
     val lineCount: Int,
@@ -24,10 +19,7 @@ class TextChunks(
 
 class DecodedString(val text: String, val encoding: TextEncoding, val truncated: Boolean)
 
-/**
- * Decodes straight into chunks, so a large file is never held as bytes, then one string, then chunks.
- * Lines end at `\n`, `\r\n` or a lone `\r`; reads at most [maxBytes]; [forced] skips detection.
- */
+// Decodes straight into chunks, so a large file is never held as bytes, then one string, then chunks.
 fun readTextChunks(
     input: InputStream,
     maxBytes: Int,
@@ -38,7 +30,6 @@ fun readTextChunks(
     return assembleChunks(openText(input, maxBytes, forced, guesser), linesPerChunk)
 }
 
-/** Reads [opened] to its end into chunks; [readTextChunks] and the provider's in-memory path share it. */
 internal fun assembleChunks(opened: OpenedText, linesPerChunk: Int = TEXT_LINES_PER_CHUNK): TextChunks {
     val assembler = LineAssembler(linesPerChunk)
     val buffer = CharArray(READ_BUFFER_CHARS)
@@ -50,11 +41,6 @@ internal fun assembleChunks(opened: OpenedText, linesPerChunk: Int = TEXT_LINES_
     return assembler.finish(opened.encoding, opened.truncated)
 }
 
-/**
- * The same chunking [readTextChunks] applies, over an already-decoded string - the pretty-printed
- * path, which holds the whole file as text first. Feeds [LineAssembler] in buffer-sized blocks, so
- * no second whole-file copy is made.
- */
 fun chunkText(
     text: String,
     encoding: TextEncoding,
@@ -73,12 +59,7 @@ fun chunkText(
     return assembler.finish(encoding, truncated)
 }
 
-/**
- * The viewer's line rules, in one place for both read paths: lines end at `\n`, `\r\n` or a lone
- * `\r` (`\r\n` counted once, even across a buffer edge); 40 lines to a chunk, each terminated by
- * `\n`; a chunk is only full when its last line ends it; [lineCount] counts a trailing empty line;
- * [maxLineColumns] is the widest line in monospace columns.
- */
+// Lines end at LF, CRLF or a lone CR (CRLF counted once, even across a buffer edge); a chunk is only full when its last line ends it.
 internal class LineAssembler(private val linesPerChunk: Int) {
 
     private val chunks = ArrayList<String>()
@@ -125,7 +106,6 @@ internal class LineAssembler(private val linesPerChunk: Int) {
     }
 }
 
-/** The whole file as one string, for Markdown, which Markwon takes whole. */
 fun readTextString(
     input: InputStream,
     maxBytes: Int,
@@ -142,17 +122,12 @@ internal class OpenedText(
     val reader: Reader,
     val encoding: TextEncoding,
     private val limited: LimitedInputStream,
-    /** The sample took the whole file, so there is nothing after it to index. */
     val sampleCoversFile: Boolean = false,
 ) {
-    /** Only meaningful once [reader] has been read to its end. */
     val truncated: Boolean get() = limited.cutShort
 }
 
-/**
- * Reads a sample to choose the charset, then hands it back in front of the rest of the stream, so
- * the file is opened once; providers differ on whether a second open is allowed.
- */
+// Reads a sample to choose the charset, then hands it back in front of the rest of the stream, so the file is opened once; providers differ on whether a second open is allowed.
 internal fun openText(input: InputStream, maxBytes: Int, forced: Charset?, guesser: CharsetGuesser?): OpenedText {
     val head = ByteArray(TextEncodings.SAMPLE_BYTES)
     val got = input.readUpTo(head)
@@ -167,7 +142,6 @@ internal fun openText(input: InputStream, maxBytes: Int, forced: Charset?, guess
     return OpenedText(InputStreamReader(limited, encoding.charset), encoding, limited, sampleCoversFile = got < head.size)
 }
 
-/** Ends after [remaining] bytes and notes whether the source still had more: the file was cut short. */
 internal class LimitedInputStream(private val source: InputStream, private var remaining: Long) : InputStream() {
 
     var cutShort = false
@@ -226,8 +200,6 @@ internal fun columnsOf(c: Char): Int = when {
     else -> 1
 }
 
-/** East Asian wide and fullwidth blocks, enough to size a scroll extent; a surrogate counts one, so
- * a pair counts two. */
 private const val FIRST_WIDE = 0x1100
 
 private fun isWide(c: Char): Boolean =

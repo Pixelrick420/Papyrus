@@ -2,25 +2,20 @@ package com.papyrus.app.viewer
 
 import org.xmlpull.v1.XmlPullParser
 
-/**
- * [targets]: `rId7 -> word/media/image3.png`, relative targets resolved. [links]: `rId9 -> the URL`,
- * for relationships marked external. Kept apart because an external target is not an archive entry.
- */
+// [targets]: `rId7 -> word/media/image3.png`, relative targets resolved. [links]: `rId9 -> the URL`,
+// for relationships marked external. Kept apart because an external target is not an archive entry.
 internal class DocxRels(val targets: Map<String, String>, val links: Map<String, String>) {
     companion object {
         val EMPTY = DocxRels(emptyMap(), emptyMap())
     }
 }
 
-/** Footnote or endnote the body pointed at, in reading order; [label] is its marker in the text. */
 internal class NoteRef(val endnote: Boolean, val id: String, val label: String)
 
-/** Comment the body pointed at, in reading order; [label] ("C1") is its marker in the text. */
 internal class CommentRef(val id: String, val label: String)
 
 private val HYPERLINK_FIELD = Regex("HYPERLINK\\s+\"([^\"]+)\"", RegexOption.IGNORE_CASE)
 
-/** 914,400 EMU to the inch, 160 dp to the inch. */
 private const val EMU_PER_DP = 5715.0
 
 private const val MAX_LIST_LEVEL = 8
@@ -29,11 +24,7 @@ private fun XmlPullParser.attr(name: String): String? = getAttributeValue(null, 
 
 private fun XmlPullParser.intAttr(name: String): Int? = getAttributeValue(null, name)?.toIntOrNull()
 
-/**
- * Reads one WordprocessingML part (`document.xml`, or `footnotes.xml` / `endnotes.xml` / `comments.xml`) into
- * [blocks], walking the XML once as a state machine. Stops at [blockBudget] blocks, which the thumbnail path
- * spends cheaply. Not safe to reuse: one instance, one part.
- */
+// Not safe to reuse: one instance, one part.
 internal class DocxBodyParser(
     private val newParser: ParserFactory,
     private val styles: DocxStyles,
@@ -44,19 +35,14 @@ internal class DocxBodyParser(
 ) {
     val blocks = mutableListOf<OfficeBlock>()
 
-    /** Footnotes and endnotes the *body* referenced. Empty for a notes part. */
     val noteRefs = mutableListOf<NoteRef>()
 
-    /** Comments the *body* referenced. Empty for a notes or comments part. */
     val commentRefs = mutableListOf<CommentRef>()
 
-    /** For a notes or comments part: id -> the note's text. */
     val notes = HashMap<String, RichSnapshot>()
 
-    /** For a comments part: id -> "author · date". Footnotes have none. */
     val noteBylines = HashMap<String, String>()
 
-    /** What `w:pPr` said about the paragraph being read. */
     private class ParaState {
         var styleId: String? = null
         var align: BlockAlign? = null
@@ -66,7 +52,6 @@ internal class DocxBodyParser(
         var outline: Int? = null
     }
 
-    /** The anchoring paragraph's state while a text box's own paragraphs are parsed. */
     private class SetAsideParagraph(val snapshot: RichSnapshot, val depth: Int, val para: ParaState)
 
     private val paragraph = RichTextBuilder()
@@ -106,7 +91,6 @@ internal class DocxBodyParser(
     // Inside a `...PrChange`: the *previous* properties of a tracked change, not the current ones.
     private var changeDepth = 0
 
-    // An `m:oMath` equation is read by its own walker and arrives as one line of text.
     private val math = OmmlLinearizer()
 
     private var link: String? = null
@@ -146,7 +130,6 @@ internal class DocxBodyParser(
         }
     }
 
-    /** The format of the run being read: styles first, then the run's own properties, then any link. */
     private fun format(): CharFormat {
         runFormat?.let { return it }
         val base = styles.runProps(para.styleId, runStyleId)
@@ -162,10 +145,6 @@ internal class DocxBodyParser(
         return shared
     }
 
-    /**
-     * Parser text goes to the cell buffer inside a `w:tc`, else the paragraph, and only inside a
-     * `w:t`; [element] marks characters an element contributes (a tab, a break) regardless of that.
-     */
     private fun appendText(raw: String, element: Boolean = false, withFormat: CharFormat? = null) {
         if (inText || element) {
             (if (inCell) cell else paragraph).append(raw, withFormat ?: format())
@@ -233,7 +212,6 @@ internal class DocxBodyParser(
                 cellColspan = p.intAttr("w:val")?.coerceIn(1, MAX_MERGE_SPAN) ?: 1
             }
             "w:vMerge" -> if (inCell && tableDepth == 1) {
-                // val="restart" opens a merge, "continue" extends one, and no val at all means continue.
                 cellMerge = when (p.attr("w:val")) {
                     "restart" -> MergeState.RESTART
                     null, "continue" -> MergeState.CONTINUE
@@ -362,10 +340,8 @@ internal class DocxBodyParser(
         }
     }
 
-    /**
-     * An equation is not inside a `w:r`, so the run state left by the previous run (its bold, its
-     * colour) would otherwise colour it; it starts from the paragraph's own formatting instead.
-     */
+    // An equation is not inside a `w:r`, so the run state left by the previous run (its bold, its
+    // colour) would otherwise colour it; it starts from the paragraph's own formatting instead.
     private fun startEquation() {
         runProps = RunProps()
         runStyleId = null
@@ -376,7 +352,6 @@ internal class DocxBodyParser(
         if (text.isNotEmpty()) appendText(text, element = true)
     }
 
-    /** A HYPERLINK field: its result runs, until the field ends, are the link text. */
     private fun startField(fieldText: String) {
         val url = HYPERLINK_FIELD.find(fieldText)?.groupValues?.get(1)
         val safe = safeLink(url)
@@ -396,7 +371,6 @@ internal class DocxBodyParser(
     private fun imageWidthDp(): Float? =
         imageWidthEmu?.let { (it / EMU_PER_DP).toFloat() }?.takeIf { it > 0f }
 
-    /** The marker goes into the text now; the note itself is read from its own part later. */
     private fun addNoteReference(p: XmlPullParser, endnote: Boolean) {
         val id = p.attr("w:id") ?: return
         val label = if (endnote) formatListNumber(++endnoteCount, "lowerRoman") else (++footnoteCount).toString()
@@ -404,7 +378,6 @@ internal class DocxBodyParser(
         appendText(label, element = true, withFormat = format().copy(script = ScriptShift.SUPER))
     }
 
-    /** The marker goes into the text now; the comment is read from `comments.xml` later. */
     private fun addCommentReference(p: XmlPullParser) {
         val id = p.attr("w:id") ?: return
         val label = "C${++commentCount}"
@@ -412,10 +385,8 @@ internal class DocxBodyParser(
         appendText(label, element = true, withFormat = COMMENT_MARKER_FORMAT)
     }
 
-    /**
-     * Gathers the paragraphs a `w:footnote` (or `w:comment`) produced into one note, and takes them back out of
-     * [blocks]: a note belongs after the body, in the order it was referenced, not where its part has it.
-     */
+    // Gathers the paragraphs a `w:footnote` (or `w:comment`) produced into one note, and takes them back out of
+    // [blocks]: a note belongs after the body, in the order it was referenced, not where its part has it.
     private fun endNote() {
         val id = noteId
         noteId = null
@@ -442,7 +413,6 @@ internal class DocxBodyParser(
         noteByline?.let { noteBylines[id] = it }
     }
 
-    /** The list marker this paragraph earns, or null if it is not in a list. Advances the list. */
     private fun markerFor(resolved: ParaStyle): String? {
         val numId = para.numId ?: resolved.numId ?: return null
         if (numId == 0) return null // an explicit "no list", which overrides one the style gave
@@ -480,10 +450,8 @@ internal class DocxBodyParser(
         para = ParaState()
     }
 
-    /**
-     * A cell draws as lines of text, so a list item there carries its marker in the text. Alignment is
-     * the first paragraph's: a column of figures is right-aligned paragraph by paragraph.
-     */
+    // A cell draws as lines of text, so a list item there carries its marker in the text. Alignment is
+    // the first paragraph's: a column of figures is right-aligned paragraph by paragraph.
     private fun endCellParagraph() {
         if (tableDepth == 1) {
             val resolved = styles.paragraph(para.styleId)

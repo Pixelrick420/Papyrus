@@ -3,10 +3,8 @@ package com.papyrus.app.viewer
 import com.papyrus.app.viewer.svg.SvgRasteriser
 import com.papyrus.app.viewer.svg.SvgScene
 
-/** EPUBs are built in memory, like [OfficeFixtures]'s Word files: a binary fixture cannot be reviewed in a diff. */
 internal object EpubFixtures {
 
-    /** A chapter of the book: [href] is relative to the package directory (`OEBPS/`). */
     class Chapter(val href: String, val xhtml: String, val linear: Boolean = true)
 
     fun xhtml(body: String, head: String = "<title>t</title>") =
@@ -19,12 +17,6 @@ internal object EpubFixtures {
   <rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles>
 </container>"""
 
-    /**
-     * A whole EPUB. Chapters are `ch0`, `ch1`, ... in manifest order; [spineOrder] lists indices to read
-     * them in another order. [nav] and [ncx] are the contents of `nav.xhtml` and `toc.ncx`; [media] are
-     * files under `OEBPS/`; [extra] are whole entries by archive path; [coverMetaId] and [coverImageHref] name
-     * a cover the two ways EPUB does; [mimetypeLast] puts the mimetype entry at the end of the archive.
-     */
     fun epub(
         chapters: List<Chapter>,
         spineOrder: List<Int>? = null,
@@ -77,7 +69,6 @@ internal object EpubFixtures {
 
     fun chapter(body: String, href: String = "c.xhtml") = Chapter(href, xhtml(body))
 
-    /** An EPUB 3 navigation document: [toc] goes inside `<nav epub:type="toc">`. */
     fun navDoc(toc: String, before: String = "", after: String = "") = xhtml(
         """$before<nav epub:type="toc"><ol>$toc</ol></nav>$after""",
     )
@@ -97,11 +88,9 @@ internal object EpubFixtures {
             }
         }</encryption>"""
 
-    /** A whole `.svg` document; [attrs] go on the root, [inner] is what it draws. */
     fun svg(inner: String, attrs: String = "viewBox=\"0 0 100 50\"") =
         "<?xml version=\"1.0\"?><svg xmlns=\"http://www.w3.org/2000/svg\" $attrs>$inner</svg>"
 
-    /** Stands in for the Android rasteriser: records the scenes it is asked for and answers with [result] or throws. */
     class FakeRasteriser(private val result: ByteArray? = OfficeFixtures.PNG_1X1, private val fails: Boolean = false) : SvgRasteriser {
         val scenes = ArrayList<SvgScene>()
 

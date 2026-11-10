@@ -1,9 +1,7 @@
 package com.papyrus.app.viewer
 
-/** Rules kept per stylesheet source (the book's, a chapter's); the rest are ignored. */
 internal const val MAX_CSS_RULES = 500
 
-/** Parts one selector may name (an `id` and its classes); a longer one is not a selector this subset reads. */
 internal const val MAX_SELECTOR_COMPOUNDS = 4
 
 private const val SPECIFICITY_ID = 100
@@ -12,14 +10,10 @@ private const val SPECIFICITY_TYPE = 1
 private const val WEIGHT_BOLD = 600
 private const val WEIGHT_NORMAL_MAX = 500
 
-/**
- * What a style says about the three things the viewer can draw: bold, italic and alignment. Each is a
- * tri-state, null meaning "not said", so a stylesheet can also take a markup bold away, as a browser would.
- */
+// Each is a tri-state, null meaning "not said", so a stylesheet can also take a markup bold away, as a browser would.
 internal class CssDecl(val bold: Boolean? = null, val italic: Boolean? = null, val align: BlockAlign? = null) {
     val isEmpty: Boolean get() = bold == null && italic == null && align == null
 
-    /** This layer wins wherever it has a say; [base] decides the rest. */
     fun mergeOver(base: CssDecl): CssDecl = CssDecl(bold ?: base.bold, italic ?: base.italic, align ?: base.align)
 
     companion object {
@@ -27,11 +21,9 @@ internal class CssDecl(val bold: Boolean? = null, val italic: Boolean? = null, v
     }
 }
 
-/** [format] with what [css] says about bold and italic laid over it. */
 internal fun CharFormat.withCss(css: CssDecl): CharFormat =
     if (css.bold == null && css.italic == null) this else copy(bold = css.bold ?: bold, italic = css.italic ?: italic)
 
-/** A simple compound selector: an optional type (`*` or absent matches any), at most one id, any classes. */
 internal class CssSelector(val type: String?, val id: String?, val classes: List<String>) {
     val specificity: Int
         get() = (if (id != null) SPECIFICITY_ID else 0) + classes.size * SPECIFICITY_CLASS +
@@ -43,10 +35,7 @@ internal class CssSelector(val type: String?, val id: String?, val classes: List
 
 internal class CssRule(val selector: CssSelector, val decl: CssDecl, val order: Int)
 
-/**
- * Rules in cascade order. The id (100), class (10) and type (1) of a selector give its specificity; a later
- * rule beats an earlier one of the same specificity; each property is decided on its own.
- */
+// Specificity: id 100, class 10, type 1; a later rule beats an earlier one of the same specificity; each property is decided on its own.
 internal class CssSheet(rules: List<CssRule>) {
     private val byId = HashMap<String, MutableList<CssRule>>()
     private val byClass = HashMap<String, MutableList<CssRule>>()
@@ -65,7 +54,6 @@ internal class CssSheet(rules: List<CssRule>) {
         }
     }
 
-    /** What the rules say about an element, or null when none applies. */
     fun declFor(tag: String, id: String?, classes: Set<String>): CssDecl? {
         val found = ArrayList<CssRule>()
         id?.let { byId[it] }?.let { found += it }
@@ -82,7 +70,6 @@ internal class CssSheet(rules: List<CssRule>) {
     }
 }
 
-/** Rules from [text], numbered from [firstOrder]; anything this subset cannot read is skipped, nothing throws. */
 internal fun parseCss(text: String, firstOrder: Int = 0): List<CssRule> {
     val source = stripComments(text)
     val rules = ArrayList<CssRule>()
@@ -130,7 +117,6 @@ private fun stripComments(text: String): String {
     return out.toString()
 }
 
-/** The index after the at-rule at [from]: a statement up to `;` (`@import`), or a block up to its balanced `}`. */
 private fun skipAtRule(source: String, from: Int): Int {
     var i = from
     while (i < source.length && source[i] != ';' && source[i] != '{') i++
@@ -147,7 +133,6 @@ private fun skipAtRule(source: String, from: Int): Int {
     return source.length
 }
 
-/** A selector of one compound; null for a combinator, a pseudo-class, an attribute test or anything unrecognised. */
 private fun parseSelector(raw: String): CssSelector? {
     val text = raw.trim()
     if (text.isEmpty()) return null
@@ -179,7 +164,6 @@ private fun parseSelector(raw: String): CssSelector? {
 
 private fun isIdentChar(c: Char): Boolean = c.isLetterOrDigit() || c == '-' || c == '_' || c.code > 0x7F
 
-/** The bold, italic and alignment a block of declarations (`a: b; c: d`) says; an unknown or malformed one is ignored. */
 internal fun parseDeclarations(text: String): CssDecl {
     var bold: Boolean? = null
     var italic: Boolean? = null
@@ -201,17 +185,14 @@ internal fun parseDeclarations(text: String): CssDecl {
     return CssDecl(bold, italic, align)
 }
 
-/** `bold` and 600 or more are bold, `normal` and up to 500 are not; `bolder` and `lighter` depend on the parent. */
+// `bolder` and `lighter` depend on the parent.
 private fun weightIsBold(value: String): Boolean? = when (value) {
     "bold" -> true
     "normal" -> false
     else -> value.toIntOrNull()?.let { if (it >= WEIGHT_BOLD) true else if (it <= WEIGHT_NORMAL_MAX) false else null }
 }
 
-/**
- * The text of every `<style>` in a chapter, found by a plain scan: no markup parse, never throws. This is what
- * lets a `<style>` after the text it styles still apply, without buffering the chapter in the parser.
- */
+// A plain scan, never throws; it lets a `<style>` after the text it styles still apply without buffering the chapter.
 internal fun stylesIn(xhtml: ByteArray): String {
     val out = StringBuilder()
     var i = 0

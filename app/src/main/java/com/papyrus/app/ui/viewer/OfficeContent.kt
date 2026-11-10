@@ -64,7 +64,6 @@ internal fun OfficeBlockView(
     highlight: FindHighlight? = null,
     reveal: RevealTicket? = null,
     speaking: SpokenRange? = null,
-    /** The direction this block is set in, already resolved against the document's; tables ignore it. */
     direction: BlockDirection = BlockDirection.LTR,
 ) {
     when (block) {
@@ -105,10 +104,6 @@ internal fun OfficeBlockView(
     }
 }
 
-/**
- * The text of this block as the viewer draws it, which is what a spoken word is found again in; null for
- * a block with no single text (a table is several cells, an image has none).
- */
 internal fun OfficeBlock.spokenSource(): String? = when (this) {
     is OfficeBlock.Heading -> text
     is OfficeBlock.Paragraph -> text
@@ -117,25 +112,17 @@ internal fun OfficeBlock.spokenSource(): String? = when (this) {
     else -> null
 }
 
-/** One step of paragraph indentation, as extracted: a quarter inch of the page. */
 private val INDENT_STEP = 16.dp
 
 private val LIST_INDENT = 20.dp
 private val MARKER_WIDTH = 20.dp
 
-/**
- * [align] is the side the paragraph starts on, not a physical one: Start and End already follow the text
- * direction, so a right-to-left block only needs its direction set, and a left-to-right one is untouched.
- */
+// Start and End already follow the text direction, so a right-to-left block only needs its direction set.
 internal fun TextStyle.withLayout(align: BlockAlign, direction: BlockDirection): TextStyle {
     val aligned = if (align == BlockAlign.START) this else copy(textAlign = align.toTextAlign())
     return if (direction == BlockDirection.RTL) aligned.copy(textDirection = direction.toTextDirection()) else aligned
 }
 
-/**
- * Lays [content] out from the right for a right-to-left block, so a marker, a label and an indent land on the
- * right edge as `dir=rtl` would put them; any other block keeps the layout direction it is already in.
- */
 @Composable
 private fun WithLayoutDirection(direction: BlockDirection, content: @Composable () -> Unit) {
     val layoutDirection = if (direction == BlockDirection.RTL) LayoutDirection.Rtl else LocalLayoutDirection.current
@@ -189,7 +176,6 @@ private fun OfficeNoteView(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.widthIn(min = MARKER_WIDTH).padding(end = 6.dp),
             )
-            // A comment says who wrote it and when, above its words; a footnote has no byline.
             Column(Modifier.weight(1f)) {
                 note.byline?.let { byline ->
                     Text(
@@ -222,15 +208,8 @@ private fun headingStyle(level: Int) = when (level.coerceIn(1, 6)) {
     else -> MaterialTheme.typography.bodyLarge
 }
 
-/**
- * Column widths come from the cells' own content and every cell is drawn as tall as its row, so a
- * short cell's border reaches the bottom. Row spans need a layout that sees every row: [TableGrid].
- *
- * Draws [rowCount] rows from [firstRow] - one band of a table split for virtualization. The counting
- * stays whole-table, so a band's match numbering and coverage are exactly what the same rows show in
- * an unsplit table: indices address the table globally, the band's grid locally. [hScroll] is shared
- * by every band of the table, so they move sideways as one.
- */
+// Column widths come from the cells' own content and every cell is as tall as its row; row spans need [TableGrid], which sees every row.
+// Draws one band of a table split for virtualization: counting stays whole-table so match numbering equals an unsplit table's.
 @Composable
 internal fun OfficeTableView(
     table: OfficeBlock.Table,
@@ -243,8 +222,7 @@ internal fun OfficeTableView(
 ) {
     val columnCount = remember(table) { table.rows.maxOfOrNull { row -> row.maxOf { it.lastColumn } + 1 } ?: 0 }
     if (columnCount == 0) return
-    // The table's current match is numbered across the whole table, in reading order. Each cell needs
-    // to know how many matches came before it to tell which, if any, is its own.
+    // A cell needs to know how many matches came before it, since the current match is numbered across the whole table in reading order.
     val matchesBefore = remember(table, highlight?.query) {
         val query = highlight?.query
         var seen = 0
@@ -277,7 +255,6 @@ internal fun OfficeTableView(
     // The viewport width is what a table that is too wide has to fit, so it is read here rather than
     // inside the scroller, which is offered unbounded width.
     BoxWithConstraints(modifier.fillMaxWidth()) {
-        // Every band fits the same viewport against the same whole-table metrics, so the columns agree.
         val columnWidths = remember(metrics, maxWidth) { fitColumns(metrics, maxWidth.value) }
         Box(Modifier.horizontalScroll(hScroll)) {
             TableGrid(columnWidthsDp = columnWidths, rowCount = rowCount) {
@@ -317,22 +294,14 @@ private val CELL_PADDING = 8.dp
 private val CELL_GAP = 1.dp
 private val MIN_CELL_HEIGHT = 40.dp
 
-/** Width a cell spends outside its text: gap and padding, both sides. */
 private val CELL_CHROME = (CELL_GAP + CELL_PADDING) * 2
 
-/**
- * `Constraints` cannot represent a height past this; a taller cell is cut short, not crashed.
- */
+// `Constraints` cannot represent a height past this; a taller cell is cut short, not crashed.
 private const val MAX_CELL_PX = 250_000
 
-/** Marks which [TableGrid] cells a child occupies; read back off the child. */
 private fun Modifier.gridCell(row: Int, column: Int, colspan: Int = 1, rowspan: Int = 1): Modifier =
     layoutId(GridCell(row, column, colspan.coerceAtLeast(1), rowspan.coerceAtLeast(1)))
 
-/**
- * Lays children on a grid of [columnWidthsDp]; each child names its cells with [gridCell]. Rows
- * sized by intrinsics (a span grows its last row), then each child measured once at its drawn size.
- */
 @Composable
 private fun TableGrid(
     columnWidthsDp: FloatArray,
@@ -366,10 +335,7 @@ private fun TableGrid(
     }
 }
 
-/**
- * Takes whatever size [TableGrid] hands it, so the border and fill cover the whole cell, merged or not.
- * Gaps are per cell, so a merged cell shows no internal border.
- */
+// Gaps are per cell, so a merged cell shows no internal border.
 @Composable
 private fun CellBox(
     cell: OfficeCell?,
@@ -468,9 +434,7 @@ private sealed interface ImageState {
     data object Failed : ImageState
 }
 
-/**
- * From configuration, not a measured constraint: the image is `fillMaxWidth`, so measuring loops.
- */
+// From configuration, not a measured constraint: the image is `fillMaxWidth`, so measuring loops.
 @Composable
 private fun viewportWidthPx(): Int = with(LocalDensity.current) {
     LocalConfiguration.current.screenWidthDp.dp.toPx()

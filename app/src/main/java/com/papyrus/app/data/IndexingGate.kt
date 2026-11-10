@@ -7,13 +7,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 
-/**
- * Whether the content indexer may work right now: only when the person has not turned it off, is not
- * reading a document, and the device is not saving battery.
- *
- * The three conditions arrive as flows so this holds no Android type and the indexer can be tested
- * with plain ones; [batterySaverFlow] and [ReaderPresence] are the real sources.
- */
+// Flows keep this free of Android types so the indexer can be tested with plain ones.
 class IndexingGate(
     enabled: Flow<Boolean>,
     reading: Flow<Boolean>,
@@ -25,16 +19,10 @@ class IndexingGate(
     }.distinctUntilChanged()
 }
 
-/**
- * How many screens are showing a document to read. The viewer registers while it is in the foreground
- * and leaves when it pauses or goes, so a document opened beside the list and one opened full screen
- * count the same way. A count rather than a flag because a second viewer can be entered before the
- * first one has left.
- */
+// A count rather than a flag: a second viewer can be entered before the first has left.
 class ReaderPresence {
     private val viewers = MutableStateFlow(0)
 
-    /** True while at least one viewer is in the foreground. */
     val reading: Flow<Boolean> = viewers.map { it > 0 }.distinctUntilChanged()
 
     fun entered() = viewers.update { it + 1 }

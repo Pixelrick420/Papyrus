@@ -7,7 +7,6 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** Zoom anchoring and gesture arbitration, pinned on the pure logic rather than the surfaces. */
 class ZoomAnchoringTest {
 
     private val focal = Offset(x = 300f, y = 400f)
@@ -20,7 +19,6 @@ class ZoomAnchoringTest {
 
     @Test
     fun `zooming in from the top of the document scrolls by the focal offset`() {
-        // Content under the finger sits focal px down before and ratio * focal down after.
         val target = anchoredScroll(0f, focal.y, commit(1f to 2f))
         assertEquals(focal.y, target, 0.01f)
     }
@@ -48,7 +46,6 @@ class ZoomAnchoringTest {
         val scale = commit(1f to 2.5f)
         val target = anchoredScroll(800f, focal.y, scale)
 
-        // What a surface does: hold the value, not re-derive it from the new scroll.
         assertEquals(target, target, 0.0f)
         assertTrue(target > 800f)
     }
@@ -96,8 +93,7 @@ class ZoomAnchoringTest {
         repeat(4) { zoom.applyGesture(0.8f) }
         assertTrue("expected an undershoot, was ${zoom.gestureScale}", zoom.gestureScale < MIN_SCALE)
 
-        // The band converges on MIN_SCALE from below, so a pinch held open settles just under the
-        // bound instead of collapsing the page, and past a few steps reads as exactly MIN_SCALE.
+        // The band converges on MIN_SCALE from below, so a pinch held open settles just under the bound and past a few steps reads as exactly MIN_SCALE.
         repeat(36) { zoom.applyGesture(0.8f) }
         assertTrue("rubber band let the page collapse to ${zoom.gestureScale}", zoom.gestureScale >= MIN_SCALE - 0.05f)
 
@@ -332,8 +328,6 @@ class ZoomAnchoringTest {
 
     @Test
     fun `an item that grew below the focal point is scrolled forward`() {
-        // Item was 1000px tall at the top, the finger at 400px sat 40% down it. At 2x it is 2000px
-        // tall and the same spot is 800px down, so the list must scroll forward by 400.
         val delta = lazyAnchorDelta(focal = 400f, fraction = 0.4f, itemTop = 0f, itemSize = 2000f)
         assertEquals(400f, delta, 0.01f)
     }
@@ -345,7 +339,6 @@ class ZoomAnchoringTest {
         val top = -300f
         val delta = lazyAnchorDelta(focal.y, fraction, top, size)
 
-        // Scrolling forward by delta moves the item up by delta.
         assertEquals(focal.y, (top - delta) + fraction * size, 0.01f)
     }
 
@@ -356,26 +349,20 @@ class ZoomAnchoringTest {
 
     @Test
     fun `the requested scroll offset puts the focal fraction of the grown item under the finger`() {
-        // Item was 1000px, the finger sat 40% down it. At 2x it is 2000px and 800px of it must sit
-        // above the finger, so the item's top is 400 - 800 = -400 relative to the viewport.
         val before = 8
         val offset = lazyAnchorScrollOffset(focal = 400f, fraction = 0.4f, newItemSize = 2000f, before = before)
 
-        // An item at offset 0 sits `before` px down; each px of scroll offset lifts it by one.
         val top = before - offset
         assertEquals(400f, top + 0.4f * 2000f, 0.51f)
     }
 
     @Test
     fun `an item that did not change size and was not moved keeps its offset`() {
-        // Anchored at the top of an item with no content padding: nothing to do.
         assertEquals(0, lazyAnchorScrollOffset(focal = 0f, fraction = 0f, newItemSize = 1000f, before = 0))
     }
 
     @Test
     fun `the requested offset agrees with the delta the settle pass would apply`() {
-        // The atomic request and the measured trim are two views of one equation: after the request
-        // lands on an item of the predicted size, the trim must find nothing left to do.
         val fraction = 0.3f
         val size = 1800f
         val before = 24

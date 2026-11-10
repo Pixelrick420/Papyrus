@@ -7,7 +7,6 @@ import android.media.AudioManager
 import android.os.Handler
 import android.os.Looper
 
-/** [AudioFocus] on the system's [AudioManager]; [onChange] hears every focus change on the main thread. */
 internal class PlatformAudioFocus(
     context: Context,
     attributes: AudioAttributes,

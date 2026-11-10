@@ -1,23 +1,15 @@
 package com.papyrus.app.viewer
 
-/** Which [CodeLanguage] a file selects: its name decides, and its content only where the name cannot. */
 object CodeLanguages {
 
-    /** Null for anything without a definition, which then shows as plain text. */
     fun forFileName(displayName: String?): CodeLanguage? {
         val name = displayName?.lowercase().orEmpty()
         if (name.isEmpty()) return null
-        // Dockerfile.dev, Dockerfile-prod: the name leads, the extension is a suffix of it.
         if (name.startsWith("dockerfile")) return DOCKERFILE
         return byExtension[extensionOf(name)]
     }
 
-    /**
-     * [forFileName], with the start of the file ([head], see [LanguageDetector.headOf]) as a second opinion for a
-     * file opened as code. The name stays authoritative: the content is read only when the name selects no
-     * definition (an unknown or missing extension) or is one of [LanguageDetector.AMBIGUOUS_EXTENSIONS], and when
-     * it says nothing the name's answer, if any, stands.
-     */
+    // The name stays authoritative: content is read only when the name selects no definition or is one of [LanguageDetector.AMBIGUOUS_EXTENSIONS].
     fun forContent(displayName: String?, head: String): CodeLanguage? {
         val named = forFileName(displayName)
         val extension = extensionOf(displayName?.lowercase().orEmpty())
@@ -26,14 +18,10 @@ object CodeLanguages {
         return languageOf(kind) ?: named
     }
 
-    /** The text after the last dot, or the whole name when it has none, which is how a name is matched everywhere. */
     private fun extensionOf(lowerCaseName: String): String =
         if (lowerCaseName.contains('.')) lowerCaseName.substringAfterLast('.') else lowerCaseName
 
-    /**
-     * The definition that colours [kind], or null when there is none. C, C++ and Objective-C share the one C-family
-     * definition, which is also what `.c` and `.h` get by name, so telling them apart changes no colour for now.
-     */
+    // C, C++ and Objective-C share one C-family definition, so telling them apart changes no colour for now.
     private fun languageOf(kind: ContentKind): CodeLanguage? = when (kind) {
         ContentKind.SHELL -> SHELL
         ContentKind.POWERSHELL -> POWERSHELL
@@ -50,11 +38,6 @@ object CodeLanguages {
         ContentKind.PERL, ContentKind.MATLAB -> null
     }
 
-    /**
-     * The language a Markdown code fence names, or null to show the block plain. The tag is the first word of
-     * the info string, so `kotlin`, `kotlin title="A.kt"`, `kotlin{1,3}`, `{.kotlin}` and `language-kotlin`
-     * all select Kotlin, as do the short names `kt` and `py` that files use as extensions.
-     */
     fun forFence(info: String?): CodeLanguage? {
         val tag = fenceTag(info) ?: return null
         return byName[tag] ?: byExtension[tag]
@@ -450,7 +433,6 @@ object CodeLanguages {
         capitalizedTypes = false,
     )
 
-    /** Extensions from [com.papyrus.app.data.DocumentFormat.CODE] that have a definition; the rest show plain. */
     private val byExtension: Map<String, CodeLanguage> = buildMap {
         fun add(language: CodeLanguage, vararg extensions: String) = extensions.forEach { put(it, language) }
         add(KOTLIN, "kt", "kts")
@@ -486,7 +468,7 @@ object CodeLanguages {
         add(CMAKE, "cmake")
     }
 
-    /** The names a code fence uses that are not file extensions; `text` and `plaintext` are left out on purpose. */
+    // `text` and `plaintext` are left out on purpose.
     private val byName: Map<String, CodeLanguage> = buildMap {
         fun add(language: CodeLanguage, vararg names: String) = names.forEach { put(it, language) }
         add(KOTLIN, "kotlin")

@@ -4,7 +4,6 @@ import androidx.compose.material.icons.materialIcon
 import androidx.compose.material.icons.materialPath
 import androidx.compose.ui.graphics.vector.ImageVector
 
-/** Media skip-next: a triangle pointing right, then a bar at its right. */
 val SkipNext: ImageVector = materialIcon(name = "Filled.SkipNext") {
     materialPath {
         moveTo(6.0f, 6.0f)

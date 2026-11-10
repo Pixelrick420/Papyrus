@@ -9,7 +9,6 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 
-/** Fixed-layout books: which spine items are pages, where each starts, and the shape of a page-sized picture. */
 class EpubFixedLayoutTest {
 
     @get:Rule
@@ -27,7 +26,6 @@ class EpubFixedLayoutTest {
         ).extract(OfficeFixtures.streamFactory(bytes))
     }
 
-    /** A book of [count] chapters c0.xhtml...; [meta] goes in the metadata, [properties] by chapter number on its itemref. */
     private fun book(
         chapters: List<EpubFixtures.Chapter>,
         meta: String = "",

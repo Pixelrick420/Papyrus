@@ -33,29 +33,19 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
 
-/** How long a readout stays after its value stops changing; same linger as the scroll knob. */
 const val READOUT_LINGER_MILLIS = 1000L
 
-/** Quick in, so the readout is there while the eye is still on the change that caused it. */
 private const val FADE_IN_MILLIS = 160
 
-/** Slow out, so the readout drifts away instead of blinking off. */
 private const val FADE_OUT_MILLIS = 320
 
-/**
- * Size a readout starts from and settles to as it leaves. Small enough to be felt rather than
- * seen; the scroll knob uses it too, so all three read as one system.
- */
 const val READOUT_POP_SCALE = 0.92f
 
 /** Shared by the knob's alpha and the badges, so they fade on the same curve. */
 internal val ReadoutFadeIn: TweenSpec<Float> = tween(FADE_IN_MILLIS, easing = LinearOutSlowInEasing)
 internal val ReadoutFadeOut: TweenSpec<Float> = tween(FADE_OUT_MILLIS, easing = FastOutSlowInEasing)
 
-/**
- * Pill on screen only while [visible]: fades and grows out of [transformOrigin], leaving the same
- * way slower. Out of composition while hidden, so it costs nothing and cannot block a touch.
- */
+// Out of composition while hidden, so it costs nothing and cannot block a touch.
 @Composable
 fun ReadoutBadge(
     text: String,
@@ -82,10 +72,6 @@ fun ReadoutBadge(
     }
 }
 
-/**
- * True from [signal]'s first change until [lingerMillis] after it last changed; every change
- * restarts the wait. While [hold] is true the countdown does not start.
- */
 @Composable
 fun <T> rememberLingerVisible(
     lingerMillis: Long = READOUT_LINGER_MILLIS,
@@ -99,7 +85,6 @@ fun <T> rememberLingerVisible(
     LaunchedEffect(Unit) {
         snapshotFlow { currentSignal() }
             .drop(1)
-            // A newer change cancels the wait of the one before it.
             .collectLatest {
                 visible.value = true
                 snapshotFlow { currentHold() }.first { !it }

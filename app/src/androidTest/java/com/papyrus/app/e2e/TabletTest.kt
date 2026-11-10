@@ -6,7 +6,6 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 
-/** A window wide enough for the library and a document side by side: selection, Back and the empty right pane. */
 @RunWith(AndroidJUnit4::class)
 class TabletTest : E2eTest() {
 

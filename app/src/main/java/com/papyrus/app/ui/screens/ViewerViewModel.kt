@@ -131,8 +131,6 @@ import kotlin.coroutines.cancellation.CancellationException
 sealed interface ViewerContent {
     data object Loading : ViewerContent
     data class Pdf(val source: PdfPageSource, val aspectRatios: List<Float>) : ViewerContent
-    /** [text] for find and render; [source] lets a table re-snapshot force a fresh render.
-     * [encoding] is what the file was decoded as. */
     data class Markdown(
         val markwon: Markwon,
         val source: String,
@@ -141,9 +139,7 @@ sealed interface ViewerContent {
         val latexFactory: LatexSpanFactory? = null,
     ) : ViewerContent
 
-    /** Forty lines to a chunk. [language]/[lexStates] are set only for source files: the states say
-     * where each chunk's scan starts, so a block comment crossing a boundary still colours as one.
-     * [prose] is set for running text, the only kind that hyphenates: not a log, and not source. */
+    // [lexStates] say where each chunk's scan starts, so a block comment crossing a boundary still colours as one; [prose] marks running text, the only kind that hyphenates.
     data class PlainText(
         val chunks: List<String>,
         val encoding: TextEncoding? = null,
@@ -154,29 +150,20 @@ sealed interface ViewerContent {
         val truncated: Boolean = false,
         val prose: Boolean = false,
     ) : ViewerContent
-    /**
-     * [outline] is a document's own table of contents (an EPUB's), or null to derive one from the headings;
-     * [incomplete] says something was left out and the viewer should end with a notice; [encoding] is what a
-     * CSV or TSV was decoded as, null for the formats that are not text.
-     */
+    // [outline] is a document's own table of contents (an EPUB's), or null to derive one from the headings.
     data class Office(
         val blocks: List<OfficeBlock>,
         val outline: List<OutlineEntry>? = null,
         val incomplete: Boolean = false,
         val encoding: TextEncoding? = null,
-        /** Where a link inside an EPUB lands, as a block index; empty for every other format. */
         val bookLinks: Map<BookLink, Int> = emptyMap(),
-        /** What a block that says nothing of its own is set in; right to left for some EPUBs. */
         val direction: BlockDirection = BlockDirection.LTR,
-        /** The first block of each page of a fixed-layout EPUB; empty for any other document. */
         val pageStarts: Set<Int> = emptySet(),
     ) : ViewerContent
-    /** A document waiting on its password; [incorrect] flags a rejected attempt, [checking] one in flight. */
     data class NeedsPassword(val incorrect: Boolean = false, val checking: Boolean = false) : ViewerContent
     data class Failed(val message: UiText) : ViewerContent
 }
 
-/** Decoded from bytes the reader can re-read as another charset: plain text, Markdown and CSV. */
 val ViewerContent.hasEncoding: Boolean
     get() = when (this) {
         is ViewerContent.PlainText, is ViewerContent.Markdown -> true
@@ -188,7 +175,6 @@ val ViewerContent.hasEncoding: Boolean
 data class FindState(
     val open: Boolean = false,
     val query: String = "",
-    /** One entry per match in document order; a page with three matches appears three times. */
     val hits: List<Int> = emptyList(),
     val position: Int = -1,
     /** Markdown is one `Spanned`, so matches highlight with no target to step between. */
@@ -204,7 +190,6 @@ data class FindState(
     /** Derived, so the hit list and the highlight position cannot disagree. */
     val activeIndex: Int? get() = if (position in hits.indices) hits[position] else null
 
-    /** The match inside the current container: the cursor minus the container's first entry. */
     val activeOccurrence: Int? get() {
         val container = activeIndex ?: return null
         return position - hits.firstIndexOf(container)
@@ -234,7 +219,6 @@ data class FindState(
     }
 }
 
-/** Index of the first element equal to [value] in an ascending list: a lower-bound binary search. */
 private fun List<Int>.firstIndexOf(value: Int): Int {
     var low = 0
     var high = size
@@ -249,7 +233,6 @@ data class ViewerUiState(
     val document: DocumentEntity? = null,
     val content: ViewerContent = ViewerContent.Loading,
     val find: FindState = FindState(),
-    /** A content search landing on its first match; null when this viewer was not opened from one. */
     val arrival: ArrivalHighlight? = null,
     /** Raised instead of an error, so the content on screen survives the lost grant. */
     val needsRegrant: Boolean = false,
@@ -258,42 +241,28 @@ data class ViewerUiState(
     val canSaveToLibrary: Boolean = false,
     val savingToLibrary: Boolean = false,
     val savedToLibrary: Boolean = false,
-    /** A charset name picked by hand for a text or Markdown file; null leaves detection in charge. */
     val encodingOverride: String? = null,
     /** Where the viewer should open, from the stored reading position; null when nothing is stored.
      * Set with the document and before its content, so the first layout places it without flashing the top. */
     val restore: RestoreRequest? = null,
-    /** A PDF's outline, once read; empty until then and for a document without any. */
     val pdfOutline: List<OutlineEntry> = emptyList(),
-    /** An AcroForm's widgets, once read; empty for a document without a fillable form. */
     val formFields: List<PdfFormField> = emptyList(),
-    /**
-     * Whether the loaded document has anything to read aloud: false when it has none, null while
-     * that is not known yet. Most formats answer from their own content; a PDF's answer comes from
-     * the search index, which may not have reached it yet.
-     */
+    // A PDF's answer comes from the search index, which may not have reached it yet.
     val speakableText: Boolean? = null,
     val isCrashReport: Boolean = false,
 ) {
-    /**
-     * Bookmarks hang from a library row, so a transient document has none until it is saved; from then on
-     * they are kept under the new row, like the reading position.
-     */
+    // Bookmarks hang from a library row, so a transient document has none until it is saved.
     val bookmarksAvailable: Boolean get() = !isCrashReport && ((document?.id ?: 0L) > 0L || savedToLibrary)
 
-    /** Highlights hang from a library row for the same reason bookmarks do. */
     val highlightsAvailable: Boolean get() = bookmarksAvailable
 }
 
-/** What the viewer needs to say about a bookmark change, beyond the list itself updating. */
 sealed interface BookmarkEvent {
-    /** Offered with Undo; the row is the stored one, with its id. */
     data class Added(val bookmark: BookmarkEntity) : BookmarkEvent
 
     data class Notice(val text: UiText) : BookmarkEvent
 }
 
-/** How many units the viewers of this content count in: pages, chunks, blocks, or characters of Markdown. */
 internal fun ViewerContent.unitCount(): Int = when (this) {
     is ViewerContent.Pdf -> source.pageCount
     is ViewerContent.Markdown -> text.length
@@ -302,13 +271,8 @@ internal fun ViewerContent.unitCount(): Int = when (this) {
     else -> 0
 }
 
-/**
- * Whether the content itself has words to read aloud, for every format whose text is already in
- * memory: false when the voice would have nothing to say. Null when the content cannot answer - a
- * PDF's text is read a page at a time and never whole, so the search index answers for those instead.
- */
+// Null for a PDF: its text is read a page at a time and never whole, so the search index answers instead.
 internal fun ViewerContent.hasSpeakableText(): Boolean? = when (this) {
-    // A blank line speaks nothing, so any line with a character on it is the whole answer.
     is ViewerContent.PlainText -> chunks.any { it.isNotBlank() }
     is ViewerContent.Markdown -> text.isNotBlank()
     // The same units the voice is made of, so a document of images with no alt text says no.
@@ -323,9 +287,8 @@ class ViewerViewModel(
 
     private val repository = app.repository
 
-    /** The row this viewer resolves. A handover starts at a negative in-memory id; saving moves it to
-     *  the library row, and that id is kept in the saved-state handle so a restore after process death
-     *  finds the copy instead of an in-memory entry the new process never had. */
+    // The row this viewer resolves. A handover starts at a negative in-memory id; saving moves it to the library row,
+    // kept in the saved-state handle so a restore after process death finds the copy.
     private var documentId: Long =
         savedState[KEY_SAVED_DOCUMENT_ID] ?: savedState[Routes.ARG_DOCUMENT_ID] ?: -1L
 
@@ -335,7 +298,6 @@ class ViewerViewModel(
     private val _state = MutableStateFlow(ViewerUiState())
     val state: StateFlow<ViewerUiState> = _state.asStateFlow()
 
-    /** Wrap, line numbers and highlighting are read live, so a toggle needs no reload. */
     val settings: StateFlow<AppSettings> = app.settings.settings
 
     /** Kept in the saved-state handle so a hand-picked encoding survives process death. */
@@ -344,7 +306,6 @@ class ViewerViewModel(
     private val _messages = MutableStateFlow<UiText?>(null)
     val messages: StateFlow<UiText?> = _messages.asStateFlow()
 
-    /** Extracted once on first search, reused for every keystroke. */
     private var pdfPageText: List<PdfPageText>? = null
 
     /** The over-budget file is mentioned once per find session, not once per keystroke. */
@@ -353,16 +314,13 @@ class ViewerViewModel(
     /** Cancelled per query; racing searches would let the older overwrite the newer. */
     private var findJob: Job? = null
 
-    /** The word this viewer was opened for by a content search; consumed by the first load. */
     private var pendingArrivalTerm: String? = savedState[Routes.ARG_QUERY]
 
     /** Completed by [onRestored], so the arrival runs after the stored position, never before it. */
     private var restoreGate: CompletableDeferred<Unit>? = null
 
-    /** Holds the arrival mark lit and then fades it; cancelled when the reader takes over with find. */
     private var arrivalJob: Job? = null
 
-    /** Watches the search index for this document's text, so Read aloud is not offered with nothing to say. */
     private var speakableJob: Job? = null
 
     /** Cancelled per reload, so a quick encoding pick and a settings toggle leave the later one on screen. */
@@ -382,8 +340,7 @@ class ViewerViewModel(
      * dispatcher and would otherwise reach it before it exists. */
     private val tracker = PositionTracker(now = { System.nanoTime() / NANOS_PER_MILLI })
 
-    /** The library id the position is stored under: the document's own, or the new row's once saved.
-     * 0 while there is none, so nothing is written for a document not in the library. */
+    // 0 while there is none, so nothing is written for a document not in the library.
     private val persistedIdFlow = MutableStateFlow(documentId.coerceAtLeast(0L))
     private var persistedId: Long
         get() = persistedIdFlow.value
@@ -391,19 +348,14 @@ class ViewerViewModel(
             persistedIdFlow.value = value
         }
 
-    /**
-     * The newest position the viewer reported, whatever the "remember position" setting says: a bookmark
-     * is asked for by the reader and needs the place on screen now, not a stored one.
-     */
+    // The newest position the viewer reported, whatever the "remember position" setting says: a bookmark
+    // is asked for by the reader and needs the place on screen now, not a stored one.
     private var viewport: PositionSample? = null
 
     private val _bookmarkEvents = Channel<BookmarkEvent>(Channel.BUFFERED)
     val bookmarkEvents = _bookmarkEvents.receiveAsFlow()
 
-    /**
-     * This document's bookmarks, in document order. The query is scoped to the one library row (and
-     * follows it if a handed-over document is saved), so another document's changes never wake it.
-     */
+    // Scoped to the one library row (following it if a handed-over document is saved), so other documents' changes never wake it.
     @OptIn(ExperimentalCoroutinesApi::class)
     val bookmarks: StateFlow<List<Bookmark>> = combine(
         persistedIdFlow.flatMapLatest { repository.observeBookmarks(it) },
@@ -411,7 +363,6 @@ class ViewerViewModel(
     ) { rows, format -> if (format == null) emptyList() else rows.forFormat(format) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS), emptyList())
 
-    /** This document's highlights; like the bookmarks, scoped to its library row and following it once saved. */
     @OptIn(ExperimentalCoroutinesApi::class)
     val highlights: StateFlow<List<Highlight>> = persistedIdFlow
         .flatMapLatest { repository.observeHighlights(it) }
@@ -437,7 +388,6 @@ class ViewerViewModel(
             }
         }
         viewModelScope.launch { load() }
-        // Initial value is skipped (applied on load); off is mapped to 0 to avoid no-op reloads.
         viewModelScope.launch {
             app.settings.settings
                 .map { if (it.prettyPrint) it.tabSize else 0 }
@@ -479,7 +429,6 @@ class ViewerViewModel(
         loadPdfOutline()
         loadPdfForm()
         autosaveIfEnabled()
-        // A content result opens on its first match, after the stored position had its chance to land.
         val term = pendingArrivalTerm
         pendingArrivalTerm = null
         if (term != null) {
@@ -488,12 +437,7 @@ class ViewerViewModel(
         }
     }
 
-    /**
-     * Opens on [term]'s first match: the same find state and reveal machinery find uses, held lit for
-     * [ARRIVAL_HOLD_MILLIS] and then faded over [ARRIVAL_FADE_MILLIS]. A format find cannot search (a
-     * scanned PDF, one past the budget) stays at the restored position with nothing to highlight, and
-     * says nothing about it: the reader asked to open a document, not to search it again.
-     */
+    // A format find cannot search (a scanned PDF, one past the budget) stays at the restored position and says nothing: the reader asked to open a document, not to search it.
     private fun applyArrival(term: String, content: ViewerContent) {
         when (content) {
             is ViewerContent.Pdf, is ViewerContent.PlainText, is ViewerContent.Office, is ViewerContent.Markdown -> Unit
@@ -525,11 +469,7 @@ class ViewerViewModel(
         }
     }
 
-    /**
-     * Reads the bookmarks of a PDF that has just loaded. Launched after its first page is already
-     * showing, off the main thread, so a large outline never delays the page. The entries are
-     * published as they are read, so the menu offers Outline as soon as the first ones land.
-     */
+    // Launched after the first page is showing, off the main thread, so a large outline never delays the page.
     private fun loadPdfOutline() {
         val shown = (_state.value.content as? ViewerContent.Pdf)?.source ?: return
         val document = _state.value.document
@@ -544,12 +484,7 @@ class ViewerViewModel(
         }
     }
 
-    /**
-     * Reads the bookmarks from the file, publishing what it has as it goes, and keeps them for the
-     * next open. PdfBox parses the whole file into memory, and until the viewer shares one document
-     * it would be a second copy next to the renderer's: a very large file gets no outline rather
-     * than risk the heap.
-     */
+    // PdfBox parses the whole file into memory, a second copy beside the renderer's: a very large file gets no outline rather than risk the heap.
     private suspend fun readPdfOutline(shown: PdfPageSource, document: DocumentEntity?) {
         if ((document?.sizeBytes ?: 0L) > MAX_OUTLINE_FILE_BYTES) return
         val source = pageSource() ?: return
@@ -563,11 +498,7 @@ class ViewerViewModel(
         _state.update { if ((it.content as? ViewerContent.Pdf)?.source === shown) it.copy(pdfOutline = entries) else it }
     }
 
-    /**
-     * Reads the fillable widgets of a PDF that has just loaded, a page at a time off the main thread
-     * and after its first page, so a large form never delays what is on screen. Nothing is offered for
-     * a document without an AcroForm, or on a device whose renderer has no form API.
-     */
+    // Launched after the first page, off the main thread, so a large form never delays what is on screen.
     private fun loadPdfForm() {
         val shown = (_state.value.content as? ViewerContent.Pdf)?.source ?: return
         if (!shown.hasForm) return
@@ -578,14 +509,7 @@ class ViewerViewModel(
         }
     }
 
-    /**
-     * Works out whether there is anything to read aloud, so the option is not offered for a document
-     * with nothing speakable in it. Every format but a PDF answers from the content already on
-     * screen. A PDF cannot: its text is read a page at a time and never whole, so this asks the
-     * search index instead - it already holds what the document's text extraction found - and keeps
-     * watching, so a document indexed while it is open hides the option the moment the row lands.
-     * Until the index has an answer, nothing is hidden: an unknown answer is not a "no".
-     */
+    // A PDF cannot answer from the content on screen (its text is read a page at a time), so this asks the search index and keeps watching.
     private fun loadSpeakableText(content: ViewerContent, document: DocumentEntity) {
         speakableJob?.cancel()
         _state.update { it.copy(speakableText = content.hasSpeakableText()) }
@@ -602,21 +526,16 @@ class ViewerViewModel(
         }
     }
 
-    /** Replaces a text field's value in the open document. Nothing reaches the file until a copy is saved. */
     fun setFormText(field: PdfFormField, text: String) =
         applyFormEdit(field.page, PdfFormEdit.Text(field.widget, text))
 
-    /** Selects choice items by index; a single-choice box passes exactly one. */
     fun selectFormChoice(field: PdfFormField, selected: List<Int>) =
         applyFormEdit(field.page, PdfFormEdit.Choice(field.widget, selected))
 
-    /** Switches a check box or radio button, which the platform does with a tap on the widget itself. */
     fun toggleFormField(field: PdfFormField) = applyFormEdit(field.page, PdfFormEdit.Tap(field.widget))
 
-    /**
-     * Applies one edit in memory and re-reads that page's widgets: the platform can adjust what it
-     * reports after an edit, so the sheet shows what the document now holds, not what was typed.
-     */
+    // Applies one edit in memory and re-reads that page's widgets: the platform can adjust what it
+    // reports after an edit, so the sheet shows what the document now holds, not what was typed.
     private fun applyFormEdit(page: Int, edit: PdfFormEdit) {
         val shown = (_state.value.content as? ViewerContent.Pdf)?.source ?: return
         viewModelScope.launch {
@@ -628,7 +547,6 @@ class ViewerViewModel(
                 if ((current.content as? ViewerContent.Pdf)?.source !== shown) {
                     current
                 } else {
-                    // Only one page is re-read; the rest keep the widgets they already had.
                     val fields = current.formFields.filterNot { it.page == page } + shown.formFields(page)
                     current.copy(formFields = fields.sortedWith(compareBy({ it.page }, { it.widget })))
                 }
@@ -636,20 +554,13 @@ class ViewerViewModel(
         }
     }
 
-    /**
-     * Writes the open document, form edits included, to the copy the reader picked in the system
-     * picker. The source is never written to; a failed write takes the half-written copy back.
-     */
+    // The source is never written to; a failed write takes the half-written copy back.
     fun saveFormCopy(uri: Uri) = savePdfCopy(
         uri = uri,
         saved = UiText(R.string.viewer_form_saved),
         failed = UiText(R.string.viewer_form_save_failed),
     )
 
-    /**
-     * Writes a copy that carries the reader's highlights as page annotations, so another viewer sees
-     * them too. Only a plain highlight is representable in the file: a note stays in Papyrus.
-     */
     fun saveHighlightCopy(uri: Uri) {
         val marks = highlights.value.exportableRectsByPage()
         if (marks.isEmpty()) return
@@ -661,7 +572,6 @@ class ViewerViewModel(
         )
     }
 
-    /** One copy path for both saves: open the destination, write, and take a failed one back. */
     private fun savePdfCopy(
         uri: Uri,
         saved: UiText,
@@ -705,10 +615,7 @@ class ViewerViewModel(
         runCatching { DocumentsContract.deleteDocument(app.contentResolver, uri) }
     }
 
-    /**
-     * Where to open [doc]: the position last shown if it has been open (a re-grant reload rebuilds at
-     * the top), otherwise the stored one. Nothing when the setting is off.
-     */
+    // Prefers the position last shown (a re-grant reload rebuilds at the top) over the stored one.
     private suspend fun restoreFor(doc: DocumentEntity): RestoreRequest? {
         if (!app.settings.current.rememberPosition) return null
         tracker.latest?.let { return RestoreRequest(it.location, clampScale(it.zoom)) }
@@ -716,25 +623,15 @@ class ViewerViewModel(
         return stored.copy(zoom = clampScale(stored.zoom))
     }
 
-    /**
-     * What a freshly composed viewer should open at: the latest position it reported (so a rotation or
-     * a reload comes back to the same place at the same zoom), else the stored one.
-     */
+    // The latest reported position wins, so a rotation or reload comes back to the same place at the same zoom.
     fun restoreTarget(): RestoreRequest? =
         tracker.latest?.let { RestoreRequest(it.location, clampScale(it.zoom)) } ?: _state.value.restore
 
-    /** App-scoped read-aloud session: the viewer collects its state and drives the in-flow control bar. */
     val tts: TtsSession = app.ttsSession
 
-    /** The library id the viewer's document is read aloud under; empty until the document is known. */
     fun ttsDocumentId(): String = _state.value.document?.id?.toString().orEmpty()
 
-    /**
-     * Read the open document aloud, starting at the current reading position. Every format reuses the
-     * text path the viewer already loaded: a PDF reads its pages one at a time (never `allPages()`),
-     * plain text and code use their chunks, Markdown its rendered text, Office its blocks. A document
-     * with nothing speakable reports the same "no text" message the viewer uses.
-     */
+    // A PDF reads its pages one at a time (never `allPages()`); every other format reuses the text path already loaded.
     fun startReadAloud() {
         val document = _state.value.document ?: return
         val content = _state.value.content
@@ -775,14 +672,9 @@ class ViewerViewModel(
         }
     }
 
-    /** Stop reading aloud and clear the session, hiding the control bar. */
     fun stopReadAloud() = tts.stop()
 
-    /**
-     * Whether the read-aloud notification permission still has to be asked for: Android 13+ only,
-     * once only, and never when it is already granted. A refusal is remembered like a grant, so the
-     * reader is not asked again - the system settings remain the way to change the answer.
-     */
+    // A refusal is remembered like a grant, so the reader is not asked again.
     fun needsNotificationPrompt(): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return false
         val granted = ContextCompat.checkSelfPermission(app, Manifest.permission.POST_NOTIFICATIONS) ==
@@ -813,15 +705,11 @@ class ViewerViewModel(
 
     fun ttsToggleScrollLock() = tts.toggleScrollLock()
 
-    /**
-     * The reader went somewhere on purpose (a link, the outline, a bookmark, find): the voice must not
-     * drag them straight back, so the lock is let go. Locking again returns them to the line being read.
-     */
+    // The voice must not drag a reader who went somewhere on purpose straight back, so the lock is let go.
     fun ttsReleaseScroll() {
         if (tts.state.value.documentId == ttsDocumentId()) tts.setScrollLocked(false)
     }
 
-    /** One page at a time, through the same one-page reader find uses; a blank page speaks nothing. */
     private suspend fun pdfTtsUnits(pageCount: Int): List<TtsUnit> {
         val pages = ArrayList<String>(pageCount)
         for (index in 0 until pageCount) {
@@ -830,7 +718,6 @@ class ViewerViewModel(
         return TtsDocumentSource.unitsFromPdfPages(pages)
     }
 
-    /** The viewer placed the document at [applied], read back after scrolling; opens the save gate. */
     fun onRestored(applied: PositionSample) {
         viewport = applied
         tracker.restoreApplied(applied)
@@ -838,7 +725,6 @@ class ViewerViewModel(
         restoreGate?.complete(Unit)
     }
 
-    /** The viewport now shows [sample]; called often, so it only records and schedules. */
     fun onPosition(sample: PositionSample) {
         viewport = sample
         if (!app.settings.current.rememberPosition) return
@@ -868,7 +754,6 @@ class ViewerViewModel(
         outbox.trySend(id to sample)
     }
 
-    /** Every failure mode maps to a screen of its own, so the callers only ever see content to show. */
     private suspend fun loadContentSafely(doc: DocumentEntity): ViewerContent = try {
         withContext(Dispatchers.IO) { loadContent(doc) }
     } catch (e: CancellationException) {
@@ -881,7 +766,6 @@ class ViewerViewModel(
         ViewerContent.Failed(UiText(R.string.viewer_error_too_large))
     }
 
-    /** One message per cause, so a person can tell a wrong format from a lost file from a damaged one. */
     private fun failureFor(e: Exception): ViewerContent.Failed = when (e) {
         is PdfPasswordException, is DocumentPasswordException ->
             ViewerContent.Failed(UiText(R.string.viewer_error_password))
@@ -899,8 +783,6 @@ class ViewerViewModel(
         else -> ViewerContent.Failed(UiText(R.string.viewer_error_generic, e.localizedMessage ?: e.javaClass.simpleName))
     }
 
-    // Saves a handed-over document once it opens, if its setting is on. An encrypted document waits
-    // for the unlock, and content that failed to load is never saved.
     private fun autosaveIfEnabled() {
         if (isCrashReport) return
         val current = _state.value
@@ -916,10 +798,8 @@ class ViewerViewModel(
         if (wanted) saveToLibrary(notify = false)
     }
 
-    /**
-     * A .csv or .tsv added before it had a format of its own was sniffed to CODE and stored so. Done before
-     * anything reads the format, as the kind a position and a bookmark are stored in comes from it.
-     */
+    // A .csv or .tsv added before it had a format of its own was sniffed to CODE and stored so. Done before
+    // anything reads the format, as the kind a position and a bookmark are stored in comes from it.
     private suspend fun withCurrentFormat(doc: DocumentEntity): DocumentEntity {
         if (doc.format != DocumentFormat.CODE || DocumentFormat.detect(doc.title, null) != DocumentFormat.CSV) return doc
         repository.updateFormat(doc.id, DocumentFormat.CSV)
@@ -959,7 +839,6 @@ class ViewerViewModel(
                     latexFactory = renderResult.latexFactory,
                 )
             }
-            // CODE renders through the same surface as TEXT: monospace, chunked, selectable.
             DocumentFormat.TEXT, DocumentFormat.CODE -> {
                 val settings = app.settings.current
                 val prettyKind = PrettyPrint.kindToApply(doc.title, doc.sizeBytes, settings.prettyPrint)
@@ -1030,8 +909,7 @@ class ViewerViewModel(
     private fun extractOffice(uri: Uri, format: DocumentFormat): List<OfficeBlock> =
         OfficeTextExtractor(mediaDir = mediaDir).extract({ openStream(uri) }, format)
 
-    /** Plain text from either read path. By name, and by the head of the file where the name cannot
-     * place it, and only for source: a .log or .txt that happens to look like code stays plain. */
+    // Source only: a .log or .txt that happens to look like code stays plain.
     private fun plainText(doc: DocumentEntity, read: TextChunks, codeOnly: Boolean): ViewerContent.PlainText {
         val language = if (codeOnly) CodeLanguages.forContent(doc.title, LanguageDetector.headOf(read.chunks)) else null
         return ViewerContent.PlainText(
@@ -1046,15 +924,13 @@ class ViewerViewModel(
         )
     }
 
-    /** A wrong [password] returns [ViewerContent.NeedsPassword] for an in-place retry rather than throwing. */
     private suspend fun unlock(doc: DocumentEntity, password: String): ViewerContent =
         when (doc.format) {
             DocumentFormat.DOCX, DocumentFormat.ODT, DocumentFormat.DOC -> unlockOffice(doc.uri.toUri(), doc.format, password)
             else -> unlockPdf(doc.uri.toUri(), password)
         }
 
-    /** Opens a PDF the byte screen found no `/Encrypt` in. If the renderer still wants a password the
-     * screen was wrong, so the real parser decides the lock kind and the usual unlock path follows. */
+    // If the renderer still wants a password the byte screen was wrong, so the real parser decides the lock kind.
     private suspend fun openUnencryptedPdf(uri: Uri): ViewerContent =
         try {
             val source = PdfPageSource.open(app, uri)
@@ -1129,8 +1005,6 @@ class ViewerViewModel(
         }
     }
 
-    /** Copies a handed-over document into the library, then moves the viewer onto the app-owned copy.
-     *  [notify] is false for the autosave path, which saves silently; the manual "save to library" keeps the snackbar. */
     fun saveToLibrary(notify: Boolean = true) {
         if (isCrashReport) return
         val doc = _state.value.document ?: return
@@ -1157,14 +1031,8 @@ class ViewerViewModel(
         }
     }
 
-    /**
-     * Points the open viewer at the copy the handover was just saved into. Its in-memory id stays: that
-     * is what read-aloud is keyed on, and it is the id this process opened the document under. The URI
-     * does move, so find, links, share and the info sheet read the app-owned file from now on and stop
-     * depending on the external app's grant. The library id goes into the saved-state handle for the one
-     * case the open viewer cannot cover: a restore after process death, where the route still names the
-     * negative handover id and the map that resolved it is gone.
-     */
+    // Its in-memory id stays: read-aloud is keyed on it. The URI moves, so find, links, share and the info sheet stop depending on the external app's grant.
+    // The library id goes into the saved-state handle for a restore after process death.
     private suspend fun adoptSavedCopy(savedId: Long) {
         val saved = repository.getById(savedId) ?: return
         documentId = savedId
@@ -1175,14 +1043,10 @@ class ViewerViewModel(
         }
     }
 
-    /** "Page 12", "Line 340" or "45%": the label a bookmark gets unless the reader types one. Only a position. */
     private fun positionalLabel(location: ReadingLocation, unitCount: Int): String =
         location.summary(unitCount).asText(app)
 
-    /**
-     * Bookmarks the top of the viewport. The place is clamped to what loaded before it is stored, and the
-     * label is positional, never a text excerpt: an unlocked document leaves no plaintext in the database.
-     */
+    // The label is positional, never a text excerpt: an unlocked document leaves no plaintext in the database.
     fun addBookmark() {
         val id = persistedId
         val sample = viewport
@@ -1190,7 +1054,6 @@ class ViewerViewModel(
             _bookmarkEvents.trySend(BookmarkEvent.Notice(UiText(R.string.bookmarks_unavailable)))
             return
         }
-        // Nothing has been laid out yet, so there is no place to mark.
         if (sample == null) {
             _bookmarkEvents.trySend(BookmarkEvent.Notice(UiText(R.string.bookmark_failed)))
             return
@@ -1219,17 +1082,14 @@ class ViewerViewModel(
 
     fun undoAddBookmark(bookmark: BookmarkEntity) = deleteBookmarkRow(bookmark.id)
 
-    /** Renames to [typed] (the reader's own text); an emptied field falls back to the position. */
     fun renameBookmark(bookmark: Bookmark, typed: String) {
         val unitCount = _state.value.content.unitCount()
         val label = cleanBookmarkLabel(typed, positionalLabel(bookmark.location, unitCount))
         app.applicationScope.launch { runQuietly { repository.renameBookmark(bookmark.id, label) } }
     }
 
-    /** Removes the row at once; [restoreBookmark] puts it back for Undo. */
     fun deleteBookmark(bookmark: Bookmark) = deleteBookmarkRow(bookmark.id)
 
-    /** Undo for a delete: the same row, under its old id and creation time. */
     fun restoreBookmark(bookmark: Bookmark) {
         val row = BookmarkEntity(
             id = bookmark.id,
@@ -1247,7 +1107,6 @@ class ViewerViewModel(
         app.applicationScope.launch { runQuietly { repository.deleteBookmark(id) } }
     }
 
-    /** Highlights the selected run of text; [boxesByPage] is its line boxes, page-relative. Does nothing without a library row. */
     fun addHighlights(boxesByPage: Map<Int, List<NormRect>>) {
         val id = persistedId
         if (id <= 0) return
@@ -1259,7 +1118,6 @@ class ViewerViewModel(
         app.applicationScope.launch { runQuietly { repository.deleteHighlights(ids) } }
     }
 
-    /** Stores the reader's note on a mark; a blank note turns it back into a plain highlight. */
     fun setHighlightNote(id: Long, note: String) {
         app.applicationScope.launch { runQuietly { repository.setHighlightNote(id, note) } }
     }
@@ -1299,8 +1157,7 @@ class ViewerViewModel(
         _state.update { it.copy(content = ViewerContent.Failed(UiText(R.string.viewer_password_cancelled))) }
     }
 
-    /** Re-reads a text, Markdown or CSV file as [charsetName], or by detection again when null. The old
-     * content stays until the new arrives, so the page does not flash and the scroll holds. */
+    // The old content stays until the new arrives, so the page does not flash and the scroll holds.
     fun setEncoding(charsetName: String?) {
         val doc = _state.value.document ?: return
         if (!_state.value.content.hasEncoding) return
@@ -1311,8 +1168,6 @@ class ViewerViewModel(
         reloadContent()
     }
 
-    /** The pretty-print toggle or tab size changed: re-read a plain-text document the formatter applies to;
-     * anything else (a name that never formats, PDF, Office, Markdown) is left as it is. */
     private fun reloadPrettyPrintedContent() {
         val doc = _state.value.document ?: return
         if (_state.value.content !is ViewerContent.PlainText) return
@@ -1320,8 +1175,7 @@ class ViewerViewModel(
         reloadContent()
     }
 
-    /** One reload at a time from the current URI; the old content stays until the new arrives.
-     * The text changes under any search in progress, so its hits are recomputed. */
+    // The text changes under any search in progress, so its hits are recomputed.
     private fun reloadContent() {
         val doc = _state.value.document ?: return
         reloadJob?.cancel()
@@ -1335,7 +1189,6 @@ class ViewerViewModel(
 
     fun openFind() {
         findBudgetWarned = false
-        // The reader is taking over the search: the arrival's mark and its timers go, the query stays.
         arrivalJob?.cancel()
         arrivalJob = null
         _state.update { it.copy(find = it.find.copy(open = true), arrival = null) }
@@ -1394,13 +1247,8 @@ class ViewerViewModel(
         }
     }
 
-    /**
-     * A page repeats in hits per match; budget-exceeding pages still count, scans have no text.
-     *
-     * The platform engine's own search answers first - it reads the page it already renders, so even
-     * a file too large to parse again stays searchable. It is exact-case, so a query with capitals,
-     * and any page it cannot read, go to the PdfBox text model, which every device has.
-     */
+    // The platform engine's own search answers first: it reads the page it already renders, so even a file too large to parse again stays searchable.
+    // It is exact-case, so capitalised queries and unreadable pages go to the PdfBox text model.
     private suspend fun findPdfPages(query: String, warnOverBudget: Boolean): FindResult {
         val source = (_state.value.content as? ViewerContent.Pdf)?.source
         val found = HashMap<Int, PdfPageText.PageMatches>()
@@ -1412,7 +1260,6 @@ class ViewerViewModel(
             }
         }
         if (source == null || missed.isNotEmpty()) {
-            // Scans fallback PDFBox text only within memory budget when platform search misses pages.
             if (overFindBudget(warnOverBudget)) {
                 if (source == null) return FindResult()
             } else {
@@ -1434,10 +1281,8 @@ class ViewerViewModel(
         return FindResult(hits = hits, pageMatches = pageMatches)
     }
 
-    /**
-     * Past the budget find reports no matches and says why, once per find session: parsing the
-     * whole file again to gather them risks the heap, the same tradeoff the outline reader makes.
-     */
+    // Past the budget find reports no matches and says why, once per find session: parsing the
+    // whole file again to gather them risks the heap, the same tradeoff the outline reader makes.
     private fun overFindBudget(warn: Boolean = true): Boolean {
         if ((_state.value.document?.sizeBytes ?: 0L) <= MAX_PDF_FIND_BYTES) return false
         if (warn && !findBudgetWarned) {
@@ -1447,20 +1292,11 @@ class ViewerViewModel(
         return true
     }
 
-    /**
-     * Every page's text on the one document [pageText] and [pageLinks] already share, so a second
-     * parse of the same file never sits on the heap beside the first. Empty when the file is
-     * unreadable. Rethrows CancellationException; catching it caches empty text and breaks find.
-     */
+    // Every page's text on the one document [pageText] and [pageLinks] share, so a second parse never sits on the heap beside the first.
+    // Empty when unreadable; rethrows CancellationException, since catching it caches empty text and breaks find.
     private suspend fun extractPageText(): List<PdfPageText> = pageSource()?.allPages() ?: emptyList()
 
-    /**
-     * One page of text plus boxes. The open platform engine is asked first - it is the reader's own
-     * extractor, so TalkBack, selection and read-aloud see what the page actually draws - and only a
-     * page it cannot answer falls back to PDFBox. A search read is reused unless it was past the
-     * box budget. Either reading is kept under the document's bytes, so a page is read once however
-     * many of them ask for it, and again only after the file changes.
-     */
+    // The open platform engine is asked first (it is what TalkBack, selection and read-aloud see), then PDFBox; either reading is kept under the document's bytes, so a page is read once until the file changes.
     suspend fun pageText(index: Int): PdfPageText? {
         pdfPageText?.getOrNull(index)?.takeIf { it.hasBoxes || it.text.isBlank() }?.let { return it }
         val texts = pageSource()
@@ -1472,16 +1308,10 @@ class ViewerViewModel(
         return texts?.page(index)
     }
 
-    /** The rendered source's own text, or null when this engine has none or nothing is open as a PDF. */
     private suspend fun platformPageText(index: Int): PdfPageText? =
         (_state.value.content as? ViewerContent.Pdf)?.source?.platformText(index)
 
-    /**
-     * The engine's own reading of the characters `[from, to)` of one page, or null when it has no
-     * selection API or cannot answer that page; the text model's characters and boxes are then the
-     * answer. The platform's start and stop are both inclusive, so the exclusive [to] is passed as
-     * the character before it; the caller checks what came back before using it.
-     */
+    // The platform's start and stop are both inclusive, so the exclusive [to] is passed as the character before it.
     internal suspend fun platformSelection(page: Int, from: Int, to: Int): PdfPlatformSelection? =
         (_state.value.content as? ViewerContent.Pdf)?.source?.platformSelect(
             page,
@@ -1489,10 +1319,8 @@ class ViewerViewModel(
             PlatformBoundary.Index((to - 1).coerceAtLeast(from)),
         )
 
-    /** One page's links. Shares [pageTextSource] with [pageText], so the document is opened once. */
     suspend fun pageLinks(index: Int): List<PdfPageLink>? = pageSource()?.links(index)
 
-    /** One-page reader for the current bytes, opened once and reused until the file changes. */
     private fun pageSource(): PdfPageTextSource? {
         val uri = contentUri
         if (uri.isEmpty()) return null
@@ -1517,7 +1345,6 @@ class ViewerViewModel(
             }
             if (ok) {
                 _state.update { it.copy(needsRegrant = false) }
-                // Old URI is dead, so the loaded content is stale.
                 _state.update { it.copy(content = ViewerContent.Loading) }
                 load()
             } else {
@@ -1537,14 +1364,12 @@ class ViewerViewModel(
     private val documentUri: String
         get() = _state.value.document?.uri.orEmpty()
 
-    /** The decrypted copy when one is open, so find and selection read the bytes actually on screen. */
     private val contentUri: String
         get() = unlocked.uri ?: documentUri
 
     private fun openStream(uri: Uri): InputStream =
         app.contentResolver.openInputStream(uri) ?: throw FileNotFoundException(uri.toString())
 
-    /** The document's bytes, openable at an offset, which is how a large text file is decoded as it is scrolled to. */
     private fun byteSource(uri: Uri) = ByteSource { offset ->
         val stream = openStream(uri)
         try {
@@ -1559,7 +1384,6 @@ class ViewerViewModel(
     private suspend fun readChunks(uri: Uri, doc: DocumentEntity): TextChunks =
         ChunkProvider.open(byteSource(uri), doc.sizeBytes, forcedCharset(), StatisticalCharsetGuesser)
 
-    /** The charset picked by hand, or null to detect; an unsupported name falls back to detection. */
     private fun forcedCharset(): Charset? = encodingName?.let(TextEncodings::charsetOrNull)
 
     override fun onCleared() {
@@ -1587,23 +1411,15 @@ class ViewerViewModel(
         const val FIND_DEBOUNCE_MILLIS = 200L
         const val KEY_ENCODING = "encoding"
 
-        /** The library row a saved handover moved to, so a restore after process death opens the copy. */
         const val KEY_SAVED_DOCUMENT_ID = "savedDocumentId"
         const val NANOS_PER_MILLI = 1_000_000L
         const val STOP_TIMEOUT_MILLIS = 5_000L
 
-        /** How long an arrival waits for the stored position; past this it lands anyway. */
         const val ARRIVAL_RESTORE_TIMEOUT_MILLIS = 1_500L
 
-        /** Past this the whole file is not parsed again just to gather find matches. */
         const val MAX_PDF_FIND_BYTES = 64L * 1024 * 1024
 
-        /**
-         * Past this a PDF is not opened a second time just to read its bookmarks. The outline is
-         * handed over as it is read, so this ceiling is the one parse's heap, not the reader's wait;
-         * it is raised from the old 64 MB, not lifted, since a second copy of a huge file is still
-         * one copy too many beside the renderer.
-         */
+        // Past this a PDF is not opened a second time just to read its bookmarks: a second copy of a huge file beside the renderer is one copy too many.
         const val MAX_OUTLINE_FILE_BYTES = 128L * 1024 * 1024
     }
 }

@@ -12,7 +12,6 @@ import com.papyrus.app.viewer.CodeTokenStyles
 import com.papyrus.app.viewer.SyntaxTokens
 import com.papyrus.app.viewer.TokenKind
 
-/** One style per [TokenKind]; two colour sets, since pale-on-dark and dark-on-pale differ. */
 @Immutable
 class SyntaxPalette private constructor(private val styles: Array<SpanStyle>) {
 
@@ -66,7 +65,6 @@ class SyntaxPalette private constructor(private val styles: Array<SpanStyle>) {
     }
 }
 
-/** The same colours for a Markdown code block, which a `TextView` draws with spans and not Compose styles. */
 internal fun SyntaxPalette.codeStyles(): CodeTokenStyles {
     val kinds = TokenKind.entries
     return CodeTokenStyles(
@@ -75,19 +73,14 @@ internal fun SyntaxPalette.codeStyles(): CodeTokenStyles {
     )
 }
 
-/** A chunk's tokens with the palette that colours them; one object so it can key a `remember`. */
 @Immutable
 class SyntaxStyling(val tokens: SyntaxTokens, val palette: SyntaxPalette)
 
-/**
- * [text] with syntax colours and find highlights, highlights added last so a match wins over the
- * colour and gets exactly one style, matching [formattedText]'s Office layering.
- */
+// Highlights are added last so a match wins over the colour and gets exactly one style, matching [formattedText]'s Office layering.
 internal fun syntaxHighlightedText(
     text: String,
     syntax: SyntaxStyling,
     highlight: FindHighlight?,
-    /** The colour a fading match returns to; unspecified leaves the text to inherit. */
     baseTextColor: Color = Color.Unspecified,
 ): AnnotatedString {
     val ranges = if (highlight == null) emptyList<IntRange>() else findMatchRanges(text, highlight.query)

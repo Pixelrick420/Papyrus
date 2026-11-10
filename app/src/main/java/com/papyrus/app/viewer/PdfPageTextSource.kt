@@ -15,7 +15,6 @@ import java.io.Closeable
 
 private typealias PageTexts = BoundedCache<PageTextKey, PdfPageText>
 
-/** The share of the heap page texts may take, and the bounds on it for a small and a large heap. */
 private const val PAGE_TEXT_HEAP_SHARE = 32L
 private const val MIN_PAGE_TEXT_BYTES = 4L shl 20
 private const val MAX_PAGE_TEXT_BYTES = 24L shl 20
@@ -25,13 +24,8 @@ private fun newPageTextCache(): PageTexts =
         (Runtime.getRuntime().maxMemory() / PAGE_TEXT_HEAP_SHARE).coerceIn(MIN_PAGE_TEXT_BYTES, MAX_PAGE_TEXT_BYTES),
     ) { it.approxBytes }
 
-/**
- * A PDF's page text and links, read a page at a time as touched; one [PDDocument] stays open until
- * [close] since loading parses the whole file, and reads share a lock as it is not thread-safe.
- *
- * A page's text is kept under the document's [TextCacheKey] (URI, modified time and size), so a
- * later reader of the same bytes, in this open or the next, takes it instead of reading it again.
- */
+// One [PDDocument] stays open until [close] since loading parses the whole file; reads share a lock as it is not thread-safe.
+// A page's text is kept under the document's [TextCacheKey], so a later reader of the same bytes takes it instead of reading again.
 class PdfPageTextSource(
     private val context: Context,
     private val uri: Uri,
@@ -50,7 +44,6 @@ class PdfPageTextSource(
     @Volatile
     private var storeOrNull: PageStore? = null
 
-    /** The cache this document's pages go in, and the key they go in under. */
     private class PageStore(private val cache: PageTexts, private val document: TextCacheKey) {
         fun get(page: Int, fromPlatform: Boolean): PdfPageText? =
             cache.get(PageTextKey(document, page, fromPlatform))
@@ -63,7 +56,6 @@ class PdfPageTextSource(
         }
     }
 
-    /** Blocking: one provider query, the first time. Call on an IO thread. */
     private fun store(): PageStore = storeOrNull ?: openStore().also { storeOrNull = it }
 
     private fun openStore(): PageStore {
@@ -76,19 +68,13 @@ class PdfPageTextSource(
         }
     }
 
-    /**
-     * A page read before, by this source or an earlier open of the same bytes, as the platform engine
-     * ([fromPlatform]) or PDFBox read it; null when none is held. Never reads the document.
-     */
     suspend fun cached(index: Int, fromPlatform: Boolean): PdfPageText? =
         (storeOrNull ?: withContext(Dispatchers.IO) { store() }).get(index, fromPlatform)
 
-    /** Keeps a page read elsewhere, such as by the platform engine, so every later reader shares it. */
     suspend fun remember(index: Int, text: PdfPageText) {
         (storeOrNull ?: withContext(Dispatchers.IO) { store() }).keep(index, text)
     }
 
-    /** The page's text and boxes, or null if the document cannot be read or has no such page. */
     suspend fun page(index: Int): PdfPageText? = lock.withLock {
         if (closed) return@withLock null
         withContext(Dispatchers.IO) {
@@ -97,34 +83,25 @@ class PdfPageTextSource(
         }
     }
 
-    /** Runs on the IO dispatcher, under [lock]. */
     private fun read(index: Int): PdfPageText? {
         val open = document ?: open() ?: return null
         if (index !in 0 until open.numberOfPages) return null
         return PdfTextExtractor.extractPage(open, index)
     }
 
-    /** The page's links, or null if unreadable or no such page. Read once per page. */
     suspend fun links(index: Int): List<PdfPageLink>? = lock.withLock {
         if (closed) return@withLock null
         linkPages[index]?.let { return@withLock it }
         withContext(Dispatchers.IO) { readLinks(index) }?.also { linkPages[index] = it }
     }
 
-    /** Runs on the IO dispatcher, under [lock]. */
     private fun readLinks(index: Int): List<PdfPageLink>? {
         val open = document ?: open() ?: return null
         if (index !in 0 until open.numberOfPages) return null
         return PdfLinkExtractor.extract(open, index)
     }
 
-    /**
-     * The document's bookmarks, or null if it cannot be read. Read once, on the same open document and
-     * under the same lock as the pages, off the main thread, so it never delays the first page.
-     *
-     * [emit] is handed everything read so far as the walk proceeds, so a long outline can be shown
-     * while the rest of it is still being read. It runs under the lock and must not block.
-     */
+    // Read under the same lock as the pages, off the main thread, so it never delays the first page; [emit] must not block.
     suspend fun outline(emit: (List<OutlineEntry>) -> Unit = {}): List<OutlineEntry>? = lock.withLock {
         if (closed) return@withLock null
         outlineCache?.let { cached ->
@@ -134,20 +111,12 @@ class PdfPageTextSource(
         withContext(Dispatchers.IO) { readOutline(emit) }?.also { outlineCache = it }
     }
 
-    /** Runs on the IO dispatcher, under [lock]. */
     private fun readOutline(emit: (List<OutlineEntry>) -> Unit): List<OutlineEntry>? {
         val open = document ?: open() ?: return null
         return PdfOutlineReader.read(open, emit)
     }
 
-    /**
-     * Every page's text in order, or null if the document cannot be read - one whole-document pass on
-     * the already-open document, so find-in-file shares this parse instead of opening a second copy
-     * of the file. A page already held (read for TalkBack, a selection, read aloud or an earlier find)
-     * is taken as it is, and the pages this pass reads are kept for those readers in turn. The caller
-     * holds the list as long as its search needs it, and the extractor's document-wide box budget
-     * still bounds what a huge file may keep.
-     */
+    // One whole-document pass on the open document, so find shares this parse instead of opening a second copy; pages already held are taken as they are, and the pages this pass reads are kept for other readers.
     suspend fun allPages(): List<PdfPageText>? = lock.withLock {
         if (closed) {
             null
@@ -164,18 +133,11 @@ class PdfPageTextSource(
         }
     }
 
-    /**
-     * Every page's text in order joined by [PAGE_SEPARATOR], cut at [maxChars], or null if the
-     * document cannot be read. For the search index.
-     *
-     * Reads a page at a time instead of reusing [allPages]: that method keeps 4 floats per character
-     * (16 bytes, up to about 32 MB for one document), which indexing has no use for.
-     */
+    // Reads a page at a time instead of [allPages], which keeps 4 floats per character (up to about 32 MB for one document) that indexing has no use for.
     suspend fun allText(maxChars: Int, dispatcher: CoroutineDispatcher = Dispatchers.IO): String? = lock.withLock {
         if (closed) null else withContext(dispatcher) { readAllText(maxChars) }
     }
 
-    /** Runs on the IO dispatcher, under [lock]. */
     private fun readAllText(maxChars: Int): String? {
         val open = document ?: open() ?: return null
         if (maxChars <= 0) return ""
@@ -206,7 +168,6 @@ class PdfPageTextSource(
         return loaded
     }
 
-    /** Closes after any read in flight finishes; the body is guarded because it runs detached. */
     override fun close() {
         CoroutineScope(Dispatchers.IO).launch {
             runCatching {
@@ -223,10 +184,8 @@ class PdfPageTextSource(
     }
 
     companion object {
-        /** Joins page texts in [allText]. */
         const val PAGE_SEPARATOR = "\n"
 
-        /** Pages of every document whose bytes a provider vouches for, kept after the viewer that read them closes. */
         private val shared = newPageTextCache()
     }
 }

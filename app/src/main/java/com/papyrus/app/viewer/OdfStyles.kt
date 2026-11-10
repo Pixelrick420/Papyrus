@@ -9,7 +9,6 @@ private const val DEFAULT_WEIGHT = 400
 private const val MAX_STYLE_CHAIN = 20
 private const val MAX_HEADING_LEVEL = 6
 
-/** Applies a `style:text-properties` element to this layer; a missing attribute changes nothing. */
 internal fun RunProps.applyOdf(p: XmlPullParser) {
     p.attr("fo:font-weight")?.let { bold = it == "bold" || (it.toIntOrNull() ?: DEFAULT_WEIGHT) >= BOLD_WEIGHT }
     p.attr("fo:font-style")?.let { italic = it == "italic" || it == "oblique" }
@@ -21,7 +20,6 @@ internal fun RunProps.applyOdf(p: XmlPullParser) {
     (p.attr("style:font-name") ?: p.attr("fo:font-family"))?.let { mono = isMonoFont(it) }
 }
 
-/** "super 58%", "sub", or a signed percentage: positive raises, negative lowers. */
 private fun scriptOf(value: String): ScriptShift {
     val head = value.trim().substringBefore(' ')
     return when {
@@ -40,7 +38,6 @@ private fun scriptOf(value: String): ScriptShift {
 
 private fun odfAlign(value: String?): BlockAlign? = alignOf(value)
 
-/** ODF `style:num-format` to the OOXML names [formatListNumber] understands. */
 private fun odfNumFormat(value: String?): String = when (value) {
     "a" -> "lowerLetter"
     "A" -> "upperLetter"
@@ -49,14 +46,12 @@ private fun odfNumFormat(value: String?): String = when (value) {
     else -> "decimal"
 }
 
-/** One `style:style`; its properties are its own, inheritance is [OdfStyles]'s job. */
 internal class OdfStyle(val name: String, val family: String) {
     var parent: String? = null
     val runProps = RunProps()
     var align: BlockAlign? = null
     var marginLeftTwips: Int? = null
 
-    /** `style:table-cell-properties`: the cell's fill. */
     var background: Int? = null
 }
 
@@ -70,10 +65,7 @@ internal class OdfListLevel(
     val displayLevels: Int,
 )
 
-/**
- * Every style the document defines, from `styles.xml` and the automatic styles in `content.xml`,
- * keyed by family and name: "P1" the paragraph style and "P1" the table style differ.
- */
+// Keyed by family and name: "P1" the paragraph style and "P1" the table style differ.
 internal class OdfStyles {
     val styles = HashMap<String, OdfStyle>()
     val listStyles = HashMap<String, Map<Int, OdfListLevel>>()
@@ -92,14 +84,12 @@ internal class OdfStyles {
         return out
     }
 
-    /** Character formatting a paragraph gives its text: the default style, then the style chain. */
     fun paragraphRun(name: String?): RunProps = paragraphRunCache.getOrPut(name.orEmpty()) {
         var props = defaultRun
         for (style in chain("paragraph", name)) props = style.runProps.mergedOver(props)
         props
     }
 
-    /** What a `text:span` style adds on top of the paragraph's. */
     fun textRun(name: String?): RunProps {
         var props = RunProps()
         for (style in chain("text", name)) props = style.runProps.mergedOver(props)
@@ -124,10 +114,7 @@ internal class OdfStyles {
         return fill
     }
 
-    /**
-     * 0 for body text. `text:h` is a heading element; this handles a `text:p` whose style (or an
-     * inherited one) is the built-in Title or "Heading N" (space encoded as `_20_`).
-     */
+    // `text:h` is a heading element; this handles a `text:p` whose style (or an inherited one) is the built-in Title or "Heading N" (space encoded as `_20_`).
     fun headingLevel(name: String?): Int {
         for (style in chain("paragraph", name)) {
             val decoded = style.name.replace("_20_", " ")
@@ -145,7 +132,6 @@ internal class OdfStyles {
     }
 }
 
-/** Reads style definitions from [xml] into [sheet]; stops at the body, which holds none. */
 internal fun readOdfStyles(xml: ByteArray, sheet: OdfStyles, newParser: ParserFactory) {
     OdfStylesReader(newParser(xml.inputStream()), sheet).read()
 }

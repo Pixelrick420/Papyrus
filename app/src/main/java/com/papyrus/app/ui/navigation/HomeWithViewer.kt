@@ -50,20 +50,12 @@ import com.papyrus.app.ui.AppViewModelProvider
 import com.papyrus.app.ui.screens.HomeScreen
 import com.papyrus.app.ui.screens.HomeViewModel
 
-/**
- * Whether a window is wide enough to put the library and a document side by side: medium width or
- * wider, which is 600dp and up. A tall enough window as well, because a phone turned sideways is as
- * wide as a small tablet but only a few hundred dp high, and a phone keeps its single pane.
- */
+// Width alone is not enough: a phone turned sideways is as wide as a small tablet but only a few hundred dp high, and keeps its single pane.
 internal fun showsListAndViewer(width: WindowWidthSizeClass, height: WindowHeightSizeClass): Boolean =
     width >= WindowWidthSizeClass.Medium && height != WindowHeightSizeClass.Compact
 
 internal fun WindowSizeClass.showsListAndViewer(): Boolean = showsListAndViewer(widthSizeClass, heightSizeClass)
 
-/**
- * The current window's size class, recalculated when the window changes size: a fold, a rotation or
- * a resize in split screen. False without an activity, where there is no window to measure.
- */
 @OptIn(ExperimentalMaterial3WindowSizeClassApi::class)
 @Composable
 internal fun rememberTwoPane(): Boolean {
@@ -71,24 +63,15 @@ internal fun rememberTwoPane(): Boolean {
     return calculateWindowSizeClass(activity).showsListAndViewer()
 }
 
-/** The pane's own back stack starts here: nothing open yet, and where closing a document returns to. */
 private const val PANE_EMPTY = "pane_empty"
 
-/** The list takes this share of the width, within the bounds below, and the document the rest. */
 private const val LIST_PANE_SHARE = 0.4f
 private val ListPaneMinWidth = 280.dp
 private val ListPaneMaxWidth = 400.dp
 
 internal fun listPaneWidth(available: Dp): Dp = (available * LIST_PANE_SHARE).coerceIn(ListPaneMinWidth, ListPaneMaxWidth)
 
-/**
- * The library with a viewer beside it, for windows that [showsListAndViewer]. Tapping a document opens
- * it in the right-hand pane and leaves the list, its scroll position and its search where they were.
- *
- * The pane is a navigation host of its own rather than a composable swapped by id. That gives each
- * document the entry the full-screen route would: its own arguments and saved state, and a view model
- * that is cleared as soon as another document replaces it instead of piling up for the session.
- */
+// The pane is a navigation host of its own so each document gets its own arguments, saved state and a view model cleared when another replaces it.
 @Composable
 internal fun HomeWithViewer(
     onOpenSettings: () -> Unit,
@@ -144,7 +127,6 @@ internal fun HomeWithViewer(
             }
             VerticalDivider()
             Box(Modifier.weight(1f).fillMaxHeight()) {
-                // Quick fades: switching documents should not slide like a change of screen.
                 NavHost(
                     navController = paneNav,
                     startDestination = PANE_EMPTY,
@@ -171,7 +153,6 @@ internal fun HomeWithViewer(
 
 private const val PANE_FADE_MS = 150
 
-/** What the viewer's side says before a document is chosen. */
 @Composable
 internal fun PanePlaceholder() {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {

@@ -4,16 +4,9 @@ import com.papyrus.app.viewer.OfficeCell
 import kotlin.math.max
 import kotlin.math.min
 
-/**
- * Each column's wanted and minimum width in dp, gap and padding included; [minDp] is how far it
- * squeezes before a word must break.
- */
 internal class ColumnMetrics(val minDp: FloatArray, val preferredDp: FloatArray)
 
-/**
- * Sizes columns from content like HTML auto layout, since a .doc table arrives as text only;
- * widths are estimated, not measured, because per-cell layout is too costly for large tables.
- */
+// Estimated, not measured: per-cell layout is too costly for large tables (a .doc table arrives as text only).
 internal fun measureColumns(
     rows: List<List<OfficeCell>>,
     columnCount: Int,
@@ -62,10 +55,6 @@ internal fun measureColumns(
     return ColumnMetrics(minimum, preferred)
 }
 
-/**
- * Fits [metrics] into [availableDp]: an already-fitting table keeps its preferred widths, a larger
- * one gives up width in proportion to each column's spare, and below the minimums it scrolls.
- */
 internal fun fitColumns(metrics: ColumnMetrics, availableDp: Float): FloatArray {
     val preferred = metrics.preferredDp
     val minimum = metrics.minDp
@@ -73,18 +62,13 @@ internal fun fitColumns(metrics: ColumnMetrics, availableDp: Float): FloatArray 
     if (!availableDp.isFinite() || total <= availableDp) return preferred.copyOf()
     val floor = minimum.sum()
     if (floor >= availableDp) return minimum.copyOf()
-    // total > availableDp > floor, so the flexible part is positive.
     val share = (availableDp - floor) / (total - floor)
     return FloatArray(preferred.size) { minimum[it] + (preferred[it] - minimum[it]) * share }
 }
 
-/** Where a cell sits on a table's grid; spans are at least 1. */
 internal data class GridCell(val row: Int, val column: Int, val colspan: Int, val rowspan: Int)
 
-/**
- * Row heights for cells wanting [natural] px each (parallel to [cells]). A row is as tall as its
- * tallest single-row cell, never under [minRow]; a rowspan grows its last row by any shortfall.
- */
+// A rowspan grows its last row by any shortfall.
 internal fun rowHeights(cells: List<GridCell>, natural: IntArray, rowCount: Int, minRow: Int): IntArray {
     val heights = IntArray(rowCount) { minRow }
     cells.forEachIndexed { i, cell ->
@@ -104,7 +88,6 @@ private class SpanNeed(val first: Int, val last: Int, val lineDp: Float)
 
 private class Extent(val lineEm: Float, val wordEm: Float)
 
-/** Widest line and widest unbreakable run of [text] in ems; lines split on `\n` as cells do. */
 private fun extentOf(text: String): Extent {
     var line = 0f
     var word = 0f
@@ -140,10 +123,8 @@ private fun extentOf(text: String): Extent {
 
 private fun isBreakEverywhere(ch: Char): Boolean = ch.code >= WIDE_FROM && !ch.isSurrogate()
 
-/**
- * Approximate advance of [ch] in ems for Roboto, the theme's font. The tracking term is Material's
- * 0.4sp on 12sp body-small text; without it every line comes out about 3% short.
- */
+// Approximate advance of [ch] in ems for Roboto, the theme's font. The tracking term is Material's
+// 0.4sp on 12sp body-small text; without it every line comes out about 3% short.
 private fun advanceEm(ch: Char): Float = TRACKING_EM + when {
     ch in '0'..'9' -> 0.56f
     ch == ' ' -> 0.25f
@@ -165,23 +146,14 @@ private fun advanceEm(ch: Char): Float = TRACKING_EM + when {
     }
     // Indic scripts mix wide base letters with zero-width vowel signs; average per code point.
     ch.code in INDIC_START..INDIC_END -> 0.75f
-    // Half of a surrogate pair: an emoji is two chars and roughly one em.
     ch.isSurrogate() -> 0.5f
     ch.code >= WIDE_FROM -> 1f
-    // Accented Latin, Cyrillic, Greek and the rest.
     else -> 0.58f
 }
 
-/** Rows per table band, the role TEXT_LINES_PER_CHUNK plays for text. */
 internal const val TABLE_BAND_ROWS = 30
 
-/**
- * Row indices in bands of at most [maxRows], so a huge table composes a slice at a time. Extended
- * so no rowspan crosses a boundary: a band holding a cell starting near its tail grows to the
- * span's last row, which keeps each band's own layout identical to the same rows in a whole-table
- * layout. A span taller than [maxRows] makes one band of the whole table. The last band is short;
- * an empty table has no bands.
- */
+// Extended so no rowspan crosses a boundary: each band's layout stays identical to the same rows in a whole-table layout. A span taller than [maxRows] makes one band.
 internal fun bandBoundaries(rows: List<List<OfficeCell>>, maxRows: Int): List<IntRange> {
     val count = rows.size
     if (count == 0) return emptyList()
@@ -207,13 +179,10 @@ internal fun bandBoundaries(rows: List<List<OfficeCell>>, maxRows: Int): List<In
     return bands
 }
 
-/** A column never narrower than this: enough for a serial number or short code. */
 private const val MIN_TEXT_EM = 3f
 
-/** Prose wraps past this many ems (~260dp of 12sp) instead of widening its column further. */
 private const val MAX_TEXT_EM = 22f
 
-/** Prose columns squeeze to this many ems at least, unless one word is wider. */
 private const val SQUEEZE_FLOOR_EM = 8f
 
 /** A single very long word (a URL) must not set the minimum: it breaks mid-word instead. */
@@ -228,5 +197,4 @@ private const val ASCII_END = 0x80
 private const val INDIC_START = 0x0900
 private const val INDIC_END = 0x0DFF
 
-/** From here up: CJK, Hangul, fullwidth forms. */
 private const val WIDE_FROM = 0x2E80

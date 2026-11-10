@@ -11,11 +11,6 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 
-/**
- * Whether the system's battery saver is on, live: its current state first, then each change. The
- * receiver is registered only while the flow is collected. It listens to a system broadcast, so it is
- * not exported.
- */
 fun batterySaverFlow(context: Context): Flow<Boolean> = callbackFlow {
     val power = context.getSystemService(PowerManager::class.java)
     trySend(power.isPowerSaveMode)

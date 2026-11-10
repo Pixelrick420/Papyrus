@@ -37,7 +37,6 @@ class DocCharFormatTest {
 
     private fun on(opcode: Int) = sprm(opcode, 1)
 
-    /** The only block of a one-paragraph document, as a paragraph. */
     private fun only(vararg runs: Run, istd: Int = 0, styles: List<Style?> = DEFAULT_STYLES, fonts: List<String> = emptyList()) =
         extract(DocRichFixtures.doc(listOf(Para(runs.toList(), istd)), styles, fonts = fonts)).single()
 
@@ -200,7 +199,6 @@ class DocCharFormatTest {
             styles = styles,
         )
         assertEquals(listOf(TextSpan(4, 8, bold)), spansOf(block))
-        // Against an unformatted paragraph the same operand turns it on.
         val plain = only(Run("flip", sprm(CFBOLD, 0x81)), Run("same", sprm(CFBOLD, 0x80)))
         assertEquals(listOf(TextSpan(0, 4, bold)), spansOf(plain))
     }
@@ -267,7 +265,6 @@ class DocCharFormatTest {
         )
         assertEquals(
             listOf(
-                // The heading's "1. " is in its text, so its span moves past it.
                 OfficeBlock.Heading("1. Intro", 1, listOf(TextSpan(3, 8, bold))),
                 OfficeBlock.ListItem("an item", "2.", 0, listOf(TextSpan(3, 7, italic))),
             ),
@@ -348,12 +345,10 @@ class DocCharFormatTest {
         assertEquals(OfficeBlock.Paragraph("code"), extract(broken).single())
     }
 
-    /** Heading 1 whose style makes its text bold, in place of the plain one. */
     private val HEADING_BOLD = Style("Heading 1", sti = 1, base = 0, chpx = on(CFBOLD))
 
     private fun styled(heading: Style) = listOf(DocRichFixtures.NORMAL, heading)
 
-    /** A 10-byte SHD operand: foreground and background as COLORREFs, then the pattern. */
     private fun shd(fore: Int, back: Int, pattern: Int): ByteArray =
         colorRef(fore) + colorRef(back) + byteArrayOf((pattern and 0xFF).toByte(), (pattern shr 8).toByte())
 

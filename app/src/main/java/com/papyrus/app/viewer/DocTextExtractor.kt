@@ -3,12 +3,6 @@ package com.papyrus.app.viewer
 import java.io.IOException
 import java.io.InputStream
 
-/**
- * Dependency-free Word 97-2003 `.doc` extraction: walks the OLE2 [CompoundFile], follows the FIB's
- * `fcClx` into the piece table, and emits the same [OfficeBlock] list as `OfficeTextExtractor`.
- * The binary formats are read by [DocFibParser] and [DocPieceTable]; [DocBlockBuilder] turns the
- * decoded text into blocks.
- */
 object DocTextExtractor {
 
     /** Mirrors `OfficeTextExtractor.MAX_BLOCKS` so both paths cap identically. */
@@ -23,8 +17,7 @@ object DocTextExtractor {
 
     private const val MAX_CLX_BYTES = 16 * 1024 * 1024
 
-    /** [openStream] must return a fresh stream on every call; the caller closes it. [maxBlocks]
-     * bounds the piece loop: the viewer keeps the full [MAX_BLOCKS], a thumbnail only its first lines. */
+    // [openStream] must return a fresh stream on every call. [maxBlocks] bounds the piece loop: the viewer keeps the full [MAX_BLOCKS], a thumbnail only its first lines.
     fun extract(openStream: () -> InputStream, maxBlocks: Int = MAX_BLOCKS): List<OfficeBlock> {
         val fileLength = probeLength(openStream)
         val cfb = CompoundFile(openStream, fileLength)
@@ -73,7 +66,6 @@ object DocTextExtractor {
     }
 }
 
-/** FcCompressed 8-bit text: cp1252 specials map to Unicode, the rest are Latin-1. */
 private fun decodeCompressed(bytes: ByteArray): String {
     val out = CharArray(bytes.size)
     for (i in bytes.indices) out[i] = compressedChar(bytes[i].toInt() and 0xFF)

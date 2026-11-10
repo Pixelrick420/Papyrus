@@ -23,11 +23,7 @@ import com.papyrus.app.viewer.lineSnippet
 import com.papyrus.app.viewer.locateLine
 import java.text.NumberFormat
 
-/**
- * What the knob is over while it is held on a text list: the line at the top of the screen and a few words
- * of it, beside the knob. Nothing is worked out unless [scrubbing], and then only when the line changes, from
- * the list's own position and the chunk's text: no line table, so it costs a large file nothing extra.
- */
+// Nothing is worked out unless [scrubbing], and then only when the line changes; no line table, so it costs a large file nothing extra.
 @Composable
 internal fun BoxScope.LineScrubPreview(
     listState: LazyListState,
@@ -63,7 +59,6 @@ internal fun BoxScope.LineScrubPreview(
     )
 }
 
-/** The line at the top of the screen, from which chunk is first in the list and how much of it is scrolled away. */
 private fun topLine(listState: LazyListState, lines: Int): Int {
     val first = listState.layoutInfo.visibleItemsInfo.firstOrNull() ?: return 1
     val scrolledAway = if (first.size > 0) (-first.offset).coerceAtLeast(0) / first.size.toFloat() else 0f

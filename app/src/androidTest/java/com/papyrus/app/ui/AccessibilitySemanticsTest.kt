@@ -264,7 +264,6 @@ class AccessibilitySemanticsTest {
             AndroidView(
                 factory = { context ->
                     TextView(context).apply {
-                        // Rendered by the real Markwon, so the spans are the ones the viewer gets.
                         MarkdownRenderer.create(context, source).markwon.setMarkdown(this, source)
                         exposeMarkdownSemantics()
                         view = this
@@ -309,7 +308,6 @@ class AccessibilitySemanticsTest {
         }
     }
 
-    /** Touch bounds, not layout bounds: Material enforces the 48dp minimum on the touch target. */
     private fun minTouchTarget(size: Dp): SemanticsMatcher {
         val minimum = with(rule.density) { size.toPx() }
         return SemanticsMatcher("touch target is at least $size") { node ->
@@ -338,9 +336,7 @@ class AccessibilitySemanticsTest {
         // Neither action can be started again over the one that is running.
         rule.onNodeWithContentDescription("Remove").assertIsNotEnabled()
         rule.onNodeWithContentDescription("Share").assertIsNotEnabled()
-        // TalkBack announces a progress bar as it moves and a live region whenever it changes, which
-        // would read a running tally and then the finish a second time. The finish is announced once,
-        // by the snackbar, so nothing here may be either.
+        // TalkBack announces a progress bar as it moves and a live region whenever it changes, which would read a running tally and then the finish a second time.
         rule.onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsProperties.ProgressBarRangeInfo)).assertCountEquals(0)
         rule.onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsProperties.LiveRegion)).assertCountEquals(0)
     }

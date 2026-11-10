@@ -31,16 +31,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import java.util.Locale
 
-/**
- * Foreground playback service that owns the [TextToSpeech] engine, so reading aloud outlives the
- * viewer and survives the screen going off. It consumes the queue the viewer prepared and drives a
- * [TtsController] through a small platform adapter, publishing playback back into the app-scoped
- * [TtsSession].
- *
- * A media-style notification offers play/pause, and a platform [MediaSession] forwards headset and
- * Bluetooth transport keys and the lock-screen surface. Audio is attributed to media use and holds audio
- * focus while it speaks: a call or another app's audio pauses it, and so does unplugging the headphones.
- */
+// Foreground service owning the TextToSpeech engine, so reading aloud outlives the viewer and the screen going off.
 class TtsPlaybackService : Service(), TextToSpeech.OnInitListener {
 
     private lateinit var tts: TextToSpeech
@@ -56,16 +47,10 @@ class TtsPlaybackService : Service(), TextToSpeech.OnInitListener {
     private var engineFailed = false
     private var started = false
 
-    /**
-     * A speak that beats [onInit] is held here and spoken once the engine is ready. The engine binds
-     * asynchronously, so the very first play always arrives before it is listening. The rate is held
-     * for the same reason: it has to be applied before that first utterance, not while the engine is
-     * still deaf to it.
-     */
+    // The engine binds asynchronously, so the first play arrives before it is listening; the rate is held for the same reason.
     private var pendingSpeak: Pair<String, String>? = null
     private var pendingRate = 1.0f
 
-    /** What the engine speaks with, and what the focus request tells other apps this is. */
     private val speechAttributes = AudioAttributes.Builder()
         .setUsage(AudioAttributes.USAGE_MEDIA)
         .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
@@ -133,10 +118,6 @@ class TtsPlaybackService : Service(), TextToSpeech.OnInitListener {
                 scope.launch { controller?.onUtteranceComplete(utteranceId) }
             }
 
-            /**
-             * The word the engine is about to speak. The viewer marks it, and a speed change uses it
-             * to re-queue only the rest of the unit instead of waiting for the whole paragraph.
-             */
             override fun onRangeStart(utteranceId: String, start: Int, end: Int, frame: Int) {
                 scope.launch { controller?.onRangeStart(utteranceId, start, end) }
             }
@@ -176,7 +157,6 @@ class TtsPlaybackService : Service(), TextToSpeech.OnInitListener {
             started = true
             startInForeground()
         }
-        // A fresh document (first play, or a new one) is loaded and started here.
         if (intent?.action != ACTION_PAUSE) {
             session.consumePending()?.let(::begin)
         }
@@ -208,7 +188,6 @@ class TtsPlaybackService : Service(), TextToSpeech.OnInitListener {
             }
         }
         tts.setSpeechRate(pendingRate)
-        // The first play was queued before the engine was listening; speak it now.
         pendingSpeak?.let { (text, id) ->
             pendingSpeak = null
             tts.speak(text, TextToSpeech.QUEUE_FLUSH, Bundle(), id)
@@ -224,7 +203,6 @@ class TtsPlaybackService : Service(), TextToSpeech.OnInitListener {
         }
     }
 
-    /** Push the notification and the media session's transport state. */
     private fun publish(playback: TtsPlayback) {
         if (started) {
             getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, buildNotification(session.state.value))
@@ -248,19 +226,13 @@ class TtsPlaybackService : Service(), TextToSpeech.OnInitListener {
                 )
                 .build(),
         )
-        // Nothing left to play, or an error: drop the foreground job and the notification. A failure
-        // keeps the session so the in-flow bar can still say why it stopped.
+        // A failure keeps the session so the in-flow bar can still say why it stopped.
         if (!playback.isPlaying && !playback.isPaused && started) {
             stopPlayback(clearSession = !playback.hasError)
         }
     }
 
-    /**
-     * Drop the foreground job, the notification and the service. [clearSession] false is the failure
-     * path: it leaves the error - and the document with it - in the session, so the bar reports it and
-     * keeps the reading position. Everything that reaches an error has already stopped the engine, so
-     * there is nothing left to silence.
-     */
+    // [clearSession] false is the failure path: the error and document stay in the session so the bar reports it and keeps the reading position.
     private fun stopPlayback(clearSession: Boolean = true) {
         if (started) {
             started = false
@@ -353,7 +325,6 @@ class TtsPlaybackService : Service(), TextToSpeech.OnInitListener {
         const val ACTION_PAUSE = "com.papyrus.app.tts.PAUSE"
         const val ACTION_STOP = "com.papyrus.app.tts.STOP"
 
-        /** Bring the service up and let it consume whatever the viewer prepared. */
         fun start(context: Context, action: String = ACTION_PLAY) {
             val intent = Intent(context, TtsPlaybackService::class.java).setAction(action)
             context.startForegroundService(intent)

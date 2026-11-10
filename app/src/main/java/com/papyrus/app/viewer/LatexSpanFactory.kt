@@ -7,32 +7,18 @@ import kotlinx.coroutines.Deferred
 import io.ratex.RaTeXFontLoader
 import io.ratex.RaTeXSpan
 
-/**
- * Scans a Markdown source for $$...$$ LaTeX formulas and prepares asynchronous [RaTeXSpan] creation.
- *
- * Markwon produces a [Spanned] synchronously; [RaTeXSpan.create] is suspend and returns a
- * [ReplacementSpan], so this factory holds detected ranges and launches span creation per range
- * on a caller-supplied coroutine scope. Block vs inline is decided by whether $$...$$ occupies
- * an entire line. Graceful fallback: if [RaTeXSpan.create] throws or returns null, the caller keeps
- * the visible placeholder text - no crash, no missing formula.
- */
+// Markwon produces a [Spanned] synchronously but [RaTeXSpan.create] is suspend, so ranges are detected up front and span creation is launched per range.
+// On failure the caller keeps the visible placeholder text.
 class LatexSpanFactory(
-    /** The Android context, passed to [RaTeXSpan.create]. Nullable so range-detection can be unit-tested without a real Context. */
     private val context: Context?,
     source: String,
 ) {
-    /** All detected $$...$$ ranges in [source], in order of appearance. */
     val ranges: List<LatexRange>
 
     init {
         ranges = detectRanges(source)
     }
 
-    /**
-     * Launches [RaTeXSpan.create] for each range on [scope], returning one deferred per range.
-     * Each deferred resolves to [Pair] of the [LatexRange] and its [RaTeXSpan] (null if creation
-     * failed - the caller keeps the visible placeholder text as graceful fallback).
-     */
     @Suppress("TooGenericExceptionCaught", "SwallowedException")
     fun createSpans(scope: CoroutineScope, fontSizePx: Float, color: Int): List<Deferred<Pair<LatexRange, RaTeXSpan?>>> {
         // Load fonts from assets before creating spans; RaTeX needs them available to render.
@@ -65,7 +51,6 @@ class LatexSpanFactory(
         }
     }
 
-    /** True when the $$...$$ occupies an entire line (block formula), false when inline within text. */
     private fun isBlockFormula(source: String, range: IntRange): Boolean {
         // If the formula is the entire document and a single line, treat as inline:
         // there's no surrounding line context. Multi-line documents fall through to line checks.
@@ -93,14 +78,9 @@ class LatexSpanFactory(
     }
 }
 
-/** A detected $$...$$ formula range in the Markdown source. */
 data class LatexRange(
-    /** Start index (inclusive) of the $$...$$ in the source. */
     val start: Int,
-    /** End index (exclusive) of the $$...$$ in the source. */
     val end: Int,
-    /** The LaTeX body between the $$ delimiters. */
     val latex: String,
-    /** True when the formula is on its own line (block), false when inline within text. */
     val isBlock: Boolean,
 )

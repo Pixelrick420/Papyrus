@@ -6,10 +6,8 @@ import java.io.ByteArrayOutputStream
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
-/** Archives are built in memory: a binary fixture cannot be reviewed in a diff. */
 internal object OfficeFixtures {
 
-    /** A minimal valid 1x1 PNG, for the media paths. */
     val PNG_1X1: ByteArray = byteArrayOf(
         0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
         0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52,
@@ -37,10 +35,8 @@ internal object OfficeFixtures {
         return zip(entries)
     }
 
-    /** A bare archive with no body part, for the "not a valid document" path. */
     fun zipOf(entries: Map<String, ByteArray>): ByteArray = zip(entries)
 
-    /** [extra] adds whole archive entries by path, such as a `styles.xml`. */
     fun odt(
         contentXml: String,
         media: Map<String, ByteArray> = emptyMap(),
@@ -55,7 +51,6 @@ internal object OfficeFixtures {
         return zip(entries)
     }
 
-    /** Wraps [body] in a `w:document` shell, so tests only write the interesting part. */
     fun docxBody(body: String) =
         """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
            <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
@@ -74,7 +69,6 @@ internal object OfficeFixtures {
             }
            }</Relationships>""".trimIndent()
 
-    /** [styles] goes inside `office:automatic-styles`, ahead of the body, where producers put it. */
     fun odtContent(body: String, styles: String = "") =
         """<?xml version="1.0" encoding="UTF-8"?>
            <office:document-content
@@ -90,7 +84,6 @@ internal object OfficeFixtures {
              <office:body><office:text>$body</office:text></office:body>
            </office:document-content>""".trimIndent()
 
-    /** Relationships for hyperlinks: external targets, which are URLs rather than archive entries. */
     fun docxLinkRels(vararg entries: Pair<String, String>) =
         """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
            <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${
@@ -117,7 +110,6 @@ internal object OfficeFixtures {
           <Default Extension="png" ContentType="image/png"/>
         </Types>"""
 
-    /** A stream factory for [OfficeTextExtractor.extract], which opens the archive more than once. */
     fun streamFactory(bytes: ByteArray): () -> java.io.InputStream = { ByteArrayInputStream(bytes) }
 
     fun parser(): XmlPullParser = org.xmlpull.v1.XmlPullParserFactory.newInstance().newPullParser()

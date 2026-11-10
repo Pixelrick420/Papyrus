@@ -9,17 +9,13 @@ import org.commonmark.node.Text
 import org.commonmark.parser.Parser
 import org.commonmark.parser.PostProcessor
 
-/** Turns the bare web and e-mail addresses in a document's prose into links; see [Autolinks] for which. */
 internal class AutolinkPlugin : AbstractMarkwonPlugin() {
     override fun configureParser(builder: Parser.Builder) {
         builder.postProcessor(AutolinkPostProcessor)
     }
 }
 
-/**
- * Works on the parsed tree rather than the rendered text, so an address inside a link's label, an image's
- * alt text or a code span is left alone and the links it adds render exactly like ones the author wrote.
- */
+// Works on the parsed tree so an address inside a link's label, alt text or a code span is left alone, and added links render like ones the author wrote.
 internal object AutolinkPostProcessor : PostProcessor {
 
     override fun process(node: Node): Node {

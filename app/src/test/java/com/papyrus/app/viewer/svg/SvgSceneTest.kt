@@ -9,7 +9,6 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** The SVG subset on its own: what becomes geometry, what is dropped, and the caps. */
 class SvgSceneTest {
 
     private fun scene(inner: String, attrs: String = "viewBox=\"0 0 100 50\"", limits: SvgLimits = SvgLimits()): SvgScene? =
@@ -220,7 +219,6 @@ class SvgSceneTest {
             parseSvg("<svg><g></svg>".toByteArray(), { stream -> OfficeFixtures.parser().apply { setInput(stream, null) } }, SvgLimits())
             throw AssertionError("expected a parse error")
         } catch (_: org.xmlpull.v1.XmlPullParserException) {
-            // expected
         }
     }
 }

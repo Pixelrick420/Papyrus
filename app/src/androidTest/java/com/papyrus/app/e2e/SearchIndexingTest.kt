@@ -6,7 +6,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
-/** When a small file's text reaches the search index: at once, and not at all while the setting is off. */
 @RunWith(AndroidJUnit4::class)
 class SearchIndexingTest : E2eTest() {
 
@@ -66,7 +65,6 @@ class SearchIndexingTest : E2eTest() {
         app.assertShown(app.label("zebrafish"), load)
     }
 
-    /** Flips "Search inside documents" in Settings and returns to Home. */
     private fun switchSearchInsideDocuments() {
         app.launchHome()
         app.tap(app.desc("Settings"))

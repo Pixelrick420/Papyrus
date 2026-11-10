@@ -12,20 +12,17 @@ class MarkdownAutolinkTest {
 
     private val parser = Parser.builder().postProcessor(AutolinkPostProcessor).build()
 
-    /** The destination of every link in [markdown], whether the author wrote it or the post-processor added it. */
     private fun links(markdown: String): List<String> {
         val found = ArrayList<String>()
         parser.parse(markdown).accept(object : AbstractVisitor() {
             override fun visit(link: Link) {
                 found.add(link.destination)
-                // Into the label too, so a link nested in another one is seen.
                 visitChildren(link)
             }
         })
         return found
     }
 
-    /** All the text in reading order, which links must not change. */
     private fun text(markdown: String): String {
         val out = StringBuilder()
         parser.parse(markdown).accept(object : AbstractVisitor() {

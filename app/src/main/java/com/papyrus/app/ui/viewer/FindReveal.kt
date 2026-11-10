@@ -27,19 +27,13 @@ import kotlinx.coroutines.flow.first
 
 // A chunk, block or page can exceed the screen, so a match needs its own reveal, not its container's.
 
-/** One navigation to a match; the drawer scrolls once, then marks it consumed. */
 internal class RevealTicket {
     var consumed = false
 }
 
-/** Room around the current match when scrolled into view, so it is not flush with an edge. */
 internal val RevealMargin = 48.dp
 
-/**
- * Text with find highlights; [reveal] goes only to the container holding the current match, and
- * [syntax] colours source code under the highlights. [speaking] is the part being read aloud: shaded
- * behind the text, and kept on screen while it says to follow.
- */
+// [reveal] goes only to the container holding the current match; [speaking] is shaded behind the text and kept on screen while it says to follow.
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun FindText(
@@ -79,7 +73,6 @@ internal fun FindText(
 
     LaunchedEffect(activeRange, reveal) {
         if (activeRange == null || reveal == null || reveal.consumed) return@LaunchedEffect
-        // The text may have only just been composed, by a scroll that brought its item in.
         val measured = snapshotFlow { layout }.filterNotNull().first()
         reveal.consumed = true
         val box = measured.getBoundingBox(activeRange.first)
@@ -136,7 +129,6 @@ internal fun FindText(
     )
 }
 
-/** Brings [index] into composition so its match can be revealed; an item on screen stays put. */
 internal suspend fun LazyListState.scrollToItemUnlessVisible(index: Int) {
     if (layoutInfo.visibleItemsInfo.none { it.index == index }) scrollToItem(index)
 }

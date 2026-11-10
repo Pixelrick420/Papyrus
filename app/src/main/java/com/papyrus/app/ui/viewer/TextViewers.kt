@@ -13,7 +13,6 @@ import android.util.TypedValue
 import android.widget.TextView
 import com.papyrus.app.viewer.LatexRange
 import com.papyrus.app.viewer.LatexSpanFactory
-import io.ratex.RaTeXSpan
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.ScrollState
@@ -95,10 +94,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
 
-/**
- * Zoom and scrollbar are overlays, so showing them never re-measures the scrollable. [scrubPreview], when
- * given, is drawn over the content and told whether the knob is held; it stays composed so it can fade out.
- */
 @Composable
 private fun ZoomableScrollArea(
     geometry: State<ScrollGeometry>,
@@ -134,7 +129,6 @@ private fun ZoomableScrollArea(
     }
 }
 
-/** Zoom scales fontScale, not pixels: a layer scale would leave the scroll extent at 1x. */
 @Composable
 private fun ScaledTypography(scale: Float, content: @Composable () -> Unit) {
     if (scale == 1f) {
@@ -148,7 +142,6 @@ private fun ScaledTypography(scale: Float, content: @Composable () -> Unit) {
     )
 }
 
-/** Markwon renders to Spannable in a TextView, so find has no chunks to jump between. */
 @Composable
 fun MarkdownViewer(
     markwon: Markwon,
@@ -160,11 +153,8 @@ fun MarkdownViewer(
     position: PositionHooks = PositionHooks.None,
     speaking: TtsHighlight? = null,
     ttsLocked: Boolean = false,
-    /** The search result this viewer arrived on; find's query is empty while it is set. */
     arrival: ArrivalHighlight? = null,
-    /** 1 at full strength, 0 gone: the animated fade of [arrival]. */
     highlightAlpha: Float = 1f,
-    /** The LaTeX span factory with detected $$...$$ ranges, or null when the document has no math. */
     latexFactory: LatexSpanFactory? = null,
 ) {
     val scroll = rememberScrollState()
@@ -180,8 +170,6 @@ fun MarkdownViewer(
     val textPx = baseTextPx * zoom.committedScale
     val rendered = rememberRenderedMarkdown(markwon, source, text, textPx, textColor, linkColor, latexFactory)
     val highlighted = rememberHighlightedText(rendered, findQuery)
-    // The one match an arrival landed on. Markdown has no hits to reveal, so this is the only mark
-    // it gets; the viewer screen scrolls to the same offset.
     val arrivalRange = remember(text, arrival?.term) {
         arrival?.term?.let { findMatchRanges(text, it).firstOrNull() }
     }
@@ -198,7 +186,6 @@ fun MarkdownViewer(
         target = rememberRestoredTarget(LocationKind.CHAR, text.length, position),
         contentTopPx = contentTopPx,
     )
-    // Read aloud: the sentence and word being spoken, in the rendered text's own offsets.
     val spoken = rememberSpokenRange(speaking, text, ttsLocked) { scroll.viewportSize }
     val spokenSpans = remember { SpokenSpans() }
     val sentenceColor = spokenSentenceColor().toArgb()
@@ -228,7 +215,6 @@ fun MarkdownViewer(
             followScope.launch { scroll.animateScrollTo(target, spring(stiffness = Spring.StiffnessMediumLow)) }
         }
     }
-    // Routes taps through viewer opener (avoiding file:// crashes) or scrolls internal footnote anchors.
     val opener = LocalLinkOpener.current
     val movement = remember(opener, scroll, contentTopPx, followMarginPx) {
         GuardedLinkMovementMethod { url ->
@@ -293,7 +279,6 @@ fun MarkdownViewer(
                             }
                             // After any re-set of the text, which drops every span it had.
                             spokenSpans.show(view, spoken, sentenceColor, wordColor)
-                            // Also moved in place: the fade repaints this one range, not the document.
                             arrivalSpans.show(view, arrivalRange, highlightAlpha, textColor)
                         },
                     )
@@ -302,7 +287,6 @@ fun MarkdownViewer(
         }
     }
 
-    // Each placeholder becomes a real RaTeXSpan as its build finishes.
     val scope = rememberCoroutineScope()
     LaunchedEffect(latexFactory, highlighted, textPx, textColor) {
         val factory = latexFactory ?: return@LaunchedEffect
@@ -337,29 +321,21 @@ fun MarkdownViewer(
     }
 }
 
-/** Where a tap on the footnote link [url] scrolls to in this text, or null if it is not one or nothing answers it. */
 private fun Spanned.footnoteOffset(url: String): Int? =
     MarkdownFootnotes.target(getSpans(0, length, LinkSpan::class.java).map { getSpanStart(it) to it.link }, url)
 
-/**
- * Plain fields, not Compose state: the update block runs during layout, and state would recompose
- * on every set.
- */
+// Plain fields, not Compose state: the update block runs during layout, and state would recompose
+// on every set.
 private class MarkdownTextState {
     var view: TextView? = null
     var text: Spanned? = null
 }
 
-/** The line the follow scroll last went to, so a word that stays on its line scrolls nothing. */
 private class MarkdownFollowMemo {
     var line = -1
 }
 
-/**
- * The two spans that shade what is being read inside the TextView's own text. They are moved in place,
- * so a new word costs a repaint and not the re-setting of the whole document that find's highlight
- * needs, which would also drop a selection in progress.
- */
+// Moved in place, so a new word costs a repaint and not the re-setting of the whole document, which would also drop a selection in progress.
 private class SpokenSpans {
     private val sentence = SpokenSpan()
     private val word = SpokenSpan()
@@ -388,7 +364,6 @@ private class SpokenSpans {
     }
 }
 
-/** A background that can change colour with the theme, which a [BackgroundColorSpan] cannot. */
 private class SpokenSpan : CharacterStyle(), UpdateAppearance {
     var color = 0
 
@@ -397,7 +372,6 @@ private class SpokenSpan : CharacterStyle(), UpdateAppearance {
     }
 }
 
-/** A match mark whose background and text colour can be changed without touching the text. */
 private class FadingMatchSpan : CharacterStyle(), UpdateAppearance {
     var background = 0
     var foreground = 0
@@ -408,11 +382,7 @@ private class FadingMatchSpan : CharacterStyle(), UpdateAppearance {
     }
 }
 
-/**
- * The one match a search arrival landed on. Unlike find's spans it is moved in place and only its
- * paint changes, so a fade costs a repaint rather than re-setting the whole document - which would
- * also drop a selection in progress.
- */
+// Moved in place and only its paint changes, so a fade costs a repaint rather than re-setting the document, which would drop a selection in progress.
 private class ArrivalSpans {
     private val span = FadingMatchSpan()
     private var attachedTo: Spannable? = null
@@ -443,8 +413,6 @@ private class ArrivalSpans {
     }
 }
 
-/** A zero-width, invisible marker placed where a $$...$$ formula is stripped out of the text.
- * Replaced by the real [RaTeXSpan] once async creation completes. */
 private class LatexPlaceholderSpan(val range: LatexRange)
 
 // Table row spans freeze the paint at first draw, so a document with tables gets a fresh `Spanned`
@@ -477,7 +445,6 @@ private fun rememberRenderedMarkdown(
         val (renderedPos, factoryRange) = pair
         val (renderedStart, renderedEnd) = renderedPos
         if (renderedEnd > builder.length) return@forEach
-        // Placeholder covers the $$...$$ text so the ReplacementSpan has a visible range to draw over.
         builder.setSpan(
             LatexPlaceholderSpan(factoryRange),
             renderedStart,
@@ -526,23 +493,15 @@ private fun Spanned.withHighlight(query: String): Spanned {
     return result
 }
 
-/**
- * What the plain-text surface needs besides its chunks. None of these change the chunk list, so a settings
- * toggle redraws rows and re-measures nothing read from the file.
- */
+// None of these change the chunk list, so a settings toggle redraws rows and re-measures nothing read from the file.
 @Immutable
 class PlainTextOptions(
-    /** Off, each line stays on one row and the whole list scrolls sideways together. */
     val wrapLines: Boolean = true,
-    /** Splits a long word at a syllable where a line wraps. Set for prose only, and moot while [wrapLines] is off. */
     val hyphenate: Boolean = false,
     val showLineNumbers: Boolean = false,
-    /** Colours the text as source; null for plain text, or when highlighting is switched off. */
     val language: CodeLanguage? = null,
     val lexStates: LexStates? = null,
-    /** Sizes the gutter, which is as wide for line 100 000 as it is at the top of the file. */
     val lineCount: Int = 0,
-    /** Sizes the sideways scroll extent when [wrapLines] is off. */
     val maxLineColumns: Int = 0,
     val truncated: Boolean = false,
 )
@@ -559,9 +518,7 @@ fun PlainTextViewer(
     position: PositionHooks = PositionHooks.None,
     speaking: TtsHighlight? = null,
     ttsLocked: Boolean = false,
-    /** 1 at full strength, 0 gone: the animated fade of a search arrival's mark. */
     highlightAlpha: Float = 1f,
-    /** Only the current match is painted: an arrival lights the one place it landed on. */
     onlyActive: Boolean = false,
 ) {
     val restoreTarget = rememberRestoredTarget(LocationKind.CHUNK, chunks.size, position)
@@ -610,7 +567,6 @@ fun PlainTextViewer(
         zoom.lastCommit?.let { sidewaysAnchor.settle(zoom) }
     }
 
-    // The lines the gutter numbers, which is what a position in the list is a line of.
     val numbered = remember(chunks, options.lineCount) {
         numberedLines(options.lineCount, chunks.lastOrNull()?.endsWith('\n') == true)
     }
@@ -639,7 +595,6 @@ fun PlainTextViewer(
     }
 }
 
-/** Inside [ScaledTypography], so every measured size is the on-screen size at the committed zoom. */
 @Composable
 private fun PlainTextList(
     chunks: List<String>,
@@ -757,10 +712,6 @@ private fun PlainTextList(
     }
 }
 
-/**
- * One chunk of 40 lines, coloured as source if it has a language, its numbers drawn beside it if
- * asked for.
- */
 @Composable
 private fun TextChunk(
     text: String,
@@ -840,7 +791,6 @@ private fun TextChunk(
     }
 }
 
-/** Sizes and style of the line-number column, in the pixels of the zoom it was measured at. */
 @Immutable
 private class Gutter(
     val numberFieldPx: Float,
@@ -851,10 +801,8 @@ private class Gutter(
     val dividerColor: Color,
 )
 
-/** One line's number, measured when the chunk is laid out: the row it labels and the text itself. */
 private class GutterMark(val row: Int, val number: TextLayoutResult)
 
-/** Paints [marks] and the divider - no measuring, no lookups; that work happened once, in TextChunk. */
 private fun DrawScope.drawGutter(marks: List<GutterMark>, layout: TextLayoutResult, gutter: Gutter) {
     val top = ChunkVerticalPadding.toPx()
     for (mark in marks) {
@@ -867,10 +815,6 @@ private fun DrawScope.drawGutter(marks: List<GutterMark>, layout: TextLayoutResu
     drawLine(gutter.dividerColor, Offset(dividerX, 0f), Offset(dividerX, size.height), strokeWidth = 1.dp.toPx())
 }
 
-/**
- * Offset of each line's first character. A final chunk ending in a newline has an empty line after it,
- * which editors leave unnumbered, so [dropEmptyTail] omits it.
- */
 private fun lineStartOffsets(text: String, dropEmptyTail: Boolean): IntArray {
     var count = 1
     for (c in text) if (c == '\n') count++
@@ -880,10 +824,6 @@ private fun lineStartOffsets(text: String, dropEmptyTail: Boolean): IntArray {
     return if (dropEmptyTail && count > 1 && text.endsWith('\n')) starts.copyOf(count - 1) else starts
 }
 
-/**
- * Holds the column under the pinch fixed when unwrapped text rescales; the other anchors only know
- * about rows.
- */
 private class SidewaysZoomAnchor(private val scroll: ScrollState) : ZoomAnchor {
 
     private var target: Float? = null
@@ -892,14 +832,11 @@ private class SidewaysZoomAnchor(private val scroll: ScrollState) : ZoomAnchor {
         target = null
         val focal = commit.focal
         if (commit.ratio == 1f || focal == Offset.Unspecified) return
-        // The focal point is a viewport coordinate, so the same growth rule as a row applies.
         target = anchoredScroll(scroll.value.toFloat(), focal.x, commit)
     }
 
-    /**
-     * The new width lands a measure after the commit, and `maxValue` lags it, so this chases it for
-     * a few frames.
-     */
+    // The new width lands a measure after the commit, and `maxValue` lags it, so this chases it for
+    // a few frames.
     suspend fun settle(zoom: ZoomState) {
         val wanted = target ?: return
         target = null
@@ -923,15 +860,10 @@ fun OfficeViewer(
     position: PositionHooks = PositionHooks.None,
     speaking: TtsHighlight? = null,
     ttsLocked: Boolean = false,
-    /** Something was left out (a chapter that could not be read, a limit reached): end with a notice saying so. */
     incomplete: Boolean = false,
-    /** 1 at full strength, 0 gone: the animated fade of a search arrival's mark. */
     highlightAlpha: Float = 1f,
-    /** Only the current match is painted: an arrival lights the one place it landed on. */
     onlyActive: Boolean = false,
-    /** What a block that says nothing of its own is set in: a right-to-left book, say. */
     direction: BlockDirection = BlockDirection.LTR,
-    /** The first block of each page of a fixed-layout book: it is drawn with room above it. */
     pageStarts: Set<Int> = emptySet(),
 ) {
     val units = remember(blocks) { officeUnits(blocks) }
@@ -951,7 +883,6 @@ fun OfficeViewer(
             ?: 0,
     )
     val geometry = rememberLazyScrollGeometry(listState)
-    // Tables split fractions across band units so multi-band tables round-trip stored block locations.
     LazyPositionEffects(
         listState,
         LocationKind.BLOCK,
@@ -1081,26 +1012,18 @@ fun OfficeViewer(
     }
 }
 
-/** One lazy item: the block it draws, or a table band - the rows of its slice. */
 internal class OfficeUnit(val block: Int, val rows: IntRange?)
 
-/**
- * The items OfficeViewer lays out, plus the maps every block-index consumer jumps through: the
- * outline, a restored position and the find reveal all name blocks, and one table is several units.
- */
 internal class OfficeUnits(
     val units: List<OfficeUnit>,
-    /** First unit of each block, so a jump to a block lands on the band that starts it. */
     val firstUnitOfBlock: IntArray,
     val blockOfUnit: IntArray,
-    /** Units per block - more than one only for a table tall enough to split. */
     val bandCounts: IntArray,
 ) {
     val size: Int get() = units.size
 
     operator fun get(index: Int): OfficeUnit = units[index]
 
-    /** A stored (block, fraction) as the unit to scroll to and the fraction within that unit. */
     fun splitAcrossBands(block: Int, fraction: Float): Pair<Int, Float> {
         val first = firstUnitOfBlock.getOrNull(block) ?: return 0 to fraction
         val bands = bandCounts[block]
@@ -1112,7 +1035,6 @@ internal class OfficeUnits(
         return (first + band) to (position - band)
     }
 
-    /** The inverse of [splitAcrossBands], so a save names the place a restore returns to. */
     fun joinBands(unit: Int, within: Float): Pair<Int, Float> {
         val block = blockOfUnit.getOrNull(unit) ?: return unit to within
         val bands = bandCounts[block]
@@ -1120,7 +1042,6 @@ internal class OfficeUnits(
         return block to (unit - firstUnitOfBlock[block] + within) / bands
     }
 
-    /** The unit a find hit lives in: its block's first unit, or a table's band of the occurrence. */
     fun unitOfMatch(blocks: List<OfficeBlock>, block: Int, query: String, occurrence: Int?): Int {
         val first = firstUnitOfBlock.getOrNull(block) ?: return 0
         val table = blocks.getOrNull(block) as? OfficeBlock.Table
@@ -1131,7 +1052,6 @@ internal class OfficeUnits(
     }
 }
 
-/** A table splits into band units; every other block is one unit. */
 internal fun officeUnits(blocks: List<OfficeBlock>): OfficeUnits {
     val units = ArrayList<OfficeUnit>()
     val firstUnit = IntArray(blocks.size)
@@ -1155,10 +1075,6 @@ internal fun officeUnits(blocks: List<OfficeBlock>): OfficeUnits {
     return OfficeUnits(units, firstUnit, IntArray(units.size) { units[it].block }, bandCounts)
 }
 
-/**
- * The row of a table's [occurrence]-th match (0-based, reading order), counted the way the cells
- * number their matches for the highlight, or null past the last one.
- */
 private fun rowOfOccurrence(rows: List<List<OfficeCell>>, occurrence: Int, query: String): Int? {
     var seen = 0
     rows.forEachIndexed { rowIndex, row ->

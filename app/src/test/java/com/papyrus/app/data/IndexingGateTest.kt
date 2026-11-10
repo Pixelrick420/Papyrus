@@ -12,7 +12,6 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** When the background indexer may work: only if it is on, nobody is reading, and the battery is not being saved. */
 class IndexingGateTest {
 
     private val enabled = MutableStateFlow(true)
@@ -73,7 +72,6 @@ class IndexingGateTest {
         // Already closed: a second reason changes nothing a collector can see.
         batterySaver.value = true
         delay(50)
-        // And one reason gone leaves it closed.
         reading.value = false
         delay(50)
         collector.cancel()

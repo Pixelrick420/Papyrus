@@ -17,8 +17,7 @@ class LocalFileReportSender : ReportSender {
         try {
             val dir = CrashReportStore.directory(context).apply { mkdirs() }
             val id = errorContent.getString(ReportField.REPORT_ID) ?: UUID.randomUUID().toString()
-            // Stack traces can embed absolute file paths (e.g. in an exception message), which would
-            // reveal which documents the user had open. Redact app-internal paths before persisting.
+            // Exception messages can embed document paths; redact them before persisting.
             redactDocumentPaths(errorContent, context.filesDir)
             File(dir, "crash-${System.currentTimeMillis()}-$id.json").writeText(errorContent.toJSON())
             CrashReportStore.prune(context)
@@ -27,7 +26,6 @@ class LocalFileReportSender : ReportSender {
         }
     }
 
-    /** Redacts document paths and URIs from the report so crash reports never name the user's documents. */
     private fun redactDocumentPaths(errorContent: CrashReportData, filesDir: File) {
         val stackTrace = errorContent.getString(ReportField.STACK_TRACE) ?: return
         val sanitized = redact(stackTrace, filesDir.absolutePath)

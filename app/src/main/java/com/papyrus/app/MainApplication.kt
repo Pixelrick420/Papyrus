@@ -50,16 +50,11 @@ class MainApplication : Application() {
         )
     }
 
-    /** Content search over the index [searchIndexer] fills. */
     val search: SearchRepository by lazy { SearchRepository(database.searchDao()) }
 
-    /** Which screens are showing a document; the indexer stays out of their way, see [IndexingGate]. */
     val readerPresence = ReaderPresence()
 
-    /**
-     * One thread of its own at background priority, so extraction never takes the shared IO threads
-     * from a viewer that is rendering, and the system schedules it behind the foreground work.
-     */
+    // Own low-priority thread so extraction never takes IO threads from a rendering viewer.
     private val indexerDispatcher by lazy {
         Executors.newSingleThreadExecutor { task ->
             Thread({
@@ -69,13 +64,6 @@ class MainApplication : Application() {
         }.asCoroutineDispatcher()
     }
 
-    /**
-     * Extracts document text for the index in the background, using the same readers the viewer
-     * opens documents with, at low priority and only while [IndexingGate] is open: not while a
-     * document is being read, not under battery saver, and not once the setting is off. Small files
-     * skip the first two but never the setting. Not started here: [onCreate] starts it off the main
-     * thread.
-     */
     val searchIndexer: SearchIndexer by lazy {
         val extractor = DocumentTextExtractor(this, indexerDispatcher) { uri ->
             contentResolver.openInputStream(uri) ?: throw FileNotFoundException("no stream for $uri")
@@ -98,29 +86,21 @@ class MainApplication : Application() {
         )
     }
 
-    /**
-     * Work that must finish even if the screen that started it is gone (e.g. committing a removal
-     * whose undo window was still open). Never cancelled: it lives and dies with the process.
-     */
+    // Outlives any screen (e.g. committing a removal after its undo window); never cancelled.
     val applicationScope: CoroutineScope = backgroundScope { failure ->
-        // A silent report: it lands in Crash Reports like a crash would, without ending the process.
         runCatching { ACRA.errorReporter.handleSilentException(failure) }
     }
 
-    /** Application-scoped so the bitmap cache survives navigation and rotation. */
     val thumbnailLoader: ThumbnailLoader by lazy { ThumbnailLoader(this) }
 
-    /** Application-scoped TTS session for background playback. */
     val ttsSession: TtsSession by lazy { TtsSession() }
 
     override fun attachBaseContext(base: Context) {
         super.attachBaseContext(base)
-        // Reports never leave the device: the only enabled sender is LocalFileReportSender, which
-        // writes JSON into filesDir/crash-reports.
+        // Reports never leave the device: the only sender writes JSON under filesDir/crash-reports.
         initAcra {
             buildConfigClass = BuildConfig::class.java
             reportFormat = StringFormat.JSON
-            // Privacy-minimal: no LOGCAT, no shared prefs, no device identifiers.
             reportContent = listOf(
                 ReportField.REPORT_ID,
                 ReportField.APP_VERSION_CODE,
@@ -145,11 +125,9 @@ class MainApplication : Application() {
         // Off the main thread: the first thing indexing does is open the database, and a kill
         // between the two is harmless because the queue lives in that database.
         applicationScope.launch { searchIndexer.start(this) }
-        // Best effort: a sweep that fails leaves the files for the next start.
         applicationScope.launch { runCatching { repository.sweepOrphanedImports(startedAt) } }
     }
 
-    /** Trims the page and thumbnail caches; the bitmaps are rebuilt on demand, so trimming costs only a re-render. */
     override fun onTrimMemory(level: Int) {
         super.onTrimMemory(level)
         if (ACRA.isACRASenderServiceProcess() || level < TRIM_LEVEL_RUNNING_LOW) return
@@ -178,7 +156,6 @@ class MainApplication : Application() {
         const val TRIM_LEVEL_RUNNING_LOW = 10
         const val TRIM_LEVEL_BACKGROUND = 40
 
-        /** Indexing waits this long after launch, so it does not compete with the first screen. */
         const val INDEX_START_DELAY_MILLIS = 3_000L
     }
 }

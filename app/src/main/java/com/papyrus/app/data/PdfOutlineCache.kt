@@ -10,12 +10,7 @@ import androidx.room.Query
 import com.papyrus.app.viewer.OutlineEntry
 import com.papyrus.app.viewer.cleanOutlineTitle
 
-/**
- * One document's outline, so a PDF's bookmarks are read once instead of on every open. [sourceSize]
- * and [cacheVersion] are what make a stale row harmless: the row is used only while the file is the
- * same size and this build still reads outlines the same way. [entries] is [encodeOutline]'s text:
- * one packed string, since the entries are read and written whole.
- */
+// Used only while the file is the same size and [cacheVersion] matches this build; [entries] is [encodeOutline]'s packed text.
 @Entity(
     tableName = "pdf_outlines",
     foreignKeys = [
@@ -44,20 +39,13 @@ interface PdfOutlineDao {
     suspend fun put(row: PdfOutlineEntity)
 }
 
-/**
- * The encoding's own version. Raise it whenever the PDF outline reader or this encoding changes
- * shape, so old rows are ignored rather than decoded into something wrong.
- */
+// Raise whenever the outline reader or this encoding changes shape, so old rows are ignored.
 const val PDF_OUTLINE_CACHE_VERSION = 1
 
 /** Deeper than the reader ever produces; a damaged row is clamped instead of indenting off the sheet. */
 private const val MAX_CACHED_DEPTH = 32
 
-/**
- * `index depth titleLength:title` per entry, all joined with nothing in between. A title may hold any
- * character - spaces, colons, digits - so its length is written down instead of a delimiter being
- * assumed; the decoder then cuts exactly that many characters and resumes at the next entry.
- */
+// `index depth titleLength:title` per entry; the length is written down because a title may hold any character.
 internal fun encodeOutline(entries: List<OutlineEntry>): String = buildString {
     for (entry in entries) {
         append(entry.index).append(' ')
@@ -67,10 +55,8 @@ internal fun encodeOutline(entries: List<OutlineEntry>): String = buildString {
     }
 }
 
-/**
- * The entries [encodeOutline] wrote. Decoding stops at the first damaged entry and keeps the ones
- * before it: a broken cache shows fewer bookmarks, it never fails the open.
- */
+// The entries [encodeOutline] wrote. Decoding stops at the first damaged entry and keeps the ones
+// before it: a broken cache shows fewer bookmarks, it never fails the open.
 internal fun decodeOutline(raw: String): List<OutlineEntry> {
     val out = ArrayList<OutlineEntry>()
     var at = 0
@@ -90,7 +76,6 @@ internal fun decodeOutline(raw: String): List<OutlineEntry> {
     return out
 }
 
-/** A number read up to [delimiter], and where the text after that delimiter starts. */
 private class ParsedNumber(val value: Int, val end: Int)
 
 private fun readNumber(raw: String, at: Int, delimiter: Char): ParsedNumber? {

@@ -6,10 +6,8 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** The undo window's contract: never committed twice, never committed after an Undo. */
 class PendingRemovalTest {
 
-    /** A clock the test turns by hand: tasks fire only when [advance] passes their time. */
     private class FakeTimer : PendingRemoval.Timer {
         private class Task(val at: Long, val action: () -> Unit) {
             var cancelled = false
@@ -36,7 +34,6 @@ class PendingRemovalTest {
             }
         }
 
-        /** Fires the [index]th timer even if cancelled, simulating a cancel that lost the race. */
         fun fireIgnoringCancellation(index: Int) {
             tasks[index].action()
         }

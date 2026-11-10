@@ -155,7 +155,6 @@ class DocHeadingTest {
     fun anUnreadableStyleSheetCostsTheHeadingsAndNothingElse() {
         val good = DocRichFixtures.doc(listOf(Para("Title", istd = 1), Para("Next", istd = 2)))
         assertEquals(listOf(OfficeBlock.Heading("Title", 1), OfficeBlock.Heading("Next", 2)), extract(good))
-        // An Stshf shorter than its own header.
         val broken = withPairLength(good, pair = 1, lcb = 3)
         assertEquals(listOf(OfficeBlock.Paragraph("Title"), OfficeBlock.Paragraph("Next")), extract(broken))
     }
@@ -166,7 +165,6 @@ class DocHeadingTest {
         val table = readStream(good, "0Table")
         val word = readStream(good, "WordDocument")
         val stsh = u32(word, 0x9A + 8).toInt()
-        // Stshi is 2 + 18 bytes; then cbStd and an STD for Normal, Heading 1 and Heading 2.
         var cut = stsh + 20
         repeat(2) { cut += 2 + u16(table, cut) }
         cut += 2 + u16(table, cut) / 2
@@ -181,7 +179,6 @@ class DocHeadingTest {
     fun pageNumbersPastTheStreamAreIgnored() {
         val good = DocRichFixtures.doc(listOf(Para("Title", istd = 1), Para("Body")))
         assertEquals(listOf(OfficeBlock.Heading("Title", 1), OfficeBlock.Paragraph("Body")), extract(good))
-        // Repoint the only page of the PlcBtePapx far beyond WordDocument.
         val broken = patchTable(good) { table, fc -> table[fc + 8] = 0x7F }
         assertEquals(listOf(OfficeBlock.Paragraph("Title"), OfficeBlock.Paragraph("Body")), extract(broken))
     }
@@ -190,7 +187,6 @@ class DocHeadingTest {
     fun aPapxPageClaimingTooManyRunsIsIgnored() {
         val good = DocRichFixtures.doc(listOf(Para("Title", istd = 1), Para("Body")))
         assertEquals(listOf(OfficeBlock.Heading("Title", 1), OfficeBlock.Paragraph("Body")), extract(good))
-        // The page is the last 512 bytes of WordDocument; its `crun` byte is the last of them.
         val broken = patchWord(good) { word -> word[word.size - 1] = 0xFF.toByte() }
         assertEquals(listOf(OfficeBlock.Paragraph("Title"), OfficeBlock.Paragraph("Body")), extract(broken))
     }
@@ -198,7 +194,6 @@ class DocHeadingTest {
     @Test
     fun runBoundariesThatGoBackwardsAreSkipped() {
         val good = DocRichFixtures.doc(listOf(Para("Title", istd = 1), Para("Body")))
-        // Swap the page's first two boundaries so the first run ends before it starts.
         val broken = patchWord(good) { word ->
             val page = word.size - 512
             val first = word.copyOfRange(page, page + 4)
@@ -207,8 +202,6 @@ class DocHeadingTest {
         }
         assertEquals(2, extract(broken).size)
     }
-
-    // The helpers below rewrite one structure of an otherwise valid document.
 
     private fun withPairLength(doc: ByteArray, pair: Int, lcb: Int): ByteArray =
         patchWord(doc) { word ->
@@ -225,7 +218,6 @@ class DocHeadingTest {
 
     private fun patchWord(doc: ByteArray, edit: (ByteArray) -> Unit): ByteArray = patchStream(doc, "WordDocument", edit)
 
-    /** Re-wraps [doc] with one stream changed: the compound-file layer is not what these tests are about. */
     private fun patchStream(doc: ByteArray, name: String, edit: (ByteArray) -> Unit): ByteArray {
         val streams = LinkedHashMap<String, ByteArray>()
         for (stream in listOf("WordDocument", "0Table")) streams[stream] = readStream(doc, stream)
@@ -239,7 +231,6 @@ class DocHeadingTest {
     }
 
     private companion object {
-        /** `sti` of a style the user made. */
         const val USER_STYLE = 0x0FFE
     }
 }

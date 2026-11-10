@@ -4,7 +4,7 @@ import androidx.compose.material.icons.materialIcon
 import androidx.compose.material.icons.materialPath
 import androidx.compose.ui.graphics.vector.ImageVector
 
-/** Material "pause": two equal bars. Not in material-icons-core, so it is drawn here. */
+// Not in material-icons-core, so it is drawn here.
 val Pause: ImageVector = materialIcon(name = "Filled.Pause") {
     materialPath {
         moveTo(6.0f, 19.0f)

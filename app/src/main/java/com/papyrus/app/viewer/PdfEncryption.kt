@@ -8,10 +8,7 @@ import java.io.InputStream
 /** Cache dir for decrypted PDF copies; swept on startup so a kill leaves no plaintext. */
 const val PDF_UNLOCK_DIR = "pdf-unlock"
 
-/**
- * What opening a PDF needs; a corrupt one reads as [NOT_ENCRYPTED] so it fails rather than prompts.
- * [OWNER_ONLY] opens on the empty password silently; [USER_PASSWORD] prompts.
- */
+// A corrupt PDF reads as [NOT_ENCRYPTED] so it fails rather than prompts.
 enum class PdfEncryption {
     NOT_ENCRYPTED,
     OWNER_ONLY,
@@ -19,22 +16,14 @@ enum class PdfEncryption {
 
     companion object {
 
-        /** A scan that has read this many bytes without a verdict stops looking and defers to PdfBox. */
         private const val MAX_SCAN_BYTES = 512L shl 20
         private const val SCAN_CHUNK = 64 * 1024
         private val ENCRYPT_TOKEN = "/Encrypt".toByteArray(Charsets.US_ASCII)
 
-        /**
-         * Common case: one allocation-free pass over the bytes instead of a PdfBox load, which reads
-         * the whole file and parses it. Only a file mentioning `/Encrypt` goes to [authoritativeStatus].
-         */
+        // One allocation-free pass instead of a PdfBox load, which reads and parses the whole file; only a file mentioning `/Encrypt` goes to [authoritativeStatus].
         fun status(openStream: () -> InputStream): PdfEncryption =
             if (mentionsEncryption(openStream)) authoritativeStatus(openStream) else NOT_ENCRYPTED
 
-        /**
-         * The PdfBox verdict, a full parse. [status] reaches it after the byte screen finds `/Encrypt`;
-         * the viewer reaches it when the renderer asks for a password the screen did not expect.
-         */
         fun authoritativeStatus(openStream: () -> InputStream): PdfEncryption =
             try {
                 openStream().use { stream ->
@@ -49,10 +38,7 @@ enum class PdfEncryption {
                 NOT_ENCRYPTED
             }
 
-        /**
-         * Whether the bytes contain the `/Encrypt` key: its trailer can sit at the end, near the start
-         * (linearized), or in a PDF 1.5 xref stream, so this scans the whole stream in fixed chunks.
-         */
+        // The `/Encrypt` trailer can sit at the end, near the start (linearized), or in a PDF 1.5 xref stream, so the whole stream is scanned in fixed chunks.
         internal fun mentionsEncryption(openStream: () -> InputStream, scanLimit: Long = MAX_SCAN_BYTES): Boolean =
             try {
                 openStream().use { containsToken(it, scanLimit) }
@@ -93,7 +79,6 @@ enum class PdfEncryption {
             return -1
         }
 
-        /** Strips encryption into [target] for the renderer; any failure deletes the partial copy. */
         fun decrypt(openStream: () -> InputStream, password: String, target: File) {
             try {
                 openStream().use { stream ->

@@ -2,17 +2,14 @@ package com.papyrus.app.viewer
 
 import org.xmlpull.v1.XmlPullParser
 
-/** Subtrees whose text is not body: deleted text. Comments are read, into notes of their own. */
 private val ODT_SKIPPED = setOf("text:tracked-changes")
 
 private const val MAX_LIST_LEVEL = 8
 
 private fun XmlPullParser.attr(name: String): String? = getAttributeValue(null, name)
 
-/**
- * A span or repeat count: at least 1, and no more than [MAX_MERGE_SPAN], so a hostile file cannot
- * ask for thousands.
- */
+// A span or repeat count: at least 1, and no more than [MAX_MERGE_SPAN], so a hostile file cannot
+// ask for thousands.
 private fun XmlPullParser.countAttr(name: String): Int =
     getAttributeValue(null, name)?.toIntOrNull()?.coerceIn(1, MAX_MERGE_SPAN) ?: 1
 
@@ -20,11 +17,7 @@ private fun XmlPullParser.countAttr(name: String): Int =
 private fun XmlPullParser.outlineLevel(): Int =
     getAttributeValue(null, "text:outline-level")?.toIntOrNull()?.coerceIn(1, 6) ?: 1
 
-/**
- * Reads an ODF `content.xml` body into [blocks] in a single pass, as a state machine like [DocxBodyParser].
- * Stops at [blockBudget] blocks, which the thumbnail path spends cheaply.
- * One instance parses one document, so it is not reusable.
- */
+// Parses one document, so not reusable.
 internal class OdtBodyParser(
     private val newParser: ParserFactory,
     private val styles: OdfStyles,
@@ -35,16 +28,13 @@ internal class OdtBodyParser(
     private val footnotes = ArrayList<OfficeBlock.Note>()
     private val endnotes = ArrayList<OfficeBlock.Note>()
 
-    /** The paragraph being read: its style, whether it is a heading, and its list position. */
     private class ParaInfo(val styleName: String?, val headingLevel: Int, val listMarker: String?, val listLevel: Int)
 
-    /** One open `text:list`. [counter] is the number of the current item. */
     private class ListFrame(val styleName: String?, var counter: Int) {
         var markerPending = false
         var header = false
     }
 
-    /** The anchoring paragraph's state while a text box's own paragraphs are parsed. */
     private class SetAsideParagraph(
         val snapshot: RichSnapshot,
         val depth: Int,
@@ -52,15 +42,10 @@ internal class OdtBodyParser(
         val elementDepth: Int,
     )
 
-    /**
-     * A `text:note` being read. Its body is kept apart from the paragraph it annotates, whose formatting
-     * state is put away until the note closes.
-     */
     private class NoteFrame(
         val endnote: Boolean,
         val savedSpans: List<RunProps>,
         val savedLink: String?,
-        /** An `office:annotation`, not a `text:note`; [outer] is the note it sat inside, if any. */
         val comment: Boolean = false,
         val outer: NoteFrame? = null,
     ) {
@@ -69,7 +54,6 @@ internal class OdtBodyParser(
         val author = StringBuilder()
         val stamp = StringBuilder()
 
-        /** Where `dc:creator` or `dc:date` text goes while one is open. */
         var field: StringBuilder? = null
         var rangeName: String? = null
         var inCitation = false
@@ -99,7 +83,6 @@ internal class OdtBodyParser(
     private var skipDepth = 0
     private val textBoxes = ArrayDeque<SetAsideParagraph>()
 
-    // Merge geometry. Real files declare spans as attributes, then add covered cells as placeholders.
     private var cellColspan = 1
     private var cellRowspan = 1
     private var cellRepeat = 1
@@ -160,7 +143,6 @@ internal class OdtBodyParser(
         return blocks
     }
 
-    /** What text formatted by the paragraph's style and the open spans looks like. */
     private fun recomputeFormat() {
         val open = note
         val style = if (open != null) open.styleName else info.styleName
@@ -176,10 +158,8 @@ internal class OdtBodyParser(
         format = interned.getOrPut(raw) { raw }
     }
 
-    /**
-     * Text goes to a note's body in a note, a cell's buffer in a cell, else the paragraph, and only from
-     * inside a paragraph element: whitespace between tags is layout, not content.
-     */
+    // Text goes to a note's body in a note, a cell's buffer in a cell, else the paragraph, and only from
+    // inside a paragraph element: whitespace between tags is layout, not content.
     private fun appendText(text: String, withFormat: CharFormat = format) {
         val open = note
         if (open != null) {
@@ -448,10 +428,8 @@ internal class OdtBodyParser(
         info = noInfo
     }
 
-    /**
-     * A cell draws as lines of text, so a list item there carries its marker in the text. Alignment comes
-     * from the first paragraph: a column of figures is right-aligned paragraph by paragraph.
-     */
+    // A cell draws as lines of text, so a list item there carries its marker in the text. Alignment comes
+    // from the first paragraph: a column of figures is right-aligned paragraph by paragraph.
     private fun endCellParagraph() {
         if (tableDepth == 1 && paragraphElementDepth == 0) {
             if (cellAlign == null) cellAlign = styles.paragraphAlign(info.styleName) ?: BlockAlign.START
@@ -487,10 +465,7 @@ internal class OdtBodyParser(
         frame.markerPending = true
     }
 
-    /**
-     * The marker for the paragraph that starts here. Only an item's *first* paragraph carries one; the rest
-     * are continuations, indented but unmarked, and a list header is never numbered.
-     */
+    // Only an item's first paragraph carries a marker; the rest are indented but unmarked, and a list header is never numbered.
     private fun consumeMarker(): String {
         val frame = listStack.last()
         if (frame.header || !frame.markerPending) return ""
@@ -502,7 +477,6 @@ internal class OdtBodyParser(
         val frame = listStack[depth - 1]
         val level = styles.listLevels(frame.styleName)?.get(depth)
         if (level == null || level.bullet) return displayBullet(level?.bulletChar, depth - 1)
-        // "1.1." shows the counters of the last `display-levels` levels joined by dots.
         val shown = level.displayLevels.coerceIn(1, depth)
         val parts = ArrayList<String>()
         for (d in depth - shown + 1..depth) {
@@ -519,10 +493,8 @@ internal class OdtBodyParser(
         link = null
     }
 
-    /**
-     * The citation is the label the document chose, falling back to a count; the marker goes into the
-     * paragraph that held the note, since the note's body added nothing to it.
-     */
+    // The citation is the label the document chose, falling back to a count; the marker goes into the
+    // paragraph that held the note, since the note's body added nothing to it.
     private fun endNote() {
         val frame = note ?: return
         note = null
@@ -541,10 +513,8 @@ internal class OdtBodyParser(
         }
     }
 
-    /**
-     * A comment's body is read like a note's and kept for the end. The marker goes in at once for a comment
-     * at a point, and at the range's end for one on a range, where Word puts it too.
-     */
+    // A comment's body is read like a note's and kept for the end. The marker goes in at once for a comment
+    // at a point, and at the range's end for one on a range, where Word puts it too.
     private fun startComment(p: XmlPullParser) {
         note = NoteFrame(false, ArrayList(spanStack), link, comment = true, outer = note).also {
             it.rangeName = p.attr("office:name")

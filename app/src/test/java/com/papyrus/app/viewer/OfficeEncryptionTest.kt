@@ -16,10 +16,7 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
 
-/**
- * Fixtures are real, independently produced: msoffcrypto Agile `.docx` and a hand-rolled ODF 1.2 CBC
- * package, since local LibreOffice only emits the 1.3 form this code rejects.
- */
+// Fixtures are real and independently produced: msoffcrypto Agile `.docx` and a hand-rolled ODF 1.2 CBC package.
 class OfficeEncryptionTest {
 
     @get:Rule
@@ -54,7 +51,6 @@ class OfficeEncryptionTest {
         return OfficeFixtures.odt(OfficeFixtures.odtContent("<text:p>plain</text:p>"), extra = mapOf("META-INF/manifest.xml" to manifest))
     }
 
-    /** The real ODF 1.2 fixture with only the two numbers its manifest controls for key derivation changed. */
     private fun odfWithKeyDerivation(iterationCount: Int, keySize: Int = 32): ByteArray {
         val original = "manifest:iteration-count=\"100000\" manifest:key-size=\"32\""
         val out = ByteArrayOutputStream()
@@ -79,10 +75,6 @@ class OfficeEncryptionTest {
         return out.toByteArray()
     }
 
-    /**
-     * The real ODF 1.2 fixture with one more entry, ahead of the rest or after them. Ahead, only the walk that
-     * looks for the manifest has to pass it; after, only the walk that decrypts every entry reaches it.
-     */
     private fun odfWithExtraEntry(name: String, bytes: ByteArray, first: Boolean): ByteArray {
         val out = ByteArrayOutputStream()
         fun ZipOutputStream.add(entryName: String, data: ByteArray) {

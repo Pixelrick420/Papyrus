@@ -28,14 +28,6 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 
-/**
- * The order a screen reader reaches the controls of each bar in, and which of them it reaches first.
- *
- * The order is the semantics tree's: composition order, which TalkBack follows along a row and down a
- * column unless a traversal index says otherwise (none is set in the app). Reading it off the tree
- * keeps these tests independent of how wide the test device is. Whole screens need a library and a
- * document behind them, so their order is walked by hand: see "Focus order" in ACCESSIBILITY.md.
- */
 @RunWith(AndroidJUnit4::class)
 class FocusOrderTest {
 
@@ -160,7 +152,6 @@ class FocusOrderTest {
         )
     }
 
-    /** What a screen reader would stop on, in the order it would reach it: a label, then its actions. */
     private fun focusStops(): List<String> =
         rule.onAllNodes(SemanticsMatcher("is a screen reader stop") { it.isStop() })
             .fetchSemanticsNodes()

@@ -8,7 +8,6 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
-/** Several handed-over documents are open at once, so none may be lost to another's arrival. */
 class HandedOverStoreTest {
 
     @Test

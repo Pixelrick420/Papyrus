@@ -5,7 +5,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
 
-/** Right-to-left books: the book's own direction from the spine, and each block's from the markup around it. */
 class EpubRtlTest {
 
     private fun read(bytes: ByteArray) =

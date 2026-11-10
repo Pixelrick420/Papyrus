@@ -25,25 +25,9 @@ import com.papyrus.app.tts.TtsProgress
 import com.papyrus.app.viewer.NormRect
 import com.papyrus.app.viewer.PdfPageText
 
-/*
- * Read aloud, as the viewers draw it: the sentence being read is shaded, the word being spoken is
- * shaded harder, and with the lock on the page scrolls to keep that line on screen. Highlighting never
- * depends on the lock; only the scrolling does.
- */
-
-/**
- * The unit being read aloud, as a viewer sees it: [anchor] is where in the document (the page, chunk or
- * block it is in, or the Markdown character offset it starts at) and [progress] where in the unit the
- * voice is.
- */
 @Immutable
 class TtsHighlight(val anchor: Int, val progress: TtsProgress)
 
-/**
- * What of one text is being read aloud, in that text's own offsets: the [sentence] and, inside it, the
- * [word]. With [follow], the page scrolls to keep the line on screen, measuring against the viewport
- * [viewportHeight] reports.
- */
 @Immutable
 internal class SpokenRange(
     val sentence: IntRange?,
@@ -52,10 +36,7 @@ internal class SpokenRange(
     val viewportHeight: () -> Int,
 )
 
-/**
- * This highlight's sentence and word as found in [source], the text the unit was cut from. Before the
- * engine reports a word the whole unit is the sentence. Null when none of it lies in [source].
- */
+// Before the engine reports a word the whole unit is the sentence.
 internal fun TtsHighlight.rangesIn(source: CharSequence, follow: Boolean, viewportHeight: () -> Int): SpokenRange? {
     val text = progress.text
     if (text.isEmpty()) return null
@@ -64,7 +45,6 @@ internal fun TtsHighlight.rangesIn(source: CharSequence, follow: Boolean, viewpo
     return if (sentence == null && word == null) null else SpokenRange(sentence, word, follow, viewportHeight)
 }
 
-/** [rangesIn] for a composable: found again only when the voice or the text moves. */
 @Composable
 internal fun rememberSpokenRange(
     speaking: TtsHighlight?,
@@ -85,13 +65,9 @@ internal fun spokenSentenceColor(): Color = MaterialTheme.colorScheme.primary.co
 @Composable
 internal fun spokenWordColor(): Color = MaterialTheme.colorScheme.primary.copy(alpha = SPOKEN_WORD_ALPHA)
 
-/** Room kept above the line being read, so it never sits against the top edge. */
 internal val FollowTopMargin = 24.dp
 
-/**
- * A block that has no text to mark, a table or an image, shaded as a whole while it is being read and
- * followed by its top. Always a box, so the block inside is not rebuilt when the shading comes and goes.
- */
+// Always a box, so the block inside is not rebuilt when the shading comes and goes.
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun SpokenBlock(
@@ -112,16 +88,13 @@ internal fun SpokenBlock(
     Box(modifier.bringIntoViewRequester(requester).then(shade)) { content() }
 }
 
-/** The sentence and word being read on one PDF page, as page-relative rectangles. */
 internal class SpokenRects(val sentence: List<NormRect>, val word: List<NormRect>)
 
-/** Where the words of [this] sit on [page], whose text it was found in; empty without glyph boxes. */
 internal fun SpokenRange.rectsOn(page: PdfPageText): SpokenRects = SpokenRects(
     sentence = sentence?.let { page.selectionRects(it.first, it.last + 1) }.orEmpty(),
     word = word?.let { page.selectionRects(it.first, it.last + 1) }.orEmpty(),
 )
 
-/** Fills page-relative [rects] across the whole of the canvas being drawn on. */
 internal fun DrawScope.drawSpokenRects(rects: List<NormRect>, color: Color, corner: Float) {
     for (rect in rects) {
         drawRoundRect(

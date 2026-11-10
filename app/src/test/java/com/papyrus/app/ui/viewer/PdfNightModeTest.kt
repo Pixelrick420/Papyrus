@@ -31,7 +31,6 @@ class PdfNightModeTest {
         assertEquals(0x80000000.toInt(), invert(0x80FFFFFF.toInt()))
     }
 
-    /** Applies the matrix the way the platform does: 4x5, then clamped to a channel's range. */
     private fun invert(argb: Int): Int {
         val channels = floatArrayOf(
             ((argb shr 16) and 0xFF).toFloat(),

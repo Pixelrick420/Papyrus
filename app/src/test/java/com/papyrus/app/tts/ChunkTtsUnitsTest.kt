@@ -10,10 +10,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
 
-/** Pure: the units made as they are read are the units [TtsDocumentSource] makes up front. */
 class ChunkTtsUnitsTest {
 
-    /** Counts which chunks were read, to show what a lookup reads and what it does not. */
     private class WatchedChunks(private val inner: List<String>) : AbstractList<String>() {
         val read = ArrayList<Int>()
         override val size: Int get() = inner.size

@@ -7,7 +7,6 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 
-/** The add button: what one file, several files and files it cannot keep do, and when the button is there. */
 @RunWith(AndroidJUnit4::class)
 class AddFilesTest : E2eTest() {
 
@@ -48,7 +47,6 @@ class AddFilesTest : E2eTest() {
 
         app.assertShown(app.text("Added 3 files"), load)
         names.forEach { app.assertShown(app.text(it)) }
-        // Still on Home: nothing was opened, so the add button is where it was.
         app.assertShown(app.desc("Add files"))
     }
 

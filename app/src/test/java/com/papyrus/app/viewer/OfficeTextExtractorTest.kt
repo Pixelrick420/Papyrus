@@ -10,7 +10,6 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.io.File
 
-/** Table geometry and merge handling, where cell position depends on every earlier cell. */
 class OfficeTextExtractorTest {
 
     @get:Rule
@@ -61,7 +60,6 @@ class OfficeTextExtractorTest {
 
     @Test
     fun `whitespace between structural tags is not content`() {
-        // Word pretty-prints its XML; that indentation is not paragraph text.
         val bytes = OfficeFixtures.docx(
             OfficeFixtures.docxBody(
                 """
@@ -310,7 +308,6 @@ class OfficeTextExtractorTest {
         assertEquals(1, table.rows.size)
         assertEquals(2, table.rowCells(0).size)
         assertEquals("outer", table.rowCells(0).first().text)
-        // Nested text folds into the enclosing cell rather than becoming its own block.
         assertTrue(
             "nested text should survive inside the enclosing cell, was: ${table.rowCells(0)[1].text}",
             table.rowCells(0)[1].text.contains("inner"),
@@ -406,7 +403,6 @@ class OfficeTextExtractorTest {
 
         extractor(mediaDir).extract(OfficeFixtures.streamFactory(bytes), DocumentFormat.DOCX)
 
-        // Sanitised to a bare name, so it lands beside the images rather than above them.
         assertEquals(listOf("escaped.png"), mediaDir.listFiles()!!.map { it.name })
         assertEquals(listOf("media"), temp.root.listFiles()!!.map { it.name })
     }
@@ -535,7 +531,6 @@ class OfficeTextExtractorTest {
         assertEquals("image/*", OfficeTextExtractor.guessMimeType("archive.bin"))
     }
 
-    // Real-file regressions: each case below was reproduced on a LibreOffice-written document.
     @Test
     fun `docx tab stop definitions are not tab characters`() {
         // <w:tabs><w:tab/></w:tabs> declares a stop; it used to add one "\t" per stop before the text.

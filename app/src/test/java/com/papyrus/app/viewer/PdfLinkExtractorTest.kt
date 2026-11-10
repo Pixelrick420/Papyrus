@@ -19,24 +19,16 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/**
- * What survives being read out of a page. The failure modes matter most: one annotation PdfBox chokes
- * on must not cost the page its other links, and nothing a document writes may make extraction throw.
- */
 class PdfLinkExtractorTest {
 
-    /** A small crop box so every rectangle below lands on round page fractions. */
     private val crop = rect(0f, 0f, 200f, 100f)
 
-    /** The rectangle every link in this test uses: 20..60 across, 50..75 up of a 200x100 page. */
     private val box = rect(20f, 50f, 60f, 75f)
 
     private val drawn = NormRect(0.1f, 0.25f, 0.3f, 0.5f)
 
-    /**
-     * This port's four-argument [PDRectangle] adds its third and fourth values to the first two instead of
-     * treating them as an upper-right corner, so build the corner array directly.
-     */
+    // This port's four-argument [PDRectangle] adds its third and fourth values to the first two instead of
+    // treating them as an upper-right corner, so build the corner array directly.
     private fun rect(llx: Float, lly: Float, urx: Float, ury: Float): PDRectangle =
         PDRectangle(COSArray().apply {
             add(COSFloat(llx))
@@ -203,7 +195,6 @@ class PdfLinkExtractorTest {
         assertTrue(PdfLinkExtractor.extract(document, -1).isEmpty())
     }
 
-    /** The frame of a 200x100 crop box, with its lower-left where [x], [y] put it. */
     private fun frame(rotation: Int = 0, x: Float = 0f, y: Float = 0f) = PdfPageFrame(200f, 100f, x, y, rotation)
 
     @Test
@@ -213,7 +204,6 @@ class PdfLinkExtractorTest {
 
     @Test
     fun `a crop box that does not start at the origin is folded out before dividing`() {
-        // The same rectangle, 20..60 across and 50..75 up of the crop box, wherever the box starts.
         assertEquals(drawn, frame().toNorm(20f, 50f, 60f, 75f))
         assertEquals(drawn, frame(x = 40f, y = 30f).toNorm(60f, 80f, 100f, 105f))
     }
@@ -234,7 +224,6 @@ class PdfLinkExtractorTest {
 
     @Test
     fun `a link on a page whose crop box starts away from the origin still lands on its words`() {
-        // A 200x100 crop box starting at (40, 30), with a link 20..60 across and 50..75 up of it.
         val offsetPage = PDPage().apply {
             setCropBox(rect(40f, 30f, 240f, 130f))
             setAnnotations(listOf(uriLink("https://example.com/a").also { it.setRectangle(rect(60f, 80f, 100f, 105f)) }))

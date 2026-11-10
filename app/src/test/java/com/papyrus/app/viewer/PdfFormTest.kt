@@ -5,10 +5,6 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/**
- * Form widgets in viewer terms: the platform's raw numbers become a kind, and a field decides for
- * itself whether the reader may change it. Pure, so the whole matrix needs no device.
- */
 class PdfFormTest {
 
     private fun field(

@@ -7,37 +7,20 @@ import androidx.room.Fts4
 import androidx.room.FtsOptions
 import androidx.room.PrimaryKey
 
-/**
- * How one document's text ended up in the index. Only terminal states are stored: no row at all
- * means "not indexed yet", so a crash mid-extraction simply queues the document again next start.
- *
- * A document is not retried on every launch; the indexer's `INDEX_VERSION` is bumped to re-index
- * the whole library, which is the deliberate retry mechanism for a [FAILED] row.
- */
+// Only terminal states are stored: no row means "not indexed yet", so a crash mid-extraction requeues the document.
+// Bump the indexer's INDEX_VERSION to retry [FAILED] rows.
 enum class TextIndexState {
-    /** Text was extracted and is searchable (possibly empty, as a scanned PDF's is). */
     INDEXED,
 
-    /** Extraction threw: malformed file, dead provider, a parser that gave up. */
     FAILED,
 
-    /** Nothing to index on purpose: encrypted, DRM-protected, or a format with no reader. */
     SKIPPED,
 
-    /** The source file is above [DocumentTextExtractor.MAX_SOURCE_BYTES], so it was never opened. */
     TOO_LARGE,
 }
 
-/**
- * One document's extracted text, the content table behind the FTS index.
- *
- * The primary key column is named `rowid` because it doubles as the FTS table's `docid`: an
- * external-content FTS4 table reads its text from here and stores only the inverted index, so a
- * document's words are never kept twice. `autoGenerate` is only here to make Room emit an inline
- * `INTEGER PRIMARY KEY` (a real rowid alias, which is what the FTS synchronization relies on); the
- * id is always supplied by the indexer, never generated. `documentId` stays the Kotlin name, so
- * callers never see the SQLite detail.
- */
+// `rowid` doubles as the FTS table's `docid`; autoGenerate only makes Room emit an inline INTEGER PRIMARY KEY (a real rowid alias).
+// The indexer always supplies the id.
 @Entity(
     tableName = "document_text",
     foreignKeys = [
@@ -59,26 +42,12 @@ data class DocumentTextEntity(
     val sourceSize: Long,
     val indexedAt: Long,
     val indexVersion: Int,
-    /**
-     * When the provider said the file was last modified as its text was read, or 0 when it did not.
-     * The indexer reads the text again only when the provider now says something else, which is how
-     * an edited file is told apart from an untouched one without opening it. Added in schema
-     * version 9; a row from before it holds 0 and is never re-read for its modified time.
-     */
+    // 0 when the provider reported no modified time; compared to detect edits without opening the file.
     @ColumnInfo(defaultValue = "0")
     val sourceModified: Long = 0,
 )
 
-/**
- * The inverted index over [DocumentTextEntity.text]; it holds no copy of the text.
- *
- * Only `text` is indexed. Writes go to `document_text` alone: Room's content-sync triggers keep this
- * table current, which is why [SearchDao] exposes no insert or update for it.
- *
- * The `rowid` field is required by Room for an external-content FTS entity (the generated triggers
- * need it to write the `docid`), and it is never set by us: the triggers always take it from the
- * content row's own `rowid`.
- */
+// Room's content-sync triggers keep this current, so [SearchDao] has no insert or update; Room requires `rowid` and we never set it.
 @Fts4(
     contentEntity = DocumentTextEntity::class,
     tokenizer = FtsOptions.TOKENIZER_UNICODE61,

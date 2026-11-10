@@ -1,41 +1,28 @@
 package com.papyrus.app.viewer
 
-/**
- * The paragraph properties the extractor draws: a style's own, with a paragraph's direct sprms
- * applied over them. Filled by [applyGrpprl]; an instance is never changed once it is handed out.
- */
 internal class DocParaProps(val istd: Int) {
     var align = BlockAlign.START
         private set
 
-    /** Left indent in twips, for [indentLevel]. */
     var leftTwips = 0
         private set
 
-    /** The paragraph is a cell's or a row's last paragraph or in one (`sprmPFInTable`). */
     var inTable = false
         private set
 
-    /**
-     * The paragraph is a row's end mark (`sprmPFTtp`, the "table terminating paragraph"). Its 0x07 looks
-     * like a cell mark, and an empty cell's does too, so this flag is the only sure sign that a row is over.
-     */
+    // Its 0x07 looks like a cell mark, and an empty cell's does too, so this flag is the only sure sign that a row is over.
     var rowEnd = false
         private set
 
-    /** 1-based index of the paragraph's list instance (`sprmPIlfo`), or 0 when it is in no list. */
     var ilfo = 0
         private set
 
-    /** Level within the list (`sprmPIlvl`): 0 to 8, or past that for a list paragraph that shows no number. */
     var ilvl = 0
         private set
 
-    /** Heading 1 to 6 from the paragraph's style, or 0 for body text. Set by [DocStyleSheet]. */
     var headingLevel = 0
         internal set
 
-    /** A copy for paragraph [istd], to be changed by the direct sprms of one paragraph. */
     fun copyFor(istd: Int): DocParaProps {
         val out = DocParaProps(istd)
         out.align = align
@@ -48,7 +35,6 @@ internal class DocParaProps(val istd: Int) {
         return out
     }
 
-    /** Applies the paragraph sprms in `buf[from, end)`; sprms of other kinds, and unknown ones, are skipped. */
     fun applyGrpprl(buf: ByteArray, from: Int, end: Int) {
         val reader = DocSprmReader(buf, from, end)
         while (reader.next()) {

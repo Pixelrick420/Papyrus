@@ -45,10 +45,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.papyrus.app.R
 
-/** Search pill shared by Home filter and find-in-file bar (same height). */
 val ControlHeight = 48.dp
 
-/** Corner radius shared by search pill and FAB. */
 val ControlCorner = 16.dp
 
 /** Dark-mode focus accent (tone 80 of #326AE3) for 10.6:1 contrast. */
@@ -59,7 +57,6 @@ private const val FOCUS_ANIMATION_MS = 180
 /** Both backgrounds sit far from this: #121212 is about 0.01, #FBFBFB about 0.96. */
 private const val DARK_BACKGROUND_LUMINANCE = 0.5f
 
-/** Shared pill for Home and find-in-file; [trailing] fills the end and owns its end inset. */
 @Composable
 fun SearchPill(
     text: String,
@@ -76,7 +73,6 @@ fun SearchPill(
 
     val restingBorder = ButtonDefaults.outlinedButtonBorder(enabled = true)
     val restingColor = (restingBorder.brush as? SolidColor)?.value ?: MaterialTheme.colorScheme.outline
-    // Brand blue (#326AE3): light = primary; dark = FocusBlueDark (10.6:1) for 1dp border/glyph.
     // Read off the app's own scheme, not the device setting: the theme can be forced against it.
     val darkScheme = MaterialTheme.colorScheme.background.luminance() < DARK_BACKGROUND_LUMINANCE
     val focusAccent = if (darkScheme) FocusBlueDark else MaterialTheme.colorScheme.primary

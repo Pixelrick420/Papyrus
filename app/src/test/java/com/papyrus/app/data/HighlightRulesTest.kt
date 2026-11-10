@@ -7,7 +7,6 @@ import org.junit.Test
 
 class HighlightRulesTest {
 
-    /** A line of text: 0.02 tall, [top] down the page. */
     private fun line(left: Float, right: Float, top: Float) = NormRect(left, top, right, top + 0.02f)
 
     private fun highlight(id: Long, page: Int, vararg rects: NormRect) = Highlight(id, page, rects.toList())

@@ -11,25 +11,8 @@ import java.util.Collections
 import java.util.IdentityHashMap
 import kotlin.coroutines.cancellation.CancellationException
 
-/**
- * A PDF's bookmarks (its outline) as the flat, depth-tagged list the outline sheet shows.
- *
- * The outline is author-supplied and PdfBox only parses what it is given, so nothing in it can be
- * trusted. A bookmark can point at itself through its sibling or child links, nest without end, run to
- * the hundreds of thousands, carry no title, or point at a page that does not exist; none of that may
- * hang the viewer, run it out of memory, or cost the reader the rest of the outline. So:
- *
- *  - every bookmark is visited once ([visited] compares the underlying dictionaries by identity), which
- *    ends any cycle however it loops;
- *  - at most [MAX_ENTRIES] are visited and [MAX_LEVELS] deep are descended, and what was read before a
- *    cap is hit is returned;
- *  - anything that throws while reading one bookmark costs that bookmark, never its siblings;
- *  - a bookmark with no readable title is left out but its children keep their place;
- *  - a bookmark that goes to no page is kept only if something below it does, as an entry that cannot
- *    be chosen ([NO_OUTLINE_TARGET]), so a chapter heading that merely groups its sections survives.
- *
- * It runs once per document, off the main thread; [PdfPageTextSource.outline] is the caller.
- */
+// A PDF's bookmarks as the flat, depth-tagged list the outline sheet shows. The outline is author-supplied, so every walk is bounded:
+// each bookmark is visited once (cycles), [MAX_ENTRIES] and [MAX_LEVELS] cap it, and one bad bookmark never costs its siblings.
 object PdfOutlineReader {
 
     /** Bookmarks visited before giving up; a real book has a few thousand at the very most. */
@@ -41,14 +24,8 @@ object PdfOutlineReader {
     /** Top-level bookmarks read before a progressive read hands over what it has. */
     private const val EMIT_BATCH = 64
 
-    /**
-     * The outline of [document], empty when it has none, or when it cannot be read at all.
-     *
-     * [emit] is handed everything read so far as the walk moves from one top-level bookmark to the
-     * next, so a long outline can be shown while the rest of it is still being read; the last call
-     * is the returned list. Only the top level emits, since a nested bookmark cannot be handed over
-     * before its parent's place is known.
-     */
+    // Empty when the document has none or it cannot be read. [emit] gets everything read so far after each top-level bookmark,
+    // so a long outline shows while the rest is still being read.
     fun read(document: PDDocument, emit: (List<OutlineEntry>) -> Unit = {}): List<OutlineEntry> {
         val outline = attempt { document.documentCatalog.documentOutline } ?: return emptyList()
         return Walk(Destinations(document))
@@ -60,11 +37,8 @@ object PdfOutlineReader {
         private val visited: MutableSet<COSDictionary> = Collections.newSetFromMap(IdentityHashMap())
         private var budget = MAX_ENTRIES
 
-        /**
-         * The entries of the sibling chain starting at [first], each followed by its own subtree.
-         * [level] counts real nesting and bounds the recursion; [depth] is the indent the entries get,
-         * which a skipped untitled bookmark does not add to. Only the top-level call passes [emit].
-         */
+        // The entries of the sibling chain at [first], each followed by its subtree. [level] bounds the recursion;
+        // [depth] is the indent, which a skipped untitled bookmark does not add to.
         fun siblings(
             first: PDOutlineItem?,
             level: Int,
@@ -111,10 +85,8 @@ object PdfOutlineReader {
     private class Destinations(private val document: PDDocument) {
         private val pageCount = attempt { document.numberOfPages } ?: 0
 
-        /**
-         * Each page's index by its dictionary, built once on first use. [com.tom_roush.pdfbox.pdmodel.PDPageTree.indexOf]
-         * walks the page tree on every call, so doing that per bookmark is quadratic on a big book.
-         */
+        // Each page's index by its dictionary, built once on first use. [com.tom_roush.pdfbox.pdmodel.PDPageTree.indexOf]
+        // walks the page tree on every call, so doing that per bookmark is quadratic on a big book.
         private val indexByPage: Map<COSDictionary, Int> by lazy {
             val map = IdentityHashMap<COSDictionary, Int>()
             attempt { document.pages.forEachIndexed { index, page -> map[page.cosObject] = index } }

@@ -2,10 +2,7 @@ package com.papyrus.app.viewer
 
 import java.io.IOException
 
-/**
- * The PlcPcd of the Clx: which stretch of the `WordDocument` stream holds each run of characters.
- * Backed by the Clx bytes themselves, so a document with a million pieces costs no object per piece.
- */
+// Backed by the Clx bytes themselves, so a document with a million pieces costs no object per piece.
 internal class DocPieceTable private constructor(
     private val clx: ByteArray,
     private val plcBase: Int,
@@ -13,19 +10,15 @@ internal class DocPieceTable private constructor(
 ) {
     private val pcdBase = plcBase + (count + 1) * 4
 
-    /** First character position (cp) of piece [i]. */
     fun cpStart(i: Int): Long = u32(clx, plcBase + i * 4)
 
-    /** Character position just past piece [i]. */
     fun cpEnd(i: Int): Long = u32(clx, plcBase + (i + 1) * 4)
 
     /** The piece's `fc` as stored: bit 30 flags 8-bit text, the rest is the byte offset (doubled if 8-bit). */
     private fun fcRaw(i: Int): Long = u32(clx, pcdBase + i * 8 + 2)
 
-    /** True when piece [i] is 8-bit (cp1252) text rather than UTF-16LE. */
     fun isCompressed(i: Int): Boolean = fcRaw(i) and FC_COMPRESSED != 0L
 
-    /** Byte offset in `WordDocument` of piece [i]'s first character. */
     fun byteOffset(i: Int): Long {
         val fc = fcRaw(i) and FC_MASK
         return if (isCompressed(i)) fc / 2 else fc
@@ -38,14 +31,12 @@ internal class DocPieceTable private constructor(
         private const val FC_COMPRESSED = 0x40000000L
         private const val FC_MASK = 0x3FFFFFFFL
 
-        /** Parses [clx]: zero or more Prc chunks (`clxt` 1, a skipped `cbGrpprl` grpprl), then the Pcdt (`clxt` 2). */
         fun parse(clx: ByteArray): DocPieceTable {
             val (plcBase, plcLen) = findPcdt(clx)
             if ((plcLen - 4) % 12 != 0L) throw IOException("invalid piece table")
             return DocPieceTable(clx, plcBase, ((plcLen - 4) / 12).toInt())
         }
 
-        /** Returns the PlcPcd location within [clx]. */
         private fun findPcdt(clx: ByteArray): Pair<Int, Long> {
             var pos = 0
             while (pos < clx.size) {
