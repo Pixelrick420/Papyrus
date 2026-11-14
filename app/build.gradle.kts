@@ -190,6 +190,11 @@ ksp {
     arg("room.schemaLocation", "$projectDir/schemas")
 }
 
+// Both variants export to the same file; run concurrently, one truncates it while the other deserializes it.
+tasks.matching { it.name == "kspReleaseKotlin" }.configureEach {
+    mustRunAfter("kspDebugKotlin")
+}
+
 detekt {
     buildUponDefaultConfig = false
     allRules = false
