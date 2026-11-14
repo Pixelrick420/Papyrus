@@ -30,12 +30,17 @@ object TtsDocumentSource {
         DocumentFormat.MARKDOWN -> unitsFromMarkdown(markdownText.orEmpty())
         DocumentFormat.DOC, DocumentFormat.DOCX, DocumentFormat.ODT, DocumentFormat.EPUB -> unitsFromOffice(officeBlocks.orEmpty())
         // A table has no reading order worth speaking, and it would be one unit of every cell.
-        DocumentFormat.CSV, DocumentFormat.UNKNOWN -> emptyList()
+        DocumentFormat.CSV, DocumentFormat.PPTX, DocumentFormat.UNKNOWN -> emptyList()
     }
 
     fun unitsFromPdfPages(pages: List<String>): List<TtsUnit> =
         pages.flatMapIndexed { index, page ->
             paragraphs(page).map { TtsUnit(it.text, index, it.start) }
+        }
+
+    fun unitsFromSlides(slides: List<String>): List<TtsUnit> =
+        slides.flatMapIndexed { index, slide ->
+            paragraphs(slide).map { TtsUnit(it.text, index, it.start) }
         }
 
     fun unitsFromPlainText(chunks: List<String>): List<TtsUnit> =

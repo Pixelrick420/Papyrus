@@ -80,6 +80,15 @@ class TtsDocumentSourceTest {
     }
 
     @Test
+    fun `slides anchor each unit to the slide index`() {
+        val slides = listOf("slide zero\n\nsecond para", "", "slide two")
+        val units = TtsDocumentSource.unitsFromSlides(slides)
+        assertEquals(listOf(0, 0, 2), units.map { it.anchor })
+        assertEquals(listOf(0, 12, 0), units.map { it.start })
+        assertEquals(2, TtsDocumentSource.startIndexFor(units, ReadingLocation(LocationKind.PAGE, 2)))
+    }
+
+    @Test
     fun `a unit remembers where it begins in the text it came from`() {
         val chunks = listOf("intro\n\n   indented body\nmore")
         val units = TtsDocumentSource.unitsFromPlainText(chunks)

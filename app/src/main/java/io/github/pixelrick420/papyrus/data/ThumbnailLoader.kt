@@ -102,7 +102,7 @@ class ThumbnailLoader(private val context: Context) {
         DocumentFormat.MARKDOWN, DocumentFormat.TEXT, DocumentFormat.CODE, DocumentFormat.CSV -> renderText(document.uri.toUri())
         DocumentFormat.DOCX, DocumentFormat.ODT, DocumentFormat.DOC -> renderOffice(document)
         DocumentFormat.EPUB -> renderEpub(document.uri.toUri())
-        DocumentFormat.UNKNOWN -> null
+        DocumentFormat.PPTX, DocumentFormat.UNKNOWN -> null
     }
 
     /** Closes PdfPageSource right after page 1: holding one per row exhausts the open-PD budget. */

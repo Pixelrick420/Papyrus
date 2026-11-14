@@ -101,11 +101,31 @@ def decide(tally: Tally, min_pass_percent: float, gradle_exit: int | None) -> Ve
     return Verdict(True, f"All {tally.passed} emulator tests passed.")
 
 
-def count_declared_tests(source_root: Path) -> int:
+def decide_strict(class_name: str, tally: Tally) -> Verdict:
+    """A class graded strictly must have every declared test pass; skipped or missing counts as not verified."""
+    simple = class_name.rsplit(".", 1)[-1]
+    if tally.passed + tally.failed + tally.skipped == 0:
+        return Verdict(
+            False,
+            f"{simple}: no test reported a result, so the group was not graded.",
+        )
+    if tally.passed != tally.declared or tally.failed or tally.skipped:
+        return Verdict(
+            False,
+            f"{simple}: {tally.passed} of {tally.declared} passed, "
+            f"{tally.failed} failed, {tally.skipped} skipped, {tally.missing} missing.",
+        )
+    return Verdict(True, f"{simple}: all {tally.passed} passed.")
+
+
+def count_declared_tests(source_root: Path, class_name: str | None = None) -> int:
     total = 0
     if source_root.is_dir():
+        wanted = class_name.rsplit(".", 1)[-1] if class_name else None
         for path in source_root.rglob("*"):
             if path.suffix in {".kt", ".java"} and path.is_file():
+                if wanted is not None and path.stem != wanted:
+                    continue
                 total += len(
                     TEST_ANNOTATION.findall(
                         path.read_text(encoding="utf-8", errors="replace")
@@ -121,10 +141,13 @@ def first_line(text: str | None, limit: int = 300) -> str:
     return ""
 
 
-def read_results(results_dir: Path) -> tuple[int, int, int, list[Failure], int]:
+def read_results(
+    results_dir: Path, classes: set[str] | None = None
+) -> tuple[int, int, int, list[Failure], int]:
     """Returns (passed, failed, skipped, failures, files_read) from every TEST-*.xml under [results_dir].
 
     A test that appears more than once (two devices, a re-run) counts once, as passed if any copy passed.
+    When [classes] is given, only testcases whose classname is in it are counted.
     """
     outcome: dict[str, str] = {}
     detail: dict[str, str] = {}
@@ -139,7 +162,10 @@ def read_results(results_dir: Path) -> tuple[int, int, int, list[Failure], int]:
             continue
         files_read += 1
         for case in root.iter("testcase"):
-            name = f"{case.get('classname', '?')}#{case.get('name', '?')}"
+            classname = case.get("classname", "?")
+            if classes is not None and classname not in classes:
+                continue
+            name = f"{classname}#{case.get('name', '?')}"
             bad_node = next((c for c in case if c.tag in ("failure", "error")), None)
             if bad_node is not None:
                 status = "failed"
@@ -239,6 +265,22 @@ def build_report(
     return "\n".join(lines)
 
 
+def build_strict_report(
+    verdicts: list[tuple[str, Verdict]], failures: list[Failure]
+) -> str:
+    lines = ["### Strictly graded classes", ""]
+    for class_name, verdict in verdicts:
+        simple = class_name.rsplit(".", 1)[-1]
+        lines.append(f"- `{simple}`: {verdict.headline}")
+    if failures:
+        lines += ["", "Failing golden tests:", ""]
+        lines += [
+            f"- `{short(f.test)}` - {f.detail or 'no message'}"
+            for f in failures[:MAX_LISTED]
+        ]
+    return "\n".join(lines)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -261,6 +303,13 @@ def main() -> int:
         default=90.0,
         help="the build fails when a smaller share of the counted tests passed (default: 90)",
     )
+    parser.add_argument(
+        "--require-class",
+        action="append",
+        default=[],
+        metavar="CLASSNAME",
+        help="grade this test class strictly: every declared @Test must pass (repeatable)",
+    )
     args = parser.parse_args()
     if not 0.0 <= args.min_pass_percent <= 100.0:
         parser.error("--min-pass-percent must be between 0 and 100")
@@ -272,13 +321,27 @@ def main() -> int:
     verdict = decide(tally, args.min_pass_percent, gradle_exit)
     flaky = read_flaky(args.ci_dir / "logcat.txt")
 
+    strict_verdicts: list[tuple[str, Verdict]] = []
+    strict_failures: list[Failure] = []
+    for class_name in args.require_class:
+        class_passed, class_failed, class_skipped, class_failures, _ = read_results(
+            args.results_dir, {class_name}
+        )
+        class_declared = count_declared_tests(args.tests_dir, class_name)
+        class_tally = Tally(class_passed, class_failed, class_skipped, class_declared)
+        strict_verdicts.append((class_name, decide_strict(class_name, class_tally)))
+        strict_failures += class_failures
+    ok = verdict.ok and all(strict.ok for _, strict in strict_verdicts)
+
     report = build_report(tally, verdict, failures, flaky, args.min_pass_percent)
+    if strict_verdicts:
+        report += "\n\n" + build_strict_report(strict_verdicts, strict_failures)
     print(report)
     print(
         f"(result files read: {files_read}; gradle exit code: {gradle_exit if gradle_exit is not None else 'unknown'})"
     )
 
-    if verdict.ok:
+    if ok:
         for failure in failures[:MAX_ANNOTATIONS]:
             print(
                 f"::warning title=Emulator test failed (tolerated)::{escape_annotation(f'{short(failure.test)}: {failure.detail}')}"
@@ -288,14 +351,18 @@ def main() -> int:
                 f"::notice title=Flaky emulator test::{escape_annotation(entry.removeprefix('FLAKY '))}"
             )
     else:
-        print(f"::error title=Emulator tests::{escape_annotation(verdict.headline)}")
+        for _, strict in strict_verdicts:
+            if not strict.ok:
+                print(f"::error title=Strict test class::{escape_annotation(strict.headline)}")
+        if not verdict.ok:
+            print(f"::error title=Emulator tests::{escape_annotation(verdict.headline)}")
 
     summary = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary:
         with open(summary, "a", encoding="utf-8") as handle:
             handle.write(report + "\n")
 
-    return 0 if verdict.ok else 1
+    return 0 if ok else 1
 
 
 if __name__ == "__main__":

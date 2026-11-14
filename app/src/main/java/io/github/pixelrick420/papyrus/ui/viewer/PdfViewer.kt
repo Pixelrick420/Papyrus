@@ -66,10 +66,10 @@ import io.github.pixelrick420.papyrus.data.Highlight
 import io.github.pixelrick420.papyrus.data.HighlightKind
 import io.github.pixelrick420.papyrus.data.LocationKind
 import io.github.pixelrick420.papyrus.viewer.NormRect
+import io.github.pixelrick420.papyrus.viewer.PageBitmapSource
 import io.github.pixelrick420.papyrus.viewer.PdfLinkTarget
 import io.github.pixelrick420.papyrus.viewer.PdfPageGeometry
 import io.github.pixelrick420.papyrus.viewer.PdfPageLink
-import io.github.pixelrick420.papyrus.viewer.PdfPageSource
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.first
@@ -99,7 +99,7 @@ private const val VIEWPORT_SETTLE_MILLIS = 150L
 
 @Composable
 internal fun PdfViewer(
-    source: PdfPageSource,
+    source: PageBitmapSource,
     aspectRatios: List<Float>,
     zoom: ZoomState,
     selectionState: PdfSelectionState,
@@ -298,7 +298,7 @@ private val PAGE_INDICATOR_CLEARANCE = 56.dp
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun PdfPage(
-    source: PdfPageSource,
+    source: PageBitmapSource,
     index: Int,
     widthPx: Int,
     baseWidthPx: Int,

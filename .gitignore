@@ -13,6 +13,8 @@
 *.json
 !app/schemas/**/*.json
 !web/**/*.json
+!tools/pptx/poi-oracle/oracle.json
+!app/src/androidTest/assets/spikes/*.json
 *.jks
 *.keystore
 key/
@@ -26,6 +28,7 @@ key/
 .vercel
 
 node_modules
+__pycache__/
 build
 .svelte-kit
 .env
@@ -41,3 +44,4 @@ web/.vscode/
 .vscode/
 web/lighthouse-budget.json
 lighthouse-budget.json
+tools/pptx/corpus/

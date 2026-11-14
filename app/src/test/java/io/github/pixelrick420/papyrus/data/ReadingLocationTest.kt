@@ -17,7 +17,7 @@ class ReadingLocationTest {
     @Test
     fun `every format with a viewer has a kind and only UNKNOWN has none`() {
         for (format in DocumentFormat.entries) {
-            if (format == DocumentFormat.UNKNOWN) assertNull(LocationKind.forFormat(format)) else assertNotNull("$format", LocationKind.forFormat(format))
+            if (format == DocumentFormat.UNKNOWN || format == DocumentFormat.PPTX) assertNull(LocationKind.forFormat(format)) else assertNotNull("$format", LocationKind.forFormat(format))
         }
     }
 

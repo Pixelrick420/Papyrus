@@ -93,6 +93,7 @@ class DocumentShareTest {
         DocumentFormat.ODT to "application/vnd.oasis.opendocument.text",
         DocumentFormat.EPUB to "application/epub+zip",
         DocumentFormat.CODE to null,
+        DocumentFormat.PPTX to null,
         DocumentFormat.UNKNOWN to null,
     )
 

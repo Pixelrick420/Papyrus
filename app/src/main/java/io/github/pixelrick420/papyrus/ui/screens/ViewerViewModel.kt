@@ -902,7 +902,7 @@ class ViewerViewModel(
                 }
                 else -> ViewerContent.Failed(UiText(R.string.viewer_error_password))
             }
-            DocumentFormat.UNKNOWN -> ViewerContent.Failed(UiText(R.string.viewer_error_unsupported))
+            DocumentFormat.PPTX, DocumentFormat.UNKNOWN -> ViewerContent.Failed(UiText(R.string.viewer_error_unsupported))
         }
     }
 

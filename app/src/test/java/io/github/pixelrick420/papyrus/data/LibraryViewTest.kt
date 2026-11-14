@@ -187,7 +187,7 @@ class LibraryViewTest {
     @Test
     fun `every format with a viewer has a group and unknown has none`() {
         for (format in DocumentFormat.entries) {
-            if (format == DocumentFormat.UNKNOWN) {
+            if (format == DocumentFormat.UNKNOWN || format == DocumentFormat.PPTX) {
                 assertEquals(null, FormatGroup.of(doc(1, format = format)))
             } else {
                 assertTrue("$format", FormatGroup.of(doc(1, format = format)) != null)
