@@ -6,7 +6,7 @@
 -dontwarn org.spongycastle.**
 -dontwarn javax.xml.**
 -dontwarn java.awt.**
--keep class com.papyrus.app.crash.** { *; }
+-keep class io.github.pixelrick420.papyrus.crash.** { *; }
 # SPIs loaded via ServiceLoader: class names and no-arg constructors must survive.
 -keep class * implements org.acra.collector.Collector { <init>(); }
 -keep class * implements org.acra.startup.StartupProcessor { <init>(); }

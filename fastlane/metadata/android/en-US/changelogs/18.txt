@@ -1,0 +1,5 @@
+Papyrus 2.0 changes the application ID.
+
+- The application ID is now io.github.pixelrick420.papyrus (was com.papyrus.app)
+- Android treats this as a different app: it installs alongside 1.x and does not update it
+- Your library, bookmarks, highlights and notes are not carried over; uninstall 1.x once you no longer need it

@@ -1,0 +1,429 @@
+package io.github.pixelrick420.papyrus.data
+
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Test
+import java.util.Locale
+
+class LibraryViewTest {
+
+    private fun doc(
+        id: Long,
+        title: String = "doc$id",
+        format: DocumentFormat = DocumentFormat.PDF,
+        size: Long = 1_000,
+        created: Long = id,
+        opened: Long = id,
+        starred: Boolean = false,
+    ) = DocumentEntity(
+        id = id,
+        uri = "content://x/$id",
+        title = title,
+        format = format,
+        sizeBytes = size,
+        createdAt = created,
+        lastOpenedAt = opened,
+        isStarred = starred,
+    )
+
+    private fun ids(list: List<DocumentEntity>) = list.map { it.id }
+
+    private fun view(
+        docs: List<DocumentEntity>,
+        sort: LibrarySort,
+        query: String = "",
+        filter: LibraryFilter = LibraryFilter(),
+        alsoMatching: Set<Long> = emptySet(),
+        locale: Locale = Locale.ENGLISH,
+    ) = libraryView(docs, query, filter, sort, alsoMatching = alsoMatching, locale = locale)
+
+    @Test
+    fun `last opened puts the most recent first`() {
+        val docs = listOf(doc(1, opened = 10), doc(2, opened = 30), doc(3, opened = 20))
+        assertEquals(listOf(2L, 3L, 1L), ids(view(docs, LibrarySort.LAST_OPENED)))
+    }
+
+    @Test
+    fun `date added puts the newest addition first and ignores when it was opened`() {
+        val docs = listOf(doc(1, created = 300, opened = 1), doc(2, created = 100, opened = 99), doc(3, created = 200, opened = 50))
+        assertEquals(listOf(1L, 3L, 2L), ids(view(docs, LibrarySort.DATE_ADDED)))
+    }
+
+    @Test
+    fun `size puts the largest first`() {
+        val docs = listOf(doc(1, size = 10), doc(2, size = 3_000_000_000), doc(3, size = 500))
+        assertEquals(listOf(2L, 3L, 1L), ids(view(docs, LibrarySort.SIZE)))
+    }
+
+    @Test
+    fun `name ascending and descending are mirror images apart from ties`() {
+        val docs = listOf(doc(1, "banana.pdf"), doc(2, "apple.pdf"), doc(3, "cherry.pdf"))
+        assertEquals(listOf(2L, 1L, 3L), ids(view(docs, LibrarySort.NAME_ASC)))
+        assertEquals(listOf(3L, 1L, 2L), ids(view(docs, LibrarySort.NAME_DESC)))
+    }
+
+    @Test
+    fun `numbers inside names compare as numbers`() {
+        val docs = listOf(doc(1, "file10.pdf"), doc(2, "file2.pdf"), doc(3, "file1.pdf"), doc(4, "file100.pdf"))
+        assertEquals(listOf(3L, 2L, 1L, 4L), ids(view(docs, LibrarySort.NAME_ASC)))
+        assertEquals(listOf(4L, 1L, 2L, 3L), ids(view(docs, LibrarySort.NAME_DESC)))
+    }
+
+    @Test
+    fun `several numbers in a name are each compared as numbers`() {
+        val docs = listOf(doc(1, "v1.10.pdf"), doc(2, "v1.9.pdf"), doc(3, "v1.2.pdf"), doc(4, "v2.1.pdf"))
+        assertEquals(listOf(3L, 2L, 1L, 4L), ids(view(docs, LibrarySort.NAME_ASC)))
+    }
+
+    @Test
+    fun `a number longer than any long still compares`() {
+        val huge = "9".repeat(60)
+        val docs = listOf(doc(1, "x${huge}1"), doc(2, "x$huge"), doc(3, "x5"))
+        assertEquals(listOf(3L, 2L, 1L), ids(view(docs, LibrarySort.NAME_ASC)))
+    }
+
+    @Test
+    fun `case does not decide the order`() {
+        val docs = listOf(doc(1, "beta.txt"), doc(2, "Alpha.txt"), doc(3, "alpine.txt"), doc(4, "Gamma.txt"))
+        assertEquals(listOf(2L, 3L, 1L, 4L), ids(view(docs, LibrarySort.NAME_ASC)))
+    }
+
+    @Test
+    fun `digits come before letters`() {
+        val docs = listOf(doc(1, "alpha"), doc(2, "7zip"), doc(3, "Beta"))
+        assertEquals(listOf(2L, 1L, 3L), ids(view(docs, LibrarySort.NAME_ASC)))
+    }
+
+    @Test
+    fun `a name that is a prefix of another comes first`() {
+        val docs = listOf(doc(1, "reports"), doc(2, "report2"), doc(3, "report"))
+        assertEquals(listOf(3L, 2L, 1L), ids(view(docs, LibrarySort.NAME_ASC)))
+    }
+
+    @Test
+    fun `letters follow the locale's alphabet`() {
+        val docs = listOf(doc(1, "Åsa.txt"), doc(2, "Zoe.txt"), doc(3, "Bo.txt"))
+        // English files an A with a ring beside the other As; Swedish puts it after Z.
+        assertEquals(listOf(1L, 3L, 2L), ids(view(docs, LibrarySort.NAME_ASC, locale = Locale.ENGLISH)))
+        assertEquals(listOf(3L, 2L, 1L), ids(view(docs, LibrarySort.NAME_ASC, locale = Locale.forLanguageTag("sv-SE"))))
+    }
+
+    @Test
+    fun `an accent breaks a tie between otherwise equal words but never outranks the letters`() {
+        val docs = listOf(doc(1, "resume.pdf"), doc(2, "résumé.pdf"), doc(3, "rest.pdf"))
+        // rest < resume because t comes before u; the accented spelling sits right after the plain one.
+        assertEquals(listOf(3L, 1L, 2L), ids(view(docs, LibrarySort.NAME_ASC)))
+    }
+
+    @Test
+    fun `equal names fall back to most recently opened and then id`() {
+        val docs = listOf(
+            doc(1, "same.pdf", opened = 10),
+            doc(2, "SAME.pdf", opened = 30),
+            doc(3, "same.pdf", opened = 30),
+            doc(4, "same.pdf", opened = 20),
+        )
+        val expected = listOf(2L, 3L, 4L, 1L)
+        assertEquals(expected, ids(view(docs, LibrarySort.NAME_ASC)))
+        // Descending reverses the names only; the tie-break is the same, so a list of equals never flips.
+        assertEquals(expected, ids(view(docs, LibrarySort.NAME_DESC)))
+    }
+
+    @Test
+    fun `names that differ only in leading zeros are a tie`() {
+        val docs = listOf(doc(1, "file02.pdf", opened = 1), doc(2, "file2.pdf", opened = 2))
+        assertEquals(listOf(2L, 1L), ids(view(docs, LibrarySort.NAME_ASC)))
+    }
+
+    @Test
+    fun `equal sizes and dates fall back to opened then id`() {
+        val bySize = listOf(doc(1, size = 5, opened = 1), doc(2, size = 5, opened = 9), doc(3, size = 5, opened = 9))
+        assertEquals(listOf(2L, 3L, 1L), ids(view(bySize, LibrarySort.SIZE)))
+        val byDate = listOf(doc(1, created = 5, opened = 1), doc(2, created = 5, opened = 9), doc(3, created = 5, opened = 9))
+        assertEquals(listOf(2L, 3L, 1L), ids(view(byDate, LibrarySort.DATE_ADDED)))
+    }
+
+    @Test
+    fun `last opened ties break by id`() {
+        val docs = listOf(doc(3, opened = 7), doc(1, opened = 7), doc(2, opened = 7))
+        assertEquals(listOf(1L, 2L, 3L), ids(view(docs, LibrarySort.LAST_OPENED)))
+    }
+
+    @Test
+    fun `the same input always gives the same order`() {
+        val docs = (1L..40L).map { doc(it, "n${it % 5}", opened = it % 3, size = it % 4) }
+        for (sort in LibrarySort.entries) {
+            assertEquals(ids(view(docs, sort)), ids(view(docs.reversed(), sort)))
+        }
+    }
+
+    @Test
+    fun `sorting never changes what is in the list`() {
+        val docs = (1L..25L).map { doc(it, "t${it * 7 % 11}") }
+        for (sort in LibrarySort.entries) {
+            assertEquals(docs.map { it.id }.toSet(), view(docs, sort).map { it.id }.toSet())
+        }
+    }
+
+    @Test
+    fun `old and new Word files are one group`() {
+        assertEquals(FormatGroup.WORD, FormatGroup.of(doc(1, format = DocumentFormat.DOC)))
+        assertEquals(FormatGroup.WORD, FormatGroup.of(doc(2, format = DocumentFormat.DOCX)))
+    }
+
+    @Test
+    fun `epub is its own chip, placed after odt`() {
+        val docs = listOf(
+            doc(1, format = DocumentFormat.MARKDOWN),
+            doc(2, format = DocumentFormat.EPUB),
+            doc(3, format = DocumentFormat.ODT),
+        )
+        assertEquals(listOf(FormatGroup.ODT, FormatGroup.EPUB, FormatGroup.MARKDOWN), availableGroups(docs))
+        val filter = LibraryFilter().toggled(FormatGroup.EPUB)
+        assertEquals(listOf(2L), ids(view(docs, LibrarySort.LAST_OPENED, filter = filter)))
+    }
+
+    @Test
+    fun `every format with a viewer has a group and unknown has none`() {
+        for (format in DocumentFormat.entries) {
+            if (format == DocumentFormat.UNKNOWN) {
+                assertEquals(null, FormatGroup.of(doc(1, format = format)))
+            } else {
+                assertTrue("$format", FormatGroup.of(doc(1, format = format)) != null)
+            }
+        }
+    }
+
+    @Test
+    fun `chips are built from the formats the library has, in a fixed order`() {
+        val docs = listOf(
+            doc(1, format = DocumentFormat.CODE),
+            doc(2, format = DocumentFormat.DOC),
+            doc(3, format = DocumentFormat.PDF),
+            doc(4, format = DocumentFormat.DOCX),
+            doc(5, format = DocumentFormat.UNKNOWN),
+        )
+        assertEquals(listOf(FormatGroup.PDF, FormatGroup.WORD, FormatGroup.CODE), availableGroups(docs))
+        assertEquals(emptyList<FormatGroup>(), availableGroups(emptyList()))
+    }
+
+    private val library = listOf(
+        doc(1, "Annual report.pdf", DocumentFormat.PDF, starred = true),
+        doc(2, "Report draft.docx", DocumentFormat.DOCX),
+        doc(3, "Old report.doc", DocumentFormat.DOC, starred = true),
+        doc(4, "notes.md", DocumentFormat.MARKDOWN),
+        doc(5, "report.py", DocumentFormat.CODE, starred = true),
+        doc(6, "mystery", DocumentFormat.UNKNOWN),
+    )
+
+    @Test
+    fun `no filter and no query shows everything`() {
+        assertEquals(setOf(1L, 2L, 3L, 4L, 5L, 6L), view(library, LibrarySort.LAST_OPENED).map { it.id }.toSet())
+    }
+
+    @Test
+    fun `selected formats widen the list`() {
+        val filter = LibraryFilter().toggled(FormatGroup.PDF).toggled(FormatGroup.MARKDOWN)
+        assertEquals(setOf(1L, 4L), view(library, LibrarySort.LAST_OPENED, filter = filter).map { it.id }.toSet())
+    }
+
+    @Test
+    fun `the Word chip shows both Word generations`() {
+        val filter = LibraryFilter().toggled(FormatGroup.WORD)
+        assertEquals(setOf(2L, 3L), view(library, LibrarySort.LAST_OPENED, filter = filter).map { it.id }.toSet())
+    }
+
+    @Test
+    fun `a format filter hides files with no group`() {
+        val filter = LibraryFilter().toggled(FormatGroup.PDF)
+        assertFalse(6L in view(library, LibrarySort.LAST_OPENED, filter = filter).map { it.id })
+    }
+
+    @Test
+    fun `the starred filter narrows what the formats let through`() {
+        val onlyStarred = LibraryFilter().withStarredOnly(true)
+        assertEquals(setOf(1L, 3L, 5L), view(library, LibrarySort.LAST_OPENED, filter = onlyStarred).map { it.id }.toSet())
+        val starredWord = onlyStarred.toggled(FormatGroup.WORD)
+        assertEquals(setOf(3L), view(library, LibrarySort.LAST_OPENED, filter = starredWord).map { it.id }.toSet())
+    }
+
+    @Test
+    fun `search and filter compose`() {
+        val filter = LibraryFilter().toggled(FormatGroup.WORD).toggled(FormatGroup.PDF)
+        val shown = view(library, LibrarySort.NAME_ASC, query = "  REPORT ", filter = filter)
+        assertEquals(listOf(1L, 3L, 2L), ids(shown))
+        val none = view(library, LibrarySort.NAME_ASC, query = "notes", filter = filter)
+        assertEquals(emptyList<Long>(), ids(none))
+    }
+
+    @Test
+    fun `a blank query is no query`() {
+        assertEquals(6, view(library, LibrarySort.LAST_OPENED, query = "   ").size)
+    }
+
+    @Test
+    fun `a document whose text matched is kept even though its title did not`() {
+        val docs = listOf(doc(1, "Report.pdf"), doc(2, "meeting notes.txt"))
+
+        assertEquals(listOf(2L), ids(view(docs, LibrarySort.LAST_OPENED, query = "paper", alsoMatching = setOf(2L))))
+    }
+
+    @Test
+    fun `filename matches come first followed by content matches, each in chosen sort order`() {
+        val docs = listOf(doc(1, "paper report", opened = 10), doc(2, "paper notes", opened = 30), doc(3, "minutes", opened = 20))
+
+        val shown = view(docs, LibrarySort.LAST_OPENED, query = "paper", alsoMatching = setOf(3L))
+
+        assertEquals(listOf(2L, 1L, 3L), ids(shown))
+    }
+
+    @Test
+    fun `filename matches come first in alphabetical order then content matches in alphabetical order`() {
+        val docs = listOf(
+            doc(1, "zebra paper"),
+            doc(2, "apple paper"),
+            doc(3, "banana"),
+            doc(4, "carrot"),
+        )
+        val shown = view(docs, LibrarySort.NAME_ASC, query = "paper", alsoMatching = setOf(3L, 4L))
+        assertEquals(listOf(2L, 1L, 3L, 4L), ids(shown))
+    }
+
+    @Test
+    fun `a document matching both the title and the text appears once`() {
+        val docs = listOf(doc(1, "paper", opened = 10), doc(2, "notes", opened = 20))
+
+        val shown = view(docs, LibrarySort.LAST_OPENED, query = "paper", alsoMatching = setOf(1L))
+
+        assertEquals(listOf(1L), ids(shown))
+    }
+
+    @Test
+    fun `a content id the filter hides stays hidden`() {
+        val docs = listOf(doc(1, "Report.pdf"), doc(2, "meeting notes.txt", DocumentFormat.TEXT))
+        val pdfOnly = LibraryFilter().toggled(FormatGroup.PDF)
+
+        assertEquals(
+            emptyList<Long>(),
+            ids(view(docs, LibrarySort.LAST_OPENED, query = "paper", filter = pdfOnly, alsoMatching = setOf(2L))),
+        )
+    }
+
+    @Test
+    fun `a content id for a document that is gone adds nothing`() {
+        val docs = listOf(doc(1, "Report.pdf"))
+
+        assertEquals(
+            emptyList<Long>(),
+            ids(view(docs, LibrarySort.LAST_OPENED, query = "paper", alsoMatching = setOf(99L))),
+        )
+    }
+
+    @Test
+    fun `with no query, content ids change nothing`() {
+        assertEquals(6, view(library, LibrarySort.LAST_OPENED, alsoMatching = setOf(1L)).size)
+    }
+
+    @Test
+    fun `toggling a chip twice is no chip and the filter reports when it is on`() {
+        val filter = LibraryFilter()
+        assertFalse(filter.isActive)
+        val on = filter.toggled(FormatGroup.ODT)
+        assertTrue(on.isActive)
+        assertEquals(filter, on.toggled(FormatGroup.ODT))
+        assertTrue(filter.withStarredOnly(true).isActive)
+        assertFalse(filter.withStarredOnly(true).withStarredOnly(false).isActive)
+    }
+
+    @Test
+    fun `the active count is the format groups plus the starred filter`() {
+        val filter = LibraryFilter()
+        assertEquals(0, filter.activeCount)
+        assertFalse(filter.isActive)
+        val oneGroup = filter.toggled(FormatGroup.PDF)
+        assertEquals(1, oneGroup.activeCount)
+        assertTrue(oneGroup.isActive)
+        val twoGroups = oneGroup.toggled(FormatGroup.CSV)
+        assertEquals(2, twoGroups.activeCount)
+        val withStarred = twoGroups.withStarredOnly(true)
+        assertEquals(3, withStarred.activeCount)
+        assertTrue(withStarred.isActive)
+        // The count and the flag cannot disagree.
+        assertEquals(withStarred.activeCount > 0, withStarred.isActive)
+    }
+
+    @Test
+    fun `opening a document again keeps what the reader owns`() {
+        val stored = doc(7, "old name.pdf", size = 10, created = 111, opened = 222, starred = true)
+        val fresh = doc(0, "new name.pdf", DocumentFormat.PDF, size = 99, created = 999, opened = 333, starred = false)
+            .copy(uri = "content://elsewhere")
+        val after = stored.reopenedWith(fresh)
+        assertEquals(7L, after.id)
+        assertEquals("content://x/7", after.uri)
+        assertEquals(111L, after.createdAt)
+        assertTrue(after.isStarred)
+        assertEquals("new name.pdf", after.title)
+        assertEquals(99L, after.sizeBytes)
+        assertEquals(333L, after.lastOpenedAt)
+    }
+
+    @Test
+    fun `a star set on a row shows up in the starred filter`() {
+        val before = listOf(doc(1), doc(2))
+        val filter = LibraryFilter().withStarredOnly(true)
+        assertEquals(emptyList<Long>(), ids(view(before, LibrarySort.LAST_OPENED, filter = filter)))
+        val after = before.map { if (it.id == 2L) it.copy(isStarred = true) else it }
+        assertEquals(listOf(2L), ids(view(after, LibrarySort.LAST_OPENED, filter = filter)))
+    }
+
+    @Test
+    fun `csv and tsv are two groups, csv first and both between text and code`() {
+        val docs = listOf(
+            doc(1, "script.py", DocumentFormat.CODE),
+            doc(2, "table.csv", DocumentFormat.CSV),
+            doc(3, "notes.txt", DocumentFormat.TEXT),
+            doc(4, "table.tsv", DocumentFormat.CSV),
+        )
+        assertEquals(FormatGroup.CSV, FormatGroup.of(docs[1]))
+        assertEquals(FormatGroup.TSV, FormatGroup.of(docs[3]))
+        assertEquals(
+            listOf(FormatGroup.TEXT, FormatGroup.CSV, FormatGroup.TSV, FormatGroup.CODE),
+            availableGroups(docs),
+        )
+    }
+
+    @Test
+    fun `the csv filter keeps the csv file and leaves the tsv one out`() {
+        val docs = listOf(doc(1, "table.csv", DocumentFormat.CSV), doc(2, "table.tsv", DocumentFormat.CSV))
+        val filter = LibraryFilter().toggled(FormatGroup.CSV)
+        assertEquals(listOf(1L), ids(view(docs, LibrarySort.LAST_OPENED, filter = filter)))
+    }
+
+    @Test
+    fun `the tsv filter keeps the tsv file and leaves the csv one out`() {
+        val docs = listOf(doc(1, "table.csv", DocumentFormat.CSV), doc(2, "table.tsv", DocumentFormat.CSV))
+        val filter = LibraryFilter().toggled(FormatGroup.TSV)
+        assertEquals(listOf(2L), ids(view(docs, LibrarySort.LAST_OPENED, filter = filter)))
+    }
+
+    @Test
+    fun `both delimited filters together keep both files`() {
+        val docs = listOf(doc(1, "table.csv", DocumentFormat.CSV), doc(2, "table.tsv", DocumentFormat.CSV))
+        val filter = LibraryFilter().toggled(FormatGroup.CSV).toggled(FormatGroup.TSV)
+        assertEquals(setOf(1L, 2L), view(docs, LibrarySort.LAST_OPENED, filter = filter).map { it.id }.toSet())
+    }
+
+    @Test
+    fun `the group follows the name, so another extension stays csv`() {
+        assertEquals(FormatGroup.CSV, FormatGroup.of(doc(1, "data.txt", DocumentFormat.CSV)))
+        // A name with no dot at all has no extension to read, so it lands in CSV as well.
+        assertEquals(FormatGroup.CSV, FormatGroup.of(doc(2, "mystery", DocumentFormat.CSV)))
+    }
+
+    @Test
+    fun `the tsv extension is read in lower case and after the last dot`() {
+        assertEquals(FormatGroup.TSV, FormatGroup.of(doc(1, "TABLE.TSV", DocumentFormat.CSV)))
+        assertEquals(FormatGroup.TSV, FormatGroup.of(doc(2, "report.data.tsv", DocumentFormat.CSV)))
+    }
+}

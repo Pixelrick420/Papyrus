@@ -49,7 +49,7 @@ Run a single test:
 
 ```bash
 ./gradlew connectedDebugAndroidTest \
-  -Pandroid.testInstrumentationRunnerArguments.class=com.papyrus.app.ui.AccessibilitySemanticsTest
+  -Pandroid.testInstrumentationRunnerArguments.class=io.github.pixelrick420.papyrus.ui.AccessibilitySemanticsTest
 ```
 
 ## Manual TalkBack script

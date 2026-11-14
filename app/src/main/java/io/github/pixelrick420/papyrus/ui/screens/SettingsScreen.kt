@@ -1,0 +1,488 @@
+package io.github.pixelrick420.papyrus.ui.screens
+
+import androidx.annotation.StringRes
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.getScrollViewportLength
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
+import io.github.pixelrick420.papyrus.BuildConfig
+import io.github.pixelrick420.papyrus.R
+import io.github.pixelrick420.papyrus.data.AppSettings
+import io.github.pixelrick420.papyrus.data.SettingsRepository
+import io.github.pixelrick420.papyrus.data.ThemeMode
+import io.github.pixelrick420.papyrus.ui.AppViewModelProvider
+import io.github.pixelrick420.papyrus.ui.viewer.openLink
+import io.github.pixelrick420.papyrus.viewer.PrettyPrint
+import kotlinx.coroutines.flow.StateFlow
+
+class SettingsViewModel(private val repository: SettingsRepository) : ViewModel() {
+
+    val settings: StateFlow<AppSettings> = repository.settings
+
+    fun setThemeMode(mode: ThemeMode) = repository.setThemeMode(mode)
+
+    fun setAutosaveExternal(enabled: Boolean) = repository.setAutosaveExternal(enabled)
+
+    fun setAutosaveEncrypted(enabled: Boolean) = repository.setAutosaveEncrypted(enabled)
+
+    fun setRememberPosition(enabled: Boolean) = repository.setRememberPosition(enabled)
+
+    fun setContentIndexing(enabled: Boolean) = repository.setContentIndexing(enabled)
+
+    fun setSyntaxHighlighting(enabled: Boolean) = repository.setSyntaxHighlighting(enabled)
+
+    fun setColorblindMode(enabled: Boolean) = repository.setColorblindMode(enabled)
+
+    fun setNightMode(enabled: Boolean) = repository.setNightMode(enabled)
+
+    fun setShowLineNumbers(enabled: Boolean) = repository.setShowLineNumbers(enabled)
+
+    fun setWrapLines(enabled: Boolean) = repository.setWrapLines(enabled)
+
+    fun setHyphenation(enabled: Boolean) = repository.setHyphenation(enabled)
+
+    fun setPrettyPrint(enabled: Boolean) = repository.setPrettyPrint(enabled)
+
+    fun setTabSize(spaces: Int) = repository.setTabSize(spaces)
+}
+
+private val ScreenPadding = 16.dp
+
+private val CardCorner = 16.dp
+
+private val RowMinHeight = 56.dp
+
+private const val SOURCE_URL = "https://github.com/Pixelrick420/Papyrus"
+
+private const val RELEASES_URL = "$SOURCE_URL/releases"
+
+private const val LICENSE_URL = "$SOURCE_URL/blob/main/LICENSE"
+
+private const val PRIVACY_URL = "$SOURCE_URL/blob/main/PRIVACY_POLICY.md"
+
+@StringRes
+private fun ThemeMode.label(): Int = when (this) {
+    ThemeMode.SYSTEM -> R.string.settings_theme_system
+    ThemeMode.LIGHT -> R.string.settings_theme_light
+    ThemeMode.DARK -> R.string.settings_theme_dark
+}
+
+@Composable
+fun SettingsScreen(
+    onBack: () -> Unit,
+    onOpenCrashReports: () -> Unit = {},
+    viewModel: SettingsViewModel = viewModel(factory = AppViewModelProvider.Factory),
+) {
+    val settings by viewModel.settings.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    var themeDialogOpen by remember { mutableStateOf(false) }
+    var tabSizeDialogOpen by remember { mutableStateOf(false) }
+    var viewportHeightPx by remember { mutableIntStateOf(0) }
+
+    // Reuses the viewer's opener, so every link opens the same way and refuses any scheme but http(s), mailto, tel.
+    val openUrl: (String) -> Unit = { openLink(context, it) }
+
+    Scaffold { padding ->
+        Column(
+            Modifier
+                .fillMaxSize()
+                .padding(padding)
+                // Consuming the Scaffold padding first stops the navigation-bar inset being counted twice.
+                .consumeWindowInsets(padding),
+        ) {
+            SettingsHeader(onBack = onBack)
+
+            Column(
+                Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .onSizeChanged { viewportHeightPx = it.height }
+                    .verticalScroll(rememberScrollState())
+                    // An accessibility "scroll forward" moves by this much; without it Compose falls back
+                    // to the whole column, so one scroll lands on the last row, not the next screenful.
+                    .semantics { getScrollViewportLength { viewportHeightPx.toFloat() } }
+                    .padding(start = ScreenPadding, end = ScreenPadding, bottom = 24.dp),
+            ) {
+                SectionLabel(stringResource(R.string.settings_section_appearance), first = true)
+                SettingsCard {
+                    SettingsRow(
+                        title = stringResource(R.string.settings_theme),
+                        value = stringResource(settings.themeMode.label()),
+                        modifier = Modifier.clickable(role = Role.Button) { themeDialogOpen = true },
+                    )
+                    CardDivider()
+                    SwitchRow(
+                        title = stringResource(R.string.settings_colorblind),
+                        description = stringResource(R.string.settings_colorblind_desc),
+                        checked = settings.colorblindMode,
+                        onCheckedChange = viewModel::setColorblindMode,
+                    )
+                    CardDivider()
+                    SwitchRow(
+                        title = stringResource(R.string.settings_night_mode),
+                        description = stringResource(R.string.settings_night_mode_desc),
+                        checked = settings.nightMode,
+                        onCheckedChange = viewModel::setNightMode,
+                    )
+                }
+
+                SectionLabel(stringResource(R.string.settings_section_text))
+                SettingsCard {
+                    SwitchRow(
+                        title = stringResource(R.string.settings_syntax_highlighting),
+                        description = stringResource(R.string.settings_syntax_highlighting_desc),
+                        checked = settings.syntaxHighlighting,
+                        onCheckedChange = viewModel::setSyntaxHighlighting,
+                    )
+                    CardDivider()
+                    SwitchRow(
+                        title = stringResource(R.string.settings_line_numbers),
+                        description = stringResource(R.string.settings_line_numbers_desc),
+                        checked = settings.showLineNumbers,
+                        onCheckedChange = viewModel::setShowLineNumbers,
+                    )
+                    CardDivider()
+                    SwitchRow(
+                        title = stringResource(R.string.settings_wrap_lines),
+                        description = stringResource(R.string.settings_wrap_lines_desc),
+                        checked = settings.wrapLines,
+                        onCheckedChange = viewModel::setWrapLines,
+                    )
+                    CardDivider()
+                    SwitchRow(
+                        title = stringResource(R.string.settings_hyphenation),
+                        description = stringResource(R.string.settings_hyphenation_desc),
+                        checked = settings.hyphenation,
+                        onCheckedChange = viewModel::setHyphenation,
+                    )
+                    CardDivider()
+                    SwitchRow(
+                        title = stringResource(R.string.settings_pretty_print),
+                        description = stringResource(R.string.settings_pretty_print_desc),
+                        checked = settings.prettyPrint,
+                        onCheckedChange = viewModel::setPrettyPrint,
+                    )
+                    CardDivider()
+                    SettingsRow(
+                        title = stringResource(R.string.settings_tab_size),
+                        value = stringResource(R.string.settings_tab_size_value, settings.tabSize),
+                        modifier = Modifier.clickable(role = Role.Button) { tabSizeDialogOpen = true },
+                    )
+                }
+
+                SectionLabel(stringResource(R.string.settings_section_library))
+                SettingsCard {
+                    SwitchRow(
+                        title = stringResource(R.string.settings_autosave_external),
+                        description = stringResource(R.string.settings_autosave_external_desc),
+                        checked = settings.autosaveExternal,
+                        onCheckedChange = viewModel::setAutosaveExternal,
+                    )
+                    CardDivider()
+                    SwitchRow(
+                        title = stringResource(R.string.settings_autosave_encrypted),
+                        description = stringResource(R.string.settings_autosave_encrypted_desc),
+                        checked = settings.autosaveEncrypted,
+                        onCheckedChange = viewModel::setAutosaveEncrypted,
+                    )
+                    CardDivider()
+                    SwitchRow(
+                        title = stringResource(R.string.settings_remember_position),
+                        description = stringResource(R.string.settings_remember_position_desc),
+                        checked = settings.rememberPosition,
+                        onCheckedChange = viewModel::setRememberPosition,
+                    )
+                    CardDivider()
+                    SwitchRow(
+                        title = stringResource(R.string.settings_content_indexing),
+                        description = stringResource(R.string.settings_content_indexing_desc),
+                        checked = settings.contentIndexing,
+                        onCheckedChange = viewModel::setContentIndexing,
+                    )
+                }
+
+                SectionLabel(stringResource(R.string.settings_section_crash_reports))
+                SettingsCard {
+                    SettingsRow(
+                        title = stringResource(R.string.settings_crash_reports_title),
+                        value = stringResource(R.string.settings_crash_reports_desc),
+                        modifier = Modifier.clickable(role = Role.Button) { onOpenCrashReports() },
+                    )
+                }
+
+                SectionLabel(stringResource(R.string.settings_section_about))
+                SettingsCard {
+                    SettingsRow(
+                        title = stringResource(R.string.app_name),
+                        value = stringResource(R.string.settings_about_version, BuildConfig.VERSION_NAME),
+                        modifier = Modifier.clickable(role = Role.Button) { openUrl(RELEASES_URL) },
+                    )
+                    CardDivider()
+                    SettingsRow(
+                        title = stringResource(R.string.settings_about_source),
+                        value = stringResource(R.string.settings_about_source_value),
+                        modifier = Modifier.clickable(role = Role.Button) { openUrl(SOURCE_URL) },
+                    )
+                    CardDivider()
+                    SettingsRow(
+                        title = stringResource(R.string.settings_about_license),
+                        value = stringResource(R.string.settings_about_license_value),
+                        modifier = Modifier.clickable(role = Role.Button) { openUrl(LICENSE_URL) },
+                    )
+                    CardDivider()
+                    SettingsRow(
+                        title = stringResource(R.string.settings_about_privacy),
+                        value = stringResource(R.string.settings_about_privacy_value),
+                        modifier = Modifier.clickable(role = Role.Button) { openUrl(PRIVACY_URL) },
+                    )
+                }
+            }
+        }
+    }
+
+    if (themeDialogOpen) {
+        ThemeDialog(
+            selected = settings.themeMode,
+            onSelect = { mode ->
+                viewModel.setThemeMode(mode)
+                themeDialogOpen = false
+            },
+            onDismiss = { themeDialogOpen = false },
+        )
+    }
+
+    if (tabSizeDialogOpen) {
+        TabSizeDialog(
+            selected = settings.tabSize,
+            onSelect = { spaces ->
+                viewModel.setTabSize(spaces)
+                tabSizeDialogOpen = false
+            },
+            onDismiss = { tabSizeDialogOpen = false },
+        )
+    }
+}
+
+@Composable
+private fun SettingsHeader(onBack: () -> Unit, modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 4.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        IconButton(onClick = onBack) {
+            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
+        }
+        Text(
+            text = stringResource(R.string.settings_title),
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier
+                .padding(horizontal = 4.dp)
+                .semantics { heading() },
+        )
+    }
+}
+
+@Composable
+private fun SectionLabel(text: String, first: Boolean = false) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelLarge,
+        fontWeight = FontWeight.SemiBold,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier
+            .padding(start = 8.dp, top = if (first) 8.dp else 24.dp, bottom = 8.dp)
+            .semantics { heading() },
+    )
+}
+
+@Composable
+private fun SettingsCard(content: @Composable ColumnScope.() -> Unit) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(CardCorner),
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+    ) {
+        Column(content = content)
+    }
+}
+
+@Composable
+private fun CardDivider() {
+    HorizontalDivider(
+        modifier = Modifier.padding(horizontal = 16.dp),
+        color = MaterialTheme.colorScheme.outlineVariant,
+    )
+}
+
+@Composable
+private fun SettingsRow(title: String, value: String, modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .heightIn(min = RowMinHeight)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Text(title, style = MaterialTheme.typography.titleMedium)
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 2.dp),
+        )
+    }
+}
+
+@Composable
+private fun SwitchRow(
+    title: String,
+    description: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = RowMinHeight)
+            .toggleable(value = checked, role = Role.Switch, onValueChange = onCheckedChange)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.titleMedium)
+            Text(
+                text = description,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 2.dp),
+            )
+        }
+        Spacer(Modifier.width(16.dp))
+        Switch(checked = checked, onCheckedChange = null)
+    }
+}
+
+@Composable
+private fun ThemeDialog(
+    selected: ThemeMode,
+    onSelect: (ThemeMode) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.settings_theme)) },
+        text = {
+            Column(Modifier.selectableGroup()) {
+                ThemeMode.entries.forEach { mode ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 48.dp)
+                            .selectable(
+                                selected = mode == selected,
+                                onClick = { onSelect(mode) },
+                                role = Role.RadioButton,
+                            ),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RadioButton(selected = mode == selected, onClick = null)
+                        Spacer(Modifier.width(16.dp))
+                        Text(stringResource(mode.label()), style = MaterialTheme.typography.bodyLarge)
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) }
+        },
+    )
+}
+
+@Composable
+private fun TabSizeDialog(
+    selected: Int,
+    onSelect: (Int) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.settings_tab_size)) },
+        text = {
+            Column(Modifier.selectableGroup()) {
+                PrettyPrint.INDENT_CHOICES.forEach { spaces ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 48.dp)
+                            .selectable(
+                                selected = spaces == selected,
+                                onClick = { onSelect(spaces) },
+                                role = Role.RadioButton,
+                            ),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RadioButton(selected = spaces == selected, onClick = null)
+                        Spacer(Modifier.width(16.dp))
+                        Text(
+                            stringResource(R.string.settings_tab_size_value, spaces),
+                            style = MaterialTheme.typography.bodyLarge,
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) }
+        },
+    )
+}

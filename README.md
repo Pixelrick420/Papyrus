@@ -256,7 +256,7 @@ dependency, so F-Droid compliance is enforced rather than documented.
 The semantics suite needs a device or emulator kept awake and unlocked; [ACCESSIBILITY.md](ACCESSIBILITY.md) covers
 that and the manual TalkBack script.
 
-The end-to-end tests are in `app/src/androidTest/java/com/papyrus/app/e2e`. They launch the installed app, hand it
+The end-to-end tests are in `app/src/androidTest/java/io/github/pixelrick420/papyrus/e2e`. They launch the installed app, hand it
 documents the way a file manager does, and drive it through the accessibility tree with UI Automator, so they call
 nothing inside the app. They run on `debug` only: minification makes AGP minify the androidTest APK too and treat the
 app's output as a provided classpath, so anything R8 stripped from the app is missing at run time and the runner dies

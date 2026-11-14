@@ -1,0 +1,13 @@
+package io.github.pixelrick420.papyrus.ui
+
+import android.content.Context
+import androidx.annotation.StringRes
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.platform.LocalContext
+
+class UiText(@param:StringRes val id: Int, vararg val args: Any) {
+    fun asString(context: Context): String = context.getString(id, *args)
+}
+
+@Composable
+fun UiText.asString(): String = asString(LocalContext.current)

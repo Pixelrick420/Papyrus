@@ -46,19 +46,19 @@ val releaseSigning = listOf(
 val hasReleaseSigning = releaseSigning.values.all { it != null }
 
 android {
-    namespace = "com.papyrus.app"
+    namespace = "io.github.pixelrick420.papyrus"
     compileSdk = 37
 
     // Pinned so `stripReleaseDebugSymbols` finds a strip tool; AGP's NDK default (27.0.120779) isn't installed here.
     ndkVersion = "28.2.13676358"
 
     defaultConfig {
-        applicationId = "com.papyrus.app"
+        applicationId = "io.github.pixelrick420.papyrus"
         minSdk = 26
         targetSdk = 36
-        versionCode = 17
-        versionName = "1.0"
-        testInstrumentationRunner = "com.papyrus.app.e2e.PapyrusTestRunner"
+        versionCode = 18
+        versionName = "2.0"
+        testInstrumentationRunner = "io.github.pixelrick420.papyrus.e2e.PapyrusTestRunner"
     }
 
     signingConfigs {

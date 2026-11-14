@@ -193,7 +193,7 @@ def escape_annotation(text: str) -> str:
 
 
 def short(test: str) -> str:
-    """`com.papyrus.app.e2e.LibraryTest#sortOrdersTheList` -> `LibraryTest#sortOrdersTheList`."""
+    """`io.github.pixelrick420.papyrus.e2e.LibraryTest#sortOrdersTheList` -> `LibraryTest#sortOrdersTheList`."""
     return test.rsplit(".", 1)[-1] if "#" in test else test
 
 
