@@ -116,6 +116,10 @@ android {
     // The migration test opens each exported schema; MigrationTestHelper reads them as assets.
     sourceSets.getByName("androidTest").assets.directories.add("$projectDir/schemas")
 
+    // Deck builders are shared by JVM parser tests and the instrumented raster goldens.
+    sourceSets.getByName("test").kotlin.srcDir("src/sharedTest/java")
+    sourceSets.getByName("androidTest").kotlin.srcDir("src/sharedTest/java")
+
     packaging {
         resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
         // pdfbox-android's BouncyCastle ships ~4 MB of post-quantum crypto parameter files Papyrus never uses.

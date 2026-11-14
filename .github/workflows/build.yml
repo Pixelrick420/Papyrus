@@ -160,6 +160,14 @@ jobs:
         if: ${{ !cancelled() }}
         run: python3 .github/scripts/evaluate-emulator-tests.py --min-pass-percent "$EMULATOR_MIN_PASS_PERCENT"
 
+      # The soft gate would tolerate a failing golden; this class must be green in full.
+      - name: Grade raster goldens strictly
+        if: ${{ !cancelled() }}
+        run: |
+          python3 .github/scripts/evaluate-emulator-tests.py \
+            --min-pass-percent 0 \
+            --require-class io.github.pixelrick420.papyrus.viewer.pptx.render.GoldenImageTest
+
       - name: Upload emulator test results
         if: always()
         uses: actions/upload-artifact@v7

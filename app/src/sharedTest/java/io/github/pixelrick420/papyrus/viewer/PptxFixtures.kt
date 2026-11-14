@@ -781,6 +781,8 @@ internal class TextBodyBuilder {
     private var wrap: String? = null
     private var autofit: String? = null
     private var insets: List<Long>? = null
+    private var rtl = false
+    private var vertical: String? = null
 
     /** The shape's own `lstStyle`, which outranks the layout's and the master's. */
     fun listStyle(block: TextStyleBuilder.() -> Unit) {
@@ -789,6 +791,16 @@ internal class TextBodyBuilder {
 
     fun anchor(value: String) {
         anchor = value
+    }
+
+    /** Right-to-left reading order, as a right-aligned Arabic or Hebrew paragraph carries. */
+    fun rtl(on: Boolean = true) {
+        rtl = on
+    }
+
+    /** Text direction: `vert`, `vert270` or `horz`. */
+    fun vertical(direction: String = "vert270") {
+        vertical = direction
     }
 
     fun wrap(on: Boolean) {
@@ -828,6 +840,8 @@ internal class TextBodyBuilder {
             wrap?.let { append(""" wrap="$it"""") }
             insets?.let { (l, t, r, b) -> append(""" lIns="$l" tIns="$t" rIns="$r" bIns="$b"""") }
             anchor?.let { append(""" anchor="$it"""") }
+            if (rtl) append(""" rtl="1"""")
+            vertical?.let { append(""" vert="$it"""") }
         }
         val body = paragraphs.ifEmpty { listOf("<a:p/>") }.joinToString("")
         val styles = listStyle?.emit("a:lstStyle") ?: "<a:lstStyle/>"
@@ -942,6 +956,19 @@ internal class ShapeBuilder {
 internal class GroupBuilder(private val hidden: Boolean, private val name: String) {
     private var nextId = 2
     private val shapes = mutableListOf<String>()
+    private var rotation: Int? = null
+    private var flippedH = false
+    private var flippedV = false
+
+    /** Rotation in 60000ths of a degree, as in the file. */
+    fun rotate(sixtyThousandths: Int) {
+        rotation = sixtyThousandths
+    }
+
+    fun flip(horizontal: Boolean = false, vertical: Boolean = false) {
+        flippedH = horizontal
+        flippedV = vertical
+    }
 
     fun shape(
         preset: Preset,
@@ -959,9 +986,14 @@ internal class GroupBuilder(private val hidden: Boolean, private val name: Strin
 
     internal fun emit(id: Int, x: Long, y: Long, w: Long, h: Long): String {
         val hiddenAttr = if (hidden) """ hidden="1"""" else ""
+        val attrs = buildString {
+            rotation?.let { append(""" rot="$it"""") }
+            if (flippedH) append(""" flipH="1"""")
+            if (flippedV) append(""" flipV="1"""")
+        }
         return """<p:grpSp><p:nvGrpSpPr><p:cNvPr id="$id" name="${esc(name)}"$hiddenAttr/>""" +
             "<p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>" +
-            """<p:grpSpPr><a:xfrm><a:off x="$x" y="$y"/><a:ext cx="$w" cy="$h"/>""" +
+            """<p:grpSpPr><a:xfrm$attrs><a:off x="$x" y="$y"/><a:ext cx="$w" cy="$h"/>""" +
             """<a:chOff x="0" y="0"/><a:chExt cx="$w" cy="$h"/></a:xfrm></p:grpSpPr>""" +
             shapes.joinToString("") + "</p:grpSp>"
     }
@@ -1090,14 +1122,18 @@ internal class SlideBuilder(
         extension: String = "png",
         description: String = "",
         name: String? = null,
+        crop: Crop? = null,
     ) {
         val id = nextShapeId()
         val relId = "rId${rels.size + 2}"
         rels += Rel(relId, REL + "image", "../media/" + images.add(bytes, extension).substringAfterLast('/'))
+        val srcRect = crop?.let {
+            """<a:srcRect l="${it.left}" t="${it.top}" r="${it.right}" b="${it.bottom}"/>"""
+        }.orEmpty()
         add(
             """<p:pic><p:nvPicPr><p:cNvPr id="$id" name="${esc(name ?: "Picture $id")}" descr="${esc(description)}"/>""" +
                 """<p:cNvPicPr><a:picLocks noChangeAspect="1"/></p:cNvPicPr><p:nvPr/></p:nvPicPr>""" +
-                """<p:blipFill><a:blip r:embed="$relId"/><a:stretch><a:fillRect/></a:stretch></p:blipFill>""" +
+                """<p:blipFill><a:blip r:embed="$relId"/>$srcRect<a:stretch><a:fillRect/></a:stretch></p:blipFill>""" +
                 """<p:spPr>${xfrm(x, y, w, h)}<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:pic>""",
         )
     }
@@ -1127,6 +1163,9 @@ internal class SlideBuilder(
         return "<p:sld $NS$show$master>${commonSlide(null)}<p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>"
     }
 }
+
+/** A picture's crop, each edge as a share of the source in 1/100000ths. */
+internal class Crop(val left: Int = 0, val top: Int = 0, val right: Int = 0, val bottom: Int = 0)
 
 internal class Rel(val id: String, val type: String, val target: String, val external: Boolean = false)
 
