@@ -55,6 +55,9 @@ enum class DocumentFormat(
         // filter admits anyway.
         emptySet(),
     ),
+
+    // Empty sets until the renderer ships, so nothing is detected as PPTX yet.
+    PPTX("PPTX", emptySet(), emptySet()),
     UNKNOWN("?", emptySet(), emptySet());
 
     companion object {

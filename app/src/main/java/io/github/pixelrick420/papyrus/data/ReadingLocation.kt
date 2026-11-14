@@ -22,7 +22,7 @@ enum class LocationKind(val code: Int) {
             DocumentFormat.MARKDOWN -> CHAR
             DocumentFormat.TEXT, DocumentFormat.CODE -> CHUNK
             DocumentFormat.DOC, DocumentFormat.DOCX, DocumentFormat.ODT, DocumentFormat.EPUB, DocumentFormat.CSV -> BLOCK
-            DocumentFormat.UNKNOWN -> null
+            DocumentFormat.PPTX, DocumentFormat.UNKNOWN -> null
         }
     }
 }

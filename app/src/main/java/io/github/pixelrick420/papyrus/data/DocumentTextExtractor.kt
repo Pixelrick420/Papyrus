@@ -12,6 +12,7 @@ import io.github.pixelrick420.papyrus.viewer.OfficeTextExtractor
 import io.github.pixelrick420.papyrus.viewer.PdfEncryption
 import io.github.pixelrick420.papyrus.viewer.PdfPageTextSource
 import io.github.pixelrick420.papyrus.viewer.TextCacheKey
+import io.github.pixelrick420.papyrus.viewer.pptx.SlideTextExtractor
 import io.github.pixelrick420.papyrus.viewer.readTextString
 import io.github.pixelrick420.papyrus.viewer.textCacheKey
 import kotlinx.coroutines.CancellationException
@@ -64,6 +65,7 @@ class DocumentTextExtractor(
         DocumentFormat.DOCX, DocumentFormat.ODT -> readOffice(document)
         DocumentFormat.DOC -> readDoc(document.uri.toUri())
         DocumentFormat.EPUB -> readEpub(document.uri.toUri())
+        DocumentFormat.PPTX -> readPptx(document.uri.toUri())
         DocumentFormat.TEXT, DocumentFormat.CODE, DocumentFormat.MARKDOWN, DocumentFormat.CSV ->
             readPlainText(document.uri.toUri())
         DocumentFormat.UNKNOWN -> null
@@ -93,6 +95,15 @@ class DocumentTextExtractor(
             return ExtractedText("", TextIndexState.SKIPPED)
         }
         return indexable(officeBlocksToText(DocTextExtractor.extract({ openStream(uri) }), MAX_INDEX_CHARS))
+    }
+
+    private fun readPptx(uri: Uri): ExtractedText {
+        if (OfficeEncryption.isEncrypted({ openStream(uri) })) {
+            return ExtractedText("", TextIndexState.SKIPPED)
+        }
+        // mediaDir = null: a deck's words are indexed, not its pictures.
+        val slides = SlideTextExtractor().extract { openStream(uri) }
+        return indexable(slides.joinToString("\n"))
     }
 
     private fun readEpub(uri: Uri): ExtractedText {

@@ -16,7 +16,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import java.io.Closeable
 import java.io.File
 import java.io.FileNotFoundException
 import java.io.IOException
@@ -32,9 +31,9 @@ class PdfPageSource private constructor(
     private val engine: PdfEngine,
     private val capabilities: PdfCapabilities,
     private val tempFile: File?,
-) : Closeable {
+) : PageBitmapSource {
 
-    val pageCount: Int = engine.pageCount
+    override val pageCount: Int = engine.pageCount
 
     val hasForm: Boolean get() = capabilities.forms
 
@@ -44,10 +43,10 @@ class PdfPageSource private constructor(
     private val lock = Mutex()
     private var closed = false
 
-    private val cacheBudgetBytes = cacheBytes()
+    private val cacheBudgetBytes = bitmapCacheBudgetBytes()
 
     // A few zoomed pages are on screen at once and each holds its bitmap, so one page may take only a share of the cache; a page past it would be dropped as it went in, or fail to allocate.
-    val maxRenderPixels: Int = cacheBudgetBytes / (BYTES_PER_PIXEL * PAGES_PER_CACHE)
+    override val maxRenderPixels: Int = cacheBudgetBytes / (BYTES_PER_PIXEL * PAGES_PER_CACHE)
 
     private val cache = object : LruCache<PageKey, Bitmap>(cacheBudgetBytes) {
         // allocationByteCount, since a reused bitmap can hold more than its pixels need. Must stay >= 1:
@@ -55,27 +54,27 @@ class PdfPageSource private constructor(
         override fun sizeOf(key: PageKey, value: Bitmap): Int = value.allocationByteCount.coerceAtLeast(1)
     }
 
-    suspend fun loadAspectRatios(): List<Float> = withContext(dispatcher) {
+    override suspend fun loadAspectRatios(): List<Float> = withContext(dispatcher) {
         lock.withLock {
             List(pageCount) { i -> engine.open(i).use { it.height.toFloat() / it.width } }
         }
     }
 
-    fun cached(index: Int, widthPx: Int): Bitmap? = cache.get(PageKey(index, widthPx))
+    override fun cached(index: Int, widthPx: Int): Bitmap? = cache.get(PageKey(index, widthPx))
 
     // Not recycled: a page on screen may still be drawing its bitmap, and the GC frees it once unused.
-    fun evictOutside(keep: IntRange) {
+    override fun evictOutside(keep: IntRange) {
         for (key in cache.snapshot().keys) {
             if (key.index !in keep) cache.remove(key)
         }
     }
 
-    fun trimMemory(evictAll: Boolean) {
+    override fun trimMemory(evictAll: Boolean) {
         if (evictAll) cache.evictAll() else cache.trimToSize(cache.maxSize() / 2)
     }
 
     // Renders queue behind one another, so a caller cancelled while waiting never starts; a render already running cannot be interrupted and finishes into the cache.
-    suspend fun render(index: Int, widthPx: Int): Bitmap? {
+    override suspend fun render(index: Int, widthPx: Int): Bitmap? {
         val key = PageKey(index, widthPx)
         cache.get(key)?.let { return it }
         return withContext(dispatcher) {
@@ -261,10 +260,7 @@ class PdfPageSource private constructor(
         private const val MAX_FORM_FIELDS = 300
 
         /** Upper bound on a page bitmap's height, so a degenerate page size never asks for a bitmap the device cannot hold. */
-        private const val MAX_PAGE_HEIGHT_PX = 16_384
-
-        private fun cacheBytes(): Int =
-            (Runtime.getRuntime().maxMemory() / 8).toInt().coerceIn(8 shl 20, 128 shl 20)
+        internal const val MAX_PAGE_HEIGHT_PX = 16_384
 
         suspend fun open(context: Context, uri: Uri): PdfPageSource = withContext(Dispatchers.IO) {
             val resolver = context.contentResolver

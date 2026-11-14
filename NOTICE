@@ -71,6 +71,50 @@ govern the component itself.
     License: BSD style / Public Domain (CC0)
     A reference XmlPullParser used by the extractor/sniffer unit tests in place of the platform stub.
 
+11. presetShapeDefinitions.xml (app/src/main/assets/ooxml/)
+    License: Ecma International Copyright License and Disclaimer (ECMA-376)
+    Bundled component: yes
+    The ECMA-376 preset shape geometry used to draw PowerPoint shapes. Vendored unmodified from
+    Apache POI (Apache License, Version 2.0), revision 338882ac8898df5c13a7d15f533204c5dd8607d6.
+    The Ecma notice is kept beside the file in ECMA-NOTICE.txt.
+
+12. Carlito 1.104 (app/src/main/assets/ooxml/fonts/humanist/)
+    License: SIL Open Font License 1.1, Reserved Font Name "Carlito"
+    Copyright 2013 The Carlito Project Authors (https://github.com/googlefonts/carlito)
+    Bundled component: yes
+    Metric-compatible with Calibri; used for PowerPoint text. Modified: subset to Latin, Greek,
+    Cyrillic and common symbols, hinting removed, and renamed "Pptx Humanist" because the
+    license forbids reusing the Reserved Font Name. The license is kept beside the files in OFL.txt.
+
+13. Caladea 1.001 (app/src/main/assets/ooxml/fonts/caladea/)
+    License: SIL Open Font License 1.1, no Reserved Font Name
+    Copyright 2012 The Caladea Project Authors (https://github.com/huertatipografica/Caladea)
+    Bundled component: yes
+    Metric-compatible with Cambria. The license was checked in the name table of all four font
+    files and in OFL.txt: it is the OFL, not Apache-2.0 as some listings state. Modified: subset
+    and hinting removed; the name is kept. The license is kept beside the files in OFL.txt.
+
+14. Liberation Fonts 2.1.5 (app/src/main/assets/ooxml/fonts/metric/)
+    License: SIL Open Font License 1.1, Reserved Font Names "Liberation", "Arimo", "Tinos", "Cousine"
+    Copyright (c) 2012 Red Hat, Inc.; digitized data copyright (c) 2010 Google Corporation
+    Bundled component: yes
+    Metric-compatible with Arial, Times New Roman and Courier New. Modified: subset, hinting
+    removed, and renamed "Pptx Sans", "Pptx Serif" and "Pptx Mono" because the license forbids
+    reusing the Reserved Font Names. The license is kept beside the files in LICENSE.
+    tools/pptx/subset-fonts.py reproduces the subsetting.
+
+----------------------------------------------------------------------
+Licensing rules for the PPTX feature
+----------------------------------------------------------------------
+
+Permissive code and data may be vendored with a NOTICE entry; copyleft code may not be copied;
+behaviour may be studied from anywhere.
+
+- Apache POI code is a reference oracle only. Do not copy it; if any derived code is ever merged,
+  add headers and a NOTICE entry.
+- LibreOffice and OnlyOffice code (MPL-2.0 + LGPL / AGPL) is never copied or translated.
+  Observing their output as a cross-check is fine.
+
 ----------------------------------------------------------------------
 End of third-party notices
 ----------------------------------------------------------------------

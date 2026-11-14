@@ -38,7 +38,7 @@ enum class FormatGroup {
             // One format covers both extensions, so only the name can tell a tab-separated file apart.
             DocumentFormat.CSV -> if (extensionOf(document.title) == "tsv") TSV else CSV
             DocumentFormat.CODE -> CODE
-            DocumentFormat.UNKNOWN -> null
+            DocumentFormat.PPTX, DocumentFormat.UNKNOWN -> null
         }
     }
 }
