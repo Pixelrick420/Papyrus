@@ -18,6 +18,7 @@ import io.github.pixelrick420.papyrus.tts.TtsSession
 import io.github.pixelrick420.papyrus.viewer.OFFICE_UNLOCK_DIR
 import io.github.pixelrick420.papyrus.viewer.PDF_UNLOCK_DIR
 import io.github.pixelrick420.papyrus.viewer.PdfPageSource
+import io.github.pixelrick420.papyrus.viewer.pptx.SlidePageSource
 import io.github.pixelrick420.papyrus.viewer.textCacheKey
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.asCoroutineDispatcher
@@ -142,6 +143,7 @@ class MainApplication : Application() {
 
     private fun trimCaches(evictAll: Boolean) {
         PdfPageSource.trimAll(evictAll)
+        SlidePageSource.trimAll(evictAll)
         thumbnailLoader.trimMemory(evictAll)
     }
 
