@@ -78,7 +78,7 @@ internal class FontCatalog(
     fun bundled(font: BundledFont, bold: Boolean, italic: Boolean): Typeface {
         val style = FaceStyle.of(bold, italic)
         val face = font.face(style)
-        val base = cache.get("asset:${face.asset}") {
+        val base = cache.get(face.asset) {
             runCatching { Typeface.createFromAsset(assets, it) }.getOrNull()
         } ?: return Typeface.DEFAULT
         return if (face.synthetic) Typeface.create(base, style.android()) else base
