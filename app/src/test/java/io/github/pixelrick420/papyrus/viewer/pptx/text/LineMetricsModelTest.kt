@@ -8,11 +8,14 @@ class LineMetricsModelTest {
 
     private val model = LineMetricsModel.DEFAULT
 
+    private val font = FONT.emBox()
+
     @Test
     fun `a single line is 1_2 times the largest run size`() {
         val box = model.line(18.0)
 
         assertEquals(21.6, box.heightPt, EPSILON)
+        assertEquals(21.6, box.baselinePt, EPSILON)
     }
 
     @Test
@@ -48,51 +51,48 @@ class LineMetricsModelTest {
     }
 
     @Test
-    fun `the first baseline rule splits the line box by the font metrics`() {
+    fun `the first baseline rule places the baseline in the line box`() {
         val ascent = FONT.ascentEm * 18.0
         val descent = FONT.descentEm * 18.0
         val height = model.line(18.0).heightPt
 
-        val share = model.line(18.0, metrics = FONT)
+        val share = LineMetricsModel(firstBaselineRule = FirstBaselineRule.ASCENT_SHARE)
         val balanced = LineMetricsModel(firstBaselineRule = FirstBaselineRule.BALANCED_LEADING)
-            .line(18.0, metrics = FONT)
-        val above = LineMetricsModel(firstBaselineRule = FirstBaselineRule.LEADING_ABOVE)
-            .line(18.0, metrics = FONT)
 
-        assertEquals(height * ascent / (ascent + descent), share.baselinePt, EPSILON)
-        assertEquals((height + ascent - descent) / 2, balanced.baselinePt, EPSILON)
-        assertEquals(height, above.baselinePt, EPSILON)
+        assertEquals(height * ascent / (ascent + descent), share.line(18.0, font = font).baselinePt, EPSILON)
+        assertEquals((height + ascent - descent) / 2, balanced.line(18.0, font = font).baselinePt, EPSILON)
+        assertEquals(height, model.line(18.0, font = font).baselinePt, EPSILON)
     }
 
     @Test
     fun `a line with no font metrics falls back to the built-in ascent and descent`() {
-        val ascent = LineMetricsModel.FALLBACK_ASCENT_EM * 18.0
-        val descent = LineMetricsModel.FALLBACK_DESCENT_EM * 18.0
+        val share = LineMetricsModel(firstBaselineRule = FirstBaselineRule.ASCENT_SHARE)
+        val height = share.line(18.0).heightPt
+        val ascent = FontEmBox.FALLBACK_ASCENT_EM * 18.0
+        val descent = FontEmBox.FALLBACK_DESCENT_EM * 18.0
 
-        val box = model.line(18.0)
-
-        assertEquals(21.6 * ascent / (ascent + descent), box.baselinePt, EPSILON)
+        assertEquals(height * ascent / (ascent + descent), share.line(18.0).baselinePt, EPSILON)
     }
 
     @Test
     fun `fontAlgn moves the baseline inside the line box`() {
-        val ascent = (FONT.ascentEm * 18.0)
-        val descent = (FONT.descentEm * 18.0)
+        val ascent = FONT.ascentEm * 18.0
+        val descent = FONT.descentEm * 18.0
         val height = model.line(18.0).heightPt
 
         assertEquals(
             ascent,
-            model.line(18.0, fontAlignment = TextFontAlignment.TOP, metrics = FONT).baselinePt,
+            model.line(18.0, fontAlignment = TextFontAlignment.TOP, font = font).baselinePt,
             EPSILON,
         )
         assertEquals(
             height - descent,
-            model.line(18.0, fontAlignment = TextFontAlignment.BOTTOM, metrics = FONT).baselinePt,
+            model.line(18.0, fontAlignment = TextFontAlignment.BOTTOM, font = font).baselinePt,
             EPSILON,
         )
         assertEquals(
             (height + ascent - descent) / 2,
-            model.line(18.0, fontAlignment = TextFontAlignment.CENTER, metrics = FONT).baselinePt,
+            model.line(18.0, fontAlignment = TextFontAlignment.CENTER, font = font).baselinePt,
             EPSILON,
         )
     }

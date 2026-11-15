@@ -1,0 +1,22 @@
+{
+  "deck": "C-LNSP",
+  "powerpointBuild": "16.x",
+  "oracle": "Appendix A excerpt",
+  "cases": [
+    {
+      "id": "arial-18-lnSpcPct100",
+      "font": "Arial",
+      "sizePt": 18,
+      "lnSpcPct": 100,
+      "lines": [
+        {
+          "text": "The quick brown fox",
+          "x": 7.2,
+          "baseline": 21.6,
+          "width": 164.3
+        }
+      ],
+      "textHeightPt": 21.6
+    }
+  ]
+}

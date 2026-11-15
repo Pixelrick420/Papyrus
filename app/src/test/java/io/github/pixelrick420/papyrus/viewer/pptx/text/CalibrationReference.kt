@@ -16,7 +16,14 @@ internal class ReferenceCase(
     val spaceAfter: TextSpacing?,
     val lines: List<ReferenceLine>,
     val textHeightPt: Double,
-)
+    val ascentEm: Double? = null,
+    val descentEm: Double? = null,
+) {
+
+    /** The font metrics the manifest recorded, or the model's fallback when it had no font file. */
+    val fontBox: FontEmBox
+        get() = if (ascentEm != null && descentEm != null) FontEmBox(ascentEm, descentEm) else FontEmBox.FALLBACK
+}
 
 /** A control deck's measured output, as `tools/pptx/extract_reference.py` writes it. */
 internal class ReferenceDeck(
@@ -50,6 +57,8 @@ internal class ReferenceDeck(
                         )
                     },
                     textHeightPt = number(entry, "textHeightPt"),
+                    ascentEm = (entry["ascentEm"] as? Number)?.toDouble(),
+                    descentEm = (entry["descentEm"] as? Number)?.toDouble(),
                 )
             }
             return ReferenceDeck(
