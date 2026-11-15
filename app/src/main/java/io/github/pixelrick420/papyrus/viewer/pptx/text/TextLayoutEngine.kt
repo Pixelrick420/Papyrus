@@ -18,7 +18,12 @@ internal class TextLayoutEngine(
 
     private val filler = LineFiller(measurer)
 
-    fun layout(body: TextBody, frameWidthEmu: Double): TextFrameLayout {
+    fun layout(
+        body: TextBody,
+        frameWidthEmu: Double,
+        frameHeightEmu: Double? = null,
+        shape: TextShapeTransform = TextShapeTransform.NONE,
+    ): TextFrameLayout {
         val insets = body.properties.insets
         val widthPt = (frameWidthEmu - insets.left - insets.right).coerceAtLeast(0.0) / EMU_PER_POINT
         val autofit = AutofitScale.of(body.properties.autofit)
@@ -37,8 +42,94 @@ internal class TextLayoutEngine(
                 lines = lines,
             )
         }
-        return TextFrameLayout(lines, frameWidthEmu / EMU_PER_POINT, heightPt)
+        val frameHeightPt = frameHeightEmu?.let {
+            (it - insets.top - insets.bottom).coerceAtLeast(0.0) / EMU_PER_POINT
+        }
+        return TextFrameLayout(
+            lines = if (frameHeightPt == null) {
+                lines
+            } else {
+                anchored(lines, body.properties, widthPt, frameHeightPt, heightPt)
+            },
+            widthPt = frameWidthEmu / EMU_PER_POINT,
+            heightPt = heightPt,
+            orientation = TextOrientation.of(shape, body.properties),
+        )
     }
+
+    /** Places a laid-out block in the text rectangle, growing past it rather than clipping (step 9). */
+    private fun anchored(
+        lines: List<TextLine>,
+        properties: TextBodyProperties,
+        widthPt: Double,
+        frameHeightPt: Double,
+        contentHeightPt: Double,
+    ): List<TextLine> {
+        if (lines.isEmpty()) return lines
+        val slack = frameHeightPt - contentHeightPt
+        val topPt = when (properties.anchor) {
+            TextAnchor.TOP -> 0.0
+            TextAnchor.CENTER -> slack / 2.0
+            TextAnchor.BOTTOM -> slack
+            TextAnchor.JUSTIFIED, TextAnchor.DISTRIBUTED -> 0.0
+        }
+        val gapPt = if (
+            properties.anchor == TextAnchor.JUSTIFIED || properties.anchor == TextAnchor.DISTRIBUTED
+        ) {
+            if (lines.size > 1 && slack > 0.0) slack / (lines.size - 1) else 0.0
+        } else {
+            0.0
+        }
+        val leftPt = if (properties.anchorCenter) {
+            val blockLeft = lines.minOf { it.leftPt }
+            val blockRight = lines.maxOf { it.leftPt + it.widthPt }
+            (widthPt - (blockRight - blockLeft)) / 2.0 - blockLeft
+        } else {
+            0.0
+        }
+        if (topPt == 0.0 && gapPt == 0.0 && leftPt == 0.0) return lines
+        return lines.mapIndexed { index, line ->
+            shifted(line, leftPt, topPt + gapPt * index)
+        }
+    }
+
+    private fun shifted(line: TextLine, dx: Double, dy: Double): TextLine = TextLine(
+        index = line.index,
+        paragraph = line.paragraph,
+        start = line.start,
+        end = line.end,
+        leftPt = line.leftPt + dx,
+        topPt = line.topPt + dy,
+        widthPt = line.widthPt,
+        heightPt = line.heightPt,
+        baselinePt = line.baselinePt + dy,
+        runs = line.runs.map {
+            GlyphRun(
+                start = it.start,
+                end = it.end,
+                leftPt = it.leftPt + dx,
+                rightPt = it.rightPt + dx,
+                baselinePt = it.baselinePt + dy,
+                font = it.font,
+                sizePt = it.sizePt,
+                properties = it.properties,
+                rtl = it.rtl,
+            )
+        },
+        characters = line.characters.map {
+            CharacterBox(
+                start = it.start,
+                end = it.end,
+                leftPt = it.leftPt + dx,
+                rightPt = it.rightPt + dx,
+                topPt = it.topPt + dy,
+                bottomPt = it.bottomPt + dy,
+            )
+        },
+        bullet = line.bullet,
+        markerLeftPt = line.markerLeftPt + dx,
+        markerRightPt = line.markerRightPt + dx,
+    )
 
     private fun layoutParagraph(
         paragraph: TextParagraph,

@@ -48,4 +48,5 @@ internal class TextFrameLayout(
     val lines: List<TextLine>,
     val widthPt: Double,
     val heightPt: Double,
+    val orientation: TextOrientation = TextOrientation.NONE,
 ) : LaidOutText
