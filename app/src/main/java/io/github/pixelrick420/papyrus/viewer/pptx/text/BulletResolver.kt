@@ -20,6 +20,9 @@ internal sealed interface BulletMarker {
     ) : BulletMarker
 
     class Picture(val image: XNode? = null, val sizePt: Double = 0.0, val color: Rgba? = null) : BulletMarker
+
+    /** Generated `a)`, `IV.` or `①` text; never part of the paragraph's own runs. */
+    class Number(val text: String, val sizePt: Double = 0.0, val color: Rgba? = null) : BulletMarker
 }
 
 /** Where a paragraph's own lines start and the box its marker occupies, in EMU from the frame's left inset. */
@@ -35,7 +38,23 @@ internal class BulletMetrics(
 internal class BulletLayout(val marker: BulletMarker, val metrics: BulletMetrics)
 
 /** Resolves `buChar`, `buBlip`, `buClr`, `buSz` and the level indents into the values the layout pass paints. */
-internal class BulletResolver(private val symbols: SymbolFonts = SymbolFonts()) {
+internal class BulletResolver(
+    private val symbols: SymbolFonts = SymbolFonts(),
+    private val numbers: AutoNumbers = AutoNumbers(),
+) {
+
+    /**
+     * One layout per paragraph, with `buAutoNum` markers counted across the whole body. A single
+     * paragraph cannot be numbered on its own, so this is the entry point the layout pass uses.
+     */
+    fun layouts(body: TextBody): List<BulletLayout> {
+        val markers = numbers.markers(body)
+        return body.paragraphs.mapIndexed { index, paragraph ->
+            val layout = layout(paragraph)
+            val number = markers[index] ?: return@mapIndexed layout
+            BulletLayout(numberMarker(paragraph, number), layout.metrics)
+        }
+    }
 
     fun layout(paragraph: TextParagraph): BulletLayout {
         val run = paragraph.runs.firstOrNull()?.properties ?: paragraph.endProperties
@@ -61,6 +80,16 @@ internal class BulletResolver(private val symbols: SymbolFonts = SymbolFonts()) 
         val indent = properties.indentEmu ?: 0.0
         val markerLeft = textLeft + minOf(0.0, indent)
         return BulletMetrics(textLeft, markerLeft, markerLeft - minOf(0.0, indent))
+    }
+
+    private fun numberMarker(paragraph: TextParagraph, text: String): BulletMarker.Number {
+        val bullet = paragraph.properties.bullet as? TextBullet.Numbering ?: return BulletMarker.Number(text)
+        val run = paragraph.runs.firstOrNull()?.properties ?: paragraph.endProperties
+        return BulletMarker.Number(
+            text = text,
+            sizePt = sizeOf(bullet.size, run.sizePt),
+            color = bullet.color ?: (run.fill as? ScenePaint.Solid)?.color,
+        )
     }
 
     private fun characterMarker(
