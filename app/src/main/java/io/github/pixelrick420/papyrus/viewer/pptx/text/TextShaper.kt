@@ -46,9 +46,10 @@ internal class TextShaper(private val slots: FontSlots = FontSlots()) {
     fun shape(
         text: ParagraphText,
         baseRtl: Boolean,
+        scale: AutofitScale = AutofitScale.NONE,
         hasGlyph: (ResolvedFont, Int) -> Boolean = { _, _ -> true },
     ): List<ShapedRun> {
-        val faces = facesOf(text, hasGlyph)
+        val faces = facesOf(text, hasGlyph, scale)
         if (faces.isEmpty()) return emptyList()
         val runs = ArrayList<ShapedRun>(faces.size)
         for (direction in Bidi.runs(text.text, baseRtl)) {
@@ -75,6 +76,7 @@ internal class TextShaper(private val slots: FontSlots = FontSlots()) {
     private fun facesOf(
         text: ParagraphText,
         hasGlyph: (ResolvedFont, Int) -> Boolean,
+        scale: AutofitScale,
     ): List<Face> {
         val faces = ArrayList<Face>()
         var index = 0
@@ -84,7 +86,7 @@ internal class TextShaper(private val slots: FontSlots = FontSlots()) {
             val codePoint = Character.codePointAt(text.text, index)
             val length = Character.charCount(codePoint)
             val font = slots.resolve(properties, codePoint)
-            val sizePt = properties.sizePt.toFloat()
+            val sizePt = scale.size(properties.sizePt).toFloat()
             val missing = !hasGlyph(font, codePoint)
             val last = faces.lastOrNull()
             if (last == null || last.properties !== properties || last.font !== font ||

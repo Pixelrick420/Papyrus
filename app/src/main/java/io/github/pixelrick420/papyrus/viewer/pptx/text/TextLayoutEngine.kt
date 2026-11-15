@@ -21,7 +21,8 @@ internal class TextLayoutEngine(
     fun layout(body: TextBody, frameWidthEmu: Double): TextFrameLayout {
         val insets = body.properties.insets
         val widthPt = (frameWidthEmu - insets.left - insets.right).coerceAtLeast(0.0) / EMU_PER_POINT
-        val layouts = bullets.layouts(body)
+        val autofit = AutofitScale.of(body.properties.autofit)
+        val layouts = bullets.layouts(body, autofit)
         val lines = ArrayList<TextLine>()
         var heightPt = 0.0
         body.paragraphs.forEachIndexed { index, paragraph ->
@@ -31,6 +32,7 @@ internal class TextLayoutEngine(
                 bullet = layouts[index],
                 widthPt = widthPt,
                 body = body.properties,
+                autofit = autofit,
                 topPt = heightPt,
                 lines = lines,
             )
@@ -44,11 +46,12 @@ internal class TextLayoutEngine(
         bullet: BulletLayout,
         widthPt: Double,
         body: TextBodyProperties,
+        autofit: AutofitScale,
         topPt: Double,
         lines: MutableList<TextLine>,
     ): Double {
         val text = shaper.flatten(paragraph)
-        val runs = shaper.shape(text, paragraph.properties.rightToLeft, measurer::hasGlyph)
+        val runs = shaper.shape(text, paragraph.properties.rightToLeft, autofit, measurer::hasGlyph)
         val metrics = bullet.metrics
         val textLeftPt = metrics.textLeftEmu / EMU_PER_POINT
         val paragraphWidthPt = widthPt - textLeftPt -
@@ -84,11 +87,11 @@ internal class TextLayoutEngine(
                 TextAlignment.CENTER -> ((capacityPt - contentPt) / 2.0).coerceAtLeast(0.0)
                 else -> 0.0
             }
-            val sizePt = largestSizePt(runs, line.start, line.end, paragraph.endProperties.sizePt)
+            val sizePt = largestSizePt(runs, line.start, line.end, autofit.size(paragraph.endProperties.sizePt))
             val font = fontOnLine(runs, line.start, line.end)
             val box = lineMetrics.line(
                 largestSizePt = sizePt,
-                spacing = paragraph.properties.lineSpacing,
+                spacing = autofit.lineSpacing(paragraph.properties.lineSpacing),
                 fontAlignment = paragraph.properties.fontAlignment,
                 font = font?.let { measurer.metrics(it, sizePt.toFloat()).emBox(sizePt) }
                     ?: FontEmBox.FALLBACK,
@@ -116,8 +119,9 @@ internal class TextLayoutEngine(
             top += box.heightPt
         }
         return top + lineMetrics.spaceAfter(
-            filled.lastOrNull()?.let { largestSizePt(runs, it.start, it.end, paragraph.endProperties.sizePt) }
-                ?: paragraph.endProperties.sizePt,
+            filled.lastOrNull()?.let {
+                largestSizePt(runs, it.start, it.end, autofit.size(paragraph.endProperties.sizePt))
+            } ?: autofit.size(paragraph.endProperties.sizePt),
             paragraph.properties.spaceAfter,
         )
     }

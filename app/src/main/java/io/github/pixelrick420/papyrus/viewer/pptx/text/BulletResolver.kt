@@ -47,19 +47,19 @@ internal class BulletResolver(
      * One layout per paragraph, with `buAutoNum` markers counted across the whole body. A single
      * paragraph cannot be numbered on its own, so this is the entry point the layout pass uses.
      */
-    fun layouts(body: TextBody): List<BulletLayout> {
+    fun layouts(body: TextBody, scale: AutofitScale = AutofitScale.NONE): List<BulletLayout> {
         val markers = numbers.markers(body)
         return body.paragraphs.mapIndexed { index, paragraph ->
-            val layout = layout(paragraph)
+            val layout = layout(paragraph, scale)
             val number = markers[index] ?: return@mapIndexed layout
-            BulletLayout(numberMarker(paragraph, number), layout.metrics)
+            BulletLayout(numberMarker(paragraph, number, scale), layout.metrics)
         }
     }
 
-    fun layout(paragraph: TextParagraph): BulletLayout {
+    fun layout(paragraph: TextParagraph, scale: AutofitScale = AutofitScale.NONE): BulletLayout {
         val run = paragraph.runs.firstOrNull()?.properties ?: paragraph.endProperties
         return BulletLayout(
-            marker(paragraph.properties.bullet, run.sizePt, (run.fill as? ScenePaint.Solid)?.color),
+            marker(paragraph.properties.bullet, scale.size(run.sizePt), (run.fill as? ScenePaint.Solid)?.color),
             metrics(paragraph.level, paragraph.properties),
         )
     }
@@ -82,12 +82,16 @@ internal class BulletResolver(
         return BulletMetrics(textLeft, markerLeft, markerLeft - minOf(0.0, indent))
     }
 
-    private fun numberMarker(paragraph: TextParagraph, text: String): BulletMarker.Number {
+    private fun numberMarker(
+        paragraph: TextParagraph,
+        text: String,
+        scale: AutofitScale,
+    ): BulletMarker.Number {
         val bullet = paragraph.properties.bullet as? TextBullet.Numbering ?: return BulletMarker.Number(text)
         val run = paragraph.runs.firstOrNull()?.properties ?: paragraph.endProperties
         return BulletMarker.Number(
             text = text,
-            sizePt = sizeOf(bullet.size, run.sizePt),
+            sizePt = sizeOf(bullet.size, scale.size(run.sizePt)),
             color = bullet.color ?: (run.fill as? ScenePaint.Solid)?.color,
         )
     }
