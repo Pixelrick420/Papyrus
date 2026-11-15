@@ -6,6 +6,7 @@ internal class FillMetrics(
     val firstLineIndentPt: Double = 0.0,
     val rtl: Boolean = false,
     val wrap: TextWrap = TextWrap.SQUARE,
+    val tabs: TabStops = TabStops.DEFAULT,
 )
 
 /** One line the filler chose: [start] and [end] are offsets into the paragraph's text. */
@@ -56,7 +57,7 @@ internal class LineFiller(
             return listOf(FilledLine(chunkStart, chunkEnd, indent, 0.0, metrics.rtl))
         }
         if (metrics.wrap == TextWrap.NONE) {
-            val prefix = prefixAdvance(text, segments, chunkStart, chunkEnd)
+            val prefix = prefixAdvance(text, segments, chunkStart, chunkEnd, indent, metrics.tabs)
             return listOf(
                 FilledLine(
                     chunkStart,
@@ -73,14 +74,18 @@ internal class LineFiller(
         while (start < chunkEnd) {
             val lineIndent = if (first) metrics.firstLineIndentPt else 0.0
             val available = (metrics.widthPt - lineIndent).coerceAtLeast(0.0)
-            val prefix = prefixAdvance(text, segments, start, chunkEnd)
+            val prefix = prefixAdvance(text, segments, start, chunkEnd, lineIndent, metrics.tabs)
             var end = -1
             for (offset in start + 1..chunkEnd) {
                 if (offset != chunkEnd && !breakBefore.getOrElse(offset) { false }) continue
                 if (widthUpTo(text, prefix, start, offset) > available) break
                 end = offset
             }
-            val chosen = if (end > start) end else splitAt(text, segments, start, chunkEnd, available)
+            val chosen = if (end > start) {
+                end
+            } else {
+                splitAt(text, segments, start, chunkEnd, available, lineIndent, metrics.tabs)
+            }
             lines += FilledLine(
                 start,
                 chosen,
@@ -101,6 +106,8 @@ internal class LineFiller(
         start: Int,
         end: Int,
         available: Double,
+        indentPt: Double,
+        tabs: TabStops,
     ): Int {
         val segment = segments.firstOrNull { start >= it.start && start < it.end }
             ?: return start + 1
@@ -116,7 +123,9 @@ internal class LineFiller(
             available.toFloat(),
         )
         offset = offset.coerceIn(start + 1, end)
-        while (offset > start + 1 && advanceRange(text, segments, start, offset) > available) {
+        while (offset > start + 1 &&
+            advanceRange(text, segments, start, offset, indentPt, tabs) > available
+        ) {
             offset--
         }
         return offset
@@ -127,15 +136,43 @@ internal class LineFiller(
         segments: List<ShapedRun>,
         start: Int,
         end: Int,
+        indentPt: Double,
+        tabs: TabStops,
     ): DoubleArray {
         val prefix = DoubleArray(end - start + 1)
         for (offset in start until end) {
-            prefix[offset - start + 1] = advanceRange(text, segments, start, offset + 1)
+            prefix[offset - start + 1] = advanceRange(text, segments, start, offset + 1, indentPt, tabs)
         }
         return prefix
     }
 
     private fun advanceRange(
+        text: CharSequence,
+        segments: List<ShapedRun>,
+        start: Int,
+        end: Int,
+        indentPt: Double,
+        tabs: TabStops,
+    ): Double {
+        if (!hasTab(text, start, end)) return measuredAdvance(text, segments, start, end)
+        var total = 0.0
+        var offset = start
+        while (offset < end) {
+            if (text[offset] == '\t') {
+                val xPt = indentPt + total
+                total += tabs.stopAt(xPt).positionPt - xPt
+                offset++
+            } else {
+                val segment = segments.firstOrNull { offset >= it.start && offset < it.end } ?: break
+                val to = minOf(segment.end, end)
+                total += measurer.advance(segment.font, segment.sizePt, text, offset, to, segment.rtl, features)
+                offset = to
+            }
+        }
+        return total
+    }
+
+    private fun measuredAdvance(
         text: CharSequence,
         segments: List<ShapedRun>,
         start: Int,
@@ -149,6 +186,11 @@ internal class LineFiller(
             total += measurer.advance(segment.font, segment.sizePt, text, from, to, segment.rtl, features)
         }
         return total
+    }
+
+    private fun hasTab(text: CharSequence, start: Int, end: Int): Boolean {
+        for (offset in start until end) if (text[offset] == '\t') return true
+        return false
     }
 
     private fun widthUpTo(text: CharSequence, prefix: DoubleArray, start: Int, end: Int): Double =

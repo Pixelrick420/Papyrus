@@ -4,8 +4,9 @@ import java.text.Bidi as JavaBidi
 import java.util.Locale
 
 /**
- * The layout pass (plan §4.7 step 10): each paragraph is flattened, shaped, broken and filled, then
- * turned into positioned runs and per-character boxes. Every length here is in points.
+ * The layout pass (plan §4.7 steps 7 to 10): each paragraph is flattened, shaped, broken and filled,
+ * then aligned, tabbed and turned into positioned runs and per-character boxes. Every length here is
+ * in points.
  */
 internal class TextLayoutEngine(
     private val measurer: TextMeasurer,
@@ -49,21 +50,40 @@ internal class TextLayoutEngine(
         val text = shaper.flatten(paragraph)
         val runs = shaper.shape(text, paragraph.properties.rightToLeft, measurer::hasGlyph)
         val metrics = bullet.metrics
+        val textLeftPt = metrics.textLeftEmu / EMU_PER_POINT
+        val paragraphWidthPt = widthPt - textLeftPt -
+            (paragraph.properties.marginRightEmu ?: 0.0) / EMU_PER_POINT
+        val tabs = tabStopsOf(paragraph.properties)
         val filled = filler.fill(
             text.text,
             runs,
             text.breaks,
             breaker.breakBefore(text.text, paragraph.properties, localeOf(paragraph)),
             FillMetrics(
-                widthPt = widthPt - metrics.textLeftEmu / EMU_PER_POINT -
-                    (paragraph.properties.marginRightEmu ?: 0.0) / EMU_PER_POINT,
+                widthPt = paragraphWidthPt,
                 firstLineIndentPt = (paragraph.properties.indentEmu ?: 0.0) / EMU_PER_POINT,
                 rtl = paragraph.properties.rightToLeft,
                 wrap = body.wrap,
+                tabs = tabs,
             ),
         )
+        val alignment = alignmentOf(paragraph.properties)
         var top = topPt
         filled.forEachIndexed { lineIndex, line ->
+            val capacityPt = (paragraphWidthPt - line.startPt).coerceAtLeast(0.0)
+            val spaces = spacesOn(text.text, line.start, line.end)
+            val stretch = stretches(alignment, lineIndex == filled.lastIndex, text.breaks.contains(line.end))
+            val paddingPt = if (stretch && spaces > 0) {
+                ((capacityPt - line.widthPt) / spaces).coerceAtLeast(0.0)
+            } else {
+                0.0
+            }
+            val contentPt = line.widthPt + paddingPt * spaces
+            val offsetPt = when (alignment) {
+                TextAlignment.RIGHT -> (capacityPt - contentPt).coerceAtLeast(0.0)
+                TextAlignment.CENTER -> ((capacityPt - contentPt) / 2.0).coerceAtLeast(0.0)
+                else -> 0.0
+            }
             val sizePt = largestSizePt(runs, line.start, line.end, paragraph.endProperties.sizePt)
             val font = fontOnLine(runs, line.start, line.end)
             val box = lineMetrics.line(
@@ -76,17 +96,19 @@ internal class TextLayoutEngine(
             if (lineIndex == 0) {
                 top += lineMetrics.spaceBefore(sizePt, paragraph.properties.spaceBefore)
             }
-            val leftPt = metrics.textLeftEmu / EMU_PER_POINT + line.startPt
             lines += positioned(
                 text = text,
                 runs = runs,
                 line = line,
                 index = lines.size,
                 paragraph = index,
-                leftPt = leftPt,
+                textLeftPt = textLeftPt,
+                startPt = line.startPt + offsetPt,
                 topPt = top,
                 heightPt = box.heightPt,
                 baselinePt = top + box.baselinePt,
+                paddingPt = paddingPt,
+                tabs = tabs,
                 bullet = if (lineIndex == 0) bullet.marker else BulletMarker.None,
                 markerLeftPt = metrics.markerLeftEmu / EMU_PER_POINT,
                 markerRightPt = metrics.markerRightEmu / EMU_PER_POINT,
@@ -106,19 +128,19 @@ internal class TextLayoutEngine(
         line: FilledLine,
         index: Int,
         paragraph: Int,
-        leftPt: Double,
+        textLeftPt: Double,
+        startPt: Double,
         topPt: Double,
         heightPt: Double,
         baselinePt: Double,
+        paddingPt: Double,
+        tabs: TabStops,
         bullet: BulletMarker,
         markerLeftPt: Double,
         markerRightPt: Double,
     ): TextLine {
-        val pieces = runs.mapNotNull { run ->
-            val start = maxOf(run.start, line.start)
-            val end = minOf(run.end, line.end)
-            if (end <= start) null else Piece(run, start, end)
-        }
+        val cells = cellsOf(runs, text.text, line, startPt, paddingPt, tabs)
+        val pieces = piecesOf(text.text, runs, line)
         val order = Array(pieces.size) { it }
         if (pieces.size > 1) {
             JavaBidi.reorderVisually(
@@ -130,33 +152,35 @@ internal class TextLayoutEngine(
             )
         }
         val glyphRuns = ArrayList<GlyphRun>(pieces.size)
-        val characters = ArrayList<CharacterBox>()
-        var left = leftPt
         for (position in order) {
             val piece = pieces[position]
-            val width = advance(piece, text.text, piece.start, piece.end)
+            val owned = cells.filter { it.start >= piece.start && it.end <= piece.end && !it.tab }
+            if (owned.isEmpty()) continue
             glyphRuns += GlyphRun(
                 start = piece.start,
                 end = piece.end,
-                leftPt = left,
-                rightPt = left + width,
+                leftPt = textLeftPt + owned.minOf { it.leftPt },
+                rightPt = textLeftPt + owned.maxOf { it.rightPt },
                 baselinePt = baselinePt,
                 font = piece.run.font,
                 sizePt = piece.run.sizePt.toDouble(),
                 properties = piece.run.properties,
                 rtl = piece.run.rtl,
             )
-            characters += boxes(text.text, piece, left, width, topPt, heightPt)
-            left += width
         }
+        val characters = cells.map {
+            CharacterBox(it.start, it.end, textLeftPt + it.leftPt, textLeftPt + it.rightPt, topPt, topPt + heightPt)
+        }
+        val visibleEnd = trimmedEnd(text.text, line.start, line.end)
+        val contentRight = cells.filter { !it.tab && it.start < visibleEnd }.maxOfOrNull { it.rightPt }
         return TextLine(
             index = index,
             paragraph = paragraph,
             start = line.start,
             end = line.end,
-            leftPt = leftPt,
+            leftPt = textLeftPt + startPt,
             topPt = topPt,
-            widthPt = line.widthPt,
+            widthPt = ((contentRight ?: startPt) - startPt).coerceAtLeast(0.0),
             heightPt = heightPt,
             baselinePt = baselinePt,
             runs = glyphRuns,
@@ -167,38 +191,119 @@ internal class TextLayoutEngine(
         )
     }
 
-    private fun boxes(
+    private fun cellsOf(
+        runs: List<ShapedRun>,
         text: CharSequence,
-        piece: Piece,
-        leftPt: Double,
-        widthPt: Double,
-        topPt: Double,
-        heightPt: Double,
-    ): List<CharacterBox> {
-        val boxes = ArrayList<CharacterBox>()
-        var offset = piece.start
-        while (offset < piece.end) {
-            val end = offset + Character.charCount(Character.codePointAt(text, offset))
-            val from = advance(piece, text, piece.start, offset)
-            val to = advance(piece, text, piece.start, end)
-            boxes += if (piece.run.rtl) {
-                CharacterBox(offset, end, leftPt + widthPt - to, leftPt + widthPt - from, topPt, topPt + heightPt)
-            } else {
-                CharacterBox(offset, end, leftPt + from, leftPt + to, topPt, topPt + heightPt)
+        line: FilledLine,
+        startPt: Double,
+        paddingPt: Double,
+        tabs: TabStops,
+    ): List<Cell> {
+        val visibleEnd = trimmedEnd(text, line.start, line.end)
+        val cells = ArrayList<Cell>()
+        var segmentStart = line.start
+        var leftPt = startPt
+        while (true) {
+            val segmentEnd = nextTab(text, segmentStart, line.end)
+            cells += segmentCells(runs, text, segmentStart, segmentEnd, leftPt, paddingPt, visibleEnd)
+            if (segmentEnd >= line.end) break
+            val segmentRight = leftPt + advanceWithPadding(
+                runs,
+                text,
+                segmentStart,
+                segmentEnd,
+                paddingPt,
+                visibleEnd,
+            )
+            val stop = tabs.stopAt(segmentRight)
+            val nextStart = segmentEnd + 1
+            val nextEnd = nextTab(text, nextStart, line.end)
+            val nextWidth = advanceWithPadding(runs, text, nextStart, nextEnd, paddingPt, visibleEnd)
+            val nextLeft = when (stop.alignment) {
+                TextTabAlignment.LEFT -> stop.positionPt
+                TextTabAlignment.CENTER -> stop.positionPt - nextWidth / 2.0
+                TextTabAlignment.RIGHT -> stop.positionPt - nextWidth
+                TextTabAlignment.DECIMAL -> stop.positionPt - advanceWithPadding(
+                    runs,
+                    text,
+                    nextStart,
+                    decimalSeparator(text, nextStart, nextEnd),
+                    paddingPt,
+                    visibleEnd,
+                )
             }
-            offset = end
+            cells += Cell(segmentEnd, segmentEnd + 1, segmentRight, maxOf(segmentRight, nextLeft), tab = true)
+            leftPt = nextLeft
+            segmentStart = nextStart
         }
-        return boxes
+        return cells
     }
 
-    private fun advance(piece: Piece, text: CharSequence, start: Int, end: Int): Double = measurer.advance(
-        piece.run.font,
-        piece.run.sizePt,
-        text,
-        start,
-        end,
-        piece.run.rtl,
-    ).toDouble()
+    private fun segmentCells(
+        runs: List<ShapedRun>,
+        text: CharSequence,
+        start: Int,
+        end: Int,
+        leftPt: Double,
+        paddingPt: Double,
+        visibleEnd: Int,
+    ): List<Cell> {
+        if (start >= end) return emptyList()
+        val rtl = runs.firstOrNull { start >= it.start && start < it.end }?.rtl ?: false
+        val total = advanceWithPadding(runs, text, start, end, paddingPt, visibleEnd)
+        val cells = ArrayList<Cell>()
+        var offset = start
+        while (offset < end) {
+            val next = offset + Character.charCount(Character.codePointAt(text, offset))
+            val from = advanceWithPadding(runs, text, start, offset, paddingPt, visibleEnd)
+            val to = advanceWithPadding(runs, text, start, next, paddingPt, visibleEnd)
+            cells += if (rtl) {
+                Cell(offset, next, leftPt + total - to, leftPt + total - from, tab = false)
+            } else {
+                Cell(offset, next, leftPt + from, leftPt + to, tab = false)
+            }
+            offset = next
+        }
+        return cells
+    }
+
+    private fun advanceWithPadding(
+        runs: List<ShapedRun>,
+        text: CharSequence,
+        start: Int,
+        end: Int,
+        paddingPt: Double,
+        visibleEnd: Int,
+    ): Double {
+        var total = 0.0
+        for (run in runs) {
+            val from = maxOf(run.start, start)
+            val to = minOf(run.end, end)
+            if (to <= from) continue
+            total += measurer.advance(run.font, run.sizePt, text, from, to, run.rtl)
+        }
+        if (paddingPt != 0.0) {
+            for (offset in start until minOf(end, visibleEnd)) {
+                if (text[offset] == ' ') total += paddingPt
+            }
+        }
+        return total
+    }
+
+    private fun piecesOf(text: CharSequence, runs: List<ShapedRun>, line: FilledLine): List<Piece> {
+        val pieces = ArrayList<Piece>()
+        for (run in runs) {
+            val from = maxOf(run.start, line.start)
+            val to = minOf(run.end, line.end)
+            var offset = from
+            while (offset < to) {
+                val tab = nextTab(text, offset, to)
+                if (tab > offset) pieces += Piece(run, offset, tab)
+                offset = if (tab < to) tab + 1 else to
+            }
+        }
+        return pieces
+    }
 
     private fun largestSizePt(
         runs: List<ShapedRun>,
@@ -214,12 +319,59 @@ internal class TextLayoutEngine(
         .firstOrNull { maxOf(it.start, start) < minOf(it.end, end) }
         ?.font
 
+    private fun alignmentOf(properties: TextParagraphProperties): TextAlignment =
+        properties.alignment ?: if (properties.rightToLeft) TextAlignment.RIGHT else TextAlignment.LEFT
+
+    private fun stretches(alignment: TextAlignment, last: Boolean, endsWithBreak: Boolean): Boolean =
+        when (alignment) {
+            TextAlignment.JUSTIFY, TextAlignment.JUSTIFY_LOW -> !last && !endsWithBreak
+            TextAlignment.DISTRIBUTED, TextAlignment.THAI_DISTRIBUTED -> true
+            else -> false
+        }
+
+    private fun spacesOn(text: CharSequence, start: Int, end: Int): Int {
+        var spaces = 0
+        for (offset in start until trimmedEnd(text, start, end)) {
+            if (text[offset] == ' ') spaces++
+        }
+        return spaces
+    }
+
+    private fun tabStopsOf(properties: TextParagraphProperties): TabStops = TabStops(
+        defaultSizePt = (properties.defaultTabSizeEmu ?: TabStops.DEFAULT_TAB_SIZE_EMU) / EMU_PER_POINT,
+        stops = properties.tabStops,
+    )
+
+    private fun nextTab(text: CharSequence, start: Int, end: Int): Int {
+        for (offset in start until end) if (text[offset] == '\t') return offset
+        return end
+    }
+
+    private fun decimalSeparator(text: CharSequence, start: Int, end: Int): Int {
+        for (offset in start until end) if (text[offset] == '.' || text[offset] == ',') return offset
+        return end
+    }
+
+    private fun trimmedEnd(text: CharSequence, start: Int, end: Int): Int {
+        var trimmed = end
+        while (trimmed > start && (text[trimmed - 1] == ' ' || text[trimmed - 1] == '\t')) trimmed--
+        return trimmed
+    }
+
     private fun localeOf(paragraph: TextParagraph): Locale = paragraph.runs
         .firstNotNullOfOrNull { it.properties.language?.takeIf(String::isNotBlank) }
         ?.let(Locale::forLanguageTag)
         ?: Locale.ROOT
 
     private class Piece(val run: ShapedRun, val start: Int, val end: Int)
+
+    private class Cell(
+        val start: Int,
+        val end: Int,
+        val leftPt: Double,
+        val rightPt: Double,
+        val tab: Boolean,
+    )
 
     companion object {
 
