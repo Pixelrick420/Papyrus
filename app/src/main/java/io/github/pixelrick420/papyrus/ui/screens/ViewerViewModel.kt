@@ -927,19 +927,23 @@ class ViewerViewModel(
                 }
                 else -> ViewerContent.Failed(UiText(R.string.viewer_error_password))
             }
-            DocumentFormat.PPTX -> {
-                val deck = SlideDeckLoader.load(app, uri)
-                ViewerContent.Slides(
-                    source = deck.source,
-                    aspectRatios = deck.aspectRatios,
-                    outline = deck.outline,
-                    hidden = deck.hidden,
-                    incomplete = deck.incomplete,
-                    titles = deck.titles,
-                    slideTexts = deck.slideTexts,
-                    slideSize = deck.slideSize,
-                    fontSubstitutions = deck.fontSubstitutions,
-                )
+            DocumentFormat.PPTX -> when (OfficeEncryption.status({ openStream(uri) })) {
+                OfficeEncryption.Party.NOT_ENCRYPTED -> {
+                    val deck = SlideDeckLoader.load(app, uri)
+                    ViewerContent.Slides(
+                        source = deck.source,
+                        aspectRatios = deck.aspectRatios,
+                        outline = deck.outline,
+                        hidden = deck.hidden,
+                        incomplete = deck.incomplete,
+                        titles = deck.titles,
+                        slideTexts = deck.slideTexts,
+                        slideSize = deck.slideSize,
+                        fontSubstitutions = deck.fontSubstitutions,
+                    )
+                }
+                OfficeEncryption.Party.PASSWORD -> ViewerContent.NeedsPassword()
+                OfficeEncryption.Party.UNSUPPORTED -> ViewerContent.Failed(UiText(R.string.viewer_error_password))
             }
             DocumentFormat.UNKNOWN -> ViewerContent.Failed(UiText(R.string.viewer_error_unsupported))
         }
@@ -965,7 +969,8 @@ class ViewerViewModel(
 
     private suspend fun unlock(doc: DocumentEntity, password: String): ViewerContent =
         when (doc.format) {
-            DocumentFormat.DOCX, DocumentFormat.ODT, DocumentFormat.DOC -> unlockOffice(doc.uri.toUri(), doc.format, password)
+            DocumentFormat.DOCX, DocumentFormat.ODT, DocumentFormat.DOC, DocumentFormat.PPTX ->
+                unlockOffice(doc.uri.toUri(), doc.format, password)
             else -> unlockPdf(doc.uri.toUri(), password)
         }
 
@@ -1001,10 +1006,34 @@ class ViewerViewModel(
         }
     }
 
-    /** Office decryption writes a plaintext copy, so it is only kept once extraction has succeeded. */
+    /** Office decryption writes a plaintext copy, so it is only kept once extraction/loading has succeeded. */
     private suspend fun unlockOffice(uri: Uri, format: DocumentFormat, password: String): ViewerContent {
         val dir = File(app.cacheDir, OFFICE_UNLOCK_DIR).apply { mkdirs() }
         val target = File.createTempFile("unlock-", ".${format.name.lowercase()}", dir)
+        if (format == DocumentFormat.PPTX) {
+            val deck = try {
+                OfficeEncryption.decrypt({ openStream(uri) }, password, target)
+                SlideDeckLoader.loadFile(app, target)
+            } catch (expected: DocumentPasswordException) {
+                target.delete()
+                return ViewerContent.NeedsPassword(incorrect = true)
+            } catch (e: Exception) {
+                target.delete()
+                throw e
+            }
+            unlocked.keep(target, target.toUri().toString())
+            return ViewerContent.Slides(
+                source = deck.source,
+                aspectRatios = deck.aspectRatios,
+                outline = deck.outline,
+                hidden = deck.hidden,
+                incomplete = deck.incomplete,
+                titles = deck.titles,
+                slideTexts = deck.slideTexts,
+                slideSize = deck.slideSize,
+                fontSubstitutions = deck.fontSubstitutions,
+            )
+        }
         val blocks = try {
             OfficeEncryption.decrypt({ openStream(uri) }, password, target)
             extractOffice(target.toUri(), format)
