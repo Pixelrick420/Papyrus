@@ -6,7 +6,7 @@ import java.io.File
 
 /**
  * [TextMeasurer] on AWT over the same bundled TTFs the app ships. Spike S2 found AWT's unhinted
- * advances agree with `Paint`'s, so JVM tests break lines on real metrics (003.md).
+ * advances agree with `Paint`'s, so JVM tests break lines on real metrics.
  */
 internal class AwtTextMeasurer(private val pixelsPerPoint: Double = 1.0) : TextMeasurer {
 

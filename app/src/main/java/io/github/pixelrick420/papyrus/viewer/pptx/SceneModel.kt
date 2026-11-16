@@ -74,7 +74,7 @@ internal class SceneShape(
     val preset: ScenePreset? = null,
     /** An inline `a:custGeom`, when the shape carries one, drawn in place of a named preset. */
     val customGeometry: PresetShape? = null,
-    /** The `p:txBody` held whole; the text parser (011.md) resolves it into [text]. */
+    /** The `p:txBody` held whole; the text parser resolves it into [text]. */
     val textBody: XNode? = null,
     /** The `p:style` reference into the theme's format scheme, held whole for the paint pass. */
     val style: XNode? = null,
@@ -217,7 +217,7 @@ internal class SceneRunStyle(
     val baseline: Double = 0.0,
 )
 
-/** A text frame's laid-out form, supplied by the text layout pass (025.md). */
+/** A text frame's laid-out form, supplied by the text layout pass. */
 internal interface LaidOutText
 
 /** The immutable resolved scene a slide paints from, in EMU. */
@@ -227,6 +227,6 @@ internal class Scene(
     val background: ScenePaint = ScenePaint.None,
 ) {
 
-    /** Filled lazily by the text layout pass (025.md); every other part of a scene is fixed once built. */
+    /** Filled lazily by the text layout pass; every other part of a scene is fixed once built. */
     val textLayouts: MutableMap<SceneTextFrame, LaidOutText> = HashMap()
 }

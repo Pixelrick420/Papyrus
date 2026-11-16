@@ -35,7 +35,7 @@ internal class PlaceholderTable(
     }
 }
 
-/** `p:txStyles`, held whole so the inheritance rules (011.md) can resolve a slide's text against it. */
+/** `p:txStyles`, held whole so the inheritance rules can resolve a slide's text against it. */
 internal class MasterTextStyles(
     val titleStyle: XNode?,
     val bodyStyle: XNode?,
