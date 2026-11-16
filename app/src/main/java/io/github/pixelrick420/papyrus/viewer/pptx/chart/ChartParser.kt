@@ -11,7 +11,8 @@ internal object ChartParser {
         val chart = chartSpace.child(CHART_NS, "chart") ?: return null
         val plotAreaNode = chart.child(CHART_NS, "plotArea") ?: return null
         val series = parseSeries(plotAreaNode, limits) ?: return null
-        return PptxChart(plotArea = ChartPlotArea(series = series))
+        val axes = parseAxes(plotAreaNode)
+        return PptxChart(plotArea = ChartPlotArea(series = series, axes = axes))
     }
 
     private fun parseSeries(plotArea: XNode, limits: PptxLimits): List<ChartSeries>? {
@@ -155,4 +156,72 @@ internal object ChartParser {
 
     private fun firstCachedValue(ref: XNode): String? =
         parseCache(ref)?.points?.firstOrNull()?.text?.takeIf { it.isNotEmpty() }
+
+    private fun parseAxes(plotArea: XNode): List<ChartAxis> {
+        val axes = ArrayList<ChartAxis>()
+        for (child in plotArea.children) {
+            if (child.name.namespace != CHART_NS) continue
+            val kind = when (child.name.localName) {
+                "catAx" -> AxisKind.CATEGORY
+                "valAx" -> AxisKind.VALUE
+                "dateAx" -> AxisKind.DATE
+                "serAx" -> AxisKind.SERIES
+                else -> continue
+            }
+            axes += parseAxis(child, kind)
+        }
+        return axes
+    }
+
+    private fun parseAxis(node: XNode, kind: AxisKind): ChartAxis {
+        val scalingNode = node.child(CHART_NS, "scaling")
+        val scaling = if (scalingNode != null) {
+            ChartScaling(
+                min = scalingNode.child(CHART_NS, "min")?.attribute("val")?.toDoubleOrNull(),
+                max = scalingNode.child(CHART_NS, "max")?.attribute("val")?.toDoubleOrNull(),
+                majorUnit = scalingNode.child(CHART_NS, "majorUnit")?.attribute("val")?.toDoubleOrNull(),
+                minorUnit = scalingNode.child(CHART_NS, "minorUnit")?.attribute("val")?.toDoubleOrNull(),
+                logBase = scalingNode.child(CHART_NS, "logBase")?.attribute("val")?.toDoubleOrNull(),
+                orientation = if (scalingNode.child(CHART_NS, "orientation")?.attribute("val") == "maxMin") {
+                    AxisOrientation.MAX_MIN
+                } else {
+                    AxisOrientation.MIN_MAX
+                },
+            )
+        } else {
+            ChartScaling()
+        }
+        return ChartAxis(
+            id = node.child(CHART_NS, "axId")?.attribute("val")?.toIntOrNull() ?: 0,
+            kind = kind,
+            position = node.child(CHART_NS, "axPos")?.attribute("val"),
+            scaling = scaling,
+            majorGridlines = node.child(CHART_NS, "majorGridlines"),
+            minorGridlines = node.child(CHART_NS, "minorGridlines"),
+            majorTickMark = parseTickMark(node.child(CHART_NS, "majorTickMark")?.attribute("val"), TickMark.CROSS),
+            minorTickMark = parseTickMark(node.child(CHART_NS, "minorTickMark")?.attribute("val"), TickMark.NONE),
+            tickLabelPosition = parseTickLabelPosition(node.child(CHART_NS, "tickLblPos")?.attribute("val")),
+            crossingAxisId = node.child(CHART_NS, "crossAx")?.attribute("val")?.toIntOrNull(),
+            crosses = node.child(CHART_NS, "crosses")?.attribute("val"),
+            crossesAt = node.child(CHART_NS, "crossesAt")?.attribute("val")?.toDoubleOrNull(),
+            numberFormat = node.child(CHART_NS, "numFmt")?.let { ChartNumberFormats.parse(it.attribute("formatCode")) },
+            delete = node.child(CHART_NS, "delete")?.attribute("val") == "1",
+        )
+    }
+
+    private fun parseTickMark(value: String?, default: TickMark): TickMark = when (value) {
+        "none" -> TickMark.NONE
+        "in" -> TickMark.IN
+        "out" -> TickMark.OUT
+        "cross" -> TickMark.CROSS
+        else -> default
+    }
+
+    private fun parseTickLabelPosition(value: String?): TickLabelPosition = when (value) {
+        "none" -> TickLabelPosition.NONE
+        "low" -> TickLabelPosition.LOW
+        "high" -> TickLabelPosition.HIGH
+        "nextTo" -> TickLabelPosition.NEXT_TO
+        else -> TickLabelPosition.NEXT_TO
+    }
 }
