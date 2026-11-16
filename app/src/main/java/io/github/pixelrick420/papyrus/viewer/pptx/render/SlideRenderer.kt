@@ -3,7 +3,6 @@ package io.github.pixelrick420.papyrus.viewer.pptx.render
 import io.github.pixelrick420.papyrus.viewer.pptx.Affine
 import io.github.pixelrick420.papyrus.viewer.pptx.ArrowType
 import io.github.pixelrick420.papyrus.viewer.pptx.ImageBounds
-import io.github.pixelrick420.papyrus.viewer.pptx.LinearGradient
 import io.github.pixelrick420.papyrus.viewer.pptx.PictureCrop
 import io.github.pixelrick420.papyrus.viewer.pptx.PictureFill
 import io.github.pixelrick420.papyrus.viewer.pptx.PictureInsets
@@ -13,7 +12,6 @@ import io.github.pixelrick420.papyrus.viewer.pptx.PresetGeometry
 import io.github.pixelrick420.papyrus.viewer.pptx.PresetOutline
 import io.github.pixelrick420.papyrus.viewer.pptx.PresetOutlinePath
 import io.github.pixelrick420.papyrus.viewer.pptx.PresetSegment
-import io.github.pixelrick420.papyrus.viewer.pptx.RadialGradient
 import io.github.pixelrick420.papyrus.viewer.pptx.Scene
 import io.github.pixelrick420.papyrus.viewer.pptx.SceneConnector
 import io.github.pixelrick420.papyrus.viewer.pptx.SceneFormat
@@ -33,10 +31,6 @@ import io.github.pixelrick420.papyrus.viewer.pptx.XNode
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import java.io.File
-import kotlin.math.abs
-import kotlin.math.cos
-import kotlin.math.max
-import kotlin.math.sin
 
 /** A picture resolved to its raster file and source size, which is all a display list needs to name it. */
 internal class SlideImage(val file: File, val bounds: ImageBounds) {
@@ -62,6 +56,7 @@ internal class SlideRenderer(
     presets: PresetGeometry,
     private val limits: PptxLimits = PptxLimits(),
     private val nowNanos: () -> Long = System::nanoTime,
+    private val text: SlideTextPainter? = null,
 ) {
 
     private val geometry = ShapeGeometry(presets)
@@ -74,11 +69,12 @@ internal class SlideRenderer(
         val ops = mutableListOf<DrawOp>()
         background(scene, ops)
         val deadline = nowNanos() + limits.maxSlideRenderMillis * NANOS_PER_MILLI
-        if (!walk(scene.nodes, ops, pictures, deadline)) return null
+        if (!walk(scene, scene.nodes, ops, pictures, deadline)) return null
         return DisplayList(ops)
     }
 
     private suspend fun walk(
+        scene: Scene,
         nodes: List<SceneNode>,
         out: MutableList<DrawOp>,
         pictures: SlidePictureResolver,
@@ -87,12 +83,13 @@ internal class SlideRenderer(
         for (node in nodes) {
             currentCoroutineContext().ensureActive()
             if (nowNanos() >= deadline) return false
-            if (!drawNode(node, out, pictures, deadline)) return false
+            if (!drawNode(scene, node, out, pictures, deadline)) return false
         }
         return true
     }
 
     private suspend fun drawNode(
+        scene: Scene,
         node: SceneNode,
         out: MutableList<DrawOp>,
         pictures: SlidePictureResolver,
@@ -100,6 +97,7 @@ internal class SlideRenderer(
     ): Boolean = when (node) {
         is SceneShape -> {
             shape(node, out)
+            text?.paintShape(scene, node, out)
             true
         }
         is SceneConnector -> {
@@ -112,9 +110,10 @@ internal class SlideRenderer(
         }
         is SceneGraphicFrame -> {
             graphicFrame(node, out)
+            text?.paintTable(node, out)
             true
         }
-        is SceneGroup -> group(node, out, pictures, deadline)
+        is SceneGroup -> group(scene, node, out, pictures, deadline)
         else -> true
     }
 
@@ -128,6 +127,7 @@ internal class SlideRenderer(
     }
 
     private suspend fun group(
+        scene: Scene,
         group: SceneGroup,
         out: MutableList<DrawOp>,
         pictures: SlidePictureResolver,
@@ -135,7 +135,7 @@ internal class SlideRenderer(
     ): Boolean {
         val frame = group.frame?.takeIf(::isDrawable) ?: return true
         val children = mutableListOf<DrawOp>()
-        val complete = walk(group.children, children, pictures, deadline)
+        val complete = walk(scene, group.children, children, pictures, deadline)
         if (children.isNotEmpty()) {
             out += DrawOp.Save
             out += DrawOp.Concat(
@@ -270,37 +270,12 @@ internal class SlideRenderer(
 
     private fun fillOf(fill: ScenePaint?, mode: PresetFillMode, box: SceneRect): PaintSpec? = when (fill) {
         is ScenePaint.Solid -> mode.adjust(fill.color)?.let { PaintSpec.Solid(it) }
-        is ScenePaint.Linear -> if (mode == PresetFillMode.NONE) null else linear(fill.gradient, box)
-        is ScenePaint.Radial -> if (mode == PresetFillMode.NONE) null else radial(fill.gradient, box)
+        is ScenePaint.Linear -> if (mode == PresetFillMode.NONE) null else PaintSpecs.linear(fill.gradient, box)
+        is ScenePaint.Radial -> if (mode == PresetFillMode.NONE) null else PaintSpecs.radial(fill.gradient, box)
         else -> null
     }
 
-    private fun paintOf(paint: ScenePaint?, box: SceneRect): PaintSpec? = when (paint) {
-        is ScenePaint.Solid -> PaintSpec.Solid(paint.color)
-        is ScenePaint.Linear -> linear(paint.gradient, box)
-        is ScenePaint.Radial -> radial(paint.gradient, box)
-        else -> null
-    }
-
-    private fun linear(gradient: LinearGradient, box: SceneRect): PaintSpec.Linear {
-        val radians = Math.toRadians(gradient.angleIn(box))
-        val dirX = cos(radians)
-        val dirY = sin(radians)
-        val length = abs(dirX) * box.width + abs(dirY) * box.height
-        val centreX = box.width / 2.0
-        val centreY = box.height / 2.0
-        return PaintSpec.Linear(
-            PointF((centreX - dirX * length / 2.0).toFloat(), (centreY - dirY * length / 2.0).toFloat()),
-            PointF((centreX + dirX * length / 2.0).toFloat(), (centreY + dirY * length / 2.0).toFloat()),
-            gradient.stops.map { ColorStop(it.offset.toFloat(), it.color) },
-        )
-    }
-
-    private fun radial(gradient: RadialGradient, box: SceneRect): PaintSpec.Radial = PaintSpec.Radial(
-        PointF((gradient.centerX * box.width).toFloat(), (gradient.centerY * box.height).toFloat()),
-        (max(box.width, box.height) / 2.0).toFloat(),
-        gradient.stops.map { ColorStop(it.offset.toFloat(), it.color) },
-    )
+    private fun paintOf(paint: ScenePaint?, box: SceneRect): PaintSpec? = PaintSpecs.of(paint, box)
 
     private fun strokeOf(line: SceneLine?, box: SceneRect): StrokeSpec? {
         if (line == null) return null

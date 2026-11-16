@@ -114,6 +114,8 @@ internal class TextLayoutEngine(
                 sizePt = it.sizePt,
                 properties = it.properties,
                 rtl = it.rtl,
+                text = it.text,
+                decorations = it.decorations.map { decoration -> shifted(decoration, dx) },
             )
         },
         characters = line.characters.map {
@@ -129,17 +131,17 @@ internal class TextLayoutEngine(
         bullet = line.bullet,
         markerLeftPt = line.markerLeftPt + dx,
         markerRightPt = line.markerRightPt + dx,
-        decorations = line.decorations.map {
-            TextDecoration(
-                kind = it.kind,
-                style = it.style,
-                leftPt = it.leftPt + dx,
-                rightPt = it.rightPt + dx,
-                offsetPt = it.offsetPt,
-                thicknessPt = it.thicknessPt,
-                paint = it.paint,
-            )
-        },
+        decorations = line.decorations.map { shifted(it, dx) },
+    )
+
+    private fun shifted(decoration: TextDecoration, dx: Double): TextDecoration = TextDecoration(
+        kind = decoration.kind,
+        style = decoration.style,
+        leftPt = decoration.leftPt + dx,
+        rightPt = decoration.rightPt + dx,
+        offsetPt = decoration.offsetPt,
+        thicknessPt = decoration.thicknessPt,
+        paint = decoration.paint,
     )
 
     private fun layoutParagraph(
@@ -266,6 +268,7 @@ internal class TextLayoutEngine(
             val leftPt = textLeftPt + owned.minOf { it.leftPt }
             val rightPt = textLeftPt + owned.maxOf { it.rightPt }
             val runBaselinePt = baselinePt - piece.run.properties.baseline * piece.run.sizePt
+            val runDecorations = decorationsOf(piece.run, leftPt, rightPt)
             glyphRuns += GlyphRun(
                 start = piece.start,
                 end = piece.end,
@@ -276,8 +279,10 @@ internal class TextLayoutEngine(
                 sizePt = piece.run.sizePt.toDouble(),
                 properties = piece.run.properties,
                 rtl = piece.run.rtl,
+                text = text.text.substring(piece.start, piece.end),
+                decorations = runDecorations,
             )
-            decorations += decorationsOf(piece.run, leftPt, rightPt)
+            decorations += runDecorations
         }
         val characters = cells.map {
             CharacterBox(it.start, it.end, textLeftPt + it.leftPt, textLeftPt + it.rightPt, topPt, topPt + heightPt)

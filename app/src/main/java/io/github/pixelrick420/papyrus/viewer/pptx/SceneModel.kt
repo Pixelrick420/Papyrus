@@ -64,6 +64,7 @@ internal sealed interface SceneNode {
     val description: String? get() = null
     val decorative: Boolean get() = false
     val hyperlink: SceneHyperlink? get() = null
+    val sourcePart: String? get() = null
 }
 
 internal class SceneShape(
@@ -87,6 +88,7 @@ internal class SceneShape(
     val transform: XNode? = null,
     val properties: XNode? = null,
     val format: SceneFormat? = null,
+    override val sourcePart: String? = null,
 ) : SceneNode
 
 internal class ScenePicture(
@@ -110,6 +112,7 @@ internal class ScenePicture(
     val mask: ScenePreset? = null,
     /** An inline `a:custGeom` used as the mask in place of a named preset. */
     val customGeometry: PresetShape? = null,
+    override val sourcePart: String? = null,
 ) : SceneNode
 
 /** A group whose children are laid out in [childFrame], which the paint pass maps into [frame]. */
@@ -127,6 +130,7 @@ internal class SceneGroup(
     val rotation: Double = 0.0,
     val flipH: Boolean = false,
     val flipV: Boolean = false,
+    override val sourcePart: String? = null,
 ) : SceneNode
 
 internal class SceneConnector(
@@ -146,6 +150,7 @@ internal class SceneConnector(
     val transform: XNode? = null,
     val properties: XNode? = null,
     val format: SceneFormat? = null,
+    override val sourcePart: String? = null,
 ) : SceneNode
 
 internal enum class GraphicKind { TABLE, CHART, SMART_ART, OLE_OBJECT, OTHER }
@@ -161,6 +166,7 @@ internal class SceneGraphicFrame(
     val relationshipId: String? = null,
     override val hyperlink: SceneHyperlink? = null,
     val table: io.github.pixelrick420.papyrus.viewer.pptx.table.PptxTable? = null,
+    override val sourcePart: String? = null,
 ) : SceneNode
 
 internal enum class TextAnchor { TOP, MIDDLE, BOTTOM }

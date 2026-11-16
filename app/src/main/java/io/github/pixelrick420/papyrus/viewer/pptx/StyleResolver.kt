@@ -82,6 +82,9 @@ internal class StyleResolver(
                     id = node.id,
                     name = node.name,
                     frame = node.frame,
+                    hidden = node.hidden,
+                    description = node.description,
+                    decorative = node.decorative,
                     childFrame = node.childFrame,
                     children = if (depth < limits.maxGroupDepth) {
                         resolveNodes(node.children, context, number, budget, depth + 1, skipPlaceholders)
@@ -92,6 +95,7 @@ internal class StyleResolver(
                     rotation = node.rotation,
                     flipH = node.flipH,
                     flipV = node.flipV,
+                    sourcePart = node.sourcePart,
                 )
                 is SceneShape -> resolved += resolveShape(node, context, number, budget)
                 is ScenePicture -> resolved += resolvePicture(node, context)
@@ -112,6 +116,9 @@ internal class StyleResolver(
                 listOf(shape.transform) + chain.map { it.transform },
                 listOf(shape.frame) + chain.map { it.frame },
             ),
+            hidden = shape.hidden,
+            description = shape.description,
+            decorative = shape.decorative,
             placeholder = shape.placeholder,
             text = textOf(
                 shape.textBody,
@@ -137,6 +144,7 @@ internal class StyleResolver(
                 listOf(shape.properties to shape.style) + chain.map { it.properties to it.style },
                 context,
             ),
+            sourcePart = shape.sourcePart,
         )
     }
 
@@ -149,6 +157,9 @@ internal class StyleResolver(
                 listOf(picture.transform) + chain.map { it.transform },
                 listOf(picture.frame) + chain.map { it.frame },
             ),
+            hidden = picture.hidden,
+            description = picture.description,
+            decorative = picture.decorative,
             relationshipId = picture.relationshipId,
             text = picture.text,
             style = picture.style,
@@ -163,6 +174,7 @@ internal class StyleResolver(
             source = picture.source,
             mask = picture.mask,
             customGeometry = picture.customGeometry,
+            sourcePart = picture.sourcePart,
         )
     }
 
@@ -170,6 +182,9 @@ internal class StyleResolver(
         id = connector.id,
         name = connector.name,
         frame = connector.frame,
+        hidden = connector.hidden,
+        description = connector.description,
+        decorative = connector.decorative,
         start = connector.start,
         end = connector.end,
         preset = connector.preset,
@@ -179,6 +194,7 @@ internal class StyleResolver(
         transform = connector.transform,
         properties = connector.properties,
         format = formatOf(listOf(connector.properties to connector.style), context),
+        sourcePart = connector.sourcePart,
     )
 
     private fun templateOf(node: SceneNode): Template? = when (node) {

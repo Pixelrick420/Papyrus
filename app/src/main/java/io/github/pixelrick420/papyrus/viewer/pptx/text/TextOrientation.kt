@@ -1,5 +1,7 @@
 package io.github.pixelrick420.papyrus.viewer.pptx.text
 
+import io.github.pixelrick420.papyrus.viewer.pptx.XNode
+
 /**
  * A shape's rotation and flips as the caller reports them. `flipH` is carried for callers but never
  * mirrors text (plan §3.3 #12).
@@ -13,6 +15,24 @@ internal data class TextShapeTransform(
     companion object {
 
         val NONE = TextShapeTransform()
+
+        /** Reads a transform node whose `rot` is in the 1/60000 degree units DrawingML stores. */
+        fun of(node: XNode?): TextShapeTransform {
+            node ?: return NONE
+            val rotation = (node.attribute("rot")?.toDoubleOrNull() ?: 0.0) / SIXTIETHS_PER_DEGREE
+            return TextShapeTransform(
+                rotationDeg = rotation,
+                flipH = node.isOn("flipH"),
+                flipV = node.isOn("flipV"),
+            )
+        }
+
+        private fun XNode.isOn(name: String): Boolean {
+            val value = attribute(name) ?: return false
+            return value == "1" || value.equals("true", ignoreCase = true)
+        }
+
+        const val SIXTIETHS_PER_DEGREE = 60_000.0
     }
 }
 

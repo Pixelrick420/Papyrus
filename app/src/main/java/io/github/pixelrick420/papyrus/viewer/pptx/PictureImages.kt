@@ -45,22 +45,23 @@ internal class PictureImages(
 
     private fun resolve(source: PictureSource?): Resolved {
         val id = source?.relationshipId ?: return Resolved.Missing
-        val relationship = pkg.relationship(part, id)?.takeUnless { it.external } ?: return Resolved.Missing
+        val resolvePart = source.part ?: part
+        val relationship = pkg.relationship(resolvePart, id)?.takeUnless { it.external } ?: return Resolved.Missing
         val target = relationship.target
         val extension = target.substringAfterLast('.', "").lowercase()
         return when (extension) {
             in NATIVE -> pkg.mediaFile(target)?.let { Resolved.Raster(it) } ?: Resolved.Fixed(UNAVAILABLE)
-            in METAFILES -> siblingRaster(target)?.let { Resolved.Raster(it) }
+            in METAFILES -> siblingRaster(resolvePart, target)?.let { Resolved.Raster(it) }
                 ?: Resolved.Fixed("${extension.uppercase()} image")
-            "svg" -> siblingRaster(target)?.let { Resolved.Raster(it) } ?: Resolved.Missing
+            "svg" -> siblingRaster(resolvePart, target)?.let { Resolved.Raster(it) } ?: Resolved.Missing
             in NOT_DECODABLE -> Resolved.Fixed("${extension.uppercase()} image")
             else -> Resolved.Fixed(UNSUPPORTED)
         }
     }
 
-    private fun siblingRaster(target: String): File? {
+    private fun siblingRaster(resolvePart: String, target: String): File? {
         val base = target.substringAfterLast('/').substringBeforeLast('.').lowercase()
-        val targets = pkg.relationshipsOf(part).map { it.target }
+        val targets = pkg.relationshipsOf(resolvePart).map { it.target }
         for (extension in RASTER_SIBLINGS) {
             val sibling = targets.firstOrNull {
                 it.substringBeforeLast('.').substringAfterLast('/').equals(base, ignoreCase = true) &&

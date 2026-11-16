@@ -11,6 +11,7 @@ import io.github.pixelrick420.papyrus.viewer.bitmapCacheBudgetBytes
 import io.github.pixelrick420.papyrus.viewer.pptx.render.SlideImage
 import io.github.pixelrick420.papyrus.viewer.pptx.render.SlidePictureResolver
 import io.github.pixelrick420.papyrus.viewer.pptx.render.SlideRenderer
+import io.github.pixelrick420.papyrus.viewer.pptx.render.SlideTextPainter
 import io.github.pixelrick420.papyrus.viewer.pptx.render.SoftwareCanvas
 import io.github.pixelrick420.papyrus.viewer.pptx.text.FontCatalog
 import io.github.pixelrick420.papyrus.viewer.pptx.text.PaintTextMeasurer
@@ -42,6 +43,7 @@ internal class SlidePageSource private constructor(
     private val mediaDir: File,
     private val limits: PptxLimits,
     private val renderer: SlideRenderer,
+    private val fonts: FontCatalog? = null,
     val textIndex: SlideTextIndex,
     val hidden: Set<Int> = emptySet(),
 ) : PageBitmapSource {
@@ -120,13 +122,20 @@ internal class SlidePageSource private constructor(
         }
         val list = renderer.render(slide.scene, resolver) ?: return null
         val decoded = HashMap<String, Bitmap?>()
-        return SoftwareCanvas.render(list, widthPx, heightPx, scale) { ref ->
-            if (decoded.containsKey(ref.key)) {
-                decoded[ref.key]
-            } else {
-                images.load(File(ref.key), widthPx)?.bitmap.also { decoded[ref.key] = it }
-            }
-        }
+        return SoftwareCanvas.render(
+            list = list,
+            widthPx = widthPx,
+            heightPx = heightPx,
+            scale = scale,
+            imageOf = { ref ->
+                if (decoded.containsKey(ref.key)) {
+                    decoded[ref.key]
+                } else {
+                    images.load(File(ref.key), widthPx)?.bitmap.also { decoded[ref.key] = it }
+                }
+            },
+            fonts = fonts,
+        )
     }
 
     /** The slide index and failure class only: a slide can hold text or names the reader owns. */
@@ -210,9 +219,10 @@ internal class SlidePageSource private constructor(
             val bytes = pkg.part(main) ?: throw PptxFormatException("$main is missing")
             val presentation = PresentationParser(newParserFactory, limits).parse(bytes, main)
             val scenes = StyleResolver(newParserFactory, limits).resolveAll(pkg, presentation)
-            val textIndex = if (assets != null) {
-                val resolver = TextStyleResolver(limits)
-                val engine = TextLayoutEngine(PaintTextMeasurer(FontCatalog(assets)))
+            val resolver = TextStyleResolver(limits)
+            val fonts = assets?.let(::FontCatalog)
+            val engine = fonts?.let { TextLayoutEngine(PaintTextMeasurer(it)) }
+            val textIndex = if (engine != null) {
                 SlideTextIndex.fromDeck(pkg, presentation, scenes.slides, resolver, engine)
             } else {
                 SlideTextIndex(emptyList())
@@ -222,7 +232,8 @@ internal class SlidePageSource private constructor(
                 slides = scenes.slides,
                 mediaDir = mediaDir,
                 limits = limits,
-                renderer = SlideRenderer(presets, limits),
+                renderer = SlideRenderer(presets, limits, text = engine?.let { SlideTextPainter(resolver, it) }),
+                fonts = fonts,
                 textIndex = textIndex,
                 hidden = scenes.slides.mapIndexedNotNull { index, slide -> index.takeIf { slide.hidden } }.toSet(),
             ).also { synchronized(openSources) { openSources.add(it) } }

@@ -18,6 +18,7 @@ internal object SlidePngHarness {
             open = { deck.inputStream() },
             mediaDir = media,
             presets = PresetGeometry(open = { context.assets.open("ooxml/presetShapeDefinitions.xml") }),
+            assets = context.assets,
         )
         return try {
             source.render(slide, widthPx)

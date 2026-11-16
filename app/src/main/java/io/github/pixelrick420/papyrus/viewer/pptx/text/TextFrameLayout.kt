@@ -13,6 +13,10 @@ internal class GlyphRun(
     val sizePt: Double,
     val properties: TextRunProperties,
     val rtl: Boolean,
+    /** The shaped characters themselves, caps already applied, which is what the painter draws. */
+    val text: String = "",
+    /** This run's own underline and strike rules, already offset from its baseline. */
+    val decorations: List<TextDecoration> = emptyList(),
 )
 
 /** Where one character sits, which is what find, selection, TTS and link hit-testing step through. */

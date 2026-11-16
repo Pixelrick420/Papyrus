@@ -198,6 +198,7 @@ private class SlideReading(
             hyperlink = hyperlinkOf(props),
             transform = transform,
             properties = properties,
+            sourcePart = part,
         )
     }
 
@@ -208,7 +209,7 @@ private class SlideReading(
         val blipFill = tree.child(OoxmlNamespace.P, "blipFill")
         val custom = CustomGeometry.read(properties, limits)
         if (custom == CustomGeometry.Invalid) return null
-        val source = PictureFills.read(blipFill)
+        val source = PictureFills.read(blipFill, part)
         return ScenePicture(
             id = props.idOf(),
             name = props?.attribute("name"),
@@ -225,6 +226,7 @@ private class SlideReading(
             source = source,
             mask = presetOf(properties, transform),
             customGeometry = (custom as? CustomGeometry.Shape)?.shape,
+            sourcePart = part,
         )
     }
 
@@ -244,6 +246,7 @@ private class SlideReading(
             rotation = transform?.attribute("rot")?.toDoubleOrNull()?.takeIf { it.isFinite() } ?: 0.0,
             flipH = isOn(transform?.attribute("flipH")),
             flipV = isOn(transform?.attribute("flipV")),
+            sourcePart = part,
         )
     }
 
@@ -283,6 +286,7 @@ private class SlideReading(
             hyperlink = hyperlinkOf(props),
             transform = transform,
             properties = properties,
+            sourcePart = part,
         )
     }
 
@@ -306,6 +310,7 @@ private class SlideReading(
             relationshipId = relationshipOf(data),
             hyperlink = hyperlinkOf(props),
             table = table,
+            sourcePart = part,
         )
     }
 

@@ -16,6 +16,8 @@ import io.github.pixelrick420.papyrus.viewer.pptx.Affine
 import io.github.pixelrick420.papyrus.viewer.pptx.Rgba
 import io.github.pixelrick420.papyrus.viewer.pptx.StrokeCap
 import io.github.pixelrick420.papyrus.viewer.pptx.StrokeJoin
+import io.github.pixelrick420.papyrus.viewer.pptx.text.FontCatalog
+import kotlin.math.hypot
 import kotlin.math.roundToInt
 import kotlin.math.sin
 
@@ -26,6 +28,7 @@ import kotlin.math.sin
 internal class AndroidCanvasBackend(
     private val canvas: Canvas,
     private val imageOf: (ImageRef) -> Bitmap? = { null },
+    private val fonts: FontCatalog? = null,
 ) : DrawTarget {
 
     private var shadow: ShadowSpec? = null
@@ -55,7 +58,16 @@ internal class AndroidCanvasBackend(
         paint.alpha = (effects.alpha.coerceIn(0f, 1f) * OPAQUE).roundToInt()
         val saved = effects.clip?.let { canvas.save(); canvas.clipPath(pathOf(it)); true } ?: false
         try {
-            val source = src.takeIf { it.width > 0f && it.height > 0f }?.toAndroidRect()
+            val source = src.takeIf { it.width > 0f && it.height > 0f }?.let { r ->
+                val sx = if (image.width > 0) bitmap.width.toFloat() / image.width else 1f
+                val sy = if (image.height > 0) bitmap.height.toFloat() / image.height else 1f
+                Rect(
+                    (r.left * sx).roundToInt(),
+                    (r.top * sy).roundToInt(),
+                    (r.right * sx).roundToInt(),
+                    (r.bottom * sy).roundToInt(),
+                )
+            }
             canvas.drawBitmap(bitmap, source, dst.toAndroid(), paint)
         } finally {
             if (saved) canvas.restore()
@@ -63,9 +75,26 @@ internal class AndroidCanvasBackend(
     }
 
     override fun drawGlyphRun(run: GlyphRun) {
+        if (run.text.isEmpty()) return
+        // Skia drops glyphs built at slide-sized (EMU) text, so the fill is painted in a space whose
+        // scale is 1: the run's coordinates and pen size are converted to device units first.
+        val values = FloatArray(9)
+        canvas.matrix.getValues(values)
+        val sx = hypot(values[Matrix.MSCALE_X], values[Matrix.MSKEW_Y])
+        val sy = hypot(values[Matrix.MSKEW_X], values[Matrix.MSCALE_Y])
+        if (sx > 0f && sy > 0f) {
+            val fill = textPaint(run.paint, run).apply {
+                textSize = run.size * sy
+                textScaleX = sx / sy
+                shader?.setLocalMatrix(Matrix().apply { setScale(sx, sy) })
+            }
+            run.shadow?.let { fill.setShadowLayer(it.blur * sy, it.dx * sx, it.dy * sy, it.color.argb) }
+            canvas.save()
+            canvas.scale(1f / sx, 1f / sy)
+            canvas.drawText(run.text, run.x * sx, run.y * sy, fill)
+            canvas.restore()
+        }
         val paint = textPaint(run.paint, run)
-        run.shadow?.let { paint.setShadowLayer(it.blur, it.dx, it.dy, it.color.argb) }
-        canvas.drawText(run.text, run.x, run.y, paint)
         run.outline?.let { outline ->
             val path = Path()
             paint.getTextPath(run.text, 0, run.text.length, run.x, run.y, path)
@@ -80,7 +109,7 @@ internal class AndroidCanvasBackend(
 
     private fun textPaint(spec: PaintSpec, run: GlyphRun): Paint = paintOf(spec).apply {
         textSize = run.size
-        typeface = Typeface.create(run.family, run.typefaceStyle())
+        typeface = run.font?.let { fonts?.typeface(it) } ?: Typeface.create(run.family, run.typefaceStyle())
         letterSpacing = run.letterSpacing
         fontFeatureSettings = featureSettings(run)
     }
@@ -298,12 +327,13 @@ internal object SoftwareCanvas {
         heightPx: Int,
         scale: Float = 1f,
         imageOf: (ImageRef) -> Bitmap? = { null },
+        fonts: FontCatalog? = null,
     ): Bitmap {
         val bitmap = Bitmap.createBitmap(widthPx.coerceAtLeast(1), heightPx.coerceAtLeast(1), Bitmap.Config.ARGB_8888)
         bitmap.density = Bitmap.DENSITY_NONE
         val canvas = Canvas(bitmap)
         if (scale != 1f) canvas.scale(scale, scale)
-        AndroidCanvasBackend(canvas, imageOf).also { list.play(it) }
+        AndroidCanvasBackend(canvas, imageOf, fonts).also { list.play(it) }
         return bitmap
     }
 }

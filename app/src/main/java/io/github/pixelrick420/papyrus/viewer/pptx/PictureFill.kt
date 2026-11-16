@@ -104,6 +104,7 @@ internal class PictureSource(
     val alpha: Double = 1.0,
     val crop: PictureCrop = PictureCrop.NONE,
     val fill: PictureFill = PictureFill.Stretch(),
+    val part: String? = null,
 )
 
 internal object PictureFills {
@@ -112,7 +113,7 @@ internal object PictureFills {
     private const val TILE_SCALE_MIN = 0.001
     private const val TILE_SCALE_MAX = 100.0
 
-    fun read(blipFill: XNode?): PictureSource? {
+    fun read(blipFill: XNode?, part: String? = null): PictureSource? {
         if (blipFill == null) return null
         val blip = blipFill.child(OoxmlNamespace.A, "blip")
         return PictureSource(
@@ -120,6 +121,7 @@ internal object PictureFills {
             alpha = alphaOf(blip),
             crop = cropOf(blipFill.child(OoxmlNamespace.A, "srcRect")),
             fill = fillOf(blipFill),
+            part = part,
         )
     }
 

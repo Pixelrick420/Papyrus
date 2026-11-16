@@ -91,6 +91,13 @@ internal class FontCatalog(
         return cache.get("family:$family:$style") { system(family, style) } ?: Typeface.DEFAULT
     }
 
+    /** The face a resolved run draws with, which is the same choice [SfntMetrics] is read from. */
+    fun typeface(font: ResolvedFont): Typeface = when (val choice = font.choice) {
+        is FontChoice.Bundled -> bundled(choice.font, font.bold, font.italic)
+        is FontChoice.System -> system(choice.family, font.bold, font.italic)
+        is FontChoice.Platform -> system(choice.requested ?: FontSubstitution.SYSTEM_SANS, font.bold, font.italic)
+    }
+
     /** The bundled face's own tables, which is where the exact underline and strikeout rules live. */
     fun sfnt(font: ResolvedFont): SfntMetrics? {
         val choice = font.choice as? FontChoice.Bundled ?: return null

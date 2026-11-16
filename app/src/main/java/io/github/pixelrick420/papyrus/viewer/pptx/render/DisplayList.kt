@@ -4,6 +4,7 @@ import io.github.pixelrick420.papyrus.viewer.pptx.Affine
 import io.github.pixelrick420.papyrus.viewer.pptx.Rgba
 import io.github.pixelrick420.papyrus.viewer.pptx.StrokeCap
 import io.github.pixelrick420.papyrus.viewer.pptx.StrokeJoin
+import io.github.pixelrick420.papyrus.viewer.pptx.text.ResolvedFont
 
 internal data class PointF(val x: Float, val y: Float)
 
@@ -117,6 +118,8 @@ internal data class GlyphRun(
     val outline: TextOutlineSpec? = null,
     val shadow: ShadowSpec? = null,
     val rules: List<TextRule> = emptyList(),
+    /** The bundled or system face the text pass resolved; when null the backend builds one from [family]. */
+    val font: ResolvedFont? = null,
 )
 
 internal data class ShadowSpec(val color: Rgba, val blur: Float, val dx: Float, val dy: Float)

@@ -1,10 +1,12 @@
 package io.github.pixelrick420.papyrus.viewer.pptx.render
 
+import io.github.pixelrick420.papyrus.viewer.OfficeFixtures
 import io.github.pixelrick420.papyrus.viewer.pptx.ImageBounds
 import io.github.pixelrick420.papyrus.viewer.pptx.LinearGradient
 import io.github.pixelrick420.papyrus.viewer.pptx.OoxmlAttribute
 import io.github.pixelrick420.papyrus.viewer.pptx.OoxmlName
 import io.github.pixelrick420.papyrus.viewer.pptx.OoxmlNamespace
+import io.github.pixelrick420.papyrus.viewer.pptx.OoxmlReader
 import io.github.pixelrick420.papyrus.viewer.pptx.PictureCrop
 import io.github.pixelrick420.papyrus.viewer.pptx.PictureFill
 import io.github.pixelrick420.papyrus.viewer.pptx.PictureSource
@@ -25,6 +27,10 @@ import io.github.pixelrick420.papyrus.viewer.pptx.SceneRect
 import io.github.pixelrick420.papyrus.viewer.pptx.SceneShape
 import io.github.pixelrick420.papyrus.viewer.pptx.SceneSize
 import io.github.pixelrick420.papyrus.viewer.pptx.XNode
+import io.github.pixelrick420.papyrus.viewer.pptx.text.AwtTextMeasurer
+import io.github.pixelrick420.papyrus.viewer.pptx.text.LineBreaker
+import io.github.pixelrick420.papyrus.viewer.pptx.text.TextLayoutEngine
+import io.github.pixelrick420.papyrus.viewer.pptx.text.TextStyleResolver
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -45,6 +51,12 @@ class SlideRendererTest {
     )
 
     private val renderer = SlideRenderer(presets)
+
+    private val textStyle = TextStyleResolver()
+
+    private val textEngine = TextLayoutEngine(AwtTextMeasurer(), breaker = LineBreaker { _, _ -> emptyList() })
+
+    private val textRenderer = SlideRenderer(presets, text = SlideTextPainter(textStyle, textEngine))
 
     private val red = Rgba(0xC0, 0x00, 0x00)
 
@@ -239,6 +251,55 @@ class SlideRendererTest {
         }
     }
 
+    @Test
+    fun `a shape's text is painted at its layout baseline`() = runBlocking {
+        val body = textBody("Hello")
+        val ops = textRenderer.render(scene(textShape()))!!.ops
+
+        val index = ops.indexOfFirst { it is DrawOp.DrawGlyphRun }
+        assertTrue(index > 1)
+        assertTrue(ops[index - 2] is DrawOp.Save)
+        val run = (ops[index] as DrawOp.DrawGlyphRun).run
+        val resolved = textStyle.resolve(body)
+        val layout = textEngine.layout(resolved, TEXT_FRAME.width, TEXT_FRAME.height)
+        val expectedBaseline = resolved.properties.insets.top +
+            layout.lines.first().runs.first().baselinePt * 12_700.0
+
+        assertEquals("Hello", run.text)
+        assertEquals(91_440f, run.x, 0.5f)
+        assertEquals(expectedBaseline.toFloat(), run.y, 0.5f)
+        assertEquals(228_600f, run.size, 0.5f)
+
+        val map = (ops[index - 1] as DrawOp.Concat).matrix
+        assertEquals(10.0, map.map(0.0, 0.0).x, 1e-9)
+        assertEquals(20.0, map.map(0.0, 0.0).y, 1e-9)
+    }
+
+    @Test
+    fun `text is painted for a shape with no fill or line`() = runBlocking {
+        val ops = textRenderer.render(scene(textShape(format = null)))!!.ops
+
+        assertEquals(1, ops.filterIsInstance<DrawOp.DrawGlyphRun>().size)
+    }
+
+    private fun textBody(text: String): XNode = OoxmlReader(OfficeFixtures::parser).readTree(
+        """<a:txBody $NAMESPACES><a:bodyPr/><a:p><a:r><a:rPr sz="1800"/><a:t>$text</a:t></a:r></a:p></a:txBody>"""
+            .toByteArray().inputStream(),
+        "test.xml",
+    )!!
+
+    private val NAMESPACES =
+        """xmlns:a="${OoxmlNamespace.A}" xmlns:p="${OoxmlNamespace.P}" xmlns:r="${OoxmlNamespace.R}""""
+
+    private fun textShape(format: SceneFormat? = SceneFormat(ScenePaint.Solid(red), null, null)) = SceneShape(
+        id = 1,
+        name = null,
+        frame = TEXT_FRAME,
+        preset = ScenePreset("rect"),
+        textBody = textBody("Hello"),
+        format = format,
+    )
+
     private fun scene(vararg nodes: SceneNode, background: ScenePaint = ScenePaint.None) =
         Scene(SceneSize(400.0, 200.0), nodes.toList(), background)
 
@@ -287,4 +348,9 @@ class SlideRendererTest {
         headEnd = io.github.pixelrick420.papyrus.viewer.pptx.ArrowEnd(io.github.pixelrick420.papyrus.viewer.pptx.ArrowType.TRIANGLE),
         tailEnd = tailEnd,
     )
+
+    private companion object {
+        /** 300 × 100 points, in EMU, as a text layout needs a frame wider than its insets. */
+        val TEXT_FRAME = SceneRect(10.0, 20.0, 300.0 * 12_700.0, 100.0 * 12_700.0)
+    }
 }

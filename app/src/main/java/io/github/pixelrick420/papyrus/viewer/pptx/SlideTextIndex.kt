@@ -32,13 +32,13 @@ internal class SlideTextIndex(
             scenes: List<SlideScene>,
             resolver: TextStyleResolver,
             engine: TextLayoutEngine,
-            linkOf: (Int, String?, String?) -> PdfLinkTarget? = { _, _, _ -> null },
+            linkOf: (Int, String, String?, String?) -> PdfLinkTarget? = { _, _, _, _ -> null },
         ): SlideTextIndex {
             val pages = ArrayList<PdfPageText>(scenes.size)
             val links = ArrayList<List<PdfPageLink>>(scenes.size)
             val semantics = ArrayList<String>(scenes.size)
             scenes.forEachIndexed { index, slide ->
-                val page = pageOf(slide.scene, resolver, engine, index, linkOf)
+                val page = pageOf(slide.scene, resolver, engine, index, slide.part, linkOf)
                 pages += page.text
                 links += page.links
                 semantics += semanticTextOf(slide.scene)
@@ -60,8 +60,8 @@ internal class SlideTextIndex(
                 }
                 .toMap()
             val slideCount = scenes.size
-            return fromScenes(scenes, resolver, engine) { index, relationshipId, action ->
-                val rel = relationshipId?.let { pkg.relationship(scenes[index].part, it) }
+            return fromScenes(scenes, resolver, engine) { index, part, relationshipId, action ->
+                val rel = relationshipId?.let { pkg.relationship(part, it) }
                 slideLinkTarget(
                     action = action,
                     externalUrl = rel?.takeIf { it.external }?.target,
@@ -120,13 +120,14 @@ internal class SlideTextIndex(
             resolver: TextStyleResolver,
             engine: TextLayoutEngine,
             slideIndex: Int,
-            linkOf: (Int, String?, String?) -> PdfLinkTarget?,
+            slidePart: String,
+            linkOf: (Int, String, String?, String?) -> PdfLinkTarget?,
         ): SlidePage {
             val placed = ArrayList<PlacedLayout>()
-            collectNodes(scene.nodes, scene, resolver, engine, placed)
+            collectNodes(scene.nodes, scene, resolver, engine, placed, slidePart)
             placed.sortWith(compareBy({ it.top }, { it.left }))
             val links = ArrayList<PdfPageLink>()
-            collectNodeLinks(scene.nodes, scene, 0.0, 0.0, slideIndex, linkOf, links)
+            collectNodeLinks(scene.nodes, scene, 0.0, 0.0, slideIndex, slidePart, linkOf, links)
             val text = StringBuilder()
             val boxes = ArrayList<Float>()
             val breaks = BitSet()
@@ -154,14 +155,16 @@ internal class SlideTextIndex(
             dx: Double,
             dy: Double,
             slideIndex: Int,
-            linkOf: (Int, String?, String?) -> PdfLinkTarget?,
+            slidePart: String,
+            linkOf: (Int, String, String?, String?) -> PdfLinkTarget?,
             out: MutableList<PdfPageLink>,
         ) {
             for (node in nodes) {
                 val hyperlink = node.hyperlink
                 val frame = node.frame
                 if (hyperlink != null && frame != null) {
-                    linkOf(slideIndex, hyperlink.relationshipId, hyperlink.action)?.let { target ->
+                    val part = node.sourcePart ?: slidePart
+                    linkOf(slideIndex, part, hyperlink.relationshipId, hyperlink.action)?.let { target ->
                         out += PdfPageLink(normRect(offset(frame, dx, dy), scene.size), target)
                     }
                 }
@@ -172,6 +175,7 @@ internal class SlideTextIndex(
                         dx + (node.frame?.x ?: 0.0),
                         dy + (node.frame?.y ?: 0.0),
                         slideIndex,
+                        slidePart,
                         linkOf,
                         out,
                     )
@@ -185,6 +189,7 @@ internal class SlideTextIndex(
             resolver: TextStyleResolver,
             engine: TextLayoutEngine,
             out: MutableList<PlacedLayout>,
+            slidePart: String,
             groupOffsetX: Double = 0.0,
             groupOffsetY: Double = 0.0,
         ) {
@@ -196,12 +201,13 @@ internal class SlideTextIndex(
                         resolver,
                         engine,
                         out,
+                        slidePart,
                         groupOffsetX + (node.frame?.x ?: 0.0),
                         groupOffsetY + (node.frame?.y ?: 0.0),
                     )
-                    is SceneShape -> placedShape(node, resolver, engine, groupOffsetX, groupOffsetY)?.let(out::add)
+                    is SceneShape -> placedShape(node, resolver, engine, groupOffsetX, groupOffsetY, slidePart)?.let(out::add)
                     is ScenePicture -> placedPicture(node)?.let(out::add)
-                    is SceneGraphicFrame -> placedTable(node, groupOffsetX, groupOffsetY, out)
+                    is SceneGraphicFrame -> placedTable(node, groupOffsetX, groupOffsetY, out, slidePart)
                     else -> Unit
                 }
             }
@@ -213,16 +219,17 @@ internal class SlideTextIndex(
             engine: TextLayoutEngine,
             dx: Double,
             dy: Double,
+            slidePart: String,
         ): PlacedLayout? {
             val frame = shape.frame ?: return null
             if (frame.width <= 0.0 || frame.height <= 0.0) return null
             val body = shape.textBody?.let { runCatching { resolver.resolve(it) }.getOrNull() } ?: return null
             if (!body.hasText()) return null
             val layout = runCatching {
-                engine.layout(body, frame.width, frame.height, transformOf(shape.transform))
+                engine.layout(body, frame.width, frame.height, TextShapeTransform.of(shape.transform))
             }.getOrNull() ?: return null
             if (layout.lines.isEmpty()) return null
-            return PlacedLayout(layout, offset(frame, dx, dy), paragraphTexts(body))
+            return PlacedLayout(layout, offset(frame, dx, dy), paragraphTexts(body), shape.sourcePart ?: slidePart)
         }
 
         private fun placedPicture(
@@ -241,6 +248,7 @@ internal class SlideTextIndex(
             dx: Double,
             dy: Double,
             out: MutableList<PlacedLayout>,
+            slidePart: String,
         ) {
             val table = node.table ?: return
             val result = table.layout ?: return
@@ -250,7 +258,7 @@ internal class SlideTextIndex(
                 val layout = cell.textLayout ?: continue
                 val texts = paragraphTexts(cell.resolvedText ?: TextBody())
                 val placed = SceneRect(origin.x + rect.x, origin.y + rect.y, rect.width, rect.height)
-                out += PlacedLayout(layout, placed, texts)
+                out += PlacedLayout(layout, placed, texts, node.sourcePart ?: slidePart)
             }
         }
 
@@ -261,7 +269,7 @@ internal class SlideTextIndex(
             boxes: MutableList<Float>,
             breaks: BitSet,
             slideIndex: Int,
-            linkOf: (Int, String?, String?) -> PdfLinkTarget?,
+            linkOf: (Int, String, String?, String?) -> PdfLinkTarget?,
             links: MutableList<PdfPageLink>,
         ) {
             val sw = slide.width.takeIf { it > 0.0 } ?: return
@@ -270,7 +278,7 @@ internal class SlideTextIndex(
             for ((lineIndex, line) in placed.layout.lines.withIndex()) {
                 for (run in line.runs) {
                     val hyperlink = run.properties.hyperlink ?: continue
-                    val target = linkOf(slideIndex, hyperlink.relationshipId, hyperlink.action) ?: continue
+                    val target = linkOf(slideIndex, placed.sourcePart, hyperlink.relationshipId, hyperlink.action) ?: continue
                     val left = normX(frame.x + run.leftPt * EMU_PER_POINT, sw)
                     val right = normX(frame.x + run.rightPt * EMU_PER_POINT, sw)
                     val top = normY(frame.y + line.topPt * EMU_PER_POINT, sh)
@@ -357,16 +365,6 @@ internal class SlideTextIndex(
             return NormRect(min(left, right), min(top, bottom), max(left, right), max(top, bottom))
         }
 
-        private fun transformOf(node: XNode?): TextShapeTransform {
-            node ?: return TextShapeTransform.NONE
-            val rot = (node.attribute("rot")?.toDoubleOrNull() ?: 0.0) / 60000.0
-            return TextShapeTransform(
-                rotationDeg = rot,
-                flipH = node.attribute("flipH") == "1" || node.attribute("flipH").equals("true", ignoreCase = true),
-                flipV = node.attribute("flipV") == "1" || node.attribute("flipV").equals("true", ignoreCase = true),
-            )
-        }
-
         private const val EMU_PER_POINT = 12_700.0
     }
 
@@ -376,6 +374,7 @@ internal class SlideTextIndex(
         val layout: TextFrameLayout,
         val frame: SceneRect,
         val paragraphTexts: List<String>,
+        val sourcePart: String,
     ) {
         val top: Double get() = frame.y
         val left: Double get() = frame.x
