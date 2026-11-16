@@ -66,6 +66,7 @@ import io.github.pixelrick420.papyrus.viewer.PdfEncryption
 import io.github.pixelrick420.papyrus.viewer.PdfFormEdit
 import io.github.pixelrick420.papyrus.viewer.PdfFormField
 import io.github.pixelrick420.papyrus.viewer.PdfPageSource
+import io.github.pixelrick420.papyrus.viewer.pptx.SlideDeckLoader
 import io.github.pixelrick420.papyrus.viewer.PdfPageText
 import io.github.pixelrick420.papyrus.viewer.PdfPageLink
 import io.github.pixelrick420.papyrus.viewer.LatexSpanFactory
@@ -167,6 +168,7 @@ sealed interface ViewerContent {
         val hidden: Set<Int>,
         val incomplete: Boolean,
         val titles: List<String> = emptyList(),
+        val slideTexts: List<String> = emptyList(),
         val slideSize: String? = null,
         val fontSubstitutions: List<String> = emptyList(),
     ) : ViewerContent
@@ -288,8 +290,17 @@ internal fun ViewerContent.hasSpeakableText(): Boolean? = when (this) {
     is ViewerContent.Markdown -> text.isNotBlank()
     // The same units the voice is made of, so a document of images with no alt text says no.
     is ViewerContent.Office -> TtsDocumentSource.unitsFromOffice(blocks).isNotEmpty()
-    is ViewerContent.Slides -> titles.any { it.isNotBlank() }
+    is ViewerContent.Slides -> slideTexts.any { it.isNotBlank() }
     else -> null
+}
+
+
+private fun ViewerContent.closePageSource() {
+    when (this) {
+        is ViewerContent.Pdf -> source.close()
+        is ViewerContent.Slides -> source.close()
+        else -> Unit
+    }
 }
 
 class ViewerViewModel(
@@ -414,6 +425,7 @@ class ViewerViewModel(
         // previous load is stale: drop the extracted find text and the decrypted copy.
         pdfPageText = null
         findBudgetWarned = false
+        _state.value.content.closePageSource()
         pageTextSource?.close()
         pageTextSource = null
         pageTextSourceUri = null
@@ -452,7 +464,7 @@ class ViewerViewModel(
     // A format find cannot search (a scanned PDF, one past the budget) stays at the restored position and says nothing: the reader asked to open a document, not to search it.
     private fun applyArrival(term: String, content: ViewerContent) {
         when (content) {
-            is ViewerContent.Pdf, is ViewerContent.PlainText, is ViewerContent.Office, is ViewerContent.Markdown -> Unit
+            is ViewerContent.Pdf, is ViewerContent.PlainText, is ViewerContent.Office, is ViewerContent.Markdown, is ViewerContent.Slides -> Unit
             else -> return
         }
         arrivalJob?.cancel()
@@ -656,6 +668,7 @@ class ViewerViewModel(
                 }
                 is ViewerContent.Markdown -> TtsDocumentSource.unitsFromMarkdown(content.text.toString())
                 is ViewerContent.Office -> TtsDocumentSource.units(document.format, officeBlocks = content.blocks)
+                is ViewerContent.Slides -> TtsDocumentSource.unitsFromSlides(content.slideTexts)
                 else -> emptyList()
             }
             if (units.isEmpty()) {
@@ -800,7 +813,7 @@ class ViewerViewModel(
         val current = _state.value
         if (!current.canSaveToLibrary || current.savingToLibrary || current.savedToLibrary) return
         val opened = when (current.content) {
-            is ViewerContent.Pdf, is ViewerContent.Markdown, is ViewerContent.PlainText, is ViewerContent.Office -> true
+            is ViewerContent.Pdf, is ViewerContent.Markdown, is ViewerContent.PlainText, is ViewerContent.Office, is ViewerContent.Slides -> true
             else -> false
         }
         if (!opened) return
@@ -914,7 +927,21 @@ class ViewerViewModel(
                 }
                 else -> ViewerContent.Failed(UiText(R.string.viewer_error_password))
             }
-            DocumentFormat.PPTX, DocumentFormat.UNKNOWN -> ViewerContent.Failed(UiText(R.string.viewer_error_unsupported))
+            DocumentFormat.PPTX -> {
+                val deck = SlideDeckLoader.load(app, uri)
+                ViewerContent.Slides(
+                    source = deck.source,
+                    aspectRatios = deck.aspectRatios,
+                    outline = deck.outline,
+                    hidden = deck.hidden,
+                    incomplete = deck.incomplete,
+                    titles = deck.titles,
+                    slideTexts = deck.slideTexts,
+                    slideSize = deck.slideSize,
+                    fontSubstitutions = deck.fontSubstitutions,
+                )
+            }
+            DocumentFormat.UNKNOWN -> ViewerContent.Failed(UiText(R.string.viewer_error_unsupported))
         }
     }
 
@@ -1192,7 +1219,9 @@ class ViewerViewModel(
         val doc = _state.value.document ?: return
         reloadJob?.cancel()
         reloadJob = viewModelScope.launch {
+            val previous = _state.value.content
             val reloaded = loadContentSafely(doc)
+            if (reloaded !== previous) previous.closePageSource()
             _state.update { it.copy(content = reloaded, speakableText = reloaded.hasSpeakableText() ?: it.speakableText) }
             val query = _state.value.find.query
             if (query.isNotBlank()) updateFindQuery(query)
@@ -1404,7 +1433,7 @@ class ViewerViewModel(
         // viewModelScope is already cancelled here; the outbox writer is not, and drains this last position.
         commitPosition(force = true)
         outbox.close()
-        (_state.value.content as? ViewerContent.Pdf)?.source?.close()
+        _state.value.content.closePageSource()
         pageTextSource?.close()
         unlocked.discard()
         // Unconditional: own dir per document, and any format may have written images.

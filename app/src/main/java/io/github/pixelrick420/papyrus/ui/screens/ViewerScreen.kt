@@ -217,11 +217,20 @@ fun ViewerScreen(
 
     // A PDF's bookmarks are read off the main thread, so they arrive after the first page.
     val office = state.content as? ViewerContent.Office
+    val slides = state.content as? ViewerContent.Slides
     // A document's own table of contents (an EPUB's) wins; otherwise the outline is its headings.
     val officeEntries = remember(office) { office?.let { it.outline ?: officeOutline(it.blocks) }.orEmpty() }
     val isPdf = state.content is ViewerContent.Pdf
-    val outline = if (isPdf) state.pdfOutline else officeEntries
-    val pageCount = (state.content as? ViewerContent.Pdf)?.source?.pageCount ?: 0
+    val outline = when {
+        isPdf -> state.pdfOutline
+        slides != null -> slides.outline
+        else -> officeEntries
+    }
+    val pageCount = when (val c = state.content) {
+        is ViewerContent.Pdf -> c.source.pageCount
+        is ViewerContent.Slides -> c.source.pageCount
+        else -> 0
+    }
     val plain = state.content as? ViewerContent.PlainText
     val lineCount = remember(plain) {
         plain?.let { numberedLines(it.lineCount, it.chunks.lastOrNull()?.endsWith('\n') == true) } ?: 0
@@ -230,7 +239,8 @@ fun ViewerScreen(
     val goToAvailable = pageCount >= MIN_GO_TO_PAGES || goToLines
 
     // Held here (not in [PdfViewer]) so the header's Copy can reach it; keyed on the source.
-    val selectionState = remember((state.content as? ViewerContent.Pdf)?.source) {
+    val selectionSource = (state.content as? ViewerContent.Pdf)?.source ?: (state.content as? ViewerContent.Slides)?.source
+    val selectionState = remember(selectionSource) {
         PdfSelectionState(
             scope = selectionScope,
             loadText = viewModel::pageText,
@@ -601,6 +611,10 @@ fun ViewerScreen(
                             selectionState = selectionState,
                             nightMode = settings.nightMode,
                             position = position,
+                            pageIndicatorRes = R.string.viewer_slide_indicator,
+                            pageDescriptionRes = R.string.cd_slide_page,
+                            pageWithTextDescriptionRes = R.string.cd_slide_page_with_text,
+                            pageTitles = content.titles,
                         )
                         // The dialog covers the page; only an in-flight retry is worth showing behind it.
                         is ViewerContent.NeedsPassword ->
@@ -664,7 +678,11 @@ fun ViewerScreen(
         }
         FileInfoSheet(
             document = infoDocument,
-            pageCount = (state.content as? ViewerContent.Pdf)?.source?.pageCount,
+            pageCount = when (val c = state.content) {
+                is ViewerContent.Pdf -> c.source.pageCount
+                is ViewerContent.Slides -> c.source.pageCount
+                else -> null
+            },
             mimeType = mimeType,
             onDismiss = { infoOpen = false },
         )

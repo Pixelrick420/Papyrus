@@ -20,6 +20,7 @@ internal class SlideDeck(
     val hidden: Set<Int>,
     val incomplete: Boolean,
     val titles: List<String>,
+    val slideTexts: List<String>,
     val slideSize: String?,
     val fontSubstitutions: List<String>,
 )
@@ -65,6 +66,7 @@ internal object SlideDeckLoader {
             hidden = emptySet(),
             incomplete = false,
             titles = titles,
+            slideTexts = texts,
             slideSize = size,
             fontSubstitutions = substitutions,
         )

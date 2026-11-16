@@ -55,6 +55,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.annotation.StringRes
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -118,6 +119,10 @@ internal fun PdfViewer(
     ttsLocked: Boolean = false,
     highlightAlpha: Float = 1f,
     onlyActive: Boolean = false,
+    @StringRes pageIndicatorRes: Int = R.string.viewer_page_indicator,
+    @StringRes pageDescriptionRes: Int = R.string.cd_pdf_page,
+    @StringRes pageWithTextDescriptionRes: Int = R.string.cd_pdf_page_with_text,
+    pageTitles: List<String> = emptyList(),
 ) {
     val restoreTarget = rememberRestoredTarget(LocationKind.PAGE, source.pageCount, position)
     val listState = rememberLazyListState(initialFirstVisibleItemIndex = restoreTarget?.unit ?: 0)
@@ -259,6 +264,9 @@ internal fun PdfViewer(
                             speaking = speaking?.takeIf { it.anchor == index },
                             followVoice = ttsLocked,
                             viewportHeight = viewportHeight,
+                            pageDescriptionRes = pageDescriptionRes,
+                            pageWithTextDescriptionRes = pageWithTextDescriptionRes,
+                            pageTitle = pageTitles.getOrNull(index).orEmpty(),
                         )
                     }
                 }
@@ -280,7 +288,7 @@ internal fun PdfViewer(
             )
 
             ReadoutBadge(
-                text = stringResource(R.string.viewer_page_indicator, centeredPage + 1, source.pageCount),
+                text = stringResource(pageIndicatorRes, centeredPage + 1, source.pageCount),
                 visible = pageIndicatorVisible,
                 transformOrigin = TransformOrigin(1f, 1f),
                 textStyle = MaterialTheme.typography.labelMedium,
@@ -321,6 +329,9 @@ private fun PdfPage(
     speaking: TtsHighlight?,
     followVoice: Boolean,
     viewportHeight: () -> Int,
+    @StringRes pageDescriptionRes: Int,
+    @StringRes pageWithTextDescriptionRes: Int,
+    pageTitle: String,
 ) {
     // What is shown at the committed zoom, within the pixel budget: the box below keeps the shown width,
     // and the bitmap is scaled to it, so a capped page is softer rather than missing.
@@ -454,12 +465,14 @@ private fun PdfPage(
     ) {
         bitmap?.let { bmp ->
             val spoken = pageText?.text?.takeIf { readsPages && it.isNotBlank() }
+            val label = if (pageTitle.isNotBlank()) "$pageTitle" else null
             Image(
                 bitmap = remember(bmp) { bmp.asImageBitmap() },
-                contentDescription = if (spoken == null) {
-                    stringResource(R.string.cd_pdf_page, index + 1)
-                } else {
-                    stringResource(R.string.cd_pdf_page_with_text, index + 1, spoken)
+                contentDescription = when {
+                    label != null && spoken != null -> stringResource(pageWithTextDescriptionRes, index + 1, "$label. $spoken")
+                    label != null -> stringResource(pageDescriptionRes, index + 1) + ", " + label
+                    spoken != null -> stringResource(pageWithTextDescriptionRes, index + 1, spoken)
+                    else -> stringResource(pageDescriptionRes, index + 1)
                 },
                 contentScale = ContentScale.FillBounds,
                 colorFilter = if (nightMode) PdfNightMode.Invert else null,
