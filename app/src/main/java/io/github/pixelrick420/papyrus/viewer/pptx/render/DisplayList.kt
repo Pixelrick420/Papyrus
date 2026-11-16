@@ -85,6 +85,20 @@ internal data class ImageRef(val key: String, val width: Int = 0, val height: In
 
 internal data class ImageEffects(val alpha: Float = 1f, val clip: PathData? = null)
 
+internal enum class TextRuleKind { UNDERLINE, STRIKE }
+
+/** One underline or strike rule the engine draws itself; [y] is the rule's centre, in the run's space. */
+internal data class TextRule(
+    val kind: TextRuleKind,
+    val style: String,
+    val left: Float,
+    val right: Float,
+    val y: Float,
+    val thickness: Float,
+    /** `uFill` when it outranks the run's own fill. */
+    val paint: PaintSpec? = null,
+)
+
 internal data class GlyphRun(
     val text: String,
     val x: Float,
@@ -94,6 +108,10 @@ internal data class GlyphRun(
     val family: String? = null,
     val bold: Boolean = false,
     val italic: Boolean = false,
+    val letterSpacing: Float = 0f,
+    val kerning: Boolean = false,
+    val ligatures: Boolean = false,
+    val rules: List<TextRule> = emptyList(),
 )
 
 internal data class ShadowSpec(val color: Rgba, val blur: Float, val dx: Float, val dy: Float)

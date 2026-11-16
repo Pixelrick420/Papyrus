@@ -129,6 +129,17 @@ internal class TextLayoutEngine(
         bullet = line.bullet,
         markerLeftPt = line.markerLeftPt + dx,
         markerRightPt = line.markerRightPt + dx,
+        decorations = line.decorations.map {
+            TextDecoration(
+                kind = it.kind,
+                style = it.style,
+                leftPt = it.leftPt + dx,
+                rightPt = it.rightPt + dx,
+                offsetPt = it.offsetPt,
+                thicknessPt = it.thicknessPt,
+                paint = it.paint,
+            )
+        },
     )
 
     private fun layoutParagraph(
@@ -247,21 +258,26 @@ internal class TextLayoutEngine(
             )
         }
         val glyphRuns = ArrayList<GlyphRun>(pieces.size)
+        val decorations = ArrayList<TextDecoration>(2)
         for (position in order) {
             val piece = pieces[position]
             val owned = cells.filter { it.start >= piece.start && it.end <= piece.end && !it.tab }
             if (owned.isEmpty()) continue
+            val leftPt = textLeftPt + owned.minOf { it.leftPt }
+            val rightPt = textLeftPt + owned.maxOf { it.rightPt }
+            val runBaselinePt = baselinePt - piece.run.properties.baseline * piece.run.sizePt
             glyphRuns += GlyphRun(
                 start = piece.start,
                 end = piece.end,
-                leftPt = textLeftPt + owned.minOf { it.leftPt },
-                rightPt = textLeftPt + owned.maxOf { it.rightPt },
-                baselinePt = baselinePt,
+                leftPt = leftPt,
+                rightPt = rightPt,
+                baselinePt = runBaselinePt,
                 font = piece.run.font,
                 sizePt = piece.run.sizePt.toDouble(),
                 properties = piece.run.properties,
                 rtl = piece.run.rtl,
             )
+            decorations += decorationsOf(piece.run, leftPt, rightPt)
         }
         val characters = cells.map {
             CharacterBox(it.start, it.end, textLeftPt + it.leftPt, textLeftPt + it.rightPt, topPt, topPt + heightPt)
@@ -283,7 +299,43 @@ internal class TextLayoutEngine(
             bullet = bullet,
             markerLeftPt = markerLeftPt,
             markerRightPt = markerRightPt,
+            decorations = decorations,
         )
+    }
+
+    private fun decorationsOf(
+        run: ShapedRun,
+        leftPt: Double,
+        rightPt: Double,
+    ): List<TextDecoration> {
+        val properties = run.properties
+        val underline = properties.underline
+        val strike = properties.strike
+        if (!underline.visible && strike == TextStrike.NONE) return emptyList()
+        val metrics = measurer.decorations(run.font, run.sizePt)
+        val decorations = ArrayList<TextDecoration>(2)
+        if (underline.visible) {
+            decorations += TextDecoration(
+                kind = TextDecorationKind.UNDERLINE,
+                style = underline.style,
+                leftPt = leftPt,
+                rightPt = rightPt,
+                offsetPt = metrics.underline.offsetPt,
+                thicknessPt = metrics.underline.thicknessPt,
+                paint = underline.fill,
+            )
+        }
+        if (strike != TextStrike.NONE) {
+            decorations += TextDecoration(
+                kind = TextDecorationKind.STRIKE,
+                style = strike.style,
+                leftPt = leftPt,
+                rightPt = rightPt,
+                offsetPt = -metrics.strike.offsetPt,
+                thicknessPt = metrics.strike.thicknessPt,
+            )
+        }
+        return decorations
     }
 
     private fun cellsOf(

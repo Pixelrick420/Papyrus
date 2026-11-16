@@ -22,6 +22,19 @@ class SfntMetricsTest {
         assertEquals(452, metrics.typoLineGap)
         assertEquals(1950, metrics.winAscent)
         assertEquals(550, metrics.winDescent)
+        assertEquals(-103, metrics.underlinePosition)
+        assertEquals(194, metrics.underlineThickness)
+        assertEquals(134, metrics.strikeoutSize)
+        assertEquals(512, metrics.strikeoutPosition)
+    }
+
+    @Test
+    fun a_font_without_post_has_no_underline_rule() {
+        val metrics = SfntMetrics.parse(font(post = false))!!
+
+        assertNull(metrics.underlinePosition)
+        assertNull(metrics.underlineThickness)
+        assertEquals(134, metrics.strikeoutSize)
     }
 
     @Test
@@ -95,6 +108,10 @@ class SfntMetricsTest {
         assertFalse(metrics.useTypoMetrics)
         assertFalse(metrics.bold)
         assertFalse(metrics.italic)
+        assertEquals(-103, metrics.underlinePosition)
+        assertEquals(194, metrics.underlineThickness)
+        assertEquals(134, metrics.strikeoutSize)
+        assertEquals(512, metrics.strikeoutPosition)
     }
 
     private fun font(
@@ -104,6 +121,7 @@ class SfntMetricsTest {
         os2: Boolean = true,
         head: Boolean = true,
         hhea: Boolean = true,
+        post: Boolean = true,
         extraTableBeyondEof: Boolean = false,
     ): ByteArray {
         val tables = linkedMapOf<String, ByteArray>()
@@ -122,6 +140,15 @@ class SfntMetricsTest {
                 putI16(72, 452)
                 putU16(74, 1950)
                 putU16(76, 550)
+                putI16(26, 134)
+                putI16(28, 512)
+            }
+        }
+        if (post) {
+            tables["post"] = ByteArray(POST_BYTES).apply {
+                putU32(0, 0x00030000)
+                putI16(8, -103)
+                putI16(10, 194)
             }
         }
         tables["name"] = ByteArray(4)
@@ -176,6 +203,7 @@ class SfntMetricsTest {
         const val HEAD_BYTES = 54
         const val HHEA_BYTES = 36
         const val OS2_BYTES = 78
+        const val POST_BYTES = 32
 
         val FONT = File("src/main/assets/ooxml/fonts/humanist/PptxHumanist-Regular.ttf")
     }

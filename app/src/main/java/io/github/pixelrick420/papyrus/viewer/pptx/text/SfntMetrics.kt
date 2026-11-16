@@ -17,6 +17,12 @@ internal class SfntMetrics(
     val winAscent: Int? = null,
     val winDescent: Int? = null,
     val selection: Int? = null,
+    /** `post` underline offset and thickness: negative is below the baseline. */
+    val underlinePosition: Int? = null,
+    val underlineThickness: Int? = null,
+    /** `OS/2` strikeout size and position: the position is positive above the baseline. */
+    val strikeoutSize: Int? = null,
+    val strikeoutPosition: Int? = null,
 ) {
 
     val bold: Boolean get() = (selection ?: 0).and(BOLD_BIT) != 0
@@ -71,6 +77,12 @@ internal class SfntMetrics(
 
         private const val OS2_WIN_OFFSET = 74
 
+        private const val OS2_STRIKEOUT_OFFSET = 26
+
+        private const val POST_RULE_OFFSET = 8
+
+        private const val POST_BYTES = 12
+
         /** Reads [bytes] as a TrueType or CFF-flavoured sfnt, or returns null when it is neither. */
         fun parse(bytes: ByteArray): SfntMetrics? {
             val tables = tables(bytes) ?: return null
@@ -79,6 +91,7 @@ internal class SfntMetrics(
             val unitsPerEm = bytes.u16(head.offset + UNITS_PER_EM_OFFSET)
             if (unitsPerEm == 0) return null
             val os2 = tables["OS/2"]?.takeIf { it.length >= OS2_BYTES }
+            val post = tables["post"]?.takeIf { it.length >= POST_BYTES }
             return SfntMetrics(
                 unitsPerEm = unitsPerEm,
                 ascender = bytes.i16(hhea.offset + HHEA_ASCENDER_OFFSET),
@@ -90,6 +103,10 @@ internal class SfntMetrics(
                 winAscent = os2?.let { bytes.u16(it.offset + OS2_WIN_OFFSET) },
                 winDescent = os2?.let { bytes.u16(it.offset + OS2_WIN_OFFSET + 2) },
                 selection = os2?.let { bytes.u16(it.offset + OS2_SELECTION_OFFSET) },
+                underlinePosition = post?.let { bytes.i16(it.offset + POST_RULE_OFFSET) },
+                underlineThickness = post?.let { bytes.i16(it.offset + POST_RULE_OFFSET + 2) },
+                strikeoutSize = os2?.let { bytes.i16(it.offset + OS2_STRIKEOUT_OFFSET) },
+                strikeoutPosition = os2?.let { bytes.i16(it.offset + OS2_STRIKEOUT_OFFSET + 2) },
             )
         }
 

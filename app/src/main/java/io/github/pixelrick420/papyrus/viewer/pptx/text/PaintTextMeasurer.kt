@@ -55,6 +55,10 @@ internal class PaintTextMeasurer(private val catalog: FontCatalog) : TextMeasure
     override fun hasGlyph(font: ResolvedFont, codePoint: Int): Boolean =
         paint(font, GLYPH_SIZE_PT, FontFeatures(), 0f).hasGlyph(String(Character.toChars(codePoint)))
 
+    override fun decorations(font: ResolvedFont, sizePt: Float): FontDecorations =
+        catalog.sfnt(font)?.let { FontDecorations.of(it, sizePt.toDouble()) }
+            ?: FontDecorations.fallback(sizePt.toDouble())
+
     private fun paint(
         font: ResolvedFont,
         sizePt: Float,

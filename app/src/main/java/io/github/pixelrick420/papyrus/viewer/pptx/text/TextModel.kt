@@ -199,6 +199,13 @@ internal enum class TextStrike {
     DOUBLE,
     ;
 
+    val style: String
+        get() = when (this) {
+            NONE -> "none"
+            SINGLE -> "sngStrike"
+            DOUBLE -> "dblStrike"
+        }
+
     companion object {
         fun of(value: String?): TextStrike = when (value) {
             "sngStrike" -> SINGLE

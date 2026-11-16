@@ -17,6 +17,7 @@ import io.github.pixelrick420.papyrus.viewer.pptx.Rgba
 import io.github.pixelrick420.papyrus.viewer.pptx.StrokeCap
 import io.github.pixelrick420.papyrus.viewer.pptx.StrokeJoin
 import kotlin.math.roundToInt
+import kotlin.math.sin
 
 /**
  * Draws a display list into [canvas]. In production the canvas is backed by a bitmap, so Skia's CPU
@@ -65,8 +66,88 @@ internal class AndroidCanvasBackend(
         val paint = paintOf(run.paint)
         paint.textSize = run.size
         paint.typeface = Typeface.create(run.family, run.typefaceStyle())
+        paint.letterSpacing = run.letterSpacing
+        paint.fontFeatureSettings = featureSettings(run)
         canvas.drawText(run.text, run.x, run.y, paint)
+        run.rules.forEach { drawTextRule(it, run) }
     }
+
+    private fun drawTextRule(rule: TextRule, run: GlyphRun) {
+        val paint = paintOf(rule.paint ?: run.paint)
+        val thickness = rule.thickness * if (rule.style.endsWith("Heavy") || rule.style == "heavy") {
+            HEAVY_MULTIPLIER
+        } else {
+            1f
+        }
+        val style = rule.style
+        when {
+            style.startsWith("wavy") -> {
+                val lines = if (style == "wavyDouble") listOf(-thickness, thickness) else listOf(0f)
+                for (offset in lines) {
+                    strokeRule(paint, wavyPath(rule, rule.y + offset, thickness), thickness, null)
+                }
+            }
+            style.startsWith("dotted") -> strokeRule(
+                paint,
+                straightPath(rule),
+                thickness,
+                DashPathEffect(floatArrayOf(thickness, thickness), 0f),
+            )
+            style.startsWith("dashLong") -> strokeRule(
+                paint,
+                straightPath(rule),
+                thickness,
+                DashPathEffect(floatArrayOf(thickness * DASH_LONG, thickness * DASH_GAP), 0f),
+            )
+            style.startsWith("dash") -> strokeRule(
+                paint,
+                straightPath(rule),
+                thickness,
+                DashPathEffect(floatArrayOf(thickness * DASH, thickness * DASH_GAP), 0f),
+            )
+            else -> {
+                val double = style == "dbl" || style == "dblStrike"
+                val offsets = if (double) listOf(-thickness * DOUBLE_GAP, thickness * DOUBLE_GAP) else listOf(0f)
+                val height = if (double) thickness * DOUBLE_THICKNESS else thickness
+                paint.style = Paint.Style.FILL
+                for (offset in offsets) {
+                    canvas.drawRect(rule.left, rule.y + offset - height / 2f, rule.right, rule.y + offset + height / 2f, paint)
+                }
+            }
+        }
+    }
+
+    private fun strokeRule(paint: Paint, path: Path, thickness: Float, effect: DashPathEffect?) {
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = thickness
+        paint.pathEffect = effect
+        canvas.drawPath(path, paint)
+    }
+
+    private fun straightPath(rule: TextRule): Path = Path().apply {
+        moveTo(rule.left, rule.y)
+        lineTo(rule.right, rule.y)
+    }
+
+    private fun wavyPath(rule: TextRule, y: Float, amplitude: Float): Path {
+        val path = Path()
+        val step = (amplitude * WAVE_STEPS / WAVE_PERIOD).coerceAtLeast(MIN_DASH)
+        val turn = Math.PI * 2 / WAVE_STEPS
+        path.moveTo(rule.left, y)
+        var x = rule.left
+        var phase = 0.0
+        while (x < rule.right) {
+            val next = (x + step).coerceAtMost(rule.right)
+            phase += turn
+            path.lineTo(next, y + (sin(phase) * amplitude).toFloat())
+            x = next
+        }
+        return path
+    }
+
+    private fun featureSettings(run: GlyphRun): String =
+        "\"kern\" ${if (run.kerning) 1 else 0}, " +
+            "\"liga\" ${if (run.ligatures) 1 else 0}, \"clig\" 0"
 
     override fun save() {
         canvas.save()
@@ -184,6 +265,14 @@ internal class AndroidCanvasBackend(
         const val OPAQUE = 255
         const val MIN_RADIUS = 0.01f
         const val MIN_DASH = 0.01f
+        const val HEAVY_MULTIPLIER = 2f
+        const val DOUBLE_GAP = 0.75f
+        const val DOUBLE_THICKNESS = 0.5f
+        const val DASH = 4f
+        const val DASH_LONG = 8f
+        const val DASH_GAP = 3f
+        const val WAVE_STEPS = 16
+        const val WAVE_PERIOD = 4f
     }
 }
 

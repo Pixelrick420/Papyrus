@@ -61,4 +61,8 @@ internal interface TextMeasurer {
 
     /** False when [font] has no glyph for [codePoint], which is where a fallback face has to take over. */
     fun hasGlyph(font: ResolvedFont, codePoint: Int): Boolean = true
+
+    /** The font's underline and strikeout geometry, or the model's fallback when it has none. */
+    fun decorations(font: ResolvedFont, sizePt: Float): FontDecorations =
+        FontDecorations.fallback(sizePt.toDouble())
 }

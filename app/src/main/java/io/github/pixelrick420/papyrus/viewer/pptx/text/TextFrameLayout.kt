@@ -41,6 +41,8 @@ internal class TextLine(
     val bullet: BulletMarker = BulletMarker.None,
     val markerLeftPt: Double = 0.0,
     val markerRightPt: Double = 0.0,
+    /** The underline and strike rules the engine draws for this line. */
+    val decorations: List<TextDecoration> = emptyList(),
 )
 
 /** The laid-out text frame: lines on down, each with its runs and per-character boxes (plan §4.7 step 10). */

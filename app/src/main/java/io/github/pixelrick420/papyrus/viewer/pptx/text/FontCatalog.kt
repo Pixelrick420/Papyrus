@@ -75,6 +75,8 @@ internal class FontCatalog(
 
     private val cache = LazyCache<String, Typeface>()
 
+    private val metrics = LazyCache<String, SfntMetrics>()
+
     fun bundled(font: BundledFont, bold: Boolean, italic: Boolean): Typeface {
         val style = FaceStyle.of(bold, italic)
         val face = font.face(style)
@@ -88,6 +90,16 @@ internal class FontCatalog(
         val style = FaceStyle.of(bold, italic).android()
         return cache.get("family:$family:$style") { system(family, style) } ?: Typeface.DEFAULT
     }
+
+    /** The bundled face's own tables, which is where the exact underline and strikeout rules live. */
+    fun sfnt(font: ResolvedFont): SfntMetrics? {
+        val choice = font.choice as? FontChoice.Bundled ?: return null
+        val asset = choice.font.face(FaceStyle.of(font.bold, font.italic)).asset
+        return metrics.get(asset) { path -> reader(path)?.let(SfntMetrics::parse) }
+    }
+
+    private fun reader(asset: String): ByteArray? =
+        runCatching { assets.open(asset).use { it.readBytes() } }.getOrNull()
 }
 
 /** Caches a null result too: a font that failed to load must not be retried for every glyph run. */
