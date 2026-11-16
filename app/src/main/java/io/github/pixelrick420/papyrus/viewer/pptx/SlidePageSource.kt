@@ -43,6 +43,7 @@ internal class SlidePageSource private constructor(
     private val mediaDir: File,
     private val limits: PptxLimits,
     private val renderer: SlideRenderer,
+    val textIndex: SlideTextIndex,
 ) : PageBitmapSource {
 
     override val pageCount: Int = slides.size
@@ -209,10 +210,13 @@ internal class SlidePageSource private constructor(
             val bytes = pkg.part(main) ?: throw PptxFormatException("$main is missing")
             val presentation = PresentationParser(newParserFactory, limits).parse(bytes, main)
             val scenes = StyleResolver(newParserFactory, limits).resolveAll(pkg, presentation)
-            if (assets != null) {
+            val textIndex = if (assets != null) {
                 val resolver = TextStyleResolver(limits)
                 val engine = TextLayoutEngine(PaintTextMeasurer(FontCatalog(assets)))
                 for (slide in scenes.slides) TableLayout.layout(slide.scene, resolver, engine)
+                SlideTextIndex.fromScenes(scenes.slides, resolver, engine)
+            } else {
+                SlideTextIndex(emptyList())
             }
             SlidePageSource(
                 pkg = pkg,
@@ -220,6 +224,7 @@ internal class SlidePageSource private constructor(
                 mediaDir = mediaDir,
                 limits = limits,
                 renderer = SlideRenderer(presets, limits),
+                textIndex = textIndex,
             ).also { synchronized(openSources) { openSources.add(it) } }
         }
 

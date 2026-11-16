@@ -23,6 +23,7 @@ internal class SlideDeck(
     val slideTexts: List<String>,
     val slideSize: String?,
     val fontSubstitutions: List<String>,
+    val textIndex: SlideTextIndex = SlideTextIndex(emptyList()),
 )
 
 internal object SlideDeckLoader {
@@ -55,7 +56,12 @@ internal object SlideDeckLoader {
         openStream: () -> InputStream,
     ): SlideDeck {
         val aspectRatios = runCatching { source.loadAspectRatios() }.getOrDefault(emptyList())
-        val texts = runCatching { SlideTextExtractor().extract(openStream) }.getOrDefault(emptyList())
+        val textIndex = source.textIndex
+        val texts = if (textIndex.pages.isNotEmpty()) {
+            textIndex.pages.map { it.text }
+        } else {
+            runCatching { SlideTextExtractor().extract(openStream) }.getOrDefault(emptyList())
+        }
         val titles = texts.map { text -> text.lineSequence().firstOrNull { it.isNotBlank() }?.trim().orEmpty() }
         val size = slideSize(openStream)
         val substitutions = fontSubstitutions(openStream)
@@ -69,6 +75,7 @@ internal object SlideDeckLoader {
             slideTexts = texts,
             slideSize = size,
             fontSubstitutions = substitutions,
+            textIndex = textIndex,
         )
     }
 
