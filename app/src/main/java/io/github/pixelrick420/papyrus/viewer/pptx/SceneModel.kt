@@ -148,6 +148,7 @@ internal class SceneGraphicFrame(
     val kind: GraphicKind = GraphicKind.OTHER,
     val relationshipId: String? = null,
     override val hyperlink: SceneHyperlink? = null,
+    val table: io.github.pixelrick420.papyrus.viewer.pptx.table.PptxTable? = null,
 ) : SceneNode
 
 internal enum class TextAnchor { TOP, MIDDLE, BOTTOM }

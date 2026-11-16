@@ -270,14 +270,21 @@ private class SlideReading(
     private fun graphicFrameNode(tree: XNode): SceneGraphicFrame {
         val props = propsOf(tree, "nvGraphicFramePr")
         val data = tree.child(OoxmlNamespace.A, "graphic")?.child(OoxmlNamespace.A, "graphicData")
+        val kind = kindOf(data?.attribute("uri"))
+        val table = if (kind == GraphicKind.TABLE) {
+            data?.child(OoxmlNamespace.A, "tbl")?.let { io.github.pixelrick420.papyrus.viewer.pptx.table.TableParser.parse(it, limits) }
+        } else {
+            null
+        }
         return SceneGraphicFrame(
             id = props.idOf(),
             name = props?.attribute("name"),
             frame = rectOf(tree.child(OoxmlNamespace.P, "xfrm") ?: tree.child(OoxmlNamespace.A, "xfrm")),
             hidden = isOn(props?.attribute("hidden")),
-            kind = kindOf(data?.attribute("uri")),
+            kind = kind,
             relationshipId = relationshipOf(data),
             hyperlink = hyperlinkOf(props),
+            table = table,
         )
     }
 
