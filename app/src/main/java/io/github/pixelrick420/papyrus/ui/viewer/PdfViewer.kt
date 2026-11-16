@@ -126,6 +126,8 @@ internal fun PdfViewer(
     @StringRes pageWithTextDescriptionRes: Int = R.string.cd_pdf_page_with_text,
     pageTitles: List<String> = emptyList(),
     hiddenPages: Set<Int> = emptySet(),
+    pageSemanticBodies: List<String> = emptyList(),
+    slideSemantics: Boolean = false,
 ) {
     val restoreTarget = rememberRestoredTarget(LocationKind.PAGE, source.pageCount, position)
     val listState = rememberLazyListState(initialFirstVisibleItemIndex = restoreTarget?.unit ?: 0)
@@ -271,6 +273,9 @@ internal fun PdfViewer(
                             pageWithTextDescriptionRes = pageWithTextDescriptionRes,
                             pageTitle = pageTitles.getOrNull(index).orEmpty(),
                             isHidden = index in hiddenPages,
+                            semanticBody = pageSemanticBodies.getOrNull(index).orEmpty(),
+                            isSlide = slideSemantics,
+                            pageCount = source.pageCount,
                         )
                     }
                 }
@@ -337,6 +342,9 @@ private fun PdfPage(
     @StringRes pageWithTextDescriptionRes: Int,
     pageTitle: String,
     isHidden: Boolean,
+    semanticBody: String = "",
+    isSlide: Boolean = false,
+    pageCount: Int = 0,
 ) {
     // What is shown at the committed zoom, within the pixel budget: the box below keeps the shown width,
     // and the bitmap is scaled to it, so a capped page is softer rather than missing.
@@ -469,16 +477,29 @@ private fun PdfPage(
             ),
     ) {
         bitmap?.let { bmp ->
-            val spoken = pageText?.text?.takeIf { readsPages && it.isNotBlank() }
-            val label = if (pageTitle.isNotBlank()) "$pageTitle" else null
+            val spoken = pageText?.text?.takeIf { it.isNotBlank() }?.trim()
+            val description = if (isSlide) {
+                val parts = mutableListOf<String>()
+                if (pageTitle.isNotBlank()) parts += "${pageTitle.trim()} (heading)"
+                val bodyParts = listOfNotNull(spoken, semanticBody.trim().takeIf { it.isNotEmpty() })
+                if (bodyParts.isNotEmpty()) parts += bodyParts.joinToString(". ")
+                if (isHidden) parts += stringResource(R.string.viewer_slide_hidden)
+                val body = parts.joinToString(". ")
+                val prefix = stringResource(R.string.cd_slide_semantics, index + 1, pageCount)
+                if (body.isNotEmpty()) "$prefix. $body" else prefix
+            } else {
+                val label = pageTitle.takeIf { it.isNotBlank() }?.trim()
+                val spokenText = spoken?.takeIf { readsPages }
+                when {
+                    label != null && spokenText != null -> stringResource(pageWithTextDescriptionRes, index + 1, "$label. $spokenText")
+                    label != null -> stringResource(pageDescriptionRes, index + 1) + ", " + label
+                    spokenText != null -> stringResource(pageWithTextDescriptionRes, index + 1, spokenText)
+                    else -> stringResource(pageDescriptionRes, index + 1)
+                }
+            }
             Image(
                 bitmap = remember(bmp) { bmp.asImageBitmap() },
-                contentDescription = when {
-                    label != null && spoken != null -> stringResource(pageWithTextDescriptionRes, index + 1, "$label. $spoken")
-                    label != null -> stringResource(pageDescriptionRes, index + 1) + ", " + label
-                    spoken != null -> stringResource(pageWithTextDescriptionRes, index + 1, spoken)
-                    else -> stringResource(pageDescriptionRes, index + 1)
-                },
+                contentDescription = description,
                 contentScale = ContentScale.FillBounds,
                 colorFilter = if (nightMode) PdfNightMode.Invert else null,
                 modifier = Modifier.fillMaxSize(),

@@ -626,6 +626,8 @@ fun ViewerScreen(
                             pageWithTextDescriptionRes = R.string.cd_slide_page_with_text,
                             pageTitles = content.titles,
                             hiddenPages = content.hidden,
+                            pageSemanticBodies = content.semanticTexts,
+                            slideSemantics = true,
                         )
                         // The dialog covers the page; only an in-flight retry is worth showing behind it.
                         is ViewerContent.NeedsPassword ->

@@ -40,6 +40,7 @@
     <string name="cd_pdf_page_with_text">Page %1$d. %2$s</string>
     <string name="cd_slide_page">Slide %1$d</string>
     <string name="cd_slide_page_with_text">Slide %1$d. %2$s</string>
+    <string name="cd_slide_semantics">Slide %1$d of %2$d</string>
 
     <string name="home_empty_title">No documents yet</string>
     <string name="home_empty_hint">Files you open will appear here.</string>

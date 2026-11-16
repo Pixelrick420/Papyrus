@@ -21,6 +21,7 @@ import kotlin.math.min
 internal class SlideTextIndex(
     val pages: List<PdfPageText>,
     val links: List<List<PdfPageLink>> = emptyList(),
+    val semanticTexts: List<String> = emptyList(),
 ) {
 
     fun textOf(index: Int): String = pages.getOrNull(index)?.text.orEmpty()
@@ -35,12 +36,14 @@ internal class SlideTextIndex(
         ): SlideTextIndex {
             val pages = ArrayList<PdfPageText>(scenes.size)
             val links = ArrayList<List<PdfPageLink>>(scenes.size)
+            val semantics = ArrayList<String>(scenes.size)
             scenes.forEachIndexed { index, slide ->
                 val page = pageOf(slide.scene, resolver, engine, index, linkOf)
                 pages += page.text
                 links += page.links
+                semantics += semanticTextOf(slide.scene)
             }
-            return SlideTextIndex(pages, links)
+            return SlideTextIndex(pages, links, semantics)
         }
 
         fun fromDeck(
@@ -85,6 +88,32 @@ internal class SlideTextIndex(
             val engine = TextLayoutEngine(measurer)
             return fromDeck(pkg, presentation, scenes.slides, resolver, engine).pages.map { it.text }
         }
+
+        private fun semanticTextOf(scene: Scene): String {
+            val parts = ArrayList<String>()
+            collectSemanticNodes(scene.nodes, parts)
+            return parts.joinToString(" ").trim()
+        }
+
+        private fun collectSemanticNodes(nodes: List<SceneNode>, out: MutableList<String>) {
+            for (node in nodes) {
+                if (node.hidden) continue
+                if (node is SceneGroup) {
+                    if (!node.decorative) collectSemanticNodes(node.children, out)
+                    continue
+                }
+                if (node.decorative) continue
+                val descr = node.description?.trim().orEmpty()
+                if (descr.isEmpty()) continue
+                when (node) {
+                    is ScenePicture -> out += descr
+                    is SceneGraphicFrame -> if (node.kind in ACCESSIBLE_GRAPHIC_KINDS) out += descr
+                    else -> Unit
+                }
+            }
+        }
+
+        private val ACCESSIBLE_GRAPHIC_KINDS = setOf(GraphicKind.CHART, GraphicKind.SMART_ART, GraphicKind.OLE_OBJECT)
 
         private fun pageOf(
             scene: Scene,

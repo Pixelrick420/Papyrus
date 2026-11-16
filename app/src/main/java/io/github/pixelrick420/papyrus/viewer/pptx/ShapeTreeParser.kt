@@ -31,7 +31,7 @@ internal class ShapeTreeParser(
     private val limits: PptxLimits = PptxLimits(),
 ) {
 
-    private val reader = OoxmlReader(newParserFactory, OoxmlNamespace.CORE, limits)
+    private val reader = OoxmlReader(newParserFactory, OoxmlNamespace.CORE + OoxmlNamespace.ADEC, limits)
 
     fun parse(pkg: PptxPackage, part: String, size: SceneSize): SlideScene {
         val tree = parsePart(pkg, part)
@@ -188,6 +188,8 @@ private class SlideReading(
             name = props?.attribute("name"),
             frame = rectOf(transform),
             hidden = isOn(props?.attribute("hidden")),
+            description = props?.attribute("descr"),
+            decorative = isDecorative(props),
             placeholder = placeholderOf(tree),
             preset = presetOf(properties, transform),
             customGeometry = (custom as? CustomGeometry.Shape)?.shape,
@@ -212,6 +214,8 @@ private class SlideReading(
             name = props?.attribute("name"),
             frame = rectOf(transform),
             hidden = isOn(props?.attribute("hidden")),
+            description = props?.attribute("descr"),
+            decorative = isDecorative(props),
             relationshipId = source?.relationshipId,
             style = tree.child(OoxmlNamespace.P, "style"),
             hyperlink = hyperlinkOf(props),
@@ -232,6 +236,8 @@ private class SlideReading(
             name = props?.attribute("name"),
             frame = rectOf(transform),
             hidden = isOn(props?.attribute("hidden")),
+            description = props?.attribute("descr"),
+            decorative = isDecorative(props),
             childFrame = childRectOf(transform),
             children = groupChildren(tree, depth),
             hyperlink = hyperlinkOf(props),
@@ -267,6 +273,8 @@ private class SlideReading(
             name = props?.attribute("name"),
             frame = frame,
             hidden = isOn(props?.attribute("hidden")),
+            description = props?.attribute("descr"),
+            decorative = isDecorative(props),
             start = endpoints?.first,
             end = endpoints?.second,
             preset = preset,
@@ -292,11 +300,20 @@ private class SlideReading(
             name = props?.attribute("name"),
             frame = rectOf(tree.child(OoxmlNamespace.P, "xfrm") ?: tree.child(OoxmlNamespace.A, "xfrm")),
             hidden = isOn(props?.attribute("hidden")),
+            description = props?.attribute("descr"),
+            decorative = isDecorative(props),
             kind = kind,
             relationshipId = relationshipOf(data),
             hyperlink = hyperlinkOf(props),
             table = table,
         )
+    }
+
+    private fun isDecorative(props: XNode?): Boolean {
+        val extLst = props?.child(OoxmlNamespace.A, "extLst") ?: return false
+        return extLst.children.any { ext ->
+            ext.children.any { it.name.matches(OoxmlNamespace.ADEC, "decorative") && isOn(it.attribute("val")) }
+        }
     }
 
     private companion object {

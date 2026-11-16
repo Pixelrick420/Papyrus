@@ -61,6 +61,8 @@ internal sealed interface SceneNode {
     val name: String?
     val frame: SceneRect?
     val hidden: Boolean
+    val description: String? get() = null
+    val decorative: Boolean get() = false
     val hyperlink: SceneHyperlink? get() = null
 }
 
@@ -69,6 +71,8 @@ internal class SceneShape(
     override val name: String?,
     override val frame: SceneRect?,
     override val hidden: Boolean = false,
+    override val description: String? = null,
+    override val decorative: Boolean = false,
     val placeholder: PlaceholderIdentity? = null,
     val text: SceneTextFrame? = null,
     val preset: ScenePreset? = null,
@@ -90,6 +94,8 @@ internal class ScenePicture(
     override val name: String?,
     override val frame: SceneRect?,
     override val hidden: Boolean = false,
+    override val description: String? = null,
+    override val decorative: Boolean = false,
     val relationshipId: String? = null,
     val text: SceneTextFrame? = null,
     val style: XNode? = null,
@@ -112,6 +118,8 @@ internal class SceneGroup(
     override val name: String?,
     override val frame: SceneRect?,
     override val hidden: Boolean = false,
+    override val description: String? = null,
+    override val decorative: Boolean = false,
     /** The `a:chOff`/`a:chExt` space the children were laid out in, before the group's own transform. */
     val childFrame: SceneRect? = null,
     val children: List<SceneNode> = emptyList(),
@@ -126,6 +134,8 @@ internal class SceneConnector(
     override val name: String?,
     override val frame: SceneRect?,
     override val hidden: Boolean = false,
+    override val description: String? = null,
+    override val decorative: Boolean = false,
     val start: ScenePoint? = null,
     val end: ScenePoint? = null,
     val preset: ScenePreset? = null,
@@ -145,6 +155,8 @@ internal class SceneGraphicFrame(
     override val name: String?,
     override val frame: SceneRect?,
     override val hidden: Boolean = false,
+    override val description: String? = null,
+    override val decorative: Boolean = false,
     val kind: GraphicKind = GraphicKind.OTHER,
     val relationshipId: String? = null,
     override val hyperlink: SceneHyperlink? = null,
