@@ -1,5 +1,6 @@
 package io.github.pixelrick420.papyrus.viewer.pptx.chart
 
+import io.github.pixelrick420.papyrus.viewer.pptx.OoxmlNamespace
 import io.github.pixelrick420.papyrus.viewer.pptx.PptxLimits
 import io.github.pixelrick420.papyrus.viewer.pptx.XNode
 
@@ -12,7 +13,21 @@ internal object ChartParser {
         val plotAreaNode = chart.child(CHART_NS, "plotArea") ?: return null
         val series = parseSeries(plotAreaNode, limits) ?: return null
         val axes = parseAxes(plotAreaNode)
-        return PptxChart(plotArea = ChartPlotArea(series = series, axes = axes))
+        val dataLabels = parseDataLabels(plotAreaNode)
+        val plotArea = ChartPlotArea(
+            manualLayout = plotAreaNode.child(CHART_NS, "layout")?.let(::parseManualLayout),
+            series = series,
+            axes = axes,
+            dataLabels = dataLabels,
+            shapeProperties = plotAreaNode.child(CHART_NS, "spPr"),
+        )
+        return PptxChart(
+            title = chart.child(CHART_NS, "title")?.let(::parseTitle),
+            plotArea = plotArea,
+            legend = chart.child(CHART_NS, "legend")?.let(::parseLegend),
+            shapeProperties = chartSpace.child(CHART_NS, "spPr"),
+            textProperties = chartSpace.child(CHART_NS, "txPr"),
+        )
     }
 
     private fun parseSeries(plotArea: XNode, limits: PptxLimits): List<ChartSeries>? {
@@ -94,6 +109,7 @@ internal object ChartParser {
                 xValues = xValues,
                 yValues = yValues,
                 shapeProperties = ser.child(CHART_NS, "spPr"),
+                textProperties = ser.child(CHART_NS, "txPr"),
             )
         }
 
@@ -117,6 +133,7 @@ internal object ChartParser {
             categories = ser.child(CHART_NS, "cat")?.let(::parseCacheRef),
             values = ser.child(CHART_NS, "val")?.let(::parseCacheRef),
             shapeProperties = ser.child(CHART_NS, "spPr"),
+            textProperties = ser.child(CHART_NS, "txPr"),
         )
     }
 
@@ -205,6 +222,9 @@ internal object ChartParser {
             crosses = node.child(CHART_NS, "crosses")?.attribute("val"),
             crossesAt = node.child(CHART_NS, "crossesAt")?.attribute("val")?.toDoubleOrNull(),
             numberFormat = node.child(CHART_NS, "numFmt")?.let { ChartNumberFormats.parse(it.attribute("formatCode")) },
+            title = node.child(CHART_NS, "title")?.let(::parseTitle),
+            shapeProperties = node.child(CHART_NS, "spPr"),
+            textProperties = node.child(CHART_NS, "txPr"),
             delete = node.child(CHART_NS, "delete")?.attribute("val") == "1",
         )
     }
@@ -224,4 +244,99 @@ internal object ChartParser {
         "nextTo" -> TickLabelPosition.NEXT_TO
         else -> TickLabelPosition.NEXT_TO
     }
+
+    private fun parseTitle(node: XNode): ChartTitle {
+        val tx = node.child(CHART_NS, "tx")
+        val rich = tx?.child(CHART_NS, "rich")
+        val text = when {
+            rich != null -> richTextOf(rich)
+            tx?.child(CHART_NS, "strRef") != null -> firstCachedValue(tx.child(CHART_NS, "strRef")!!) ?: ""
+            else -> ""
+        }
+        return ChartTitle(
+            text = text,
+            richText = rich,
+            shapeProperties = node.child(CHART_NS, "spPr"),
+            textProperties = node.child(CHART_NS, "txPr"),
+            manualLayout = node.child(CHART_NS, "layout")?.let(::parseManualLayout),
+            overlay = node.child(CHART_NS, "overlay")?.attribute("val") == "1",
+        )
+    }
+
+    private fun richTextOf(node: XNode): String = buildString {
+        for (p in node.childrenOf(OoxmlNamespace.A, "p")) {
+            if (isNotEmpty()) append('\n')
+            for (r in p.children) {
+                if (r.name.matches(OoxmlNamespace.A, "r") || r.name.matches(OoxmlNamespace.A, "fld")) {
+                    r.child(OoxmlNamespace.A, "t")?.text?.let { append(it) }
+                }
+            }
+        }
+    }.trim()
+
+    private fun parseLegend(node: XNode): ChartLegend {
+        val pos = when (node.child(CHART_NS, "legendPos")?.attribute("val")) {
+            "t" -> LegendPosition.TOP
+            "b" -> LegendPosition.BOTTOM
+            "l" -> LegendPosition.LEFT
+            "tr" -> LegendPosition.TOP_RIGHT
+            "r" -> LegendPosition.RIGHT
+            else -> LegendPosition.RIGHT
+        }
+        return ChartLegend(
+            position = pos,
+            overlay = node.child(CHART_NS, "overlay")?.attribute("val") == "1",
+            manualLayout = node.child(CHART_NS, "layout")?.let(::parseManualLayout),
+            shapeProperties = node.child(CHART_NS, "spPr"),
+            textProperties = node.child(CHART_NS, "txPr"),
+        )
+    }
+
+    private fun parseDataLabels(node: XNode): ChartDataLabels? {
+        val dLbls = node.child(CHART_NS, "dLbls") ?: return null
+        return ChartDataLabels(
+            showLegendKey = on(dLbls.child(CHART_NS, "showLegendKey")?.attribute("val")),
+            showValue = on(dLbls.child(CHART_NS, "showVal")?.attribute("val")),
+            showCategoryName = on(dLbls.child(CHART_NS, "showCatName")?.attribute("val")),
+            showSeriesName = on(dLbls.child(CHART_NS, "showSerName")?.attribute("val")),
+            showPercent = on(dLbls.child(CHART_NS, "showPercent")?.attribute("val")),
+            showBubbleSize = on(dLbls.child(CHART_NS, "showBubbleSize")?.attribute("val")),
+            position = parseDataLabelPosition(dLbls.child(CHART_NS, "dLblPos")?.attribute("val")),
+            numberFormat = dLbls.child(CHART_NS, "numFmt")?.let { ChartNumberFormats.parse(it.attribute("formatCode")) },
+            shapeProperties = dLbls.child(CHART_NS, "spPr"),
+            textProperties = dLbls.child(CHART_NS, "txPr"),
+        )
+    }
+
+    private fun parseDataLabelPosition(value: String?): DataLabelPosition? = when (value) {
+        "bestFit" -> DataLabelPosition.BEST_FIT
+        "ctr" -> DataLabelPosition.CENTER
+        "inEnd" -> DataLabelPosition.INSIDE_END
+        "inBase" -> DataLabelPosition.INSIDE_BASE
+        "outEnd" -> DataLabelPosition.OUTSIDE_END
+        "l" -> DataLabelPosition.LEFT
+        "r" -> DataLabelPosition.RIGHT
+        "t" -> DataLabelPosition.TOP
+        "b" -> DataLabelPosition.BOTTOM
+        else -> null
+    }
+
+    private fun parseManualLayout(layout: XNode): ChartManualLayout? {
+        val ml = layout.child(CHART_NS, "manualLayout") ?: return null
+        fun value(name: String): Double? = ml.child(CHART_NS, name)?.attribute("val")?.toDoubleOrNull()
+        fun mode(name: String): String? = ml.child(CHART_NS, name)?.attribute("val")
+        return ChartManualLayout(
+            x = value("x"),
+            y = value("y"),
+            w = value("w"),
+            h = value("h"),
+            xMode = mode("xMode"),
+            yMode = mode("yMode"),
+            wMode = mode("wMode"),
+            hMode = mode("hMode"),
+            layoutTarget = ml.child(CHART_NS, "layoutTarget")?.attribute("val"),
+        )
+    }
+
+    private fun on(value: String?): Boolean = value == "1" || value.equals("true", ignoreCase = true)
 }
