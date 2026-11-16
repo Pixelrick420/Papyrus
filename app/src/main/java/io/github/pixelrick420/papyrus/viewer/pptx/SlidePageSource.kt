@@ -12,7 +12,6 @@ import io.github.pixelrick420.papyrus.viewer.pptx.render.SlideImage
 import io.github.pixelrick420.papyrus.viewer.pptx.render.SlidePictureResolver
 import io.github.pixelrick420.papyrus.viewer.pptx.render.SlideRenderer
 import io.github.pixelrick420.papyrus.viewer.pptx.render.SoftwareCanvas
-import io.github.pixelrick420.papyrus.viewer.pptx.table.TableLayout
 import io.github.pixelrick420.papyrus.viewer.pptx.text.FontCatalog
 import io.github.pixelrick420.papyrus.viewer.pptx.text.PaintTextMeasurer
 import io.github.pixelrick420.papyrus.viewer.pptx.text.TextLayoutEngine
@@ -214,23 +213,7 @@ internal class SlidePageSource private constructor(
             val textIndex = if (assets != null) {
                 val resolver = TextStyleResolver(limits)
                 val engine = TextLayoutEngine(PaintTextMeasurer(FontCatalog(assets)))
-                for (slide in scenes.slides) TableLayout.layout(slide.scene, resolver, engine)
-                val slideOfPart = presentation.slides
-                    .mapIndexedNotNull { index, ref ->
-                        pkg.targetOf(pkg.mainPart, ref.relationshipId)?.let { it.lowercase() to index }
-                    }
-                    .toMap()
-                val slideCount = scenes.slides.size
-                SlideTextIndex.fromScenes(scenes.slides, resolver, engine) { index, relationshipId, action ->
-                    val rel = relationshipId?.let { pkg.relationship(scenes.slides[index].part, it) }
-                    slideLinkTarget(
-                        action = action,
-                        externalUrl = rel?.takeIf { it.external }?.target,
-                        targetSlide = rel?.takeUnless { it.external }?.target?.let { slideOfPart[it.lowercase()] },
-                        current = index,
-                        slideCount = slideCount,
-                    )
-                }
+                SlideTextIndex.fromDeck(pkg, presentation, scenes.slides, resolver, engine)
             } else {
                 SlideTextIndex(emptyList())
             }

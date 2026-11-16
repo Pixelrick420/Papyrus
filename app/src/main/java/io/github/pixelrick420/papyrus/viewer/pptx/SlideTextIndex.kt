@@ -4,12 +4,16 @@ import io.github.pixelrick420.papyrus.viewer.NormRect
 import io.github.pixelrick420.papyrus.viewer.PdfLinkTarget
 import io.github.pixelrick420.papyrus.viewer.PdfPageLink
 import io.github.pixelrick420.papyrus.viewer.PdfPageText
+import io.github.pixelrick420.papyrus.viewer.pptx.table.TableLayout
 import io.github.pixelrick420.papyrus.viewer.pptx.text.TextBody
 import io.github.pixelrick420.papyrus.viewer.pptx.text.TextFrameLayout
 import io.github.pixelrick420.papyrus.viewer.pptx.text.TextLayoutEngine
+import io.github.pixelrick420.papyrus.viewer.pptx.text.TextMeasurer
 import io.github.pixelrick420.papyrus.viewer.pptx.text.TextRun
 import io.github.pixelrick420.papyrus.viewer.pptx.text.TextShapeTransform
 import io.github.pixelrick420.papyrus.viewer.pptx.text.TextStyleResolver
+import org.xmlpull.v1.XmlPullParser
+import java.io.InputStream
 import java.util.BitSet
 import kotlin.math.max
 import kotlin.math.min
@@ -37,6 +41,49 @@ internal class SlideTextIndex(
                 links += page.links
             }
             return SlideTextIndex(pages, links)
+        }
+
+        fun fromDeck(
+            pkg: PptxPackage,
+            presentation: PresentationInfo,
+            scenes: List<SlideScene>,
+            resolver: TextStyleResolver,
+            engine: TextLayoutEngine,
+        ): SlideTextIndex {
+            for (slide in scenes) TableLayout.layout(slide.scene, resolver, engine)
+            val slideOfPart = presentation.slides
+                .mapIndexedNotNull { index, ref ->
+                    pkg.targetOf(pkg.mainPart, ref.relationshipId)?.let { it.lowercase() to index }
+                }
+                .toMap()
+            val slideCount = scenes.size
+            return fromScenes(scenes, resolver, engine) { index, relationshipId, action ->
+                val rel = relationshipId?.let { pkg.relationship(scenes[index].part, it) }
+                slideLinkTarget(
+                    action = action,
+                    externalUrl = rel?.takeIf { it.external }?.target,
+                    targetSlide = rel?.takeUnless { it.external }?.target?.let { slideOfPart[it.lowercase()] },
+                    current = index,
+                    slideCount = slideCount,
+                )
+            }
+        }
+
+        /** The text find-in-file sees, page by page, so the search index and the screen never disagree. */
+        fun indexPages(
+            open: () -> InputStream,
+            measurer: TextMeasurer,
+            newParserFactory: () -> XmlPullParser,
+            limits: PptxLimits = PptxLimits(),
+        ): List<String> {
+            val pkg = PptxPackage.read(open, mediaDir = null, limits = limits, newParserFactory = newParserFactory)
+            val main = pkg.mainPart
+            val bytes = pkg.part(main) ?: throw PptxFormatException("$main is missing")
+            val presentation = PresentationParser(newParserFactory, limits).parse(bytes, main)
+            val scenes = StyleResolver(newParserFactory, limits).resolveAll(pkg, presentation)
+            val resolver = TextStyleResolver(limits)
+            val engine = TextLayoutEngine(measurer)
+            return fromDeck(pkg, presentation, scenes.slides, resolver, engine).pages.map { it.text }
         }
 
         private fun pageOf(

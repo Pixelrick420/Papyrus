@@ -2,6 +2,7 @@ package io.github.pixelrick420.papyrus.data
 
 import android.content.Context
 import android.net.Uri
+import android.util.Xml
 import androidx.core.net.toUri
 import io.github.pixelrick420.papyrus.viewer.BoundedCache
 import io.github.pixelrick420.papyrus.viewer.DocTextExtractor
@@ -12,7 +13,9 @@ import io.github.pixelrick420.papyrus.viewer.OfficeTextExtractor
 import io.github.pixelrick420.papyrus.viewer.PdfEncryption
 import io.github.pixelrick420.papyrus.viewer.PdfPageTextSource
 import io.github.pixelrick420.papyrus.viewer.TextCacheKey
-import io.github.pixelrick420.papyrus.viewer.pptx.SlideTextExtractor
+import io.github.pixelrick420.papyrus.viewer.pptx.SlideTextIndex
+import io.github.pixelrick420.papyrus.viewer.pptx.text.FontCatalog
+import io.github.pixelrick420.papyrus.viewer.pptx.text.PaintTextMeasurer
 import io.github.pixelrick420.papyrus.viewer.readTextString
 import io.github.pixelrick420.papyrus.viewer.textCacheKey
 import kotlinx.coroutines.CancellationException
@@ -102,8 +105,12 @@ class DocumentTextExtractor(
             return ExtractedText("", TextIndexState.SKIPPED)
         }
         // mediaDir = null: a deck's words are indexed, not its pictures.
-        val slides = SlideTextExtractor().extract { openStream(uri) }
-        return indexable(slides.joinToString("\n"))
+        val pages = SlideTextIndex.indexPages(
+            open = { openStream(uri) },
+            measurer = PaintTextMeasurer(FontCatalog(context.assets)),
+            newParserFactory = { Xml.newPullParser() },
+        )
+        return indexable(pages.joinToString("\n"))
     }
 
     private fun readEpub(uri: Uri): ExtractedText {
