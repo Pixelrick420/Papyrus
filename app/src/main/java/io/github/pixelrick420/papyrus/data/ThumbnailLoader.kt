@@ -102,7 +102,8 @@ class ThumbnailLoader(private val context: Context) {
         DocumentFormat.MARKDOWN, DocumentFormat.TEXT, DocumentFormat.CODE, DocumentFormat.CSV -> renderText(document.uri.toUri())
         DocumentFormat.DOCX, DocumentFormat.ODT, DocumentFormat.DOC -> renderOffice(document)
         DocumentFormat.EPUB -> renderEpub(document.uri.toUri())
-        DocumentFormat.PPTX, DocumentFormat.UNKNOWN -> null
+        DocumentFormat.PPTX -> renderPptx(document.uri.toUri())
+        DocumentFormat.UNKNOWN -> null
     }
 
     /** Closes PdfPageSource right after page 1: holding one per row exhausts the open-PD budget. */
@@ -151,6 +152,17 @@ class ThumbnailLoader(private val context: Context) {
         val extractor = EpubExtractor(mediaDir = null, blockBudget = THUMBNAIL_BLOCK_BUDGET)
         extractor.readCover(open)?.let { bytes -> decodeCover(bytes)?.let { return it } }
         return drawTextTile(previewLines(extractor.extract(open, previewChapters = EPUB_PREVIEW_CHAPTERS).blocks))
+    }
+
+    private suspend fun renderPptx(uri: Uri): Bitmap? = try {
+        kotlinx.coroutines.withTimeoutOrNull(PPTX_THUMBNAIL_BUDGET_MS) {
+            io.github.pixelrick420.papyrus.viewer.pptx.SlidePageSource.open(context, uri).use { source ->
+                val page = source.render(0, THUMBNAIL_PDF_WIDTH_PX) ?: return@withTimeoutOrNull null
+                page.scale(THUMBNAIL_WIDTH_PX, THUMBNAIL_HEIGHT_PX, true)
+            }
+        }
+    } catch (_: Exception) {
+        null
     }
 
     // Never holds the cover at full size: refuses a picture claiming more than [MAX_COVER_PIXELS], subsamples, then fills the tile anchored at the top so a tall cover keeps its title.
@@ -232,6 +244,7 @@ class ThumbnailLoader(private val context: Context) {
         private const val MAX_THUMBNAIL_SOURCE_BYTES = 16 * 1024
         private const val EPUB_PREVIEW_CHAPTERS = 3
         private const val MAX_CONCURRENT_RENDERS = 2
+        private const val PPTX_THUMBNAIL_BUDGET_MS = 5_000L
 
         /** Pixels a cover may claim before it is not worth decoding for a 132 by 176 tile. */
         private const val MAX_COVER_PIXELS = 40L * 1000 * 1000
