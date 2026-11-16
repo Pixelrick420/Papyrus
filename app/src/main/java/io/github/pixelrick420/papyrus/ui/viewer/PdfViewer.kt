@@ -26,8 +26,10 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -123,6 +125,7 @@ internal fun PdfViewer(
     @StringRes pageDescriptionRes: Int = R.string.cd_pdf_page,
     @StringRes pageWithTextDescriptionRes: Int = R.string.cd_pdf_page_with_text,
     pageTitles: List<String> = emptyList(),
+    hiddenPages: Set<Int> = emptySet(),
 ) {
     val restoreTarget = rememberRestoredTarget(LocationKind.PAGE, source.pageCount, position)
     val listState = rememberLazyListState(initialFirstVisibleItemIndex = restoreTarget?.unit ?: 0)
@@ -267,6 +270,7 @@ internal fun PdfViewer(
                             pageDescriptionRes = pageDescriptionRes,
                             pageWithTextDescriptionRes = pageWithTextDescriptionRes,
                             pageTitle = pageTitles.getOrNull(index).orEmpty(),
+                            isHidden = index in hiddenPages,
                         )
                     }
                 }
@@ -332,6 +336,7 @@ private fun PdfPage(
     @StringRes pageDescriptionRes: Int,
     @StringRes pageWithTextDescriptionRes: Int,
     pageTitle: String,
+    isHidden: Boolean,
 ) {
     // What is shown at the committed zoom, within the pixel budget: the box below keeps the shown width,
     // and the bitmap is scaled to it, so a capped page is softer rather than missing.
@@ -524,6 +529,20 @@ private fun PdfPage(
             val selectionColor = MaterialTheme.colorScheme.primary
             Canvas(Modifier.fillMaxSize()) {
                 drawSelection(selectionRects, handles.value, selectionColor, handleRadius)
+            }
+        }
+        if (isHidden) {
+            Surface(
+                modifier = Modifier.padding(8.dp),
+                shape = RoundedCornerShape(4.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            ) {
+                Text(
+                    text = stringResource(R.string.viewer_slide_hidden),
+                    style = MaterialTheme.typography.labelSmall,
+                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                )
             }
         }
         // No rectangles to show (past the extractor's budget), so a border is the only signal. That

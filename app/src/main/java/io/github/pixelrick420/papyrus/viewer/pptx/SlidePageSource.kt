@@ -44,6 +44,7 @@ internal class SlidePageSource private constructor(
     private val limits: PptxLimits,
     private val renderer: SlideRenderer,
     val textIndex: SlideTextIndex,
+    val hidden: Set<Int> = emptySet(),
 ) : PageBitmapSource {
 
     override val pageCount: Int = slides.size
@@ -240,6 +241,7 @@ internal class SlidePageSource private constructor(
                 limits = limits,
                 renderer = SlideRenderer(presets, limits),
                 textIndex = textIndex,
+                hidden = scenes.slides.mapIndexedNotNull { index, slide -> index.takeIf { slide.hidden } }.toSet(),
             ).also { synchronized(openSources) { openSources.add(it) } }
         }
 

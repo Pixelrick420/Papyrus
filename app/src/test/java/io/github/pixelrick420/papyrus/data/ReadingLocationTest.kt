@@ -17,13 +17,14 @@ class ReadingLocationTest {
     @Test
     fun `every format with a viewer has a kind and only UNKNOWN has none`() {
         for (format in DocumentFormat.entries) {
-            if (format == DocumentFormat.UNKNOWN || format == DocumentFormat.PPTX) assertNull(LocationKind.forFormat(format)) else assertNotNull("$format", LocationKind.forFormat(format))
+            if (format == DocumentFormat.UNKNOWN) assertNull(LocationKind.forFormat(format)) else assertNotNull("$format", LocationKind.forFormat(format))
         }
     }
 
     @Test
     fun `formats map to the anchor that survives zoom and re-wrap`() {
         assertEquals(LocationKind.PAGE, LocationKind.forFormat(DocumentFormat.PDF))
+        assertEquals(LocationKind.PAGE, LocationKind.forFormat(DocumentFormat.PPTX))
         assertEquals(LocationKind.CHAR, LocationKind.forFormat(DocumentFormat.MARKDOWN))
         assertEquals(LocationKind.CHUNK, LocationKind.forFormat(DocumentFormat.TEXT))
         assertEquals(LocationKind.CHUNK, LocationKind.forFormat(DocumentFormat.CODE))

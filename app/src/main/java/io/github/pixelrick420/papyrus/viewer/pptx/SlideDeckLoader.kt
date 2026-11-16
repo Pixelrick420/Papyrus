@@ -72,7 +72,7 @@ internal object SlideDeckLoader {
             source = source,
             aspectRatios = aspectRatios,
             outline = info?.let { slideOutline(it, titles) }.orEmpty(),
-            hidden = emptySet(),
+            hidden = source.hidden,
             incomplete = false,
             titles = titles,
             slideTexts = texts,

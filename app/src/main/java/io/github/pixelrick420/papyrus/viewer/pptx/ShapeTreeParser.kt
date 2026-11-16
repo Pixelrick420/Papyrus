@@ -4,7 +4,12 @@ import android.util.Xml
 import org.xmlpull.v1.XmlPullParser
 
 /** One slide's resolved nodes, and whether anything in it had to be dropped. */
-internal class SlideScene(val part: String, val scene: Scene, val incomplete: Boolean)
+internal class SlideScene(
+    val part: String,
+    val scene: Scene,
+    val incomplete: Boolean,
+    val hidden: Boolean = false,
+)
 
 /** A shape tree read off one part, before inheritance is resolved. */
 internal class ParsedShapeTree(
@@ -12,6 +17,7 @@ internal class ParsedShapeTree(
     val background: XNode?,
     val showMasterShapes: Boolean,
     val incomplete: Boolean,
+    val hidden: Boolean,
 )
 
 /** A deck's slides in presentation order; a dropped slide or shape marks the document incomplete. */
@@ -29,7 +35,7 @@ internal class ShapeTreeParser(
 
     fun parse(pkg: PptxPackage, part: String, size: SceneSize): SlideScene {
         val tree = parsePart(pkg, part)
-        return SlideScene(part, Scene(size, tree.nodes), tree.incomplete)
+        return SlideScene(part, Scene(size, tree.nodes), tree.incomplete, tree.hidden)
     }
 
     /** Any part that holds a `p:spTree`: a slide, a layout, a master, or a notes page. */
@@ -37,7 +43,7 @@ internal class ShapeTreeParser(
         val bytes = pkg.part(part) ?: throw PptxFormatException("$part is missing")
         val reading = SlideReading(reader.open(bytes.inputStream(), part), part, limits)
         val nodes = reading.read(root)
-        return ParsedShapeTree(nodes, reading.background, reading.showMasterShapes, reading.incomplete)
+        return ParsedShapeTree(nodes, reading.background, reading.showMasterShapes, reading.incomplete, reading.hidden)
     }
 
     fun parseAll(pkg: PptxPackage, presentation: PresentationInfo): DeckScenes {
@@ -81,6 +87,10 @@ private class SlideReading(
     var showMasterShapes = true
         private set
 
+    /** A slide hidden in the editor still renders; the viewer marks it instead of dropping it. */
+    var hidden = false
+        private set
+
     private var nodes = 0
 
     /** Set when the cursor itself can no longer be trusted, so the slide stops at the shapes already read. */
@@ -89,6 +99,7 @@ private class SlideReading(
     fun read(root: String = "sld"): List<SceneNode> {
         requireRoot(root)
         showMasterShapes = !isOff(cursor.attribute("showMasterSp"))
+        hidden = isOff(cursor.attribute("show"))
         if (!seekShapeTree()) throw PptxFormatException("$part has no shape tree")
         return readNodes()
     }
@@ -315,7 +326,8 @@ private fun XNode?.number(name: String): Double? =
 
 private fun isOn(value: String?): Boolean = value == "1" || value.equals("true", ignoreCase = true)
 
-private fun isOff(value: String?): Boolean = value == "0" || value.equals("false", ignoreCase = true)
+private fun isOff(value: String?): Boolean =
+    value == "0" || value.equals("false", ignoreCase = true) || value.equals("off", ignoreCase = true)
 
 private fun hyperlinkOf(props: XNode?): SceneHyperlink? {
     val click = props?.child(OoxmlNamespace.A, "hlinkClick") ?: return null

@@ -62,7 +62,7 @@ internal class StyleResolver(
             addAll(resolveNodes(tree.nodes, context, number, budget, 0))
         }
         val background = backgroundOf(tree.background, context)
-        return SlideScene(part, Scene(size, nodes, background), tree.incomplete || budget.truncated)
+        return SlideScene(part, Scene(size, nodes, background), tree.incomplete || budget.truncated, tree.hidden)
     }
 
     private fun resolveNodes(

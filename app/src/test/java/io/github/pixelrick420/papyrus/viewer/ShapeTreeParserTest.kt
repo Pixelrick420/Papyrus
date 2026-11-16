@@ -257,6 +257,19 @@ class ShapeTreeParserTest {
     }
 
     @Test
+    fun `a slide hidden in the editor is marked and still parsed`() {
+        val scenes = parseDeck(
+            pptx {
+                slide { shape(Preset.RECT, 0, 0, 1, 1, name = "Shown") }
+                slide(hidden = true) { shape(Preset.RECT, 0, 0, 1, 1, name = "Hidden") }
+            },
+        )
+
+        assertEquals(listOf(false, true), scenes.slides.map { it.hidden })
+        assertEquals(listOf("Hidden"), scenes.slides[1].scene.nodes.map { it.name })
+    }
+
+    @Test
     fun `transitions and timing add no nodes`() {
         val tail = """<p:transition><p:fade/></p:transition>""" +
             """<p:timing><p:tnLst><p:par><p:cTn id="1"/></p:par></p:tnLst></p:timing>"""
