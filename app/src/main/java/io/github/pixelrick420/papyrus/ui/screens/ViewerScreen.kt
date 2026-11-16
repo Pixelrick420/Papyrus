@@ -278,7 +278,7 @@ fun ViewerScreen(
         arrival?.offset?.let { jump = ViewerJump(ReadingLocation(LocationKind.CHAR, it)) }
     }
     val findAvailable = when (state.content) {
-        is ViewerContent.Pdf, is ViewerContent.PlainText, is ViewerContent.Office, is ViewerContent.Markdown -> true
+        is ViewerContent.Pdf, is ViewerContent.PlainText, is ViewerContent.Office, is ViewerContent.Markdown, is ViewerContent.Slides -> true
         else -> false
     }
     // A bookmark needs a place on screen (the same surfaces as find) and a library row to hang from, which a
@@ -617,6 +617,10 @@ fun ViewerScreen(
                             loadLinks = { index -> content.links.getOrNull(index).orEmpty() },
                             onLinkTarget = followPdfLink,
                             position = position,
+                            speaking = spoken,
+                            ttsLocked = voiceLocksScroll,
+                            highlightAlpha = highlightAlpha,
+                            onlyActive = arrival != null,
                             pageIndicatorRes = R.string.viewer_slide_indicator,
                             pageDescriptionRes = R.string.cd_slide_page,
                             pageWithTextDescriptionRes = R.string.cd_slide_page_with_text,
