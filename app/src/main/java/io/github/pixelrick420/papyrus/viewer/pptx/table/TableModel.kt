@@ -4,6 +4,7 @@ import io.github.pixelrick420.papyrus.viewer.pptx.ScenePaint
 import io.github.pixelrick420.papyrus.viewer.pptx.SceneRect
 import io.github.pixelrick420.papyrus.viewer.pptx.XNode
 import io.github.pixelrick420.papyrus.viewer.pptx.text.TextBody
+import io.github.pixelrick420.papyrus.viewer.pptx.text.TextFrameLayout
 
 internal data class TableInsets(
     val left: Double = 91_440.0,
@@ -50,7 +51,8 @@ internal class TableCell(
     val horizontalMerge: Boolean = false,
     val verticalMerge: Boolean = false,
     var properties: TableCellProperties = TableCellProperties(),
-    var laidOutText: TextBody? = null,
+    var resolvedText: TextBody? = null,
+    var textLayout: TextFrameLayout? = null,
 )
 
 internal class TableRow(
@@ -69,8 +71,17 @@ internal class PptxTable(
     var layout: TableLayoutResult? = null,
 )
 
+internal class ResolvedTableBorder(
+    val x1: Double,
+    val y1: Double,
+    val x2: Double,
+    val y2: Double,
+    val border: TableBorder,
+)
+
 internal class TableLayoutResult(
     val rowHeightsEmu: List<Double>,
     val totalHeightEmu: Double,
     val cellFrames: Map<Pair<Int, Int>, SceneRect>,
+    val resolvedBorders: List<ResolvedTableBorder> = emptyList(),
 )

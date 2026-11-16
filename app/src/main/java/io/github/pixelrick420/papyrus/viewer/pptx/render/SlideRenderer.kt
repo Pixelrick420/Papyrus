@@ -17,6 +17,7 @@ import io.github.pixelrick420.papyrus.viewer.pptx.RadialGradient
 import io.github.pixelrick420.papyrus.viewer.pptx.Scene
 import io.github.pixelrick420.papyrus.viewer.pptx.SceneConnector
 import io.github.pixelrick420.papyrus.viewer.pptx.SceneFormat
+import io.github.pixelrick420.papyrus.viewer.pptx.SceneGraphicFrame
 import io.github.pixelrick420.papyrus.viewer.pptx.SceneGroup
 import io.github.pixelrick420.papyrus.viewer.pptx.SceneLine
 import io.github.pixelrick420.papyrus.viewer.pptx.SceneNode
@@ -109,6 +110,10 @@ internal class SlideRenderer(
             picture(node, out, pictures)
             true
         }
+        is SceneGraphicFrame -> {
+            graphicFrame(node, out)
+            true
+        }
         is SceneGroup -> group(node, out, pictures, deadline)
         else -> true
     }
@@ -196,6 +201,47 @@ internal class SlideRenderer(
             dst = RectF(0f, 0f, frame.width.toFloat(), frame.height.toFloat()),
             effects = ImageEffects(alpha = source.alpha.toFloat(), clip = maskOf(picture)),
         )
+        out += DrawOp.Restore
+    }
+
+    private fun graphicFrame(frame: SceneGraphicFrame, out: MutableList<DrawOp>) {
+        val table = frame.table ?: return
+        val layout = table.layout ?: return
+        val origin = frame.frame ?: return
+        out += DrawOp.Save
+        out += DrawOp.Concat(Affine.translate(origin.x, origin.y))
+        val rows = table.rows
+        val cols = table.grid.columnWidths.size
+        for (r in rows.indices) {
+            val row = rows[r]
+            for (c in 0 until minOf(row.cells.size, cols)) {
+                val cell = row.cells[c]
+                if (cell.horizontalMerge || cell.verticalMerge) continue
+                val rect = layout.cellFrames[r to c] ?: continue
+                val fill = cell.properties.fill
+                val paint = fill?.let { paintOf(it, rect) }
+                if (paint != null) {
+                    out += DrawOp.FillPath(
+                        PathData.rect(RectF(rect.x.toFloat(), rect.y.toFloat(), (rect.x + rect.width).toFloat(), (rect.y + rect.height).toFloat())),
+                        paint,
+                    )
+                }
+            }
+        }
+        for (border in layout.resolvedBorders) {
+            val paint = border.border.paint?.let { paintOf(it, origin) } ?: continue
+            val width = border.border.widthEmu.toFloat()
+            if (width <= 0f) continue
+            out += DrawOp.StrokePath(
+                PathData(
+                    listOf(
+                        PathSegment.MoveTo(border.x1.toFloat(), border.y1.toFloat()),
+                        PathSegment.LineTo(border.x2.toFloat(), border.y2.toFloat()),
+                    ),
+                ),
+                StrokeSpec(paint = paint, width = width),
+            )
+        }
         out += DrawOp.Restore
     }
 

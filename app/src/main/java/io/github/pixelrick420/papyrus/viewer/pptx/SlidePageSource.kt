@@ -12,6 +12,11 @@ import io.github.pixelrick420.papyrus.viewer.pptx.render.SlideImage
 import io.github.pixelrick420.papyrus.viewer.pptx.render.SlidePictureResolver
 import io.github.pixelrick420.papyrus.viewer.pptx.render.SlideRenderer
 import io.github.pixelrick420.papyrus.viewer.pptx.render.SoftwareCanvas
+import io.github.pixelrick420.papyrus.viewer.pptx.table.TableLayout
+import io.github.pixelrick420.papyrus.viewer.pptx.text.FontCatalog
+import io.github.pixelrick420.papyrus.viewer.pptx.text.PaintTextMeasurer
+import io.github.pixelrick420.papyrus.viewer.pptx.text.TextLayoutEngine
+import io.github.pixelrick420.papyrus.viewer.pptx.text.TextStyleResolver
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -173,6 +178,7 @@ internal class SlidePageSource private constructor(
                     },
                     mediaDir = dir,
                     presets = presets(context),
+                    assets = context.assets,
                 )
             } catch (error: Exception) {
                 dir.deleteRecursively()
@@ -183,7 +189,7 @@ internal class SlidePageSource private constructor(
         suspend fun openFile(context: Context, file: File): SlidePageSource = withContext(Dispatchers.IO) {
             val dir = mediaDir(context)
             try {
-                openStream(open = { file.inputStream() }, mediaDir = dir, presets = presets(context))
+                openStream(open = { file.inputStream() }, mediaDir = dir, presets = presets(context), assets = context.assets)
             } catch (error: Exception) {
                 dir.deleteRecursively()
                 throw error
@@ -196,12 +202,18 @@ internal class SlidePageSource private constructor(
             presets: PresetGeometry,
             limits: PptxLimits = PptxLimits(),
             newParserFactory: () -> XmlPullParser = { Xml.newPullParser() },
+            assets: android.content.res.AssetManager? = null,
         ): SlidePageSource = withContext(Dispatchers.IO) {
             val pkg = PptxPackage.read(open, mediaDir, limits, newParserFactory)
             val main = pkg.mainPart
             val bytes = pkg.part(main) ?: throw PptxFormatException("$main is missing")
             val presentation = PresentationParser(newParserFactory, limits).parse(bytes, main)
             val scenes = StyleResolver(newParserFactory, limits).resolveAll(pkg, presentation)
+            if (assets != null) {
+                val resolver = TextStyleResolver(limits)
+                val engine = TextLayoutEngine(PaintTextMeasurer(FontCatalog(assets)))
+                for (slide in scenes.slides) TableLayout.layout(slide.scene, resolver, engine)
+            }
             SlidePageSource(
                 pkg = pkg,
                 slides = scenes.slides,
