@@ -594,6 +594,14 @@ fun ViewerScreen(
                             direction = content.direction,
                             pageStarts = content.pageStarts,
                         )
+                        is ViewerContent.Slides -> PdfViewer(
+                            source = content.source,
+                            aspectRatios = content.aspectRatios,
+                            zoom = zoom,
+                            selectionState = selectionState,
+                            nightMode = settings.nightMode,
+                            position = position,
+                        )
                         // The dialog covers the page; only an in-flight retry is worth showing behind it.
                         is ViewerContent.NeedsPassword ->
                             if (content.checking) CircularProgressIndicator(Modifier.align(Alignment.Center))

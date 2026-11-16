@@ -160,6 +160,16 @@ sealed interface ViewerContent {
         val direction: BlockDirection = BlockDirection.LTR,
         val pageStarts: Set<Int> = emptySet(),
     ) : ViewerContent
+    data class Slides(
+        val source: io.github.pixelrick420.papyrus.viewer.PageBitmapSource,
+        val aspectRatios: List<Float>,
+        val outline: List<OutlineEntry>,
+        val hidden: Set<Int>,
+        val incomplete: Boolean,
+        val titles: List<String> = emptyList(),
+        val slideSize: String? = null,
+        val fontSubstitutions: List<String> = emptyList(),
+    ) : ViewerContent
     data class NeedsPassword(val incorrect: Boolean = false, val checking: Boolean = false) : ViewerContent
     data class Failed(val message: UiText) : ViewerContent
 }
@@ -268,6 +278,7 @@ internal fun ViewerContent.unitCount(): Int = when (this) {
     is ViewerContent.Markdown -> text.length
     is ViewerContent.PlainText -> chunks.size
     is ViewerContent.Office -> blocks.size
+    is ViewerContent.Slides -> source.pageCount
     else -> 0
 }
 
@@ -277,6 +288,7 @@ internal fun ViewerContent.hasSpeakableText(): Boolean? = when (this) {
     is ViewerContent.Markdown -> text.isNotBlank()
     // The same units the voice is made of, so a document of images with no alt text says no.
     is ViewerContent.Office -> TtsDocumentSource.unitsFromOffice(blocks).isNotEmpty()
+    is ViewerContent.Slides -> titles.any { it.isNotBlank() }
     else -> null
 }
 
