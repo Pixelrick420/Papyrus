@@ -56,6 +56,9 @@ fun FileInfoSheet(
     document: DocumentEntity,
     pageCount: Int?,
     mimeType: String?,
+    slideCount: Int? = null,
+    slideSize: String? = null,
+    fontSubstitutions: List<String> = emptyList(),
     onDismiss: () -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState()
@@ -94,6 +97,20 @@ fun FileInfoSheet(
                 InfoRow(
                     stringResource(R.string.viewer_info_pages),
                     stringResource(R.string.viewer_info_pages_value, pageCount),
+                )
+            }
+            if (slideCount != null) {
+                InfoRow(
+                    stringResource(R.string.viewer_info_slides),
+                    stringResource(R.string.viewer_info_slides_value, slideCount),
+                )
+            }
+            slideSize?.let { InfoRow(stringResource(R.string.viewer_info_slide_size), it) }
+            if (slideCount != null) {
+                InfoRow(
+                    stringResource(R.string.viewer_info_fonts),
+                    if (fontSubstitutions.isEmpty()) stringResource(R.string.viewer_info_fonts_none)
+                    else fontSubstitutions.joinToString(", "),
                 )
             }
             InfoRow(

@@ -676,14 +676,14 @@ fun ViewerScreen(
         val mimeType by produceState<String?>(null, infoDocument) {
             value = viewModel.mimeType(infoDocument)
         }
+        val slideContent = state.content as? ViewerContent.Slides
         FileInfoSheet(
             document = infoDocument,
-            pageCount = when (val c = state.content) {
-                is ViewerContent.Pdf -> c.source.pageCount
-                is ViewerContent.Slides -> c.source.pageCount
-                else -> null
-            },
+            pageCount = (state.content as? ViewerContent.Pdf)?.source?.pageCount,
             mimeType = mimeType,
+            slideCount = slideContent?.source?.pageCount,
+            slideSize = slideContent?.slideSize,
+            fontSubstitutions = slideContent?.fontSubstitutions.orEmpty(),
             onDismiss = { infoOpen = false },
         )
     }
