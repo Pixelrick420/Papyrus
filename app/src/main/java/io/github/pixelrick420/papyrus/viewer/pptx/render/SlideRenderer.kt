@@ -114,7 +114,6 @@ internal class SlideRenderer(
             true
         }
         is SceneGroup -> group(scene, node, out, pictures, deadline)
-        else -> true
     }
 
     private fun background(scene: Scene, out: MutableList<DrawOp>) {
