@@ -20,6 +20,7 @@ internal object OoxmlNamespace {
     const val R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
     const val P14 = "http://schemas.microsoft.com/office/powerpoint/2010/main"
     const val ADEC = "http://schemas.microsoft.com/office/drawing/2017/decorative"
+    const val ASVG = "http://schemas.microsoft.com/office/drawing/2016/SVG/main"
 
     val CORE: Set<String> = setOf(MC, P, A, R)
 }

@@ -116,13 +116,23 @@ internal object PictureFills {
     fun read(blipFill: XNode?, part: String? = null): PictureSource? {
         if (blipFill == null) return null
         val blip = blipFill.child(OoxmlNamespace.A, "blip")
+        val relationshipId = svgPngRelationshipOf(blip) ?: blip?.attribute(OoxmlNamespace.R, "embed")
         return PictureSource(
-            relationshipId = blip?.attribute(OoxmlNamespace.R, "embed"),
+            relationshipId = relationshipId,
             alpha = alphaOf(blip),
             crop = cropOf(blipFill.child(OoxmlNamespace.A, "srcRect")),
             fill = fillOf(blipFill),
             part = part,
         )
+    }
+
+    private fun svgPngRelationshipOf(blip: XNode?): String? {
+        val extLst = blip?.child(OoxmlNamespace.A, "extLst") ?: return null
+        for (ext in extLst.childrenOf(OoxmlNamespace.A, "ext")) {
+            val svgBlip = ext.child(OoxmlNamespace.ASVG, "svgBlip") ?: continue
+            svgBlip.attribute(OoxmlNamespace.R, "embed")?.let { return it }
+        }
+        return null
     }
 
     private fun fillOf(blipFill: XNode): PictureFill {
