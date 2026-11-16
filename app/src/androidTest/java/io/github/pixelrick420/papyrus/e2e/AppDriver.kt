@@ -25,6 +25,8 @@ internal class AppDriver {
 
     fun desc(value: String): BySelector = By.pkg(packageName).desc(value)
 
+    fun descContains(value: String): BySelector = By.pkg(packageName).descContains(value)
+
     fun descStartsWith(value: String): BySelector = By.pkg(packageName).descStartsWith(value)
 
     fun label(value: String): BySelector = By.pkg(packageName).clazz(TEXT_VIEW).textContains(value)

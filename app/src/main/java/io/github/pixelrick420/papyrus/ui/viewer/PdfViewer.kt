@@ -427,8 +427,9 @@ private fun PdfPage(
     LaunchedEffect(selectionState, index, span != null) {
         if (span != null) selectionState.ensureText(index)
     }
-    LaunchedEffect(selectionState, index, readsPages) {
-        if (readsPages) selectionState.ensureText(index)
+    // A slide's text is already in memory, so it is read for semantics even without a screen reader.
+    LaunchedEffect(selectionState, index, readsPages, isSlide) {
+        if (readsPages || isSlide) selectionState.ensureText(index)
     }
     val selectionRects = remember(span, pageText) {
         if (span != null && pageText != null) pageText.selectionRects(span.from, span.to) else emptyList()
