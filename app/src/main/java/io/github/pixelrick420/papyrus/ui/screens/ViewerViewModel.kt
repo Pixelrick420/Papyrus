@@ -1316,8 +1316,21 @@ class ViewerViewModel(
             is ViewerContent.Markdown ->
                 FindResult(occurrences = countOccurrences(content.text, query))
             is ViewerContent.Pdf -> findPdfPages(query, warnOverBudget)
+            is ViewerContent.Slides -> findSlidePages(content.slidePages, query)
             else -> FindResult()
         }
+    }
+
+    private fun findSlidePages(pages: List<PdfPageText>, query: String): FindResult {
+        val hits = ArrayList<Int>()
+        val pageMatches = HashMap<Int, List<List<NormRect>>>()
+        for ((index, page) in pages.withIndex()) {
+            val match = page.matches(query)
+            if (match.count == 0) continue
+            repeat(match.count) { hits += index }
+            if (match.groups.any { it.isNotEmpty() }) pageMatches[index] = match.groups
+        }
+        return FindResult(hits = hits, pageMatches = pageMatches)
     }
 
     // The platform engine's own search answers first: it reads the page it already renders, so even a file too large to parse again stays searchable.
