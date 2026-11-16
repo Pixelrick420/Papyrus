@@ -249,6 +249,21 @@ internal class TextUnderline(
     }
 }
 
+/** An `a:ln` on a run: a stroke that follows the glyph outlines. */
+internal class TextOutline(
+    /** Width in points; a missing `w` takes the DrawingML default. */
+    val widthPt: Double,
+    val paint: ScenePaint,
+)
+
+/** An `a:outerShdw` on a run: blur and offset in points, direction in degrees clockwise. */
+internal class TextShadow(
+    val blurPt: Double,
+    val distancePt: Double,
+    val directionDeg: Double,
+    val color: Rgba,
+)
+
 /** An `a:hlinkClick` on a run, with the theme's link colours resolved. */
 internal class TextHyperlink(
     val relationshipId: String? = null,
@@ -271,10 +286,10 @@ internal class TextRunProperties(
     /** Text at or below this size in points is kerned; 0 disables kerning. */
     val kerningPt: Double = 0.0,
     val fill: ScenePaint? = null,
-    /** The `a:ln` outline, held whole for the paint pass. */
-    val outline: XNode? = null,
-    /** The `effectLst` shadow or glow, held whole for the paint pass. */
-    val effects: XNode? = null,
+    /** The `a:ln` glyph outline, already resolved to a width and paint. */
+    val outline: TextOutline? = null,
+    /** The `a:outerShdw` text shadow, already resolved to points and a colour. */
+    val shadow: TextShadow? = null,
     val highlight: Rgba? = null,
     val latinTypeface: String? = null,
     val eastAsianTypeface: String? = null,

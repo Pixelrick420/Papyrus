@@ -99,6 +99,9 @@ internal data class TextRule(
     val paint: PaintSpec? = null,
 )
 
+/** A stroke that follows a run's glyphs, with [width] in the run's own units. */
+internal data class TextOutlineSpec(val width: Float, val paint: PaintSpec)
+
 internal data class GlyphRun(
     val text: String,
     val x: Float,
@@ -111,6 +114,8 @@ internal data class GlyphRun(
     val letterSpacing: Float = 0f,
     val kerning: Boolean = false,
     val ligatures: Boolean = false,
+    val outline: TextOutlineSpec? = null,
+    val shadow: ShadowSpec? = null,
     val rules: List<TextRule> = emptyList(),
 )
 

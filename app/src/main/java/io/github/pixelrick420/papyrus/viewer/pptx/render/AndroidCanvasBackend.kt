@@ -63,13 +63,26 @@ internal class AndroidCanvasBackend(
     }
 
     override fun drawGlyphRun(run: GlyphRun) {
-        val paint = paintOf(run.paint)
-        paint.textSize = run.size
-        paint.typeface = Typeface.create(run.family, run.typefaceStyle())
-        paint.letterSpacing = run.letterSpacing
-        paint.fontFeatureSettings = featureSettings(run)
+        val paint = textPaint(run.paint, run)
+        run.shadow?.let { paint.setShadowLayer(it.blur, it.dx, it.dy, it.color.argb) }
         canvas.drawText(run.text, run.x, run.y, paint)
+        run.outline?.let { outline ->
+            val path = Path()
+            paint.getTextPath(run.text, 0, run.text.length, run.x, run.y, path)
+            val stroke = textPaint(outline.paint, run)
+            stroke.style = Paint.Style.STROKE
+            stroke.strokeWidth = outline.width
+            stroke.strokeJoin = Paint.Join.ROUND
+            canvas.drawPath(path, stroke)
+        }
         run.rules.forEach { drawTextRule(it, run) }
+    }
+
+    private fun textPaint(spec: PaintSpec, run: GlyphRun): Paint = paintOf(spec).apply {
+        textSize = run.size
+        typeface = Typeface.create(run.family, run.typefaceStyle())
+        letterSpacing = run.letterSpacing
+        fontFeatureSettings = featureSettings(run)
     }
 
     private fun drawTextRule(rule: TextRule, run: GlyphRun) {

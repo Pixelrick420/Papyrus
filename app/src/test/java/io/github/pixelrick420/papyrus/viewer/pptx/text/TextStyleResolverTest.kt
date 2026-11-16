@@ -208,8 +208,84 @@ class TextStyleResolverTest {
         assertEquals("MS Gothic", run.eastAsianTypeface)
         assertEquals("Arial", run.complexScriptTypeface)
         assertEquals("Wingdings", run.symbolTypeface)
-        assertEquals(12700.0, run.outline!!.attribute("w")!!.toDouble(), 0.0)
-        assertEquals("outerShdw", run.effects!!.children.single().name.localName)
+        assertEquals(1.0, run.outline!!.widthPt, 0.0)
+        assertEquals(Rgba(0, 255, 0), (run.outline!!.paint as ScenePaint.Solid).color)
+        assertEquals(5.0, run.shadow!!.blurPt, 0.0)
+        assertEquals(0.0, run.shadow!!.distancePt, 0.0)
+        assertEquals(Rgba.BLACK, run.shadow!!.color)
+    }
+
+    @Test
+    fun `a text outline takes its width, gradient paint and direction`() {
+        val (theme, colors) = theme()
+        val run = resolver.resolve(
+            body(
+                """<a:p><a:r><a:rPr><a:ln w="25400">""" +
+                    """<a:gradFill><a:gsLst><a:gs pos="0"><a:srgbClr val="FF0000"/></a:gs>""" +
+                    """<a:gs pos="100000"><a:srgbClr val="0000FF"/></a:gs></a:gsLst>""" +
+                    """<a:lin ang="5400000"/></a:gradFill>""" +
+                    """</a:ln></a:rPr><a:t>x</a:t></a:r></a:p>""",
+            ),
+            TextStyleSources(theme = theme, colors = colors),
+        ).paragraphs.single().runs.single().properties
+
+        val outline = run.outline!!
+        assertEquals(2.0, outline.widthPt, 0.0)
+        assertEquals(2, (outline.paint as ScenePaint.Linear).gradient.stops.size)
+    }
+
+    @Test
+    fun `a text outline with no fill or noFill draws nothing`() {
+        val (theme, colors) = theme()
+        val sources = TextStyleSources(theme = theme, colors = colors)
+
+        val bare = resolver.resolve(
+            body("""<a:p><a:r><a:rPr><a:ln w="12700"/></a:rPr><a:t>x</a:t></a:r></a:p>"""),
+            sources,
+        ).paragraphs.single().runs.single().properties
+        val none = resolver.resolve(
+            body(
+                """<a:p><a:r><a:rPr><a:ln w="12700"><a:noFill/></a:ln></a:rPr>""" +
+                    """<a:t>x</a:t></a:r></a:p>""",
+            ),
+            sources,
+        ).paragraphs.single().runs.single().properties
+
+        assertNull(bare.outline)
+        assertNull(none.outline)
+    }
+
+    @Test
+    fun `an outer shadow keeps its offset, direction and colour`() {
+        val (theme, colors) = theme()
+        val run = resolver.resolve(
+            body(
+                """<a:p><a:r><a:rPr><a:effectLst><a:outerShdw blurRad="6350" dist="25400" """ +
+                    """dir="2700000"><a:srgbClr val="336699"/></a:outerShdw></a:effectLst></a:rPr>""" +
+                    """<a:t>x</a:t></a:r></a:p>""",
+            ),
+            TextStyleSources(theme = theme, colors = colors),
+        ).paragraphs.single().runs.single().properties
+
+        val shadow = run.shadow!!
+        assertEquals(0.5, shadow.blurPt, 0.0)
+        assertEquals(2.0, shadow.distancePt, 0.0)
+        assertEquals(45.0, shadow.directionDeg, 0.0)
+        assertEquals(Rgba(0x33, 0x66, 0x99), shadow.color)
+    }
+
+    @Test
+    fun `an effect list with no outer shadow adds nothing`() {
+        val (theme, colors) = theme()
+        val run = resolver.resolve(
+            body(
+                """<a:p><a:r><a:rPr><a:effectLst><a:glow rad="6350"/></a:effectLst></a:rPr>""" +
+                    """<a:t>x</a:t></a:r></a:p>""",
+            ),
+            TextStyleSources(theme = theme, colors = colors),
+        ).paragraphs.single().runs.single().properties
+
+        assertNull(run.shadow)
     }
 
     @Test

@@ -242,8 +242,8 @@ internal class TextStyleResolver(private val limits: PptxLimits = PptxLimits()) 
             kerningPt = (attribute("kern")?.toDoubleOrNull() ?: 0.0) / POINTS_PER_UNIT,
             fill = fill?.let { Fills.paintOf(it, null, context.colors, limits.maxGradientStops) }
                 ?: ScenePaint.Solid(context.colors.resolve(ColorValue(ColorSource.Scheme("tx1"))) ?: Rgba.BLACK),
-            outline = child("ln"),
-            effects = child("effectLst") ?: child("effectDag"),
+            outline = outlineOf(child("ln"), context),
+            shadow = shadowOf(child("effectLst") ?: child("effectDag"), context),
             highlight = child("highlight")?.let { highlight ->
                 highlight.children.firstNotNullOfOrNull(ColorModel::valueOf)?.let(context.colors::resolve)
             },
@@ -266,6 +266,30 @@ internal class TextStyleResolver(private val limits: PptxLimits = PptxLimits()) 
             style = style,
             fill = fillElement?.let { Fills.paintOf(it, null, context.colors, limits.maxGradientStops) },
             line = sources.firstNotNullOfOrNull { it.child(OoxmlNamespace.A, "uLn") },
+        )
+    }
+
+    private fun outlineOf(node: XNode?, context: TextStyleSources): TextOutline? {
+        if (node == null || node.child(OoxmlNamespace.A, "noFill") != null) return null
+        val fill = node.children.firstOrNull {
+            it.name.namespace == OoxmlNamespace.A && it.name.localName in FILL_TAGS
+        } ?: return null
+        val paint = Fills.paintOf(fill, null, context.colors, limits.maxGradientStops)
+        if (paint === ScenePaint.None) return null
+        val widthPt = node.attribute("w")?.toDoubleOrNull()?.div(EMU_PER_POINT) ?: DEFAULT_LINE_PT
+        return TextOutline(widthPt, paint)
+    }
+
+    private fun shadowOf(node: XNode?, context: TextStyleSources): TextShadow? {
+        val outer = node?.child(OoxmlNamespace.A, "outerShdw") ?: return null
+        val color = outer.children.firstNotNullOfOrNull(ColorModel::valueOf)
+            ?.let(context.colors::resolve)
+            ?: Rgba.BLACK
+        return TextShadow(
+            blurPt = (outer.attribute("blurRad")?.toDoubleOrNull() ?: 0.0) / EMU_PER_POINT,
+            distancePt = (outer.attribute("dist")?.toDoubleOrNull() ?: 0.0) / EMU_PER_POINT,
+            directionDeg = (outer.attribute("dir")?.toDoubleOrNull() ?: 0.0) / ROTATION_UNITS_PER_DEGREE,
+            color = color,
         )
     }
 
@@ -302,6 +326,10 @@ internal class TextStyleResolver(private val limits: PptxLimits = PptxLimits()) 
         const val BASELINE_UNITS_PER_EM = 100_000.0
 
         const val ROTATION_UNITS_PER_DEGREE = 60_000.0
+
+        const val EMU_PER_POINT = 12_700.0
+
+        const val DEFAULT_LINE_PT = 0.75
 
         const val FULL_SCALE = 1000.0
 
