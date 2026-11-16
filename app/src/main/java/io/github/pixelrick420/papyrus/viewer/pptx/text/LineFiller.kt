@@ -22,10 +22,7 @@ internal class FilledLine(
  * Greedy line filling (plan §4.7 step 5): break at the last opportunity that fits, split a word that
  * is wider than the line with [TextMeasurer.offsetForAdvance], and never wrap when `wrap="none"`.
  */
-internal class LineFiller(
-    private val measurer: TextMeasurer,
-    private val features: FontFeatures = FontFeatures(),
-) {
+internal class LineFiller(private val measurer: TextMeasurer) {
 
     fun fill(
         text: CharSequence,
@@ -119,7 +116,8 @@ internal class LineFiller(
             start,
             limit,
             segment.rtl,
-            features,
+            segment.features,
+            segment.letterSpacingEm,
             available.toFloat(),
         )
         offset = offset.coerceIn(start + 1, end)
@@ -165,7 +163,16 @@ internal class LineFiller(
             } else {
                 val segment = segments.firstOrNull { offset >= it.start && offset < it.end } ?: break
                 val to = minOf(segment.end, end)
-                total += measurer.advance(segment.font, segment.sizePt, text, offset, to, segment.rtl, features)
+                total += measurer.advance(
+                    segment.font,
+                    segment.sizePt,
+                    text,
+                    offset,
+                    to,
+                    segment.rtl,
+                    segment.features,
+                    segment.letterSpacingEm,
+                )
                 offset = to
             }
         }
@@ -183,7 +190,16 @@ internal class LineFiller(
             val from = maxOf(segment.start, start)
             val to = minOf(segment.end, end)
             if (to <= from) continue
-            total += measurer.advance(segment.font, segment.sizePt, text, from, to, segment.rtl, features)
+            total += measurer.advance(
+                segment.font,
+                segment.sizePt,
+                text,
+                from,
+                to,
+                segment.rtl,
+                segment.features,
+                segment.letterSpacingEm,
+            )
         }
         return total
     }

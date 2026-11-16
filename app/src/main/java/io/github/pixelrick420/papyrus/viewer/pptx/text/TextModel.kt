@@ -278,6 +278,16 @@ internal class TextRunProperties(
     val alternativeLanguage: String? = null,
 ) {
 
+    /** PowerPoint kerns only at or below `kern`, and DrawingML exposes no ligature control. */
+    fun features(sizePt: Double): FontFeatures = FontFeatures(
+        kerning = kerningPt > 0.0 && sizePt <= kerningPt,
+        ligatures = false,
+    )
+
+    /** `spc` as a fraction of the em, which is the unit both measuring and drawing are given. */
+    fun letterSpacingEm(sizePt: Double): Float =
+        if (sizePt <= 0.0) 0f else (spacingPt / sizePt).toFloat()
+
     companion object {
         /** The built-in size PowerPoint falls back to when no level in the chain declares one. */
         const val DEFAULT_SIZE_PT = 18.0

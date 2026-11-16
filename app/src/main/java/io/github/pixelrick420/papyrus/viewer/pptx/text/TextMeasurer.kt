@@ -43,6 +43,7 @@ internal interface TextMeasurer {
         end: Int,
         rtl: Boolean,
         features: FontFeatures = FontFeatures(),
+        letterSpacingEm: Float = 0f,
     ): Float
 
     /** The next offset at or past [maxAdvance]; the filler steps back to the last one that fits. */
@@ -54,6 +55,7 @@ internal interface TextMeasurer {
         end: Int,
         rtl: Boolean,
         features: FontFeatures = FontFeatures(),
+        letterSpacingEm: Float = 0f,
         maxAdvance: Float,
     ): Int
 

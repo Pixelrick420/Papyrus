@@ -12,7 +12,7 @@ internal class PaintTextMeasurer(private val catalog: FontCatalog) : TextMeasure
     private val paints = HashMap<String, Paint>()
 
     override fun metrics(font: ResolvedFont, sizePt: Float): FontMetricsPt {
-        val metrics = paint(font, sizePt, FontFeatures()).fontMetrics
+        val metrics = paint(font, sizePt, FontFeatures(), 0f).fontMetrics
         return FontMetricsPt(
             ascentPt = -metrics.ascent.toDouble(),
             descentPt = metrics.descent.toDouble(),
@@ -28,9 +28,11 @@ internal class PaintTextMeasurer(private val catalog: FontCatalog) : TextMeasure
         end: Int,
         rtl: Boolean,
         features: FontFeatures,
+        letterSpacingEm: Float,
     ): Float {
         if (start >= end) return 0f
-        return paint(font, sizePt, features).getRunAdvance(text, start, end, start, end, rtl, end)
+        return paint(font, sizePt, features, letterSpacingEm)
+            .getRunAdvance(text, start, end, start, end, rtl, end)
     }
 
     override fun offsetForAdvance(
@@ -41,29 +43,41 @@ internal class PaintTextMeasurer(private val catalog: FontCatalog) : TextMeasure
         end: Int,
         rtl: Boolean,
         features: FontFeatures,
+        letterSpacingEm: Float,
         maxAdvance: Float,
     ): Int {
         if (start >= end) return start
-        val offset = paint(font, sizePt, features)
+        val offset = paint(font, sizePt, features, letterSpacingEm)
             .getOffsetForAdvance(text, start, end, start, end, rtl, maxAdvance)
         return offset.coerceIn(start, end)
     }
 
     override fun hasGlyph(font: ResolvedFont, codePoint: Int): Boolean =
-        paint(font, GLYPH_SIZE_PT, FontFeatures()).hasGlyph(String(Character.toChars(codePoint)))
+        paint(font, GLYPH_SIZE_PT, FontFeatures(), 0f).hasGlyph(String(Character.toChars(codePoint)))
 
-    private fun paint(font: ResolvedFont, sizePt: Float, features: FontFeatures): Paint =
-        paints.getOrPut("${keyOf(font)}:$sizePt:$features") { buildPaint(font, sizePt, features) }
+    private fun paint(
+        font: ResolvedFont,
+        sizePt: Float,
+        features: FontFeatures,
+        letterSpacingEm: Float,
+    ): Paint = paints.getOrPut("${keyOf(font)}:$sizePt:$features:$letterSpacingEm") {
+        buildPaint(font, sizePt, features, letterSpacingEm)
+    }
 
-    private fun buildPaint(font: ResolvedFont, sizePt: Float, features: FontFeatures): Paint =
-        Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            typeface = typefaceOf(font)
-            textSize = sizePt
-            hinting = Paint.HINTING_OFF
-            isLinearText = true
-            isSubpixelText = true
-            fontFeatureSettings = featureSettings(features)
-        }
+    private fun buildPaint(
+        font: ResolvedFont,
+        sizePt: Float,
+        features: FontFeatures,
+        letterSpacingEm: Float,
+    ): Paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        typeface = typefaceOf(font)
+        textSize = sizePt
+        hinting = Paint.HINTING_OFF
+        isLinearText = true
+        isSubpixelText = true
+        fontFeatureSettings = featureSettings(features)
+        letterSpacing = letterSpacingEm
+    }
 
     private fun typefaceOf(font: ResolvedFont): Typeface = when (val choice = font.choice) {
         is FontChoice.Bundled -> catalog.bundled(choice.font, font.bold, font.italic)
@@ -79,7 +93,8 @@ internal class PaintTextMeasurer(private val catalog: FontCatalog) : TextMeasure
     }
 
     private fun featureSettings(features: FontFeatures): String =
-        "\"kern\" ${if (features.kerning) 1 else 0}, \"liga\" ${if (features.ligatures) 1 else 0}"
+        "\"kern\" ${if (features.kerning) 1 else 0}, " +
+            "\"liga\" ${if (features.ligatures) 1 else 0}, \"clig\" 0"
 
     private companion object {
         // Glyph coverage does not depend on the size, so one size serves every hasGlyph query.

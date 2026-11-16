@@ -31,10 +31,12 @@ internal class AwtTextMeasurer(private val pixelsPerPoint: Double = 1.0) : TextM
         end: Int,
         rtl: Boolean,
         features: FontFeatures,
+        letterSpacingEm: Float,
     ): Float = if (start >= end) {
         0f
     } else {
-        (glyphs(font, sizePt, text, start, end).logicalBounds.width / pixelsPerPoint).toFloat()
+        val base = glyphs(font, sizePt, text, start, end).logicalBounds.width / pixelsPerPoint
+        (base + letterSpacingEm * sizePt * codePoints(text, start, end)).toFloat()
     }
 
     override fun offsetForAdvance(
@@ -45,12 +47,15 @@ internal class AwtTextMeasurer(private val pixelsPerPoint: Double = 1.0) : TextM
         end: Int,
         rtl: Boolean,
         features: FontFeatures,
+        letterSpacingEm: Float,
         maxAdvance: Float,
     ): Int {
         var offset = start
         while (offset < end) {
             offset += Character.charCount(Character.codePointAt(text, offset))
-            if (offset >= end || advance(font, sizePt, text, start, offset, rtl, features) >= maxAdvance) {
+            if (offset >= end ||
+                advance(font, sizePt, text, start, offset, rtl, features, letterSpacingEm) >= maxAdvance
+            ) {
                 return offset
             }
         }
@@ -58,6 +63,16 @@ internal class AwtTextMeasurer(private val pixelsPerPoint: Double = 1.0) : TextM
     }
 
     override fun hasGlyph(font: ResolvedFont, codePoint: Int): Boolean = face(font).canDisplay(codePoint)
+
+    private fun codePoints(text: CharSequence, start: Int, end: Int): Int {
+        var count = 0
+        var offset = start
+        while (offset < end) {
+            offset += Character.charCount(Character.codePointAt(text, offset))
+            count++
+        }
+        return count
+    }
 
     private fun glyphs(font: ResolvedFont, sizePt: Float, text: CharSequence, start: Int, end: Int) =
         sized(font, sizePt).createGlyphVector(context, text.subSequence(start, end).toString())

@@ -375,7 +375,16 @@ internal class TextLayoutEngine(
             val from = maxOf(run.start, start)
             val to = minOf(run.end, end)
             if (to <= from) continue
-            total += measurer.advance(run.font, run.sizePt, text, from, to, run.rtl)
+            total += measurer.advance(
+                run.font,
+                run.sizePt,
+                text,
+                from,
+                to,
+                run.rtl,
+                run.features,
+                run.letterSpacingEm,
+            )
         }
         if (paddingPt != 0.0) {
             for (offset in start until minOf(end, visibleEnd)) {

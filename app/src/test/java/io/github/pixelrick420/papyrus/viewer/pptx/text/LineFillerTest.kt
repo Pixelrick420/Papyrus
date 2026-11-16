@@ -111,7 +111,8 @@ class LineFillerTest {
             end: Int,
             rtl: Boolean,
             features: FontFeatures,
-        ): Float = (start until end).sumOf { widthOf(text[it]) }.toFloat()
+            letterSpacingEm: Float,
+        ): Float = (start until end).sumOf { widthOf(text[it]) + letterSpacingEm * sizePt }.toFloat()
 
         override fun offsetForAdvance(
             font: ResolvedFont,
@@ -121,12 +122,13 @@ class LineFillerTest {
             end: Int,
             rtl: Boolean,
             features: FontFeatures,
+            letterSpacingEm: Float,
             maxAdvance: Float,
         ): Int {
             var width = 0.0
             var offset = start
             while (offset < end) {
-                width += widthOf(text[offset])
+                width += widthOf(text[offset]) + letterSpacingEm * sizePt
                 offset++
                 if (width >= maxAdvance) return offset
             }

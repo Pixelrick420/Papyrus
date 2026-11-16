@@ -21,6 +21,10 @@ internal class ShapedRun(
 ) {
 
     val rtl: Boolean get() = level % 2 == 1
+
+    val features: FontFeatures get() = properties.features(sizePt.toDouble())
+
+    val letterSpacingEm: Float get() = properties.letterSpacingEm(sizePt.toDouble())
 }
 
 /**
