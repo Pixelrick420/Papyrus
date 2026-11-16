@@ -89,10 +89,10 @@ internal class SlideTextIndex(
             return fromDeck(pkg, presentation, scenes.slides, resolver, engine).pages.map { it.text }
         }
 
-        private fun semanticTextOf(scene: Scene): String {
+        internal fun semanticTextOf(scene: Scene): String {
             val parts = ArrayList<String>()
             collectSemanticNodes(scene.nodes, parts)
-            return parts.joinToString(" ").trim()
+            return parts.joinToString(". ") { it.trimEnd('.', '!', '?', ':', ';') }.trim()
         }
 
         private fun collectSemanticNodes(nodes: List<SceneNode>, out: MutableList<String>) {

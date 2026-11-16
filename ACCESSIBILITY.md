@@ -15,6 +15,9 @@ the end-to-end suite, and both are checked by hand with the script at the end.
 - Sheet titles are headings, so TalkBack's heading navigation skips between sections. So are the
   headings inside EPUB, DOCX and ODT documents and inside Markdown.
 - An image that has alt text (EPUB, DOCX, ODT, Markdown) reads that text. An image without it is skipped.
+- A PowerPoint slide is one focus stop: "Slide 3 of 24", the title as a heading, its text in reading
+  order, then its pictures' and charts' alt text. Decorative shapes are skipped and a hidden slide
+  announces "Hidden".
 - The find-in-file match counter is a polite live region: stepping through matches announces
   "2 of 7" without moving focus.
 - A multi-file Remove or Share that runs long enough to show progress says so in one text node
@@ -130,6 +133,19 @@ device face down if you want to remove visual cues.
     the password is required or was wrong. A file that is moved, deleted or no longer accessible
     offers "Pick file" to choose it again.
 
+### Slides
+
+1. **One stop per slide:** focus a slide and it reads "Slide 3 of 24." followed by the slide's title
+   marked "(heading)", then its text in reading order, then the alt text of its pictures and charts.
+   A slide with no title, text or alt text reads only its number.
+2. **Alt text:** a picture or chart with `descr` alt text adds that text to the slide's stop. A table
+   reads its cells in reading order as part of the slide's text, not as a separate stop.
+3. **Decorative shapes:** a shape, picture or line marked decorative contributes nothing, so the slide
+   does not mention it.
+4. **Hidden slides:** a slide hidden in the editor still reads, and its stop ends with "Hidden".
+5. **No per-shape stops:** the whole slide is one bitmap and one focus stop, so swiping between
+   shapes is not possible; the composed text is the only way its contents are read.
+
 ### Focus order
 
 `FocusOrderTest` pins the order inside each bar. These steps cover what a bar test cannot: the first
@@ -210,7 +226,8 @@ fixed or goes under Known limits.
 
 - PDF pages are bitmaps, so TalkBack reads their extracted text as one stop per page rather than
   walking the text line by line.
-- PowerPoint slides read their slide number and slide text as available; slide navigation and find are not yet available.
+- PowerPoint slides are bitmaps, so each slide is one focus stop rather than per-shape stops;
+  the stop reads its number, title, text and alt text.
 - A note is stored, drawn and read in Papyrus only. It is not written into a saved copy of the PDF,
   since the platform's annotation API offers no note annotation here.
 - Pinch zoom is a two-finger gesture that TalkBack intercepts. Use Android's accessibility zoom

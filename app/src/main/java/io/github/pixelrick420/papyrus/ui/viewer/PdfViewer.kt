@@ -88,6 +88,29 @@ internal fun renderWidthFor(displayWidthPx: Int, aspect: Float, maxPixels: Int, 
     return minOf(displayWidthPx, maxOf(budgetWidth, floorWidthPx)).coerceAtLeast(1)
 }
 
+/** One focus stop per slide: its number, the title as a heading, then the reading-order text and alt text. */
+internal fun slideSemanticDescription(
+    prefix: String,
+    title: String,
+    text: String?,
+    altText: String?,
+    hidden: Boolean,
+    hiddenLabel: String,
+): String {
+    val sentences = mutableListOf<String>()
+    if (title.isNotBlank()) sentences += "${title.trim()} (heading)"
+    text?.trim()?.takeIf { it.isNotEmpty() }?.let(sentences::add)
+    altText?.trim()?.takeIf { it.isNotEmpty() }?.let(sentences::add)
+    if (hidden) sentences += hiddenLabel
+    if (sentences.isEmpty()) return prefix
+    return "$prefix. ${sentences.joinToString(" ", transform = ::asSentence)}"
+}
+
+private const val SENTENCE_ENDS = ".!?:;"
+
+private fun asSentence(value: String): String =
+    if (value.last() in SENTENCE_ENDS) value else "$value."
+
 private const val CACHED_PAGES_AROUND_VIEW = 3
 
 private val PAGE_HIT_BORDER = 3.dp
@@ -479,14 +502,14 @@ private fun PdfPage(
         bitmap?.let { bmp ->
             val spoken = pageText?.text?.takeIf { it.isNotBlank() }?.trim()
             val description = if (isSlide) {
-                val parts = mutableListOf<String>()
-                if (pageTitle.isNotBlank()) parts += "${pageTitle.trim()} (heading)"
-                val bodyParts = listOfNotNull(spoken, semanticBody.trim().takeIf { it.isNotEmpty() })
-                if (bodyParts.isNotEmpty()) parts += bodyParts.joinToString(". ")
-                if (isHidden) parts += stringResource(R.string.viewer_slide_hidden)
-                val body = parts.joinToString(". ")
-                val prefix = stringResource(R.string.cd_slide_semantics, index + 1, pageCount)
-                if (body.isNotEmpty()) "$prefix. $body" else prefix
+                slideSemanticDescription(
+                    prefix = stringResource(R.string.cd_slide_semantics, index + 1, pageCount),
+                    title = pageTitle,
+                    text = spoken,
+                    altText = semanticBody,
+                    hidden = isHidden,
+                    hiddenLabel = stringResource(R.string.viewer_slide_hidden),
+                )
             } else {
                 val label = pageTitle.takeIf { it.isNotBlank() }?.trim()
                 val spokenText = spoken?.takeIf { readsPages }
