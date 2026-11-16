@@ -299,6 +299,11 @@ private class SlideReading(
         } else {
             null
         }
+        val fallbackPicture = if (kind == GraphicKind.OLE_OBJECT || hasFallbackPicture(data)) {
+            fallbackPictureOf(data, tree.child(OoxmlNamespace.P, "xfrm") ?: tree.child(OoxmlNamespace.A, "xfrm"))
+        } else {
+            null
+        }
         return SceneGraphicFrame(
             id = props.idOf(),
             name = props?.attribute("name"),
@@ -310,6 +315,7 @@ private class SlideReading(
             relationshipId = relationshipOf(data),
             hyperlink = hyperlinkOf(props),
             table = table,
+            fallbackPicture = fallbackPicture,
             sourcePart = part,
         )
     }
@@ -319,6 +325,48 @@ private class SlideReading(
         return extLst.children.any { ext ->
             ext.children.any { it.name.matches(OoxmlNamespace.ADEC, "decorative") && isOn(it.attribute("val")) }
         }
+    }
+
+    private fun hasFallbackPicture(data: XNode?): Boolean = data != null && fallbackPicNode(data) != null
+
+    private fun fallbackPictureOf(data: XNode?, frameTransform: XNode?): ScenePicture? {
+        val picNode = data?.let(::fallbackPicNode) ?: return null
+        val picture = pictureNode(picNode) ?: return null
+        val frame = rectOf(frameTransform) ?: picture.frame
+        return ScenePicture(
+            id = picture.id,
+            name = picture.name,
+            frame = frame,
+            hidden = picture.hidden,
+            description = picture.description,
+            decorative = picture.decorative,
+            relationshipId = picture.relationshipId,
+            text = picture.text,
+            style = picture.style,
+            hyperlink = picture.hyperlink,
+            placeholder = picture.placeholder,
+            transform = picture.transform,
+            properties = picture.properties,
+            format = picture.format,
+            source = picture.source,
+            mask = picture.mask,
+            customGeometry = picture.customGeometry,
+            sourcePart = picture.sourcePart,
+        )
+    }
+
+    private fun fallbackPicNode(root: XNode): XNode? {
+        fallbackPicsIn(root).firstOrNull()?.let { return it }
+        return null
+    }
+
+    private fun fallbackPicsIn(node: XNode): List<XNode> {
+        if (node.name.matches(OoxmlNamespace.P, "pic")) return listOf(node)
+        if (node.name.matches(OoxmlNamespace.MC, "AlternateContent")) {
+            val fallback = node.children.firstOrNull { it.name.matches(OoxmlNamespace.MC, "Fallback") }
+            return fallback?.children.orEmpty().flatMap(::fallbackPicsIn)
+        }
+        return node.children.flatMap(::fallbackPicsIn)
     }
 
     private companion object {

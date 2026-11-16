@@ -109,7 +109,7 @@ internal class SlideRenderer(
             true
         }
         is SceneGraphicFrame -> {
-            graphicFrame(node, out)
+            graphicFrame(node, out, pictures)
             text?.paintTable(node, out)
             true
         }
@@ -203,7 +203,8 @@ internal class SlideRenderer(
         out += DrawOp.Restore
     }
 
-    private fun graphicFrame(frame: SceneGraphicFrame, out: MutableList<DrawOp>) {
+    private fun graphicFrame(frame: SceneGraphicFrame, out: MutableList<DrawOp>, pictures: SlidePictureResolver) {
+        frame.fallbackPicture?.let { picture(it, out, pictures) }
         val table = frame.table ?: return
         val layout = table.layout ?: return
         val origin = frame.frame ?: return

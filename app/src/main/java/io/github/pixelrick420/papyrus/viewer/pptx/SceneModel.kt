@@ -166,6 +166,7 @@ internal class SceneGraphicFrame(
     val relationshipId: String? = null,
     override val hyperlink: SceneHyperlink? = null,
     val table: io.github.pixelrick420.papyrus.viewer.pptx.table.PptxTable? = null,
+    val fallbackPicture: ScenePicture? = null,
     override val sourcePart: String? = null,
 ) : SceneNode
 
