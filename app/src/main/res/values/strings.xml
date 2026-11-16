@@ -288,7 +288,7 @@ access</string>
     <string name="settings_night_mode">Night mode</string>
     <string
         name="settings_night_mode_desc"
-    >Invert the colours of PDF pages, so white paper reads black.</string>
+    >Invert the colours of PDF pages and slides, so white paper reads black.</string>
     <string name="settings_line_numbers">Line numbers</string>
     <string
         name="settings_line_numbers_desc"
