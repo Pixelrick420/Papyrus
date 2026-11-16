@@ -28,14 +28,14 @@ internal object TableStyles {
     const val DEFAULT_STYLE_ID = "{5C22544A-7EE6-4342-B048-85BDC9FD1C3A}"
 
     fun read(root: XNode?, limits: PptxLimits, colors: ColorModel): TableStyleSheet {
-        val list = root ?: return builtIn(colors, limits)
+        val list = root ?: return builtIn()
         val def = list.attribute("def")
         val styles = LinkedHashMap<String, TableStyleDef>()
         for (style in list.childrenOf(OoxmlNamespace.A, "tblStyle")) {
             val id = style.attribute("styleId") ?: continue
             styles[id] = parseStyle(style, limits, colors)
         }
-        if (DEFAULT_STYLE_ID !in styles) styles[DEFAULT_STYLE_ID] = defaultDef(colors, limits)
+        if (DEFAULT_STYLE_ID !in styles) styles[DEFAULT_STYLE_ID] = defaultDef()
         return TableStyleSheet(def, styles)
     }
 
@@ -172,10 +172,10 @@ internal object TableStyles {
         return colorNode?.let { colors.resolve(it, null) }
     }
 
-    private fun builtIn(colors: ColorModel, limits: PptxLimits): TableStyleSheet =
-        TableStyleSheet(DEFAULT_STYLE_ID, mapOf(DEFAULT_STYLE_ID to defaultDef(colors, limits)))
+    private fun builtIn(): TableStyleSheet =
+        TableStyleSheet(DEFAULT_STYLE_ID, mapOf(DEFAULT_STYLE_ID to defaultDef()))
 
-    private fun defaultDef(colors: ColorModel, limits: PptxLimits): TableStyleDef = TableStyleDef(emptyMap())
+    private fun defaultDef(): TableStyleDef = TableStyleDef(emptyMap())
 
     private val FILL_TAGS = setOf("noFill", "solidFill", "gradFill", "blipFill", "pattFill", "grpFill")
     private val COLOR_NAMES = setOf("srgbClr", "schemeClr", "sysClr", "prstClr", "scrgbClr", "hslClr")

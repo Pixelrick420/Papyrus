@@ -28,10 +28,11 @@ internal class SlideDeck(
 
 internal object SlideDeckLoader {
 
+    @Suppress("TooGenericExceptionCaught")
     suspend fun load(context: Context, uri: Uri): SlideDeck = withContext(Dispatchers.IO) {
         val source = SlidePageSource.open(context, uri)
         try {
-            build(context, source) {
+            build(source) {
                 context.contentResolver.openInputStream(uri) ?: throw FileNotFoundException(uri.toString())
             }
         } catch (e: Exception) {
@@ -40,10 +41,11 @@ internal object SlideDeckLoader {
         }
     }
 
+    @Suppress("TooGenericExceptionCaught")
     suspend fun loadFile(context: Context, file: File): SlideDeck = withContext(Dispatchers.IO) {
         val source = SlidePageSource.openFile(context, file)
         try {
-            build(context, source) { file.inputStream() }
+            build(source) { file.inputStream() }
         } catch (e: Exception) {
             source.close()
             throw e
@@ -51,7 +53,6 @@ internal object SlideDeckLoader {
     }
 
     private suspend fun build(
-        context: Context,
         source: SlidePageSource,
         openStream: () -> InputStream,
     ): SlideDeck {

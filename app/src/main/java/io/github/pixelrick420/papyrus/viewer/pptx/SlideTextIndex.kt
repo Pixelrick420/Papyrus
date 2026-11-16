@@ -75,7 +75,7 @@ internal class SlideTextIndex(
                         groupOffsetY + (node.frame?.y ?: 0.0),
                     )
                     is SceneShape -> placedShape(node, resolver, engine, groupOffsetX, groupOffsetY)?.let(out::add)
-                    is ScenePicture -> placedPicture(node, groupOffsetX, groupOffsetY)?.let(out::add)
+                    is ScenePicture -> placedPicture(node)?.let(out::add)
                     is SceneGraphicFrame -> placedTable(node, groupOffsetX, groupOffsetY, out)
                     else -> Unit
                 }
@@ -102,8 +102,6 @@ internal class SlideTextIndex(
 
         private fun placedPicture(
             picture: ScenePicture,
-            dx: Double,
-            dy: Double,
         ): PlacedLayout? {
             val frame = picture.frame ?: return null
             val sceneText = picture.text ?: return null
