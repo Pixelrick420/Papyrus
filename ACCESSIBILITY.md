@@ -210,6 +210,7 @@ fixed or goes under Known limits.
 
 - PDF pages are bitmaps, so TalkBack reads their extracted text as one stop per page rather than
   walking the text line by line.
+- PowerPoint slides read their slide number and slide text as available; slide navigation and find are not yet available.
 - A note is stored, drawn and read in Papyrus only. It is not written into a saved copy of the PDF,
   since the platform's annotation API offers no note annotation here.
 - Pinch zoom is a two-finger gesture that TalkBack intercepts. Use Android's accessibility zoom

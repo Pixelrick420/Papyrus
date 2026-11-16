@@ -87,6 +87,7 @@ chose, since Android 11 and up hides other apps otherwise.
 | **DOCX / ODT**    | Headings, lists, tables, images, footnotes, reviewer comments, DOCX equations as text                         |
 | **DOC**           | Paragraphs and tables                                                                                         |
 | **EPUB**          | A reflowed book, its own table of contents as the **Outline**, its cover as the thumbnail                     |
+| **PowerPoint**    | Slides from PPTX, PPTM, POTX, POTM, PPSX and PPSM                                                             |
 | **Markdown**      | Tables, task lists, maths, footnotes, autolinks, coloured code fences, `data:` URI images                     |
 | **Text / Logs**   | Fixed-size chunks, selectable text, optional line numbers, no-wrap mode, hyphenated prose                     |
 | **Code / Config** | The same text pipeline, with syntax colour for many languages, found by name or by content                    |
@@ -439,6 +440,7 @@ matches.
 
 ## Known limitations
 
+- PowerPoint slides (PPTX, PPTM, POTX, POTM, PPSX and PPSM): basic slide content is shown. Charts, SmartArt, visual effects, find in file, slide navigation and placeholders beyond what is drawn now are not rendered yet.
 - DOC files carry paragraphs and tables only: no images, and headings arrive as plain paragraphs. Encrypted and Word
   6/95 files are rejected.
 - Fixed-layout EPUB books keep one page boundary per page and the shape of a page-sized picture, but not absolutely

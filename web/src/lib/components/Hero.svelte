@@ -50,7 +50,7 @@
       <h1 id="hero-heading" class="h1 mb-6">Papyrus</h1>
 
       <p class="text-body mx-auto mb-10 max-w-2xl">
-        Offline document viewer for Android: PDF, Word, OpenDocument, EPUB, Markdown, text and code.
+        Offline document viewer for Android: PDF, Word, OpenDocument, EPUB, PowerPoint, Markdown, text and code.
       </p>
 
       <div class="mb-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
