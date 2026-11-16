@@ -614,6 +614,8 @@ fun ViewerScreen(
                             pageMatches = find.pageMatches,
                             activePage = find.activeIndex,
                             activeOccurrence = find.activeOccurrence,
+                            loadLinks = { index -> content.links.getOrNull(index).orEmpty() },
+                            onLinkTarget = followPdfLink,
                             position = position,
                             pageIndicatorRes = R.string.viewer_slide_indicator,
                             pageDescriptionRes = R.string.cd_slide_page,

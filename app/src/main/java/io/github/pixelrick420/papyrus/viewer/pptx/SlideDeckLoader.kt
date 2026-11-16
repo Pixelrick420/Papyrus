@@ -24,6 +24,7 @@ internal class SlideDeck(
     val slideSize: String?,
     val fontSubstitutions: List<String>,
     val textIndex: SlideTextIndex = SlideTextIndex(emptyList()),
+    val links: List<List<io.github.pixelrick420.papyrus.viewer.PdfPageLink>> = emptyList(),
 )
 
 internal object SlideDeckLoader {
@@ -77,6 +78,7 @@ internal object SlideDeckLoader {
             slideSize = size,
             fontSubstitutions = substitutions,
             textIndex = textIndex,
+            links = textIndex.links,
         )
     }
 

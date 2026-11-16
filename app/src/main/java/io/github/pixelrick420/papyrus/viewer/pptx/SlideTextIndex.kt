@@ -1,5 +1,8 @@
 package io.github.pixelrick420.papyrus.viewer.pptx
 
+import io.github.pixelrick420.papyrus.viewer.NormRect
+import io.github.pixelrick420.papyrus.viewer.PdfLinkTarget
+import io.github.pixelrick420.papyrus.viewer.PdfPageLink
 import io.github.pixelrick420.papyrus.viewer.PdfPageText
 import io.github.pixelrick420.papyrus.viewer.pptx.text.TextBody
 import io.github.pixelrick420.papyrus.viewer.pptx.text.TextFrameLayout
@@ -13,6 +16,7 @@ import kotlin.math.min
 
 internal class SlideTextIndex(
     val pages: List<PdfPageText>,
+    val links: List<List<PdfPageLink>> = emptyList(),
 ) {
 
     fun textOf(index: Int): String = pages.getOrNull(index)?.text.orEmpty()
@@ -23,16 +27,30 @@ internal class SlideTextIndex(
             scenes: List<SlideScene>,
             resolver: TextStyleResolver,
             engine: TextLayoutEngine,
-        ): SlideTextIndex = SlideTextIndex(scenes.map { pageOf(it.scene, resolver, engine) })
+            linkOf: (Int, String?, String?) -> PdfLinkTarget? = { _, _, _ -> null },
+        ): SlideTextIndex {
+            val pages = ArrayList<PdfPageText>(scenes.size)
+            val links = ArrayList<List<PdfPageLink>>(scenes.size)
+            scenes.forEachIndexed { index, slide ->
+                val page = pageOf(slide.scene, resolver, engine, index, linkOf)
+                pages += page.text
+                links += page.links
+            }
+            return SlideTextIndex(pages, links)
+        }
 
         private fun pageOf(
             scene: Scene,
             resolver: TextStyleResolver,
             engine: TextLayoutEngine,
-        ): PdfPageText {
+            slideIndex: Int,
+            linkOf: (Int, String?, String?) -> PdfLinkTarget?,
+        ): SlidePage {
             val placed = ArrayList<PlacedLayout>()
             collectNodes(scene.nodes, scene, resolver, engine, placed)
             placed.sortWith(compareBy({ it.top }, { it.left }))
+            val links = ArrayList<PdfPageLink>()
+            collectNodeLinks(scene.nodes, scene, 0.0, 0.0, slideIndex, linkOf, links)
             val text = StringBuilder()
             val boxes = ArrayList<Float>()
             val breaks = BitSet()
@@ -41,7 +59,7 @@ internal class SlideTextIndex(
                     breaks.set(text.length)
                     appendChar(text, boxes, '\n', Float.NaN, Float.NaN, Float.NaN, Float.NaN)
                 }
-                appendFrame(item.value, scene.size, text, boxes, breaks)
+                appendFrame(item.value, scene.size, text, boxes, breaks, slideIndex, linkOf, links)
             }
             while (text.isNotEmpty() && text.last() == '\n') {
                 val i = text.length - 1
@@ -49,9 +67,40 @@ internal class SlideTextIndex(
                 text.deleteCharAt(i)
                 repeat(4) { boxes.removeAt(boxes.size - 1) }
             }
-            if (text.isEmpty()) return PdfPageText("", FloatArray(0))
+            if (text.isEmpty()) return SlidePage(PdfPageText("", FloatArray(0)), links)
             val arr = FloatArray(boxes.size) { boxes[it] }
-            return PdfPageText(text.toString(), arr, breaks)
+            return SlidePage(PdfPageText(text.toString(), arr, breaks), links)
+        }
+
+        private fun collectNodeLinks(
+            nodes: List<SceneNode>,
+            scene: Scene,
+            dx: Double,
+            dy: Double,
+            slideIndex: Int,
+            linkOf: (Int, String?, String?) -> PdfLinkTarget?,
+            out: MutableList<PdfPageLink>,
+        ) {
+            for (node in nodes) {
+                val hyperlink = node.hyperlink
+                val frame = node.frame
+                if (hyperlink != null && frame != null) {
+                    linkOf(slideIndex, hyperlink.relationshipId, hyperlink.action)?.let { target ->
+                        out += PdfPageLink(normRect(offset(frame, dx, dy), scene.size), target)
+                    }
+                }
+                if (node is SceneGroup) {
+                    collectNodeLinks(
+                        node.children,
+                        scene,
+                        dx + (node.frame?.x ?: 0.0),
+                        dy + (node.frame?.y ?: 0.0),
+                        slideIndex,
+                        linkOf,
+                        out,
+                    )
+                }
+            }
         }
 
         private fun collectNodes(
@@ -135,11 +184,25 @@ internal class SlideTextIndex(
             text: StringBuilder,
             boxes: MutableList<Float>,
             breaks: BitSet,
+            slideIndex: Int,
+            linkOf: (Int, String?, String?) -> PdfLinkTarget?,
+            links: MutableList<PdfPageLink>,
         ) {
             val sw = slide.width.takeIf { it > 0.0 } ?: return
             val sh = slide.height.takeIf { it > 0.0 } ?: return
             val frame = placed.frame
             for ((lineIndex, line) in placed.layout.lines.withIndex()) {
+                for (run in line.runs) {
+                    val hyperlink = run.properties.hyperlink ?: continue
+                    val target = linkOf(slideIndex, hyperlink.relationshipId, hyperlink.action) ?: continue
+                    val left = normX(frame.x + run.leftPt * EMU_PER_POINT, sw)
+                    val right = normX(frame.x + run.rightPt * EMU_PER_POINT, sw)
+                    val top = normY(frame.y + line.topPt * EMU_PER_POINT, sh)
+                    val bottom = normY(frame.y + (line.topPt + line.heightPt) * EMU_PER_POINT, sh)
+                    if (right > left && bottom > top) {
+                        links += PdfPageLink(NormRect(left, top, right, bottom), target)
+                    }
+                }
                 if (lineIndex > 0) {
                     breaks.set(text.length)
                     appendChar(text, boxes, '\n', Float.NaN, Float.NaN, Float.NaN, Float.NaN)
@@ -207,6 +270,17 @@ internal class SlideTextIndex(
         private fun offset(rect: SceneRect, dx: Double, dy: Double): SceneRect =
             SceneRect(rect.x + dx, rect.y + dy, rect.width, rect.height)
 
+        private fun normRect(rect: SceneRect, size: SceneSize): NormRect {
+            val sw = size.width.takeIf { it > 0.0 }
+            val sh = size.height.takeIf { it > 0.0 }
+            if (sw == null || sh == null) return NormRect(0f, 0f, 0f, 0f)
+            val left = normX(rect.x, sw)
+            val right = normX(rect.right, sw)
+            val top = normY(rect.y, sh)
+            val bottom = normY(rect.bottom, sh)
+            return NormRect(min(left, right), min(top, bottom), max(left, right), max(top, bottom))
+        }
+
         private fun transformOf(node: XNode?): TextShapeTransform {
             node ?: return TextShapeTransform.NONE
             val rot = (node.attribute("rot")?.toDoubleOrNull() ?: 0.0) / 60000.0
@@ -219,6 +293,8 @@ internal class SlideTextIndex(
 
         private const val EMU_PER_POINT = 12_700.0
     }
+
+    private class SlidePage(val text: PdfPageText, val links: List<PdfPageLink>)
 
     private data class PlacedLayout(
         val layout: TextFrameLayout,

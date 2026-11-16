@@ -172,6 +172,7 @@ sealed interface ViewerContent {
         val slideSize: String? = null,
         val fontSubstitutions: List<String> = emptyList(),
         val slidePages: List<io.github.pixelrick420.papyrus.viewer.PdfPageText> = emptyList(),
+        val links: List<List<io.github.pixelrick420.papyrus.viewer.PdfPageLink>> = emptyList(),
     ) : ViewerContent
     data class NeedsPassword(val incorrect: Boolean = false, val checking: Boolean = false) : ViewerContent
     data class Failed(val message: UiText) : ViewerContent
@@ -942,6 +943,7 @@ class ViewerViewModel(
                         slideSize = deck.slideSize,
                         fontSubstitutions = deck.fontSubstitutions,
                         slidePages = deck.textIndex.pages,
+                        links = deck.links,
                     )
                 }
                 OfficeEncryption.Party.PASSWORD -> ViewerContent.NeedsPassword()
@@ -1035,6 +1037,7 @@ class ViewerViewModel(
                 slideSize = deck.slideSize,
                 fontSubstitutions = deck.fontSubstitutions,
                 slidePages = deck.textIndex.pages,
+                links = deck.links,
             )
         }
         val blocks = try {
