@@ -65,12 +65,13 @@ internal object SlideDeckLoader {
             runCatching { SlideTextExtractor().extract(openStream) }.getOrDefault(emptyList())
         }
         val titles = texts.map { text -> text.lineSequence().firstOrNull { it.isNotBlank() }?.trim().orEmpty() }
-        val size = slideSize(openStream)
+        val info = presentationInfo(openStream)
+        val size = info?.let { String.format(Locale.US, "%.2f × %.2f in", it.size.widthInches, it.size.heightInches) }
         val substitutions = fontSubstitutions(openStream)
         return SlideDeck(
             source = source,
             aspectRatios = aspectRatios,
-            outline = emptyList(),
+            outline = info?.let { slideOutline(it, titles) }.orEmpty(),
             hidden = emptySet(),
             incomplete = false,
             titles = titles,
@@ -82,11 +83,10 @@ internal object SlideDeckLoader {
         )
     }
 
-    private fun slideSize(openStream: () -> InputStream): String? = runCatching {
+    private fun presentationInfo(openStream: () -> InputStream): PresentationInfo? = runCatching {
         val pkg = PptxPackage.read(openStream, mediaDir = null)
         val bytes = pkg.part(pkg.mainPart) ?: return@runCatching null
-        val info = PresentationParser().parse(bytes, pkg.mainPart)
-        String.format(Locale.US, "%.2f × %.2f in", info.size.widthInches, info.size.heightInches)
+        PresentationParser().parse(bytes, pkg.mainPart)
     }.getOrNull()
 
     private fun fontSubstitutions(openStream: () -> InputStream): List<String> = runCatching {

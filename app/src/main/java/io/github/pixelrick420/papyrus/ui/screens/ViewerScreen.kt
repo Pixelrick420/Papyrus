@@ -697,11 +697,11 @@ fun ViewerScreen(
     if (outlineOpen && outline.isNotEmpty()) {
         OutlineSheet(
             entries = outline,
-            collapsible = isPdf,
+            collapsible = isPdf || slides != null,
             onSelect = { entry ->
-                // An outline entry is a page of a PDF and a block of an Office document: the same jump, in the
-                // location kind of the format.
-                val kind = if (isPdf) LocationKind.PAGE else LocationKind.BLOCK
+                // An outline entry is a page of a PDF or slides, and a block of an Office document: the
+                // same jump, in the location kind of the format.
+                val kind = if (isPdf || slides != null) LocationKind.PAGE else LocationKind.BLOCK
                 viewModel.ttsReleaseScroll()
                 jump = ViewerJump(ReadingLocation(kind, entry.index))
                 outlineOpen = false
