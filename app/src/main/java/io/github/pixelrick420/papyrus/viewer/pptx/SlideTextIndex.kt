@@ -1,17 +1,13 @@
 package io.github.pixelrick420.papyrus.viewer.pptx
 
-import io.github.pixelrick420.papyrus.viewer.NormRect
 import io.github.pixelrick420.papyrus.viewer.PdfPageText
-import io.github.pixelrick420.papyrus.viewer.pptx.table.PptxTable
-import io.github.pixelrick420.papyrus.viewer.pptx.text.ParagraphText
 import io.github.pixelrick420.papyrus.viewer.pptx.text.TextBody
 import io.github.pixelrick420.papyrus.viewer.pptx.text.TextFrameLayout
 import io.github.pixelrick420.papyrus.viewer.pptx.text.TextLayoutEngine
-import io.github.pixelrick420.papyrus.viewer.pptx.text.TextParagraph
 import io.github.pixelrick420.papyrus.viewer.pptx.text.TextRun
-import io.github.pixelrick420.papyrus.viewer.pptx.text.TextShaper
 import io.github.pixelrick420.papyrus.viewer.pptx.text.TextShapeTransform
 import io.github.pixelrick420.papyrus.viewer.pptx.text.TextStyleResolver
+import java.util.BitSet
 import kotlin.math.max
 import kotlin.math.min
 
@@ -38,22 +34,24 @@ internal class SlideTextIndex(
             collectNodes(scene.nodes, scene, resolver, engine, placed)
             placed.sortWith(compareBy({ it.top }, { it.left }))
             val text = StringBuilder()
-            val lineBoxes = ArrayList<List<NormRect>>()
-            for ((i, item) in placed.withIndex()) {
-                if (i > 0 && text.isNotEmpty() && text.last() != '\n') {
-                    text.append('\n')
-                    lineBoxes += emptyList<NormRect>()
+            val boxes = ArrayList<Float>()
+            val breaks = BitSet()
+            for (item in placed.withIndex()) {
+                if (item.index > 0 && text.isNotEmpty() && text.last() != '\n') {
+                    breaks.set(text.length)
+                    appendChar(text, boxes, '\n', Float.NaN, Float.NaN, Float.NaN, Float.NaN)
                 }
-                appendFrame(item, scene.size, text, lineBoxes)
+                appendFrame(item.value, scene.size, text, boxes, breaks)
             }
-            val raw = text.toString().trimEnd('\n')
-            val trimmedBoxes = if (lineBoxes.size > raw.count { it == '\n' } + (if (raw.isEmpty()) 0 else 1)) {
-                lineBoxes.take(raw.count { it == '\n' } + (if (raw.isEmpty()) 0 else 1))
-            } else {
-                lineBoxes
+            while (text.isNotEmpty() && text.last() == '\n') {
+                val i = text.length - 1
+                breaks.clear(i)
+                text.deleteCharAt(i)
+                repeat(4) { boxes.removeAt(boxes.size - 1) }
             }
-            return if (raw.isEmpty()) PdfPageText("", FloatArray(0))
-            else PdfPageText.fromLines(raw, trimmedBoxes)
+            if (text.isEmpty()) return PdfPageText("", FloatArray(0))
+            val arr = FloatArray(boxes.size) { boxes[it] }
+            return PdfPageText(text.toString(), arr, breaks)
         }
 
         private fun collectNodes(
@@ -77,7 +75,7 @@ internal class SlideTextIndex(
                         groupOffsetY + (node.frame?.y ?: 0.0),
                     )
                     is SceneShape -> placedShape(node, resolver, engine, groupOffsetX, groupOffsetY)?.let(out::add)
-                    is ScenePicture -> placedPicture(node, resolver, engine, groupOffsetX, groupOffsetY)?.let(out::add)
+                    is ScenePicture -> placedPicture(node, groupOffsetX, groupOffsetY)?.let(out::add)
                     is SceneGraphicFrame -> placedTable(node, groupOffsetX, groupOffsetY, out)
                     else -> Unit
                 }
@@ -94,9 +92,7 @@ internal class SlideTextIndex(
             val frame = shape.frame ?: return null
             if (frame.width <= 0.0 || frame.height <= 0.0) return null
             val body = shape.textBody?.let { runCatching { resolver.resolve(it) }.getOrNull() } ?: return null
-            if (body.paragraphs.all { p -> p.runs.all { (it as? TextRun.Text)?.text.isNullOrEmpty() && (it as? TextRun.Field)?.text.isNullOrEmpty() } }) {
-                return null
-            }
+            if (!body.hasText()) return null
             val layout = runCatching {
                 engine.layout(body, frame.width, frame.height, transformOf(shape.transform))
             }.getOrNull() ?: return null
@@ -106,19 +102,15 @@ internal class SlideTextIndex(
 
         private fun placedPicture(
             picture: ScenePicture,
-            resolver: TextStyleResolver,
-            engine: TextLayoutEngine,
             dx: Double,
             dy: Double,
         ): PlacedLayout? {
             val frame = picture.frame ?: return null
             val sceneText = picture.text ?: return null
             if (frame.width <= 0.0 || frame.height <= 0.0) return null
-            val body = bodyFromScene(sceneText)
-            if (body.paragraphs.isEmpty()) return null
-            val layout = runCatching { engine.layout(body, frame.width, frame.height) }.getOrNull() ?: return null
-            if (layout.lines.isEmpty()) return null
-            return PlacedLayout(layout, offset(frame, dx, dy), paragraphTexts(body))
+            val texts = sceneText.paragraphs.map { p -> p.runs.joinToString("") { it.text } }
+            if (texts.all { it.isBlank() }) return null
+            return null
         }
 
         private fun placedTable(
@@ -133,8 +125,7 @@ internal class SlideTextIndex(
             for ((key, rect) in result.cellFrames.entries.sortedWith(compareBy({ it.key.first }, { it.key.second }))) {
                 val cell = table.rows.getOrNull(key.first)?.cells?.getOrNull(key.second) ?: continue
                 val layout = cell.textLayout ?: continue
-                val body = cell.resolvedText ?: TextBody()
-                val texts = paragraphTexts(body)
+                val texts = paragraphTexts(cell.resolvedText ?: TextBody())
                 val placed = SceneRect(origin.x + rect.x, origin.y + rect.y, rect.width, rect.height)
                 out += PlacedLayout(layout, placed, texts)
             }
@@ -144,42 +135,54 @@ internal class SlideTextIndex(
             placed: PlacedLayout,
             slide: SceneSize,
             text: StringBuilder,
-            lineBoxes: MutableList<List<NormRect>>,
+            boxes: MutableList<Float>,
+            breaks: BitSet,
         ) {
             val sw = slide.width.takeIf { it > 0.0 } ?: return
             val sh = slide.height.takeIf { it > 0.0 } ?: return
             val frame = placed.frame
             for ((lineIndex, line) in placed.layout.lines.withIndex()) {
                 if (lineIndex > 0) {
-                    text.append('\n')
-                    lineBoxes += emptyList<NormRect>()
+                    breaks.set(text.length)
+                    appendChar(text, boxes, '\n', Float.NaN, Float.NaN, Float.NaN, Float.NaN)
                 }
                 val paraText = placed.paragraphTexts.getOrNull(line.paragraph).orEmpty()
-                val rects = ArrayList<NormRect>(line.characters.size)
                 for (charBox in line.characters) {
                     val s = charBox.start.coerceIn(0, paraText.length)
                     val e = charBox.end.coerceIn(s, paraText.length)
-                    if (e <= s) {
-                        text.append(' ')
+                    val left = normX(frame.x + charBox.leftPt * EMU_PER_POINT, sw)
+                    val right = normX(frame.x + charBox.rightPt * EMU_PER_POINT, sw)
+                    val top = normY(frame.y + charBox.topPt * EMU_PER_POINT, sh)
+                    val bottom = normY(frame.y + charBox.bottomPt * EMU_PER_POINT, sh)
+                    if (e > s) {
+                        for (i in s until e) {
+                            appendChar(text, boxes, paraText[i], left, top, right, bottom)
+                        }
                     } else {
-                        text.append(paraText.substring(s, e))
+                        appendChar(text, boxes, ' ', left, top, right, bottom)
                     }
-                    val left = ((frame.x + charBox.leftPt * EMU_PER_POINT) / sw).toFloat()
-                    val right = ((frame.x + charBox.rightPt * EMU_PER_POINT) / sh.let { sw }).toFloat()
-                    val top = ((frame.y + charBox.topPt * EMU_PER_POINT) / sh).toFloat()
-                    val bottom = ((frame.y + charBox.bottomPt * EMU_PER_POINT) / sh).toFloat()
-                    rects += normRect(left, top, right, bottom)
                 }
-                lineBoxes += rects
             }
         }
 
-        private fun normRect(l: Float, t: Float, r: Float, b: Float): NormRect = NormRect(
-            min(l, r).coerceIn(0f, 1f),
-            min(t, b).coerceIn(0f, 1f),
-            max(l, r).coerceIn(0f, 1f),
-            max(t, b).coerceIn(0f, 1f),
-        )
+        private fun appendChar(
+            text: StringBuilder,
+            boxes: MutableList<Float>,
+            ch: Char,
+            l: Float,
+            t: Float,
+            r: Float,
+            b: Float,
+        ) {
+            text.append(ch)
+            boxes += l
+            boxes += t
+            boxes += r
+            boxes += b
+        }
+
+        private fun normX(v: Double, w: Double): Float = (v / w).toFloat().coerceIn(0f, 1f)
+        private fun normY(v: Double, h: Double): Float = (v / h).toFloat().coerceIn(0f, 1f)
 
         private fun paragraphTexts(body: TextBody): List<String> = body.paragraphs.map { p ->
             buildString {
@@ -193,16 +196,15 @@ internal class SlideTextIndex(
             }
         }
 
-        private fun bodyFromScene(frame: SceneTextFrame): TextBody = TextBody(
-            paragraphs = frame.paragraphs.map { p ->
-                TextParagraph(
-                    level = p.level,
-                    runs = p.runs.map { run ->
-                        TextRun.Text(run.text, io.github.pixelrick420.papyrus.viewer.pptx.text.TextRunProperties())
-                    },
-                )
-            },
-        )
+        private fun TextBody.hasText(): Boolean = paragraphs.any { p ->
+            p.runs.any { run ->
+                when (run) {
+                    is TextRun.Text -> run.text.isNotBlank()
+                    is TextRun.Field -> run.text.isNotBlank()
+                    is TextRun.Break -> false
+                }
+            }
+        }
 
         private fun offset(rect: SceneRect, dx: Double, dy: Double): SceneRect =
             SceneRect(rect.x + dx, rect.y + dy, rect.width, rect.height)

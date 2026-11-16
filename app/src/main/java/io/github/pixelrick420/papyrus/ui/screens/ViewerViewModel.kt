@@ -1384,6 +1384,11 @@ class ViewerViewModel(
 
     // The open platform engine is asked first (it is what TalkBack, selection and read-aloud see), then PDFBox; either reading is kept under the document's bytes, so a page is read once until the file changes.
     suspend fun pageText(index: Int): PdfPageText? {
+        val content = _state.value.content
+        if (content is ViewerContent.Slides) {
+            return content.slidePages.getOrNull(index)?.takeIf { it.text.isNotBlank() || it.isSelectable || !it.hasBoxes }
+                ?: content.slidePages.getOrNull(index)
+        }
         pdfPageText?.getOrNull(index)?.takeIf { it.hasBoxes || it.text.isBlank() }?.let { return it }
         val texts = pageSource()
         texts?.cached(index, fromPlatform = true)?.let { return it }
