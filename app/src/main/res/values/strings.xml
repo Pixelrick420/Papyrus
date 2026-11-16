@@ -72,6 +72,7 @@ access</string>
     <string name="home_filter_csv">CSV</string>
     <string name="home_filter_tsv">TSV</string>
     <string name="home_filter_code">Code</string>
+    <string name="home_filter_powerpoint">PowerPoint</string>
     <string name="home_filter_starred">Starred</string>
     <string name="home_filter_section">Filter</string>
     <string name="home_filter_none">No files match these filters</string>

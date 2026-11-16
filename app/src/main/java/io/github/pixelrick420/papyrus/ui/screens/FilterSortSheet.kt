@@ -215,4 +215,5 @@ internal fun FormatGroup.labelRes(): Int = when (this) {
     FormatGroup.CSV -> R.string.home_filter_csv
     FormatGroup.TSV -> R.string.home_filter_tsv
     FormatGroup.CODE -> R.string.home_filter_code
+    FormatGroup.POWERPOINT -> R.string.home_filter_powerpoint
 }
