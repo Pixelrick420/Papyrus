@@ -14,14 +14,27 @@ internal class StyleResolver(
 
     private val shapes = ShapeTreeParser(newParserFactory, limits)
     private val layouts = MasterLayoutParser(newParserFactory, limits)
+    private val reader = OoxmlReader(newParserFactory, OoxmlNamespace.CORE, limits)
 
     fun resolveAll(pkg: PptxPackage, presentation: PresentationInfo): DeckScenes {
         val size = SceneSize(presentation.size.widthEmu.toDouble(), presentation.size.heightEmu.toDouble())
         val templates = Templates(pkg, layouts.parse(pkg), presentation.defaultTextStyle, shapes)
+        val tableStyles = readTableStyles(pkg, ColorModel())
         val slides = shapes.parts(pkg, presentation).mapIndexed { index, part ->
-            slide(pkg, part, size, presentation.firstSlideNumber + index, templates)
+            val scene = slide(pkg, part, size, presentation.firstSlideNumber + index, templates)
+            io.github.pixelrick420.papyrus.viewer.pptx.table.TableStyles.apply(scene.scene, tableStyles)
+            scene
         }
         return DeckScenes(slides)
+    }
+
+    private fun readTableStyles(pkg: PptxPackage, colors: ColorModel): io.github.pixelrick420.papyrus.viewer.pptx.table.TableStyleSheet {
+        val part = pkg.part("ppt/tableStyles.xml")
+            ?: pkg.relationshipsOf(pkg.mainPart).firstOrNull {
+                it.type.substringAfterLast('/').equals("tableStyles", ignoreCase = true)
+            }?.let { pkg.targetOf(pkg.mainPart, it.id)?.let(pkg::part) }
+        val root = part?.let { reader.readTree(it.inputStream(), "ppt/tableStyles.xml") }
+        return io.github.pixelrick420.papyrus.viewer.pptx.table.TableStyles.read(root, limits, colors)
     }
 
     private fun slide(

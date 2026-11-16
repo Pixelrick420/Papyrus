@@ -49,7 +49,7 @@ internal class TableCell(
     val rowSpan: Int = 1,
     val horizontalMerge: Boolean = false,
     val verticalMerge: Boolean = false,
-    val properties: TableCellProperties = TableCellProperties(),
+    var properties: TableCellProperties = TableCellProperties(),
     var laidOutText: TextBody? = null,
 )
 
