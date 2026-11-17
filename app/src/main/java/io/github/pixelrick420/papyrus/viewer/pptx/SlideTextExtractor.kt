@@ -129,6 +129,7 @@ internal class SlideTextExtractor(
         return root.child(DIAGRAM, "ptLst")
             ?.childrenOf(DIAGRAM, "pt")
             .orEmpty()
+            .filterNot { it.attribute("type").equals("pres", ignoreCase = true) }
             .mapNotNull { point -> point.child(DIAGRAM, "t")?.let(::textOfBody)?.takeIf { it.isNotBlank() } }
             .joinToString("\n")
     }

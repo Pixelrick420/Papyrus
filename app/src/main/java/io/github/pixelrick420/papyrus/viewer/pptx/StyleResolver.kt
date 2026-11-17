@@ -261,20 +261,23 @@ internal class StyleResolver(
         val model = pkg.part(modelPart)?.let { bytes ->
             runCatching { diagramReader.readTree(bytes.inputStream(), modelPart) }.getOrNull()
         }
+        val nodeText = model?.let(::dataModelText).orEmpty()
+        val origin = frame.frame ?: return null
+        val style = smartArtStyle(context)
         val drawingPart = pkg.relationshipsOf(modelPart)
             .firstOrNull { it.type.substringAfterLast('/').equals("diagramDrawing", ignoreCase = true) }
-            ?.let { pkg.targetOf(modelPart, it.id) } ?: return null
-        val root = pkg.part(drawingPart)?.let { bytes ->
-            runCatching { diagramReader.readTree(bytes.inputStream(), drawingPart) }.getOrNull()
-        }
-        val origin = frame.frame ?: return null
-        return SmartArtDrawing.read(root, drawingPart, smartArtStyle(context), origin, model?.let(::dataModelText).orEmpty())
+            ?.let { pkg.targetOf(modelPart, it.id) }
+            ?: return SmartArtDrawing.fallback(origin, style, nodeText)
+        val bytes = pkg.part(drawingPart) ?: return SmartArtDrawing.fallback(origin, style, nodeText)
+        val root = runCatching { diagramReader.readTree(bytes.inputStream(), drawingPart) }.getOrNull()
+        return SmartArtDrawing.read(root, drawingPart, style, origin, nodeText)
     }
 
     private fun dataModelText(root: XNode): List<String> =
         root.child(OoxmlNamespace.DIAGRAM, "ptLst")
             ?.childrenOf(OoxmlNamespace.DIAGRAM, "pt")
             .orEmpty()
+            .filterNot { it.attribute("type").equals("pres", ignoreCase = true) }
             .mapNotNull { point ->
                 val body = point.child(OoxmlNamespace.DIAGRAM, "t") ?: return@mapNotNull null
                 val text = body.childrenOf(OoxmlNamespace.A, "p").joinToString("\n") { paragraph ->

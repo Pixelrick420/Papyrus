@@ -107,7 +107,10 @@ internal class SlideTextIndex(
                 if (descr.isEmpty()) continue
                 when (node) {
                     is ScenePicture -> out += descr
-                    is SceneGraphicFrame -> if (node.kind in ACCESSIBLE_GRAPHIC_KINDS) out += descr
+                    is SceneGraphicFrame -> {
+                        if (node.kind in ACCESSIBLE_GRAPHIC_KINDS) out += descr
+                        if (node.kind == GraphicKind.SMART_ART) node.smartArt?.nodeText?.let(out::addAll)
+                    }
                     else -> Unit
                 }
             }

@@ -1,11 +1,14 @@
 package io.github.pixelrick420.papyrus.viewer.pptx.diagram
 
+import io.github.pixelrick420.papyrus.viewer.pptx.OoxmlName
 import io.github.pixelrick420.papyrus.viewer.pptx.OoxmlNamespace
 import io.github.pixelrick420.papyrus.viewer.pptx.PictureFills
 import io.github.pixelrick420.papyrus.viewer.pptx.Rgba
 import io.github.pixelrick420.papyrus.viewer.pptx.SceneFormat
 import io.github.pixelrick420.papyrus.viewer.pptx.SceneGroup
+import io.github.pixelrick420.papyrus.viewer.pptx.SceneLine
 import io.github.pixelrick420.papyrus.viewer.pptx.SceneNode
+import io.github.pixelrick420.papyrus.viewer.pptx.ScenePaint
 import io.github.pixelrick420.papyrus.viewer.pptx.ScenePicture
 import io.github.pixelrick420.papyrus.viewer.pptx.ScenePreset
 import io.github.pixelrick420.papyrus.viewer.pptx.SceneRect
@@ -31,6 +34,45 @@ internal class SmartArtDrawing(
     companion object {
 
         private const val MAX_GROUP_DEPTH = 8
+        private const val LABEL = "SmartArt not displayed"
+        private const val FALLBACK_LINE_EMU = 25_400.0
+
+        fun fallback(bounds: SceneRect, style: SmartArtStyle, nodeText: List<String>): SmartArtDrawing {
+            val placeholder = SceneShape(
+                id = null,
+                name = LABEL,
+                frame = bounds,
+                preset = ScenePreset("rect"),
+                format = SceneFormat(
+                    fill = ScenePaint.None,
+                    line = SceneLine(FALLBACK_LINE_EMU, ScenePaint.Solid(style.text), "dash"),
+                    effects = null,
+                ),
+            )
+            val label = listOf(LABEL) + nodeText
+            val frame = SceneRect(
+                bounds.x + bounds.width * 0.1,
+                bounds.y + bounds.height * 0.2,
+                bounds.width * 0.8,
+                (bounds.height * 0.6).coerceAtLeast(0.0),
+            )
+            return SmartArtDrawing(listOf(placeholder), listOf(SmartArtText(textBodyOf(label), frame)), nodeText)
+        }
+
+        private fun textBodyOf(lines: List<String>): XNode {
+            val body = XNode(OoxmlName(OoxmlNamespace.DSP, "txBody"))
+            body.children += XNode(OoxmlName(OoxmlNamespace.A, "bodyPr"))
+            for (line in lines) {
+                val text = XNode(OoxmlName(OoxmlNamespace.A, "t"))
+                text.text = line
+                val run = XNode(OoxmlName(OoxmlNamespace.A, "r"))
+                run.children += text
+                val paragraph = XNode(OoxmlName(OoxmlNamespace.A, "p"))
+                paragraph.children += run
+                body.children += paragraph
+            }
+            return body
+        }
 
         fun read(
             root: XNode?,

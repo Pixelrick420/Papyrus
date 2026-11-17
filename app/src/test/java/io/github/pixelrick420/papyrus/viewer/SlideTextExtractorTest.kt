@@ -130,6 +130,19 @@ class SlideTextExtractorTest {
     }
 
     @Test
+    fun `smartart skips generated presentation points`() {
+        val deck = pptx {
+            slide {
+                title("Diagram slide")
+                graphicFrame(DIAGRAM_URI, """<dgm:relIds xmlns:dgm="$DIAGRAM_NS" r:dm="rId2"/>""", 0, 0, 1000, 1000)
+                rel("rId2", "$REL/diagramData", "../diagrams/data1.xml")
+            }
+            part("ppt/diagrams/data1.xml", DIAGRAM_DATA_WITH_PRES_XML.toByteArray())
+        }
+        assertEquals(listOf("Diagram slide\nAuthored alpha\nAuthored beta"), texts(deck))
+    }
+
+    @Test
     fun `a deck whose slides cannot be read yields an empty slide`() {
         val deck = pptx {
             slide { title("Broken") }
@@ -229,6 +242,22 @@ private val DIAGRAM_DATA_XML = """
         </dgm:pt>
         <dgm:pt modelId="2">
           <dgm:t><a:bodyPr/><a:lstStyle/><a:p><a:r><a:t>Model beta</a:t></a:r></a:p></dgm:t>
+        </dgm:pt>
+      </dgm:ptLst>
+    </dgm:dataModel>
+""".trimIndent()
+
+private val DIAGRAM_DATA_WITH_PRES_XML = """
+    <dgm:dataModel xmlns:dgm="$DIAGRAM_NS" xmlns:a="$A_NS">
+      <dgm:ptLst>
+        <dgm:pt modelId="1">
+          <dgm:t><a:bodyPr/><a:lstStyle/><a:p><a:r><a:t>Authored alpha</a:t></a:r></a:p></dgm:t>
+        </dgm:pt>
+        <dgm:pt modelId="2" type="pres">
+          <dgm:t><a:bodyPr/><a:lstStyle/><a:p><a:r><a:t>Generated text</a:t></a:r></a:p></dgm:t>
+        </dgm:pt>
+        <dgm:pt modelId="3">
+          <dgm:t><a:bodyPr/><a:lstStyle/><a:p><a:r><a:t>Authored beta</a:t></a:r></a:p></dgm:t>
         </dgm:pt>
       </dgm:ptLst>
     </dgm:dataModel>

@@ -6,10 +6,12 @@ import io.github.pixelrick420.papyrus.viewer.pptx.OoxmlNamespace
 import io.github.pixelrick420.papyrus.viewer.pptx.PptxPackage
 import io.github.pixelrick420.papyrus.viewer.pptx.PresentationParser
 import io.github.pixelrick420.papyrus.viewer.pptx.Rgba
+import io.github.pixelrick420.papyrus.viewer.pptx.Scene
 import io.github.pixelrick420.papyrus.viewer.pptx.SceneGraphicFrame
 import io.github.pixelrick420.papyrus.viewer.pptx.ScenePaint
 import io.github.pixelrick420.papyrus.viewer.pptx.SceneRect
 import io.github.pixelrick420.papyrus.viewer.pptx.SceneShape
+import io.github.pixelrick420.papyrus.viewer.pptx.SlideTextIndex
 import io.github.pixelrick420.papyrus.viewer.pptx.StyleResolver
 import io.github.pixelrick420.papyrus.viewer.pptx.XNode
 import io.github.pixelrick420.papyrus.viewer.pptx
@@ -20,7 +22,11 @@ import org.junit.Test
 
 class SmartArtDrawingTest {
 
-    private fun deck(drawing: String): Deck = pptx {
+    private fun deck(
+        drawing: String? = null,
+        data: String = DATA_XML,
+        description: String = "",
+    ): Deck = pptx {
         slide {
             graphicFrame(
                 uri = DIAGRAM_URI,
@@ -30,31 +36,36 @@ class SmartArtDrawingTest {
                 w = FRAME_W,
                 h = FRAME_H,
                 name = "smartart",
+                description = description,
             )
             rel("rId2", "$REL/diagramData", "../diagrams/data1.xml")
         }
-        part("ppt/diagrams/data1.xml", DATA_XML.toByteArray())
-        part("ppt/diagrams/drawing1.xml", drawing.toByteArray())
-        part(
-            "ppt/diagrams/_rels/data1.xml.rels",
-            (
-                """<?xml version="1.0" encoding="UTF-8"?>""" +
-                    """<Relationships xmlns="$REL_NS"><Relationship Id="rId1" Type="$REL/diagramDrawing" """ +
-                    """Target="drawing1.xml"/></Relationships>"""
-                ).toByteArray(),
-        )
+        part("ppt/diagrams/data1.xml", data.toByteArray())
+        if (drawing != null) {
+            part("ppt/diagrams/drawing1.xml", drawing.toByteArray())
+            part(
+                "ppt/diagrams/_rels/data1.xml.rels",
+                (
+                    """<?xml version="1.0" encoding="UTF-8"?>""" +
+                        """<Relationships xmlns="$REL_NS"><Relationship Id="rId1" Type="$REL/diagramDrawing" """ +
+                        """Target="drawing1.xml"/></Relationships>"""
+                    ).toByteArray(),
+            )
+        }
     }
 
-    private fun smartArt(drawing: String): SmartArtDrawing {
-        val deck = deck(drawing)
+    private fun sceneOf(deck: Deck): Scene {
         val bytes = deck.toBytes()
         val pkg = PptxPackage.read({ bytes.inputStream() }, newParserFactory = OfficeFixtures::parser)
         val presentation = PresentationParser(OfficeFixtures::parser).parse(
             deck.parts.getValue(pkg.mainPart),
             pkg.mainPart,
         )
-        val scene = StyleResolver(OfficeFixtures::parser).resolveAll(pkg, presentation).slides.single().scene
-        val frame = scene.nodes.filterIsInstance<SceneGraphicFrame>().single { it.name == "smartart" }
+        return StyleResolver(OfficeFixtures::parser).resolveAll(pkg, presentation).slides.single().scene
+    }
+
+    private fun smartArt(drawing: String): SmartArtDrawing {
+        val frame = sceneOf(deck(drawing)).nodes.filterIsInstance<SceneGraphicFrame>().single { it.name == "smartart" }
         return frame.smartArt ?: error("the cached drawing was not resolved")
     }
 
@@ -100,16 +111,28 @@ class SmartArtDrawingTest {
 
     @Test
     fun `a drawing with no sp tree is not resolved`() {
-        val deck = deck("""<dsp:drawing xmlns:dsp="$DSP_NS"/>""")
-        val bytes = deck.toBytes()
-        val pkg = PptxPackage.read({ bytes.inputStream() }, newParserFactory = OfficeFixtures::parser)
-        val presentation = PresentationParser(OfficeFixtures::parser).parse(
-            deck.parts.getValue(pkg.mainPart),
-            pkg.mainPart,
-        )
-        val scene = StyleResolver(OfficeFixtures::parser).resolveAll(pkg, presentation).slides.single().scene
+        val scene = sceneOf(deck("""<dsp:drawing xmlns:dsp="$DSP_NS"/>"""))
         val frame = scene.nodes.filterIsInstance<SceneGraphicFrame>().single { it.name == "smartart" }
         assertEquals(null, frame.smartArt)
+    }
+
+    @Test
+    fun `a missing drawing part falls back to a labelled placeholder with node text`() {
+        val scene = sceneOf(deck(data = DATA_WITH_NODES, description = "Diagram"))
+
+        val frame = scene.nodes.filterIsInstance<SceneGraphicFrame>().single { it.name == "smartart" }
+        val art = frame.smartArt ?: error("the fallback was not resolved")
+        assertEquals(listOf("First node", "Second node"), art.nodeText)
+        assertEquals(SceneRect(FRAME_X.toDouble(), FRAME_Y.toDouble(), FRAME_W.toDouble(), FRAME_H.toDouble()),
+            art.nodes.single().frame)
+        val label = art.texts.single().body.text()
+        assertTrue(label.startsWith("SmartArt not displayed"))
+        assertTrue("First node" in label)
+        assertTrue("Generated node" !in label)
+
+        val semantic = SlideTextIndex.semanticTextOf(scene)
+        assertTrue("First node" in semantic)
+        assertTrue("Generated node" !in semantic)
     }
 
     private fun XNode.text(): String = buildString {
@@ -170,5 +193,15 @@ class SmartArtDrawingTest {
         const val FRAME_W = 1_000_000L
         const val FRAME_H = 500_000L
         val DATA_XML: String get() = """<dgm:dataModel xmlns:dgm="$DIAGRAM_NS"/>"""
+
+        val DATA_WITH_NODES: String get() = """
+            <dgm:dataModel xmlns:dgm="$DIAGRAM_NS" xmlns:a="$A_NS">
+              <dgm:ptLst>
+                <dgm:pt modelId="1"><dgm:t><a:p><a:r><a:t>First node</a:t></a:r></a:p></dgm:t></dgm:pt>
+                <dgm:pt modelId="2" type="pres"><dgm:t><a:p><a:r><a:t>Generated node</a:t></a:r></a:p></dgm:t></dgm:pt>
+                <dgm:pt modelId="3"><dgm:t><a:p><a:r><a:t>Second node</a:t></a:r></a:p></dgm:t></dgm:pt>
+              </dgm:ptLst>
+            </dgm:dataModel>
+        """.trimIndent()
     }
 }
