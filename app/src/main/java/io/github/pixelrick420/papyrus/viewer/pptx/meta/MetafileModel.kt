@@ -14,6 +14,8 @@ import io.github.pixelrick420.papyrus.viewer.pptx.render.DisplayList
 import io.github.pixelrick420.papyrus.viewer.pptx.render.ImageRef
 import io.github.pixelrick420.papyrus.viewer.pptx.render.PaintSpec
 import io.github.pixelrick420.papyrus.viewer.pptx.render.PathData
+import io.github.pixelrick420.papyrus.viewer.pptx.render.PathFill
+import io.github.pixelrick420.papyrus.viewer.pptx.render.PathSegment
 import io.github.pixelrick420.papyrus.viewer.pptx.render.PointF
 import io.github.pixelrick420.papyrus.viewer.pptx.render.RectF
 import io.github.pixelrick420.papyrus.viewer.pptx.render.RecordingBackend
@@ -123,6 +125,12 @@ internal data class GdiFont(
     val strikeOut: Boolean = false,
 )
 
+internal sealed interface GdiObject {
+    data class Pen(val pen: GdiPen) : GdiObject
+    data class Brush(val brush: GdiBrush?) : GdiObject
+    data class Font(val font: GdiFont) : GdiObject
+}
+
 internal data class GdiState(
     val mapping: GdiMapping,
     val world: Affine = Affine.IDENTITY,
@@ -133,6 +141,7 @@ internal data class GdiState(
     val backgroundColor: Rgba = Rgba.WHITE,
     val opaqueText: Boolean = false,
     val textAlign: Int = 0,
+    val polyFillMode: Int = 1,
 )
 
 internal class DibPixels(val width: Int, val height: Int, val argb: IntArray)
@@ -196,6 +205,38 @@ internal abstract class GdiRenderer(
 
     private val saved = ArrayDeque<GdiState>()
 
+    protected val objects = mutableMapOf<Int, GdiObject>()
+
+    private var nextHandle = 1
+
+    protected fun addObject(handle: Int, value: GdiObject) {
+        objects[handle] = value
+    }
+
+    protected fun createObject(value: GdiObject): Int {
+        val handle = nextHandle++
+        objects[handle] = value
+        return handle
+    }
+
+    protected fun selectObject(handle: Int) {
+        when (val value = objects[handle] ?: return) {
+            is GdiObject.Pen -> state = state.copy(pen = value.pen)
+            is GdiObject.Brush -> state = state.copy(brush = value.brush)
+            is GdiObject.Font -> state = state.copy(font = value.font)
+        }
+    }
+
+    protected fun deleteObject(handle: Int) {
+        objects.remove(handle)
+    }
+
+    protected fun colorRef(value: Int): Rgba = if (value == -1) {
+        Rgba(0, 0, 0, 0)
+    } else {
+        Rgba(value and 0xFF, (value shr 8) and 0xFF, (value shr 16) and 0xFF)
+    }
+
     protected fun transform(): Affine = deviceTransform(page, state.world, state.mapping)
 
     protected fun point(x: Int, y: Int): PointF = point(x.toDouble(), y.toDouble())
@@ -203,6 +244,13 @@ internal abstract class GdiRenderer(
     protected fun point(x: Double, y: Double): PointF {
         val mapped = transform().map(x, y)
         return PointF(mapped.x.toFloat(), mapped.y.toFloat())
+    }
+
+    protected fun vector(x: Int, y: Int): PointF {
+        val matrix = transform()
+        val origin = matrix.map(0.0, 0.0)
+        val mapped = matrix.map(x.toDouble(), y.toDouble())
+        return PointF((mapped.x - origin.x).toFloat(), (mapped.y - origin.y).toFloat())
     }
 
     protected fun rect(left: Int, top: Int, right: Int, bottom: Int): RectF {
@@ -224,7 +272,97 @@ internal abstract class GdiRenderer(
         repeat(minOf(maxOf(0, depth), saved.size)) { state = saved.removeLast() }
     }
 
-    protected fun fill(path: PathData, color: Rgba) = target.fillPath(path, PaintSpec.Solid(color))
+    protected fun fill(path: PathData, color: Rgba) = target.fillPath(gdiPath(path), PaintSpec.Solid(color))
+
+    protected fun gdiPath(path: PathData): PathData = if (state.polyFillMode == 1) {
+        path.copy(fill = PathFill.EVEN_ODD)
+    } else {
+        path
+    }
+
+    protected fun polyline(points: List<PointF>, close: Boolean) {
+        if (points.size < 2) return
+        val segments = mutableListOf<PathSegment>(PathSegment.MoveTo(points[0].x, points[0].y))
+        points.drop(1).forEach { segments += PathSegment.LineTo(it.x, it.y) }
+        if (close) segments += PathSegment.Close
+        val path = PathData(segments)
+        if (close) outlineAndFill(path) else stroke(path, state.pen)
+        position = points.last()
+    }
+
+    protected fun bezier(points: List<PointF>, fromCurrent: Boolean) {
+        if (points.size < 2) return
+        val segments = mutableListOf<PathSegment>()
+        if (fromCurrent) {
+            segments += PathSegment.MoveTo(position.x, position.y)
+        } else {
+            segments += PathSegment.MoveTo(points[0].x, points[0].y)
+        }
+        var index = if (fromCurrent) 0 else 1
+        while (index + 2 < points.size) {
+            val first = points[index]
+            val second = points[index + 1]
+            val end = points[index + 2]
+            segments += PathSegment.CubicTo(first.x, first.y, second.x, second.y, end.x, end.y)
+            index += 3
+        }
+        stroke(PathData(segments), state.pen)
+        position = points.last()
+    }
+
+    protected fun ellipsePath(rect: RectF): PathData {
+        val k = 0.55228475f
+        val dx = rect.width * k
+        val dy = rect.height * k
+        val cx = rect.left + rect.width / 2f
+        val cy = rect.top + rect.height / 2f
+        return PathData(
+            listOf(
+                PathSegment.MoveTo(cx, rect.top),
+                PathSegment.CubicTo(cx + dx, rect.top, rect.right, cy - dy, rect.right, cy),
+                PathSegment.CubicTo(rect.right, cy + dy, cx + dx, rect.bottom, cx, rect.bottom),
+                PathSegment.CubicTo(cx - dx, rect.bottom, rect.left, cy + dy, rect.left, cy),
+                PathSegment.CubicTo(rect.left, cy - dy, cx - dx, rect.top, cx, rect.top),
+                PathSegment.Close,
+            ),
+        )
+    }
+
+    protected fun roundRectPath(rect: RectF, corner: PointF): PathData {
+        val rx = abs(corner.x).coerceAtMost(rect.width / 2f)
+        val ry = abs(corner.y).coerceAtMost(rect.height / 2f)
+        val k = 0.55228475f
+        return PathData(
+            listOf(
+                PathSegment.MoveTo(rect.left + rx, rect.top),
+                PathSegment.LineTo(rect.right - rx, rect.top),
+                PathSegment.CubicTo(
+                    rect.right - rx + rx * k, rect.top,
+                    rect.right, rect.top + ry - ry * k,
+                    rect.right, rect.top + ry,
+                ),
+                PathSegment.LineTo(rect.right, rect.bottom - ry),
+                PathSegment.CubicTo(
+                    rect.right, rect.bottom - ry + ry * k,
+                    rect.right - rx + rx * k, rect.bottom,
+                    rect.right - rx, rect.bottom,
+                ),
+                PathSegment.LineTo(rect.left + rx, rect.bottom),
+                PathSegment.CubicTo(
+                    rect.left + rx - rx * k, rect.bottom,
+                    rect.left, rect.bottom - ry + ry * k,
+                    rect.left, rect.bottom - ry,
+                ),
+                PathSegment.LineTo(rect.left, rect.top + ry),
+                PathSegment.CubicTo(
+                    rect.left, rect.top + ry - ry * k,
+                    rect.left + rx - rx * k, rect.top,
+                    rect.left + rx, rect.top,
+                ),
+                PathSegment.Close,
+            ),
+        )
+    }
 
     protected fun stroke(path: PathData, pen: GdiPen) {
         if (pen.style == PS_NULL) return
