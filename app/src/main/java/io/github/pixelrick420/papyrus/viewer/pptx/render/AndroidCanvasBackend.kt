@@ -32,11 +32,16 @@ internal class AndroidCanvasBackend(
     private val canvas: Canvas,
     private val imageOf: (ImageRef) -> Bitmap? = { null },
     private val fonts: FontCatalog? = null,
+    initialScale: Float = 1f,
 ) : DrawTarget {
 
     private var shadow: ShadowSpec? = null
 
     private var depth = 0
+
+    private val transforms = mutableListOf<Affine>()
+
+    private var transform = Affine.scale(initialScale.toDouble(), initialScale.toDouble())
 
     override fun fillPath(path: PathData, paint: PaintSpec) {
         val fill = paintOf(paint)
@@ -81,10 +86,8 @@ internal class AndroidCanvasBackend(
         if (run.text.isEmpty()) return
         // Skia drops glyphs built at slide-sized (EMU) text, so the fill is painted in a space whose
         // scale is 1: the run's coordinates and pen size are converted to device units first.
-        val values = FloatArray(9)
-        canvas.matrix.getValues(values)
-        val sx = hypot(values[Matrix.MSCALE_X], values[Matrix.MSKEW_Y])
-        val sy = hypot(values[Matrix.MSKEW_X], values[Matrix.MSCALE_Y])
+        val sx = hypot(transform.a, transform.b).toFloat()
+        val sy = hypot(transform.c, transform.d).toFloat()
         if (sx > 0f && sy > 0f) {
             val fill = textPaint(run.paint, run).apply {
                 textSize = run.size * sy
@@ -196,12 +199,14 @@ internal class AndroidCanvasBackend(
 
     override fun save() {
         canvas.save()
+        transforms.add(transform)
         depth++
     }
 
     override fun restore() {
         if (depth == 0) return
         canvas.restore()
+        transform = transforms.removeAt(transforms.lastIndex)
         depth--
     }
 
@@ -216,6 +221,7 @@ internal class AndroidCanvasBackend(
             )
         }
         canvas.concat(matrix)
+        transform = m.then(transform)
     }
 
     override fun clip(path: PathData) {
@@ -232,24 +238,33 @@ internal class AndroidCanvasBackend(
             is PaintSpec.Solid -> paint.color = spec.color.argb
             is PaintSpec.Linear -> paint.applyGradient(spec.stops) { colors, offsets ->
                 LinearGradient(
-                    spec.start.x, spec.start.y, spec.end.x, spec.end.y, colors, offsets, Shader.TileMode.CLAMP,
+                    spec.start.x, spec.start.y, spec.end.x, spec.end.y, colors, offsets, shaderTileMode(spec.tileMode),
                 )
             }
             is PaintSpec.Radial -> paint.applyGradient(spec.stops) { colors, offsets ->
                 RadialGradient(
                     spec.center.x, spec.center.y, spec.radius.coerceAtLeast(MIN_RADIUS), colors, offsets,
-                    Shader.TileMode.CLAMP,
+                    shaderTileMode(spec.tileMode),
                 )
             }
             is PaintSpec.Pattern -> {
                 val shader = BitmapShader(patternBitmap(spec), Shader.TileMode.REPEAT, Shader.TileMode.REPEAT)
                 val tileScale = (EMU_PER_PIXEL * spec.scale.coerceAtLeast(MIN_TILE_SCALE)).toFloat()
-                shader.setLocalMatrix(Matrix().apply { setScale(tileScale, tileScale) })
+                shader.setLocalMatrix(Matrix().apply {
+                    setScale(tileScale, tileScale)
+                    if (spec.rotationDegrees != 0f) postRotate(spec.rotationDegrees)
+                })
                 paint.shader = shader
             }
         }
         shadow?.let { paint.setShadowLayer(it.blur, it.dx, it.dy, it.color.argb) }
         return paint
+    }
+
+    private fun shaderTileMode(mode: GradientTileMode): Shader.TileMode = when (mode) {
+        GradientTileMode.CLAMP -> Shader.TileMode.CLAMP
+        GradientTileMode.REPEAT -> Shader.TileMode.REPEAT
+        GradientTileMode.MIRROR -> Shader.TileMode.MIRROR
     }
 
     private fun patternBitmap(spec: PaintSpec.Pattern): Bitmap {
@@ -354,7 +369,7 @@ internal object SoftwareCanvas {
         bitmap.density = Bitmap.DENSITY_NONE
         val canvas = Canvas(bitmap)
         if (scale != 1f) canvas.scale(scale, scale)
-        AndroidCanvasBackend(canvas, imageOf, fonts).also { list.play(it) }
+        AndroidCanvasBackend(canvas, imageOf, fonts, initialScale = scale).also { list.play(it) }
         return bitmap
     }
 }

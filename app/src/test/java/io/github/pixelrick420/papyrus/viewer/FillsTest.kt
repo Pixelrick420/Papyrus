@@ -1,8 +1,10 @@
 package io.github.pixelrick420.papyrus.viewer
 
 import io.github.pixelrick420.papyrus.viewer.pptx.DeckScenes
+import io.github.pixelrick420.papyrus.viewer.pptx.GradientFlip
 import io.github.pixelrick420.papyrus.viewer.pptx.GradientStop
 import io.github.pixelrick420.papyrus.viewer.pptx.LinearGradient
+import io.github.pixelrick420.papyrus.viewer.pptx.PathGradient
 import io.github.pixelrick420.papyrus.viewer.pptx.PatternFills
 import io.github.pixelrick420.papyrus.viewer.pptx.PptxLimits
 import io.github.pixelrick420.papyrus.viewer.pptx.PptxPackage
@@ -49,6 +51,12 @@ class FillsTest {
         val paint = paintOf(deck, limits)
         assertTrue("not a radial gradient: $paint", paint is ScenePaint.Radial)
         return (paint as ScenePaint.Radial).gradient
+    }
+
+    private fun pathOf(deck: Deck, limits: PptxLimits = PptxLimits()): PathGradient {
+        val paint = paintOf(deck, limits)
+        assertTrue("not a path gradient: $paint", paint is ScenePaint.Path)
+        return (paint as ScenePaint.Path).gradient
     }
 
     private val stops =
@@ -258,15 +266,58 @@ class FillsTest {
     }
 
     @Test
-    fun `rect and shape path gradients stay complex`() {
+    fun `rect and shape path gradients keep their fillToRect focus`() {
         for (path in listOf("rect", "shape")) {
-            val deck = filled(
-                """<a:gradFill>$stops""" +
-                    """<a:path path="$path"><a:fillToRect l="25000" t="25000" r="25000" b="25000"/></a:path>""" +
-                    """</a:gradFill>""",
+            val gradient = pathOf(
+                filled(
+                    """<a:gradFill>$stops""" +
+                        """<a:path path="$path"><a:fillToRect l="25000" t="10000" r="25000" b="20000"/></a:path>""" +
+                        """</a:gradFill>""",
+                ),
             )
 
-            assertTrue(path, paintOf(deck) is ScenePaint.Complex)
+            assertEquals(0.25, gradient.left, 1e-9)
+            assertEquals(0.1, gradient.top, 1e-9)
+            assertEquals(0.25, gradient.right, 1e-9)
+            assertEquals(0.2, gradient.bottom, 1e-9)
+            assertEquals(path == "shape", gradient.followsShape)
         }
+    }
+
+    @Test
+    fun `rotWithShape defaults on and is read from gradFill`() {
+        val default = linearOf(filled("""<a:gradFill>$stops<a:lin ang="0"/></a:gradFill>"""))
+        val rotating = linearOf(
+            filled("""<a:gradFill rotWithShape="0">$stops<a:lin ang="0"/></a:gradFill>"""),
+        )
+
+        assertTrue(default.rotatesWithShape)
+        assertFalse(rotating.rotatesWithShape)
+    }
+
+    @Test
+    fun `tileRect and flip are read from gradFill`() {
+        val gradient = linearOf(
+            filled(
+                """<a:gradFill flip="xy">$stops<a:lin ang="0"/>""" +
+                    """<a:tileRect l="10000" t="20000" r="30000" b="40000"/>""" +
+                    """</a:gradFill>""",
+            ),
+        )
+
+        assertEquals(0.1, gradient.tile.left, 1e-9)
+        assertEquals(0.2, gradient.tile.top, 1e-9)
+        assertEquals(0.3, gradient.tile.right, 1e-9)
+        assertEquals(0.4, gradient.tile.bottom, 1e-9)
+        assertEquals(GradientFlip.BOTH, gradient.tile.flip)
+        assertFalse(gradient.tile.isEmpty)
+    }
+
+    @Test
+    fun `a gradient without tileRect or flip uses the whole-shape default`() {
+        val gradient = linearOf(filled("""<a:gradFill>$stops<a:lin ang="0"/></a:gradFill>"""))
+
+        assertTrue(gradient.tile.isEmpty)
+        assertEquals(GradientFlip.NONE, gradient.tile.flip)
     }
 }

@@ -1,6 +1,9 @@
 package io.github.pixelrick420.papyrus.viewer.pptx.render
 
 import io.github.pixelrick420.papyrus.viewer.OfficeFixtures
+import io.github.pixelrick420.papyrus.viewer.pptx.GradientFlip
+import io.github.pixelrick420.papyrus.viewer.pptx.GradientStop
+import io.github.pixelrick420.papyrus.viewer.pptx.GradientTile
 import io.github.pixelrick420.papyrus.viewer.pptx.ImageBounds
 import io.github.pixelrick420.papyrus.viewer.pptx.LinearGradient
 import io.github.pixelrick420.papyrus.viewer.pptx.OoxmlAttribute
@@ -13,6 +16,7 @@ import io.github.pixelrick420.papyrus.viewer.pptx.PictureSource
 import io.github.pixelrick420.papyrus.viewer.pptx.PatternFills
 import io.github.pixelrick420.papyrus.viewer.pptx.PictureTile
 import io.github.pixelrick420.papyrus.viewer.pptx.PptxLimits
+import io.github.pixelrick420.papyrus.viewer.pptx.PathGradient
 import io.github.pixelrick420.papyrus.viewer.pptx.PresetGeometry
 import io.github.pixelrick420.papyrus.viewer.pptx.Rgba
 import io.github.pixelrick420.papyrus.viewer.pptx.Scene
@@ -92,6 +96,60 @@ class SlideRendererTest {
         assertEquals(PointF(0f, 100f), paint.start)
         assertEquals(PointF(400f, 100f), paint.end)
         assertEquals(2, paint.stops.size)
+    }
+
+    @Test
+    fun `a rect path gradient fills the fillToRect region`() = runBlocking {
+        val gradient = PathGradient(
+            stops = listOf(GradientStop(0.0, red), GradientStop(1.0, black)),
+            left = 0.25,
+            top = 0.0,
+            right = 0.25,
+            bottom = 0.0,
+            followsShape = false,
+        )
+
+        val paint = (renderer.render(scene(background = ScenePaint.Path(gradient)))!!.ops.single()
+            as DrawOp.FillPath).paint as PaintSpec.Linear
+
+        assertEquals(PointF(100f, 0f), paint.start)
+        assertEquals(PointF(300f, 200f), paint.end)
+        assertEquals(GradientTileMode.CLAMP, paint.tileMode)
+    }
+
+    @Test
+    fun `a gradient that does not rotate with its shape is counter-rotated`() = runBlocking {
+        val gradient = LinearGradient(
+            angleDegrees = 0.0,
+            scaled = true,
+            stops = listOf(GradientStop(0.0, red), GradientStop(1.0, black)),
+            rotatesWithShape = false,
+        )
+        val format = SceneFormat(ScenePaint.Linear(gradient), null, null)
+
+        val ops = renderer.render(scene(rect(transform = xfrm("rot" to "5400000"), format = format)))!!.ops
+        val paint = (ops[2] as DrawOp.FillPath).paint as PaintSpec.Linear
+
+        assertEquals(PointF(15f, 35f), paint.start)
+        assertEquals(PointF(15f, 5f), paint.end)
+    }
+
+    @Test
+    fun `tileRect and flip choose the gradient shader tile mode`() = runBlocking {
+        assertEquals(GradientTileMode.CLAMP, backgroundGradient(GradientTile()).tileMode)
+        assertEquals(GradientTileMode.REPEAT, backgroundGradient(GradientTile(left = 0.1)).tileMode)
+        assertEquals(GradientTileMode.MIRROR, backgroundGradient(GradientTile(flip = GradientFlip.X)).tileMode)
+    }
+
+    private suspend fun backgroundGradient(tile: GradientTile): PaintSpec.Linear {
+        val gradient = LinearGradient(
+            angleDegrees = 0.0,
+            scaled = true,
+            stops = listOf(GradientStop(0.0, red), GradientStop(1.0, black)),
+            tile = tile,
+        )
+        return (renderer.render(scene(background = ScenePaint.Linear(gradient)))!!.ops.single()
+            as DrawOp.FillPath).paint as PaintSpec.Linear
     }
 
     @Test

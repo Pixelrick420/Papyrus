@@ -35,12 +35,15 @@ internal sealed interface ScenePaint {
 
     class Radial(val gradient: RadialGradient) : ScenePaint
 
+    class Path(val gradient: PathGradient) : ScenePaint
+
     /** An 8x8 pattern tile tinted with [foreground] over [background], repeated at [scale]. */
     class Pattern(
         val tile: PatternTile,
         val foreground: Rgba,
         val background: Rgba?,
         val scale: Double,
+        val rotatesWithShape: Boolean = true,
     ) : ScenePaint
 
     /** A picture fill, or a path gradient not yet owned by the paint pass, held whole. */

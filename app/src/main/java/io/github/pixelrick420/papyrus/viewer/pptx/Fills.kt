@@ -5,6 +5,32 @@ import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.sin
 
+/** How the neighbouring tiles of a tiled gradient mirror, from `a:gradFill@flip`. */
+internal enum class GradientFlip {
+    NONE, X, Y, BOTH;
+
+    companion object {
+        fun of(value: String?): GradientFlip = when (value) {
+            "x" -> X
+            "y" -> Y
+            "xy" -> BOTH
+            else -> NONE
+        }
+    }
+}
+
+/** An `a:gradFill/a:tileRect` inset, with the fill's `flip`, both defaulting to a single whole-shape tile. */
+internal class GradientTile(
+    val left: Double = 0.0,
+    val top: Double = 0.0,
+    val right: Double = 0.0,
+    val bottom: Double = 0.0,
+    val flip: GradientFlip = GradientFlip.NONE,
+) {
+    val isEmpty: Boolean
+        get() = left == 0.0 && top == 0.0 && right == 0.0 && bottom == 0.0 && flip == GradientFlip.NONE
+}
+
 /** One colour stop: [offset] from 0 at the start of the fill to 1 at its end, and its resolved colour. */
 internal class GradientStop(val offset: Double, val color: Rgba)
 
@@ -14,6 +40,8 @@ internal class LinearGradient(
     /** `a:lin@scaled`, which lets the frame's aspect stretch the angle; the file's default is on. */
     val scaled: Boolean,
     val stops: List<GradientStop>,
+    val rotatesWithShape: Boolean = true,
+    val tile: GradientTile = GradientTile(),
 ) {
 
     fun angleIn(frame: SceneRect?): Double {
@@ -33,6 +61,8 @@ internal class RadialGradient(
     val top: Double = CENTRE_FOCUS,
     val right: Double = CENTRE_FOCUS,
     val bottom: Double = CENTRE_FOCUS,
+    val rotatesWithShape: Boolean = true,
+    val tile: GradientTile = GradientTile(),
 ) {
 
     val centerX: Double get() = (1.0 + left - right) / 2.0
@@ -49,9 +79,21 @@ internal class RadialGradient(
     }
 }
 
+/** A `a:path path="rect"` or `shape` gradient: stops across the rectangle left by [fillToRect]'s insets. */
+internal class PathGradient(
+    val stops: List<GradientStop>,
+    val left: Double,
+    val top: Double,
+    val right: Double,
+    val bottom: Double,
+    val followsShape: Boolean,
+    val rotatesWithShape: Boolean = true,
+    val tile: GradientTile = GradientTile(),
+)
+
 /**
- * Turns a fill element into the paint a renderer applies: a resolved colour, nothing, or a gradient.
- * Pictures and patterns stay whole for the passes that own them.
+ * Turns a fill element into the paint a renderer applies: a resolved colour, nothing, a pattern or a gradient.
+ * Picture fills stay whole for the pass that owns them.
  */
 internal object Fills {
 
@@ -78,7 +120,7 @@ internal object Fills {
         val background = resolvedColorOf(fill.child(OoxmlNamespace.A, "bgClr"), placeholder, colors)
         val scale = fill.child(OoxmlNamespace.A, "scale")?.attribute("w")?.toDoubleOrNull()
             ?.div(PERCENT_UNIT)?.coerceIn(TILE_SCALE_MIN, TILE_SCALE_MAX) ?: 1.0
-        return ScenePaint.Pattern(tile, foreground, background, scale)
+        return ScenePaint.Pattern(tile, foreground, background, scale, rotatesWithShapeOf(fill))
     }
 
     private fun resolvedColorOf(node: XNode?, placeholder: Rgba?, colors: ColorModel): Rgba? =
@@ -87,37 +129,83 @@ internal object Fills {
     private fun gradientOf(element: XNode, placeholder: Rgba?, colors: ColorModel, maxStops: Int): ScenePaint? {
         val stops = stopsOf(element, placeholder, colors, maxStops)
         if (stops.isEmpty()) return null
+        val rotates = rotatesWithShapeOf(element)
+        val tile = tileOf(element)
         element.child(OoxmlNamespace.A, "lin")?.let { line ->
             return ScenePaint.Linear(
                 LinearGradient(
                     angleDegrees = line.attribute("ang")?.toDoubleOrNull()?.div(ANGLE_UNIT) ?: 0.0,
                     scaled = line.attribute("scaled").let { it == null || it == "1" || it.equals("true", true) },
                     stops = stops,
+                    rotatesWithShape = rotates,
+                    tile = tile,
                 ),
             )
         }
         val path = element.child(OoxmlNamespace.A, "path") ?: return null
-        if (path.attribute("path") != "circle") return null
-        return ScenePaint.Radial(radialOf(path, stops))
+        val focus = path.child(OoxmlNamespace.A, "fillToRect")
+        return when (path.attribute("path")) {
+            "circle" -> ScenePaint.Radial(radialOf(focus, stops, rotates, tile))
+            "rect" -> ScenePaint.Path(pathOf(focus, stops, followsShape = false, rotates = rotates, tile = tile))
+            "shape" -> ScenePaint.Path(pathOf(focus, stops, followsShape = true, rotates = rotates, tile = tile))
+            else -> null
+        }
     }
 
-    private fun radialOf(path: XNode, stops: List<GradientStop>): RadialGradient {
-        val focus = path.child(OoxmlNamespace.A, "fillToRect")
+    private fun radialOf(focus: XNode?, stops: List<GradientStop>, rotates: Boolean, tile: GradientTile): RadialGradient {
+        val missing = if (focus == null) RadialGradient.CENTRE_FOCUS else 0.0
         return RadialGradient(
             stops = stops,
-            left = focusInset(focus, "l"),
-            top = focusInset(focus, "t"),
-            right = focusInset(focus, "r"),
-            bottom = focusInset(focus, "b"),
+            left = focusInset(focus, "l", missing),
+            top = focusInset(focus, "t", missing),
+            right = focusInset(focus, "r", missing),
+            bottom = focusInset(focus, "b", missing),
+            rotatesWithShape = rotates,
+            tile = tile,
         )
     }
 
-    /** A missing `fillToRect` centres the focus; within a present one, the schema default for an omitted side is 0. */
-    private fun focusInset(focus: XNode?, side: String): Double {
-        val value = focus?.attribute(side)?.toDoubleOrNull()
-            ?: return if (focus == null) RadialGradient.CENTRE_FOCUS else 0.0
+    private fun pathOf(
+        focus: XNode?,
+        stops: List<GradientStop>,
+        followsShape: Boolean,
+        rotates: Boolean,
+        tile: GradientTile,
+    ): PathGradient = PathGradient(
+        stops = stops,
+        left = focusInset(focus, "l", 0.0),
+        top = focusInset(focus, "t", 0.0),
+        right = focusInset(focus, "r", 0.0),
+        bottom = focusInset(focus, "b", 0.0),
+        followsShape = followsShape,
+        rotatesWithShape = rotates,
+        tile = tile,
+    )
+
+    private fun tileOf(element: XNode): GradientTile {
+        val rect = element.child(OoxmlNamespace.A, "tileRect") ?: return GradientTile(flip = GradientFlip.of(element.attribute("flip")))
+        return GradientTile(
+            left = tileInset(rect, "l"),
+            top = tileInset(rect, "t"),
+            right = tileInset(rect, "r"),
+            bottom = tileInset(rect, "b"),
+            flip = GradientFlip.of(element.attribute("flip")),
+        )
+    }
+
+    private fun tileInset(rect: XNode, side: String): Double {
+        val value = rect.attribute(side)?.toDoubleOrNull()?.takeIf { it.isFinite() } ?: return 0.0
+        return (value / PERCENT_UNIT).coerceIn(-1.0, 1.0)
+    }
+
+    /** A missing side centres a circle's focus; a path gradient's absent rectangle covers the whole frame. */
+    private fun focusInset(focus: XNode?, side: String, missing: Double): Double {
+        val value = focus?.attribute(side)?.toDoubleOrNull() ?: return missing
         return (value / PERCENT_UNIT).coerceIn(0.0, 1.0)
     }
+
+    private fun rotatesWithShapeOf(element: XNode): Boolean =
+        element.attribute("rotWithShape").let { it == null || it == "1" || it.equals("true", true) }
 
     private fun stopsOf(element: XNode, placeholder: Rgba?, colors: ColorModel, maxStops: Int): List<GradientStop> {
         val list = element.child(OoxmlNamespace.A, "gsLst") ?: return emptyList()

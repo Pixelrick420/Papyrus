@@ -162,7 +162,14 @@ internal class SlideRenderer(
         if (format.isUnsupported()) return
         val outline = geometry.outline(shape) ?: return
         val (flipH, flipV) = flipsOf(shape.preset)
-        outline(outline, format, Affine.forShape(frame, rotation = rotationOf(shape.transform), flipH = flipH, flipV = flipV), out)
+        val rotation = rotationOf(shape.transform)
+        outline(
+            outline,
+            format,
+            Affine.forShape(frame, rotation = rotation, flipH = flipH, flipV = flipV),
+            rotation / ROTATION_UNIT,
+            out,
+        )
     }
 
     private fun connector(connector: SceneConnector, out: MutableList<DrawOp>) {
@@ -171,10 +178,12 @@ internal class SlideRenderer(
         if (format.isUnsupported() || format.line.hasArrows()) return
         val outline = geometry.outline(connector) ?: return
         val (flipH, flipV) = flipsOf(connector.preset)
+        val rotation = rotationOf(connector.transform)
         outline(
             outline,
             format,
-            Affine.forShape(frame, rotation = rotationOf(connector.transform), flipH = flipH, flipV = flipV),
+            Affine.forShape(frame, rotation = rotation, flipH = flipH, flipV = flipV),
+            rotation / ROTATION_UNIT,
             out,
         )
     }
@@ -292,13 +301,19 @@ internal class SlideRenderer(
         return geometry.outline(picture)?.let(::pathOf)
     }
 
-    private fun outline(outline: PresetOutline, format: SceneFormat, transform: Affine, out: MutableList<DrawOp>) {
+    private fun outline(
+        outline: PresetOutline,
+        format: SceneFormat,
+        transform: Affine,
+        rotationDegrees: Double,
+        out: MutableList<DrawOp>,
+    ) {
         val body = mutableListOf<DrawOp>()
         val box = SceneRect(0.0, 0.0, outline.textRect.width, outline.textRect.height)
-        val stroke = strokeOf(format.line, box)
+        val stroke = strokeOf(format.line, box, rotationDegrees)
         for (contour in outline.paths) {
             val path = pathOf(contour)
-            fillOf(format.fill, contour.fill, box)?.let { body += DrawOp.FillPath(path, it) }
+            fillOf(format.fill, contour.fill, box, rotationDegrees)?.let { body += DrawOp.FillPath(path, it) }
             if (contour.stroke && stroke != null) body += DrawOp.StrokePath(path, stroke)
         }
         if (body.isEmpty()) return
@@ -308,19 +323,26 @@ internal class SlideRenderer(
         out += DrawOp.Restore
     }
 
-    private fun fillOf(fill: ScenePaint?, mode: PresetFillMode, box: SceneRect): PaintSpec? = when (fill) {
+    private fun fillOf(
+        fill: ScenePaint?,
+        mode: PresetFillMode,
+        box: SceneRect,
+        rotationDegrees: Double = 0.0,
+    ): PaintSpec? = when (fill) {
         is ScenePaint.Solid -> mode.adjust(fill.color)?.let { PaintSpec.Solid(it) }
-        is ScenePaint.Linear -> if (mode == PresetFillMode.NONE) null else PaintSpecs.linear(fill.gradient, box)
-        is ScenePaint.Radial -> if (mode == PresetFillMode.NONE) null else PaintSpecs.radial(fill.gradient, box)
-        is ScenePaint.Pattern -> if (mode == PresetFillMode.NONE) null else PaintSpecs.of(fill, box)
+        is ScenePaint.Linear -> if (mode == PresetFillMode.NONE) null else PaintSpecs.linear(fill.gradient, box, rotationDegrees)
+        is ScenePaint.Radial -> if (mode == PresetFillMode.NONE) null else PaintSpecs.radial(fill.gradient, box, rotationDegrees)
+        is ScenePaint.Path -> if (mode == PresetFillMode.NONE) null else PaintSpecs.path(fill.gradient, box, rotationDegrees)
+        is ScenePaint.Pattern -> if (mode == PresetFillMode.NONE) null else PaintSpecs.of(fill, box, rotationDegrees)
         else -> null
     }
 
-    private fun paintOf(paint: ScenePaint?, box: SceneRect): PaintSpec? = PaintSpecs.of(paint, box)
+    private fun paintOf(paint: ScenePaint?, box: SceneRect, rotationDegrees: Double = 0.0): PaintSpec? =
+        PaintSpecs.of(paint, box, rotationDegrees)
 
-    private fun strokeOf(line: SceneLine?, box: SceneRect): StrokeSpec? {
+    private fun strokeOf(line: SceneLine?, box: SceneRect, rotationDegrees: Double = 0.0): StrokeSpec? {
         if (line == null) return null
-        val paint = paintOf(line.paint, box) ?: return null
+        val paint = paintOf(line.paint, box, rotationDegrees) ?: return null
         val width = Strokes.resolvedWidthEmu(line.widthEmu, DEFAULT_LINE_EMU)
         if (width <= 0.0) return null
         return StrokeSpec(
@@ -391,6 +413,7 @@ internal class SlideRenderer(
     private companion object {
         const val NANOS_PER_MILLI = 1_000_000L
         const val PERCENT_UNIT = 100_000.0
+        const val ROTATION_UNIT = 60_000.0
         const val DEFAULT_LINE_EMU = 9_525.0
     }
 }

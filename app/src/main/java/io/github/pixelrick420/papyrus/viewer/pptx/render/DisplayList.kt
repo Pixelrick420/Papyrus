@@ -65,18 +65,31 @@ internal data class PathData(
 
 internal data class ColorStop(val offset: Float, val color: Rgba)
 
+internal enum class GradientTileMode { CLAMP, REPEAT, MIRROR }
+
 internal sealed interface PaintSpec {
     data class Solid(val color: Rgba) : PaintSpec
 
-    data class Linear(val start: PointF, val end: PointF, val stops: List<ColorStop>) : PaintSpec
+    data class Linear(
+        val start: PointF,
+        val end: PointF,
+        val stops: List<ColorStop>,
+        val tileMode: GradientTileMode = GradientTileMode.CLAMP,
+    ) : PaintSpec
 
-    data class Radial(val center: PointF, val radius: Float, val stops: List<ColorStop>) : PaintSpec
+    data class Radial(
+        val center: PointF,
+        val radius: Float,
+        val stops: List<ColorStop>,
+        val tileMode: GradientTileMode = GradientTileMode.CLAMP,
+    ) : PaintSpec
 
     data class Pattern(
         val tile: PatternTile,
         val foreground: Rgba,
         val background: Rgba?,
         val scale: Float,
+        val rotationDegrees: Float = 0f,
     ) : PaintSpec
 }
 
