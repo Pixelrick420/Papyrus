@@ -167,6 +167,7 @@ internal class SceneGraphicFrame(
     override val hyperlink: SceneHyperlink? = null,
     val table: io.github.pixelrick420.papyrus.viewer.pptx.table.PptxTable? = null,
     val chart: io.github.pixelrick420.papyrus.viewer.pptx.chart.ChartDrawing? = null,
+    val smartArt: io.github.pixelrick420.papyrus.viewer.pptx.diagram.SmartArtDrawing? = null,
     val fallbackPicture: ScenePicture? = null,
     override val sourcePart: String? = null,
 ) : SceneNode

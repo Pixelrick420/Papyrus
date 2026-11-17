@@ -2,8 +2,11 @@ package io.github.pixelrick420.papyrus.viewer.pptx
 
 import android.util.Xml
 import io.github.pixelrick420.papyrus.viewer.pptx.chart.ChartBuilder
+import io.github.pixelrick420.papyrus.viewer.pptx.chart.ChartDrawing
 import io.github.pixelrick420.papyrus.viewer.pptx.chart.ChartParser
 import io.github.pixelrick420.papyrus.viewer.pptx.chart.ChartStyle
+import io.github.pixelrick420.papyrus.viewer.pptx.diagram.SmartArtDrawing
+import io.github.pixelrick420.papyrus.viewer.pptx.diagram.SmartArtStyle
 import org.xmlpull.v1.XmlPullParser
 
 /**
@@ -18,6 +21,11 @@ internal class StyleResolver(
     private val shapes = ShapeTreeParser(newParserFactory, limits)
     private val layouts = MasterLayoutParser(newParserFactory, limits)
     private val reader = OoxmlReader(newParserFactory, OoxmlNamespace.CORE, limits)
+    private val diagramReader = OoxmlReader(
+        newParserFactory,
+        OoxmlNamespace.CORE + OoxmlNamespace.DSP + OoxmlNamespace.DIAGRAM,
+        limits,
+    )
 
     fun resolveAll(pkg: PptxPackage, presentation: PresentationInfo): DeckScenes {
         val size = SceneSize(presentation.size.widthEmu.toDouble(), presentation.size.heightEmu.toDouble())
@@ -206,32 +214,75 @@ internal class StyleResolver(
         pkg: PptxPackage,
         context: LayoutContext,
     ): SceneGraphicFrame {
-        if (frame.kind != GraphicKind.CHART) return frame
-        val source = frame.sourcePart ?: return frame
-        val relationship = frame.relationshipId ?: return frame
-        val part = pkg.targetOf(source, relationship) ?: return frame
-        val bytes = pkg.part(part) ?: return frame
-        val tree = runCatching { reader.readTree(bytes.inputStream(), part) }.getOrNull() ?: return frame
-        val chart = runCatching { ChartParser.parse(tree, limits) }.getOrNull() ?: return frame
-        val bounds = frame.frame?.let { SceneRect(0.0, 0.0, it.width, it.height) } ?: return frame
-        if (bounds.width <= 0.0 || bounds.height <= 0.0) return frame
-        val drawing = ChartBuilder.build(chart, bounds, chartStyle(context), frame.description)
-        return SceneGraphicFrame(
-            id = frame.id,
-            name = frame.name,
-            frame = frame.frame,
-            hidden = frame.hidden,
-            description = frame.description,
-            decorative = frame.decorative,
-            kind = frame.kind,
-            relationshipId = frame.relationshipId,
-            hyperlink = frame.hyperlink,
-            table = frame.table,
-            chart = drawing,
-            fallbackPicture = frame.fallbackPicture,
-            sourcePart = frame.sourcePart,
-        )
+        return when (frame.kind) {
+            GraphicKind.CHART -> chartOf(frame, pkg, context)?.let { copyFrame(frame, chart = it) }
+            GraphicKind.SMART_ART -> smartArtOf(frame, pkg, context)?.let { copyFrame(frame, smartArt = it) }
+            else -> null
+        } ?: frame
     }
+
+    private fun copyFrame(
+        frame: SceneGraphicFrame,
+        chart: ChartDrawing? = null,
+        smartArt: SmartArtDrawing? = null,
+    ): SceneGraphicFrame = SceneGraphicFrame(
+        id = frame.id,
+        name = frame.name,
+        frame = frame.frame,
+        hidden = frame.hidden,
+        description = frame.description,
+        decorative = frame.decorative,
+        kind = frame.kind,
+        relationshipId = frame.relationshipId,
+        hyperlink = frame.hyperlink,
+        table = frame.table,
+        chart = chart,
+        smartArt = smartArt,
+        fallbackPicture = frame.fallbackPicture,
+        sourcePart = frame.sourcePart,
+    )
+
+    private fun chartOf(frame: SceneGraphicFrame, pkg: PptxPackage, context: LayoutContext): ChartDrawing? {
+        val source = frame.sourcePart ?: return null
+        val relationship = frame.relationshipId ?: return null
+        val part = pkg.targetOf(source, relationship) ?: return null
+        val bytes = pkg.part(part) ?: return null
+        val tree = runCatching { reader.readTree(bytes.inputStream(), part) }.getOrNull() ?: return null
+        val chart = runCatching { ChartParser.parse(tree, limits) }.getOrNull() ?: return null
+        val bounds = frame.frame?.let { SceneRect(0.0, 0.0, it.width, it.height) } ?: return null
+        if (bounds.width <= 0.0 || bounds.height <= 0.0) return null
+        return ChartBuilder.build(chart, bounds, chartStyle(context), frame.description)
+    }
+
+    private fun smartArtOf(frame: SceneGraphicFrame, pkg: PptxPackage, context: LayoutContext): SmartArtDrawing? {
+        val source = frame.sourcePart ?: return null
+        val modelRelation = frame.relationshipId ?: return null
+        val modelPart = pkg.targetOf(source, modelRelation) ?: return null
+        val model = pkg.part(modelPart)?.let { bytes ->
+            runCatching { diagramReader.readTree(bytes.inputStream(), modelPart) }.getOrNull()
+        }
+        val drawingPart = pkg.relationshipsOf(modelPart)
+            .firstOrNull { it.type.substringAfterLast('/').equals("diagramDrawing", ignoreCase = true) }
+            ?.let { pkg.targetOf(modelPart, it.id) } ?: return null
+        val root = pkg.part(drawingPart)?.let { bytes ->
+            runCatching { diagramReader.readTree(bytes.inputStream(), drawingPart) }.getOrNull()
+        }
+        val origin = frame.frame ?: return null
+        return SmartArtDrawing.read(root, drawingPart, smartArtStyle(context), origin, model?.let(::dataModelText).orEmpty())
+    }
+
+    private fun dataModelText(root: XNode): List<String> =
+        root.child(OoxmlNamespace.DIAGRAM, "ptLst")
+            ?.childrenOf(OoxmlNamespace.DIAGRAM, "pt")
+            .orEmpty()
+            .mapNotNull { point ->
+                val body = point.child(OoxmlNamespace.DIAGRAM, "t") ?: return@mapNotNull null
+                val text = body.childrenOf(OoxmlNamespace.A, "p").joinToString("\n") { paragraph ->
+                    paragraph.childrenOf(OoxmlNamespace.A, "r")
+                        .joinToString("") { it.child(OoxmlNamespace.A, "t")?.text.orEmpty() }
+                }
+                text.takeIf { it.isNotBlank() }
+            }
 
     private fun chartStyle(context: LayoutContext): ChartStyle {
         fun scheme(slot: String, transform: ColorTransform? = null): Rgba? = context.colors.resolve(
@@ -258,6 +309,11 @@ internal class StyleResolver(
             },
         )
     }
+
+    private fun smartArtStyle(context: LayoutContext): SmartArtStyle = SmartArtStyle(
+        text = context.colors.resolve(ColorValue(ColorSource.Scheme("tx1"))) ?: Rgba.BLACK,
+        formatOf = { properties, style -> formatOf(listOf(properties to style), context) },
+    )
 
     private fun templateOf(node: SceneNode): Template? = when (node) {
         is SceneShape -> node.placeholder?.let {

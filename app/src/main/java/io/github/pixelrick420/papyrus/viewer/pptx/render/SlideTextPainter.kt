@@ -9,6 +9,7 @@ import io.github.pixelrick420.papyrus.viewer.pptx.SceneShape
 import io.github.pixelrick420.papyrus.viewer.pptx.SceneTextFrame
 import io.github.pixelrick420.papyrus.viewer.pptx.XNode
 import io.github.pixelrick420.papyrus.viewer.pptx.chart.ChartDrawing
+import io.github.pixelrick420.papyrus.viewer.pptx.diagram.SmartArtDrawing
 import io.github.pixelrick420.papyrus.viewer.pptx.table.TableCell
 import io.github.pixelrick420.papyrus.viewer.pptx.table.TableCellAnchor
 import io.github.pixelrick420.papyrus.viewer.pptx.text.BulletMarker
@@ -89,6 +90,26 @@ internal class SlideTextPainter(
                 originX = body.properties.insets.left,
                 originY = body.properties.insets.top,
                 box = SceneRect(0.0, 0.0, rect.width, rect.height),
+                out = out,
+            )
+        }
+    }
+
+    fun paintSmartArt(drawing: SmartArtDrawing, out: MutableList<DrawOp>) {
+        for (text in drawing.texts) {
+            val frame = text.frame
+            if (frame.width <= 0.0 || frame.height <= 0.0) continue
+            val body = bodyOf(text.body) ?: continue
+            if (body.paragraphs.isEmpty()) continue
+            val layout = runCatching {
+                engine.layout(body, frame.width, frame.height, TextShapeTransform.NONE)
+            }.getOrNull() ?: continue
+            emit(
+                layout = layout,
+                transform = Affine.forShape(frame),
+                originX = body.properties.insets.left,
+                originY = body.properties.insets.top,
+                box = SceneRect(0.0, 0.0, frame.width, frame.height),
                 out = out,
             )
         }

@@ -21,6 +21,8 @@ internal object OoxmlNamespace {
     const val P14 = "http://schemas.microsoft.com/office/powerpoint/2010/main"
     const val ADEC = "http://schemas.microsoft.com/office/drawing/2017/decorative"
     const val ASVG = "http://schemas.microsoft.com/office/drawing/2016/SVG/main"
+    const val DSP = "http://schemas.microsoft.com/office/drawing/2008/diagram"
+    const val DIAGRAM = "http://schemas.openxmlformats.org/drawingml/2006/diagram"
 
     val CORE: Set<String> = setOf(MC, P, A, R)
 }

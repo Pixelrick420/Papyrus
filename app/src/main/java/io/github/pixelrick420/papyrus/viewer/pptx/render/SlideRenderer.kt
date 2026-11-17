@@ -96,27 +96,34 @@ internal class SlideRenderer(
         out: MutableList<DrawOp>,
         pictures: SlidePictureResolver,
         deadline: Long,
-    ): Boolean = when (node) {
-        is SceneShape -> {
-            shape(node, out)
-            text?.paintShape(scene, node, out)
-            true
+    ): Boolean {
+        return when (node) {
+            is SceneShape -> {
+                shape(node, out)
+                text?.paintShape(scene, node, out)
+                true
+            }
+            is SceneConnector -> {
+                connector(node, out)
+                true
+            }
+            is ScenePicture -> {
+                picture(node, out, pictures)
+                true
+            }
+            is SceneGraphicFrame -> {
+                graphicFrame(node, out, pictures)
+                text?.paintTable(node, out)
+                node.chart?.let { text?.paintChart(node, it, out) }
+                val art = node.smartArt
+                if (art != null) {
+                    if (!walk(scene, art.nodes, out, pictures, deadline)) return false
+                    text?.paintSmartArt(art, out)
+                }
+                true
+            }
+            is SceneGroup -> group(scene, node, out, pictures, deadline)
         }
-        is SceneConnector -> {
-            connector(node, out)
-            true
-        }
-        is ScenePicture -> {
-            picture(node, out, pictures)
-            true
-        }
-        is SceneGraphicFrame -> {
-            graphicFrame(node, out, pictures)
-            text?.paintTable(node, out)
-            node.chart?.let { text?.paintChart(node, it, out) }
-            true
-        }
-        is SceneGroup -> group(scene, node, out, pictures, deadline)
     }
 
     private fun background(scene: Scene, out: MutableList<DrawOp>) {
