@@ -62,7 +62,6 @@ internal class PictureImages(
                 val raster = siblingRaster(resolvePart, target)
                 when {
                     raster != null -> Resolved.Raster(raster)
-                    extension != "emf" -> Resolved.Fixed("${extension.uppercase()} image")
                     else -> pkg.mediaFile(target)?.takeIf { metafiles.bounds(it) != null }?.let { Resolved.Metafile(it) }
                         ?: Resolved.Fixed("${extension.uppercase()} image")
                 }

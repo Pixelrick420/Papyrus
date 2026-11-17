@@ -11,6 +11,7 @@ import io.github.pixelrick420.papyrus.viewer.pptx.StrokeCap
 import io.github.pixelrick420.papyrus.viewer.pptx.StrokeJoin
 import io.github.pixelrick420.papyrus.viewer.pptx.render.AndroidCanvasBackend
 import io.github.pixelrick420.papyrus.viewer.pptx.render.DisplayList
+import io.github.pixelrick420.papyrus.viewer.pptx.render.GlyphRun
 import io.github.pixelrick420.papyrus.viewer.pptx.render.ImageRef
 import io.github.pixelrick420.papyrus.viewer.pptx.render.PaintSpec
 import io.github.pixelrick420.papyrus.viewer.pptx.render.PathData
@@ -20,6 +21,8 @@ import io.github.pixelrick420.papyrus.viewer.pptx.render.PointF
 import io.github.pixelrick420.papyrus.viewer.pptx.render.RectF
 import io.github.pixelrick420.papyrus.viewer.pptx.render.RecordingBackend
 import io.github.pixelrick420.papyrus.viewer.pptx.render.StrokeSpec
+import io.github.pixelrick420.papyrus.viewer.pptx.render.TextRule
+import io.github.pixelrick420.papyrus.viewer.pptx.render.TextRuleKind
 import android.util.LruCache
 import java.io.File
 import kotlin.math.abs
@@ -364,6 +367,41 @@ internal abstract class GdiRenderer(
         )
     }
 
+    protected fun drawText(text: String, x: Float, y: Float) {
+        if (text.isEmpty()) return
+        val font = state.font ?: GdiFont(DEFAULT_FONT_HEIGHT, DEFAULT_FONT_NAME)
+        val size = max(1f, abs(vector(0, font.height).y))
+        val width = text.length * size * 0.55f
+        val align = state.textAlign
+        val left = when {
+            (align and TA_CENTER) == TA_CENTER -> x - width / 2f
+            (align and TA_RIGHT) == TA_RIGHT -> x - width
+            else -> x
+        }
+        val baseline = if ((align and TA_BOTTOM) == TA_BOTTOM) y else y + size * 0.8f
+        val paint = PaintSpec.Solid(state.textColor)
+        val rules = mutableListOf<TextRule>()
+        if (font.underline) {
+            rules += TextRule(TextRuleKind.UNDERLINE, "single", left, left + width, baseline + size * 0.15f, size / 12f, paint)
+        }
+        if (font.strikeOut) {
+            rules += TextRule(TextRuleKind.STRIKE, "single", left, left + width, baseline - size * 0.3f, size / 12f, paint)
+        }
+        target.drawGlyphRun(
+            GlyphRun(
+                text = text,
+                x = left,
+                y = baseline,
+                paint = paint,
+                size = size,
+                family = font.name,
+                bold = font.weight >= 600,
+                italic = font.italic,
+                rules = rules,
+            ),
+        )
+    }
+
     protected fun stroke(path: PathData, pen: GdiPen) {
         if (pen.style == PS_NULL) return
         val scale = sqrt(abs(transform().let { it.a * it.d - it.b * it.c }))
@@ -401,6 +439,11 @@ internal abstract class GdiRenderer(
         const val PS_DASHDOT = 3
         const val PS_DASHDOTDOT = 4
         const val PS_NULL = 5
+        const val TA_RIGHT = 2
+        const val TA_BOTTOM = 8
+        const val TA_CENTER = 6
+        const val DEFAULT_FONT_HEIGHT = 16
+        const val DEFAULT_FONT_NAME = "Arial"
     }
 }
 
@@ -409,6 +452,7 @@ internal object Metafiles {
     fun parse(bytes: ByteArray, extension: String, maxEdgePx: Int, maxPixels: Long): MetafileImage? = try {
         when (extension) {
             "emf" -> EmfRenderer(bytes, maxEdgePx, maxPixels).render()
+            "wmf" -> WmfRenderer(bytes, maxEdgePx, maxPixels).render()
             else -> null
         }
     } catch (_: GdiFormatException) {

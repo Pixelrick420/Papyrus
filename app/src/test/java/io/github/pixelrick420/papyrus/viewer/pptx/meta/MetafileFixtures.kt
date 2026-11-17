@@ -101,11 +101,71 @@ internal object MetafileFixtures {
         return buffer.array()
     }
 
+    fun emfFont(handle: Int = 3, height: Int = 120, name: String = "Arial", underline: Boolean = false): ByteArray {
+        val buffer = ByteBuffer.allocate(8 + 4 + 92 + 4).order(ByteOrder.LITTLE_ENDIAN)
+        buffer.putInt(0x52)
+        buffer.putInt(buffer.capacity())
+        buffer.putInt(12)
+        buffer.putInt(height)
+        repeat(3) { buffer.putInt(0) }
+        buffer.putInt(400)
+        buffer.put(0.toByte())
+        buffer.put(if (underline) 1.toByte() else 0.toByte())
+        repeat(6) { buffer.put(0.toByte()) }
+        repeat(32) { index -> buffer.putShort(if (index < name.length) name[index].code.toShort() else 0) }
+        buffer.putInt(handle)
+        return buffer.array()
+    }
+
+    fun emfTextOut(text: String, x: Int, y: Int): ByteArray {
+        val buffer = ByteBuffer.allocate(8 + 44 + text.length * 2).order(ByteOrder.LITTLE_ENDIAN)
+        buffer.putInt(0x54)
+        buffer.putInt(buffer.capacity())
+        repeat(4) { buffer.putInt(0) }
+        buffer.putInt(0)
+        buffer.putInt(x)
+        buffer.putInt(y)
+        buffer.putInt(text.length)
+        buffer.putInt(52)
+        buffer.putInt(0)
+        buffer.putInt(0)
+        text.forEach { buffer.putShort(it.code.toShort()) }
+        return buffer.array()
+    }
+
     fun wmfRecord(type: Int, parameters: ByteArray): ByteArray {
-        val buffer = ByteBuffer.allocate(6 + parameters.size).order(ByteOrder.LITTLE_ENDIAN)
-        buffer.putInt((6 + parameters.size) / 2)
+        val buffer = ByteBuffer.allocate(4 + parameters.size).order(ByteOrder.LITTLE_ENDIAN)
+        buffer.putShort(((4 + parameters.size) / 2).toShort())
         buffer.putShort(type.toShort())
         buffer.put(parameters)
         return buffer.array()
+    }
+
+    fun wmf(
+        records: List<ByteArray>,
+        bounds: IntArray = intArrayOf(0, 0, 1_000, 800),
+        placeable: Boolean = true,
+    ): ByteArray {
+        val header = ByteBuffer.allocate(18).order(ByteOrder.LITTLE_ENDIAN)
+        header.putShort(1)
+        header.putShort(9)
+        header.putShort(0x0300)
+        header.putInt((18 + records.sumOf { it.size }) / 2)
+        header.putShort(0)
+        header.putInt(records.maxOfOrNull { it.size / 2 } ?: 0)
+        header.putShort(records.size.toShort())
+        val prefix = if (placeable) {
+            val buffer = ByteBuffer.allocate(22).order(ByteOrder.LITTLE_ENDIAN)
+            buffer.putInt(0x9AC6CDD7.toInt())
+            buffer.putShort(0)
+            bounds.forEach { buffer.putShort(it.toShort()) }
+            buffer.putShort(1440)
+            buffer.putInt(0)
+            buffer.putShort(0)
+            buffer.array()
+        } else {
+            byteArrayOf()
+        }
+        return prefix + header.array() + records.fold(byteArrayOf()) { acc, record -> acc + record }
     }
 }

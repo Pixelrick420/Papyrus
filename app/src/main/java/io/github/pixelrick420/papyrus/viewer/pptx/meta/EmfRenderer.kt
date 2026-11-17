@@ -125,6 +125,10 @@ private class EmfDrawing(
                 val y = reader.i32()
                 state = state.copy(mapping = state.mapping.copy(viewportOrgX = x, viewportOrgY = y))
             }
+            SET_BKMODE -> state = state.copy(opaqueText = reader.i32() != 0)
+            SET_TEXTALIGN -> state = state.copy(textAlign = reader.i32())
+            SET_TEXTCOLOR -> state = state.copy(textColor = colorRef(reader.i32()))
+            SET_BKCOLOR -> state = state.copy(backgroundColor = colorRef(reader.i32()))
             SET_POLYFILLMODE -> state = state.copy(polyFillMode = reader.i32())
             SCALE_VIEWPORT_EXT -> scaleExtent(reader, viewport = true)
             SCALE_WINDOW_EXT -> scaleExtent(reader, viewport = false)
@@ -152,6 +156,8 @@ private class EmfDrawing(
             SET_DIBITS_TO_DEVICE -> setDibitsToDevice(reader)
             STRETCH_DIBITS -> stretchDibits(reader)
             EXT_CREATE_PEN -> createExtendedPen(reader)
+            EXT_CREATE_FONT_W -> createFont(reader)
+            EXT_TEXT_OUT_W -> textOut(reader)
             POLYBEZIER16 -> bezier(readPoints(reader, SHORT_POINT_BYTES), fromCurrent = false)
             POLYGON16 -> polyline(readPoints(reader, SHORT_POINT_BYTES), close = true)
             POLYLINE16 -> polyline(readPoints(reader, SHORT_POINT_BYTES), close = false)
@@ -191,6 +197,41 @@ private class EmfDrawing(
         val color = colorRef(pen.i32())
         val handle = GdiReader(reader.bytes, reader.end - 4).i32()
         addObject(handle, GdiObject.Pen(GdiPen(style, width.toFloat(), color)))
+    }
+
+    private fun createFont(reader: GdiReader) {
+        val offset = reader.i32()
+        val fontStart = reader.start - RECORD_HEADER_BYTES + offset
+        if (fontStart < reader.start || fontStart + LOGFONT_BYTES > reader.end) throw GdiFormatException()
+        val font = GdiReader(reader.bytes, fontStart)
+        val height = font.i32()
+        repeat(3) { font.i32() }
+        val weight = font.i32()
+        val italic = font.u8() != 0
+        val underline = font.u8() != 0
+        val strikeOut = font.u8() != 0
+        repeat(5) { font.u8() }
+        val name = font.utf16le(FACE_NAME_CHARS).trim('\u0000')
+        val handle = GdiReader(reader.bytes, reader.end - 4).i32()
+        addObject(handle, GdiObject.Font(GdiFont(height, name, weight, italic, underline, strikeOut)))
+    }
+
+    private fun textOut(reader: GdiReader) {
+        val recordStart = reader.start - RECORD_HEADER_BYTES
+        repeat(4) { reader.i32() }
+        reader.i32()
+        val x = reader.i32()
+        val y = reader.i32()
+        val count = reader.i32()
+        val stringOffset = reader.i32()
+        reader.i32()
+        reader.i32()
+        if (count <= 0 || count > MAX_TEXT_CHARS) return
+        val start = recordStart + stringOffset
+        if (start < reader.start || start + count * 2 > reader.end) throw GdiFormatException()
+        val text = GdiReader(reader.bytes, start).utf16le(count).trim('\u0000')
+        val at = point(x, y)
+        drawText(text, at.x, at.y)
     }
 
     private fun shape(reader: GdiReader, ellipse: Boolean) {
@@ -325,7 +366,11 @@ private class EmfDrawing(
         const val SET_VIEWPORT_EXT = 0x0B
         const val SET_VIEWPORT_ORG = 0x0C
         const val EOF = 0x0E
+        const val SET_BKMODE = 0x12
         const val SET_POLYFILLMODE = 0x13
+        const val SET_TEXTALIGN = 0x16
+        const val SET_TEXTCOLOR = 0x18
+        const val SET_BKCOLOR = 0x19
         const val MOVETOEX = 0x1B
         const val SCALE_VIEWPORT_EXT = 0x1F
         const val SCALE_WINDOW_EXT = 0x20
@@ -343,6 +388,8 @@ private class EmfDrawing(
         const val LINETO = 0x36
         const val SET_DIBITS_TO_DEVICE = 0x50
         const val STRETCH_DIBITS = 0x51
+        const val EXT_CREATE_FONT_W = 0x52
+        const val EXT_TEXT_OUT_W = 0x54
         const val EXT_CREATE_PEN = 0x5F
         const val POLYBEZIER16 = 0x55
         const val POLYGON16 = 0x56
@@ -360,5 +407,8 @@ private class EmfDrawing(
         const val SHORT_POINT_BYTES = 4
         const val MAX_POINTS = 65_536
         const val MAX_POLYGONS = 4_096
+        const val MAX_TEXT_CHARS = 16_384
+        const val LOGFONT_BYTES = 92
+        const val FACE_NAME_CHARS = 32
     }
 }
