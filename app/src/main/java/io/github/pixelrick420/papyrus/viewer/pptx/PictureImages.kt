@@ -1,5 +1,7 @@
 package io.github.pixelrick420.papyrus.viewer.pptx
 
+import io.github.pixelrick420.papyrus.viewer.pptx.meta.AndroidMetafileDecoder
+import io.github.pixelrick420.papyrus.viewer.pptx.meta.MetafileDecoder
 import java.io.File
 
 /** The raster file a picture resolves to, with the source pixel size a display list needs to crop it. */
@@ -22,10 +24,12 @@ internal class PictureImages(
     private val pkg: PptxPackage,
     private val part: String,
     private val cache: ImageCache,
+    private val metafiles: MetafileDecoder = AndroidMetafileDecoder(),
 ) {
 
     fun bounds(source: PictureSource?): ImageBounds? = when (val resolved = resolve(source)) {
         is Resolved.Raster -> cache.bounds(resolved.file)
+        is Resolved.Metafile -> metafiles.bounds(resolved.file)
         else -> null
     }
 
@@ -37,6 +41,9 @@ internal class PictureImages(
     fun content(source: PictureSource?, targetWidthPx: Int): PictureContent =
         when (val resolved = resolve(source)) {
             is Resolved.Raster -> cache.load(resolved.file, targetWidthPx)
+                ?.let { PictureContent.Image(it) }
+                ?: PictureContent.Placeholder(UNAVAILABLE)
+            is Resolved.Metafile -> metafiles.load(resolved.file, targetWidthPx)
                 ?.let { PictureContent.Image(it) }
                 ?: PictureContent.Placeholder(UNAVAILABLE)
             is Resolved.Fixed -> PictureContent.Placeholder(resolved.label)
@@ -51,8 +58,15 @@ internal class PictureImages(
         val extension = target.substringAfterLast('.', "").lowercase()
         return when (extension) {
             in NATIVE -> pkg.mediaFile(target)?.let { Resolved.Raster(it) } ?: Resolved.Fixed(UNAVAILABLE)
-            in METAFILES -> siblingRaster(resolvePart, target)?.let { Resolved.Raster(it) }
-                ?: Resolved.Fixed("${extension.uppercase()} image")
+            in METAFILES -> {
+                val raster = siblingRaster(resolvePart, target)
+                when {
+                    raster != null -> Resolved.Raster(raster)
+                    extension != "emf" -> Resolved.Fixed("${extension.uppercase()} image")
+                    else -> pkg.mediaFile(target)?.takeIf { metafiles.bounds(it) != null }?.let { Resolved.Metafile(it) }
+                        ?: Resolved.Fixed("${extension.uppercase()} image")
+                }
+            }
             "svg" -> siblingRaster(resolvePart, target)?.let { Resolved.Raster(it) } ?: Resolved.Missing
             in NOT_DECODABLE -> Resolved.Fixed("${extension.uppercase()} image")
             else -> Resolved.Fixed(UNSUPPORTED)
@@ -75,6 +89,8 @@ internal class PictureImages(
     private sealed interface Resolved {
 
         class Raster(val file: File) : Resolved
+
+        class Metafile(val file: File) : Resolved
 
         class Fixed(val label: String) : Resolved
 

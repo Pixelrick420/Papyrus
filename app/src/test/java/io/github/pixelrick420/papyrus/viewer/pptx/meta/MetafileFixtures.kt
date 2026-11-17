@@ -1,0 +1,65 @@
+package io.github.pixelrick420.papyrus.viewer.pptx.meta
+
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
+
+internal object MetafileFixtures {
+
+    fun emf(
+        bounds: IntArray = intArrayOf(0, 0, 100, 80),
+        frame: IntArray = intArrayOf(0, 0, 1_000, 800),
+        records: List<ByteArray> = emptyList(),
+        signature: Long = 0x464D4520L,
+    ): ByteArray {
+        val size = 88 + records.sumOf { it.size }
+        val buffer = ByteBuffer.allocate(size).order(ByteOrder.LITTLE_ENDIAN)
+        buffer.putInt(1)
+        buffer.putInt(88)
+        bounds.forEach { buffer.putInt(it) }
+        frame.forEach { buffer.putInt(it) }
+        buffer.putInt(signature.toInt())
+        buffer.putInt(0x0001_0000)
+        buffer.putInt(size)
+        buffer.putInt(records.size)
+        buffer.putShort(1)
+        buffer.putShort(0)
+        repeat(3) { buffer.putInt(0) }
+        buffer.putInt(100)
+        buffer.putInt(100)
+        buffer.putInt(254)
+        buffer.putInt(254)
+        records.forEach { buffer.put(it) }
+        return buffer.array()
+    }
+
+    fun record(type: Int, vararg words: Int): ByteArray {
+        val buffer = ByteBuffer.allocate(8 + words.size * 4).order(ByteOrder.LITTLE_ENDIAN)
+        buffer.putInt(type)
+        buffer.putInt(buffer.capacity())
+        words.forEach { buffer.putInt(it) }
+        return buffer.array()
+    }
+
+    fun floats(type: Int, values: FloatArray, trailing: Int? = null): ByteArray {
+        val buffer = ByteBuffer.allocate(8 + values.size * 4 + if (trailing == null) 0 else 4).order(ByteOrder.LITTLE_ENDIAN)
+        buffer.putInt(type)
+        buffer.putInt(buffer.capacity())
+        values.forEach { buffer.putFloat(it) }
+        trailing?.let { buffer.putInt(it) }
+        return buffer.array()
+    }
+
+    fun words(vararg values: Int): ByteArray {
+        val buffer = ByteBuffer.allocate(values.size * 2).order(ByteOrder.LITTLE_ENDIAN)
+        values.forEach { buffer.putShort(it.toShort()) }
+        return buffer.array()
+    }
+
+    fun wmfRecord(type: Int, parameters: ByteArray): ByteArray {
+        val buffer = ByteBuffer.allocate(6 + parameters.size).order(ByteOrder.LITTLE_ENDIAN)
+        buffer.putInt((6 + parameters.size) / 2)
+        buffer.putShort(type.toShort())
+        buffer.put(parameters)
+        return buffer.array()
+    }
+}
