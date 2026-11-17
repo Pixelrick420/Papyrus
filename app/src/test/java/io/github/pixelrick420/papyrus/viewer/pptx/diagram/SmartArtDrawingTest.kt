@@ -87,6 +87,18 @@ class SmartArtDrawingTest {
     }
 
     @Test
+    fun `the separate dsp txXfrm places the text box`() {
+        val art = smartArt(cachedDrawingWithTextXfrm())
+
+        val shape = art.nodes.filterIsInstance<SceneShape>().single()
+        assertEquals(SceneRect(FRAME_X.toDouble(), FRAME_Y.toDouble(), 200_000.0, 100_000.0), shape.frame)
+        assertEquals(
+            SceneRect(FRAME_X + 10_000.0, FRAME_Y + 20_000.0, 50_000.0, 30_000.0),
+            art.texts.single().frame,
+        )
+    }
+
+    @Test
     fun `a drawing with no sp tree is not resolved`() {
         val deck = deck("""<dsp:drawing xmlns:dsp="$DSP_NS"/>""")
         val bytes = deck.toBytes()
@@ -125,6 +137,22 @@ class SmartArtDrawingTest {
                 <a:solidFill><a:srgbClr val="00B050"/></a:solidFill>
               </dsp:spPr>
               <dsp:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:t>Beta</a:t></a:r></a:p></dsp:txBody>
+            </dsp:sp>
+          </dsp:spTree>
+        </dsp:drawing>
+    """.trimIndent()
+
+    private fun cachedDrawingWithTextXfrm(): String = """
+        <dsp:drawing xmlns:dsp="$DSP_NS" xmlns:a="$A_NS">
+          <dsp:spTree>
+            <dsp:sp modelId="{generated}">
+              <dsp:nvSpPr><dsp:cNvPr id="2" name="alpha"/></dsp:nvSpPr>
+              <dsp:spPr>
+                <a:xfrm><a:off x="0" y="0"/><a:ext cx="200000" cy="100000"/></a:xfrm>
+                <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
+              </dsp:spPr>
+              <dsp:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:t>Alpha</a:t></a:r></a:p></dsp:txBody>
+              <dsp:txXfrm><a:off x="10000" y="20000"/><a:ext cx="50000" cy="30000"/></dsp:txXfrm>
             </dsp:sp>
           </dsp:spTree>
         </dsp:drawing>

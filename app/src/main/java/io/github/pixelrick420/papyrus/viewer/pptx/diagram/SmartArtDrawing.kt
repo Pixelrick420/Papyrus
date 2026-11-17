@@ -40,10 +40,9 @@ internal class SmartArtDrawing(
             nodeText: List<String> = emptyList(),
         ): SmartArtDrawing? {
             val tree = root?.child(OoxmlNamespace.DSP, "spTree") ?: return null
-            val nodes = tree.children.mapNotNull { parse(it, part, style, origin, 0) }
-            if (nodes.isEmpty()) return null
             val texts = ArrayList<SmartArtText>()
-            collectTexts(nodes, texts)
+            val nodes = tree.children.mapNotNull { parse(it, part, style, origin, 0, texts) }
+            if (nodes.isEmpty()) return null
             return SmartArtDrawing(nodes, texts, nodeText)
         }
 
@@ -53,26 +52,39 @@ internal class SmartArtDrawing(
             style: SmartArtStyle,
             origin: SceneRect,
             depth: Int,
+            texts: MutableList<SmartArtText>,
         ): SceneNode? {
             if (depth > MAX_GROUP_DEPTH) return null
             return when {
-                node.name.matches(OoxmlNamespace.DSP, "sp") -> shape(node, part, style, origin)
+                node.name.matches(OoxmlNamespace.DSP, "sp") -> shape(node, part, style, origin, texts)
                 node.name.matches(OoxmlNamespace.DSP, "pic") -> picture(node, part, origin)
-                node.name.matches(OoxmlNamespace.DSP, "grpSp") -> group(node, part, style, origin, depth)
+                node.name.matches(OoxmlNamespace.DSP, "grpSp") -> group(node, part, style, origin, depth, texts)
                 else -> null
             }
         }
 
-        private fun shape(node: XNode, part: String, style: SmartArtStyle, origin: SceneRect): SceneShape? {
+        private fun shape(
+            node: XNode,
+            part: String,
+            style: SmartArtStyle,
+            origin: SceneRect,
+            texts: MutableList<SmartArtText>,
+        ): SceneShape? {
             val properties = node.child(OoxmlNamespace.DSP, "spPr")
             val transform = properties?.child(OoxmlNamespace.A, "xfrm")
+            val frame = rectOf(transform, origin) ?: return null
+            val body = node.child(OoxmlNamespace.DSP, "txBody")
+            if (body != null) {
+                val textTransform = node.child(OoxmlNamespace.DSP, "txXfrm")
+                texts += SmartArtText(body, rectOf(textTransform, origin) ?: frame)
+            }
             val props = node.child(OoxmlNamespace.DSP, "nvSpPr")?.child(OoxmlNamespace.DSP, "cNvPr")
             return SceneShape(
                 id = props?.attribute("id")?.toIntOrNull(),
                 name = props?.attribute("name"),
-                frame = rectOf(transform, origin) ?: return null,
+                frame = frame,
                 preset = presetOf(properties, transform),
-                textBody = node.child(OoxmlNamespace.DSP, "txBody"),
+                textBody = body,
                 transform = transform,
                 properties = properties,
                 format = style.formatOf(properties, node.child(OoxmlNamespace.DSP, "style")),
@@ -104,6 +116,7 @@ internal class SmartArtDrawing(
             style: SmartArtStyle,
             origin: SceneRect,
             depth: Int,
+            texts: MutableList<SmartArtText>,
         ): SceneGroup {
             val transform = node.child(OoxmlNamespace.DSP, "grpSpPr")?.child(OoxmlNamespace.A, "xfrm")
             val props = node.child(OoxmlNamespace.DSP, "nvGrpSpPr")?.child(OoxmlNamespace.DSP, "cNvPr")
@@ -112,26 +125,12 @@ internal class SmartArtDrawing(
                 name = props?.attribute("name"),
                 frame = rectOf(transform, origin),
                 childFrame = childRectOf(transform, origin),
-                children = node.children.mapNotNull { parse(it, part, style, origin, depth + 1) },
+                children = node.children.mapNotNull { parse(it, part, style, origin, depth + 1, texts) },
                 rotation = transform?.attribute("rot")?.toDoubleOrNull() ?: 0.0,
                 flipH = transform?.attribute("flipH") == "1",
                 flipV = transform?.attribute("flipV") == "1",
                 sourcePart = part,
             )
-        }
-
-        private fun collectTexts(nodes: List<SceneNode>, out: MutableList<SmartArtText>) {
-            for (node in nodes) {
-                when (node) {
-                    is SceneShape -> {
-                        val body = node.textBody ?: continue
-                        val frame = node.frame ?: continue
-                        out += SmartArtText(body, frame)
-                    }
-                    is SceneGroup -> collectTexts(node.children, out)
-                    else -> Unit
-                }
-            }
         }
 
         private fun rectOf(transform: XNode?, origin: SceneRect): SceneRect? {
