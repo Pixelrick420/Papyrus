@@ -33,6 +33,7 @@ internal object GoldenDecks {
         GoldenDeck("backgrounds", backgrounds()),
         GoldenDeck("preset-adjusts", presetAdjusts()),
         GoldenDeck("text-frames", textFrames()),
+        GoldenDeck("chart-zoo", chartZoo()),
     )
 
     private fun shapeZoo(): ByteArray = pptx {
@@ -348,4 +349,118 @@ internal object GoldenDecks {
             output.toByteArray()
         }
     }
+
+    private fun chartZoo(): ByteArray = pptx {
+        val frames = listOf("columns", "bars", "line", "area", "scatter", "pie", "doughnut", "radar", "cx")
+        theme {
+            accent1("C00000")
+            accent2("00B050")
+        }
+        layout("Blank")
+        slide {
+            background(rgb = "FFFFFF")
+            frames.forEachIndexed { index, name ->
+                val rel = "rId${index + 2}"
+                graphicFrame(
+                    uri = CHART_URI,
+                    content = """<c:chart xmlns:c="$CHART_NS" xmlns:r="$R_NS" r:id="$rel"/>""",
+                    x = M + (index % 3) * 3_900_000L,
+                    y = 600_000L + (index / 3) * 2_100_000L,
+                    w = 3_700_000L,
+                    h = 1_900_000L,
+                    name = name,
+                )
+                rel(rel, CHART_RELATIONSHIP, "../charts/$name.xml")
+            }
+            rel("rId20", "$R_NS/image", "../media/fallback.png")
+        }
+        part("ppt/media/fallback.png", quadrants())
+        frames.forEach { name ->
+            part("ppt/charts/$name.xml", chartBody(name).toByteArray())
+        }
+    }.toBytes()
+
+    private fun chartBody(name: String): String = when (name) {
+        "columns" -> chartXml("Columns", bar("col", "clustered"))
+        "bars" -> chartXml("Bars", bar("bar", "stacked"))
+        "line" -> chartXml(
+            "Line",
+            """<c:lineChart><c:grouping val="standard"/>${series(0, "Alpha", listOf(10.0, 20.0, 30.0), "<c:marker><c:symbol val=\"circle\"/></c:marker>")}${series(1, "Beta", listOf(20.0, 10.0, 5.0), "<c:marker><c:symbol val=\"square\"/></c:marker>")}<c:axId val="1"/><c:axId val="2"/></c:lineChart>$chartAxes""",
+        )
+        "area" -> chartXml("Area", """<c:areaChart><c:grouping val="stacked"/>${series(0, "Alpha", listOf(10.0, 20.0, 30.0))}${series(1, "Beta", listOf(20.0, 10.0, 5.0))}<c:axId val="1"/><c:axId val="2"/></c:areaChart>$chartAxes""")
+        "scatter" -> chartXml("Scatter", scatterChart())
+        "pie" -> chartXml("Pie", """<c:pieChart><c:varyColors val="1"/>${series(0, "Share", listOf(1.0, 2.0, 3.0))}</c:pieChart>""")
+        "doughnut" -> chartXml("Doughnut", """<c:doughnutChart><c:varyColors val="1"/><c:holeSize val="70"/>${series(0, "Share", listOf(1.0, 2.0, 3.0))}</c:doughnutChart>""")
+        "radar" -> chartXml("Radar", """<c:radarChart><c:radarStyle val="marker"/></c:radarChart>""")
+        else -> """<mc:AlternateContent xmlns:mc="$MC_NS" xmlns:cx="$CX_NS" xmlns:c="$CHART_NS" xmlns:a="$A_NS" xmlns:r="$R_NS">
+            <mc:Choice Requires="cx"><c:chart r:id="rId21"/></mc:Choice>
+            <mc:Fallback><p:pic xmlns:p="$P_NS">
+              <p:nvPicPr><p:cNvPr id="40" name="fallback"/><p:cNvPicPr/><p:nvPr/></p:nvPicPr>
+              <p:blipFill><a:blip r:embed="rId20"/><a:stretch><a:fillRect/></a:stretch></p:blipFill>
+              <p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="100" cy="100"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr>
+            </p:pic></mc:Fallback>
+        </mc:AlternateContent>"""
+    }
+
+    private fun bar(direction: String, grouping: String): String =
+        """<c:barChart><c:barDir val="$direction"/><c:grouping val="$grouping"/>""" +
+            """${series(0, "Alpha", listOf(10.0, 20.0, 30.0))}${series(1, "Beta", listOf(20.0, 10.0, 5.0))}""" +
+            """<c:axId val="1"/><c:axId val="2"/></c:barChart>$chartAxes"""
+
+    private fun chartXml(title: String, body: String): String = """
+        <c:chartSpace xmlns:c="$CHART_NS" xmlns:a="$A_NS" xmlns:r="$R_NS">
+          <c:chart>
+            <c:title><c:tx><c:rich><a:bodyPr/><a:p><a:r><a:t>$title</a:t></a:r></a:p></c:rich></c:tx></c:title>
+            <c:plotArea>$body</c:plotArea>
+          </c:chart>
+        </c:chartSpace>
+    """.trimIndent()
+
+    private fun series(index: Int, name: String, values: List<Double>, extra: String = ""): String {
+        val points = values.mapIndexed { i, value -> """<c:pt idx="$i"><c:v>$value</c:v></c:pt>""" }.joinToString("")
+        val categories = values.indices.map { i -> """<c:pt idx="$i"><c:v>${('A' + i)}</c:v></c:pt>""" }.joinToString("")
+        return """
+            <c:ser>
+              <c:idx val="$index"/><c:order val="$index"/>
+              <c:tx><c:strRef><c:strCache><c:ptCount val="1"/><c:pt idx="0"><c:v>$name</c:v></c:pt></c:strCache></c:strRef></c:tx>
+              $extra
+              <c:cat><c:strRef><c:strCache><c:ptCount val="${values.size}"/>$categories</c:strCache></c:strRef></c:cat>
+              <c:val><c:numRef><c:numCache><c:formatCode>General</c:formatCode><c:ptCount val="${values.size}"/>$points</c:numCache></c:numRef></c:val>
+            </c:ser>
+        """.trimIndent()
+    }
+
+    private fun scatterChart(): String {
+        fun cache(tag: String, values: List<Double>): String {
+            val points = values.mapIndexed { i, value -> """<c:pt idx="$i"><c:v>$value</c:v></c:pt>""" }.joinToString("")
+            return """<c:$tag><c:numRef><c:numCache><c:formatCode>General</c:formatCode>""" +
+                """<c:ptCount val="${values.size}"/>$points</c:numCache></c:numRef></c:$tag>"""
+        }
+        return """
+            <c:scatterChart>
+              <c:scatterStyle val="lineMarker"/>
+              <c:ser><c:idx val="0"/><c:order val="0"/>
+                <c:tx><c:strRef><c:strCache><c:ptCount val="1"/><c:pt idx="0"><c:v>Points</c:v></c:pt></c:strCache></c:strRef></c:tx>
+                ${cache("xVal", listOf(0.0, 10.0, 20.0))}${cache("yVal", listOf(5.0, 15.0, 10.0))}
+              </c:ser>
+              <c:axId val="1"/><c:axId val="2"/>
+            </c:scatterChart>
+            <c:valAx><c:axId val="1"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:axPos val="b"/><c:numFmt formatCode="General" sourceLinked="1"/><c:crossAx val="2"/></c:valAx>
+            <c:valAx><c:axId val="2"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:axPos val="l"/><c:majorGridlines/><c:numFmt formatCode="General" sourceLinked="1"/><c:crossAx val="1"/></c:valAx>
+        """.trimIndent()
+    }
+
+    private const val chartAxes = """
+        <c:catAx><c:axId val="1"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:axPos val="b"/><c:crossAx val="2"/></c:catAx>
+        <c:valAx><c:axId val="2"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:axPos val="l"/><c:majorGridlines/><c:numFmt formatCode="General" sourceLinked="1"/><c:crossAx val="1"/></c:valAx>
+    """
+
+    private const val CHART_NS = "http://schemas.openxmlformats.org/drawingml/2006/chart"
+    private const val A_NS = "http://schemas.openxmlformats.org/drawingml/2006/main"
+    private const val R_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+    private const val P_NS = "http://schemas.openxmlformats.org/presentationml/2006/main"
+    private const val MC_NS = "http://schemas.openxmlformats.org/markup-compatibility/2006"
+    private const val CX_NS = "http://schemas.microsoft.com/office/drawing/2014/chart"
+    private const val CHART_URI = "http://schemas.openxmlformats.org/drawingml/2006/chart"
+    private const val CHART_RELATIONSHIP = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart"
 }

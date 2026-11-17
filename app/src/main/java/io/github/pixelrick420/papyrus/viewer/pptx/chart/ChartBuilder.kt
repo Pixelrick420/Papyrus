@@ -30,7 +30,10 @@ internal object ChartBuilder {
         val shapes = ArrayList<ChartShape>()
         val texts = ArrayList<ChartText>()
         style.fillOf(chart.shapeProperties)?.let { shapes += filled(bounds, it) }
-        if (!chart.supported || chart.type == ChartType.OTHER) return ChartDrawing(shapes, texts)
+        if (!chart.supported || chart.type == ChartType.OTHER) {
+            placeholder(chart, layout, bounds, style, description, shapes, texts)
+            return ChartDrawing(shapes, texts)
+        }
         style.fillOf(chart.plotArea.shapeProperties)?.let { shapes += filled(layout.plotArea, it) }
         title(chart, layout, style, texts)
         when (chart.type) {
@@ -43,6 +46,37 @@ internal object ChartBuilder {
         }
         legend(chart, layout.legend, style, shapes, texts)
         return ChartDrawing(shapes, texts)
+    }
+
+    private fun placeholder(
+        chart: PptxChart,
+        layout: ChartLayoutResult,
+        bounds: SceneRect,
+        style: ChartStyle,
+        description: String?,
+        shapes: MutableList<ChartShape>,
+        texts: MutableList<ChartText>,
+    ) {
+        shapes += ChartShape(
+            points = rectanglePoints(bounds),
+            fill = null,
+            line = SceneLine(3 * EMU_PER_POINT, ScenePaint.Solid(style.axis), "dash"),
+            closed = true,
+        )
+        title(chart, layout, style, texts)
+        val top = layout.title?.bottom ?: bounds.y
+        val middle = SceneRect(bounds.x, top, bounds.width, (bounds.bottom - top).coerceAtLeast(0.0))
+        val message = SceneRect(
+            middle.x + middle.width * 0.1,
+            middle.y + middle.height * 0.4,
+            middle.width * 0.8,
+            middle.height * 0.2,
+        )
+        texts += ChartText(ChartTextFactory.body("Chart not displayed", LABEL_SIZE_PT * 1.2, style.text), message)
+        if (!description.isNullOrBlank()) {
+            val alt = SceneRect(middle.x + middle.width * 0.1, message.bottom, middle.width * 0.8, middle.height * 0.15)
+            texts += ChartText(ChartTextFactory.body(description, LABEL_SIZE_PT, style.text), alt)
+        }
     }
 
     private fun title(chart: PptxChart, layout: ChartLayoutResult, style: ChartStyle, texts: MutableList<ChartText>) {

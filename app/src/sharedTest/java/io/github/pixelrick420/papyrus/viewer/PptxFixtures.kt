@@ -1147,10 +1147,11 @@ internal class SlideBuilder(
         w: Long,
         h: Long,
         name: String? = null,
+        description: String = "",
     ) {
         val id = nextShapeId()
         add(
-            """<p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id="$id" name="${esc(name ?: "Frame $id")}"/>""" +
+            """<p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id="$id" name="${esc(name ?: "Frame $id")}" descr="${esc(description)}"/>""" +
                 """<p:cNvGraphicFramePr><a:graphicFrameLocks noGrp="1"/></p:cNvGraphicFramePr><p:nvPr/></p:nvGraphicFramePr>""" +
                 """<p:xfrm><a:off x="$x" y="$y"/><a:ext cx="$w" cy="$h"/></p:xfrm>""" +
                 """<a:graphic><a:graphicData uri="$uri">$content</a:graphicData></a:graphic></p:graphicFrame>""",

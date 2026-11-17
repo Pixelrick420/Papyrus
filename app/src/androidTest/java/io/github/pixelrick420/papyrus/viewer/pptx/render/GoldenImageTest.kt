@@ -64,6 +64,9 @@ class GoldenImageTest {
     @Test
     fun textFrames() = verify("text-frames")
 
+    @Test
+    fun chartZoo() = verify("chart-zoo")
+
     private fun verify(name: String) = runBlocking {
         val deck = GoldenDecks.all.single { it.name == name }
         val actual = SlidePngHarness.render(instrumentation.targetContext, deck.bytes, 0, WIDTH_PX)

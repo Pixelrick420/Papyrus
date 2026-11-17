@@ -32,7 +32,13 @@ class ChartPaintTest {
         newParserFactory = { KXmlParser() },
     )
 
-    private fun deck(chart: String, width: Long = CHART_WIDTH, height: Long = CHART_HEIGHT): Deck = pptx {
+    private fun deck(
+        chart: String,
+        width: Long = CHART_WIDTH,
+        height: Long = CHART_HEIGHT,
+        description: String = "",
+        content: String? = null,
+    ): Deck = pptx {
         theme {
             accent1("C00000")
             accent2("00B050")
@@ -41,16 +47,19 @@ class ChartPaintTest {
         slide {
             graphicFrame(
                 uri = CHART_URI,
-                content = """<c:chart xmlns:c="$CHART_NS" r:id="rId2"/>""",
+                content = content ?: """<c:chart xmlns:c="$CHART_NS" r:id="rId2"/>""",
                 x = CHART_X,
                 y = CHART_Y,
                 w = width,
                 h = height,
                 name = "chart",
+                description = description,
             )
             rel("rId2", CHART_RELATIONSHIP, "../charts/chart1.xml")
+            rel("rId3", "$R_NS/image", "../media/fallback.png")
         }
         part("ppt/charts/chart1.xml", chart.toByteArray())
+        part("ppt/media/fallback.png", OfficeFixtures.PNG_1X1)
     }
 
     private fun scene(deck: Deck): Scene {
@@ -307,6 +316,51 @@ class ChartPaintTest {
         assertTrue("no data labels in $texts", listOf("10", "20").all { it in texts })
     }
 
+    @Test
+    fun `unsupported charts show a labelled placeholder and the alt text`() {
+        val chart = """
+            <c:chartSpace xmlns:c="$CHART_NS" xmlns:a="$A_NS" xmlns:r="$R_NS">
+              <c:chart>
+                <c:title><c:tx><c:rich><a:bodyPr/><a:p><a:r><a:t>Radar</a:t></a:r></a:p></c:rich></c:tx></c:title>
+                <c:plotArea><c:radarChart/></c:plotArea>
+              </c:chart>
+            </c:chartSpace>
+        """.trimIndent()
+
+        val drawing = drawing(deck(chart, description = "Sales by quarter"))
+        val frame = drawing.shapes.single { it.points.size == 4 && it.fill == null }
+        assertEquals("dash", frame.line?.dash)
+        val texts = texts(drawing)
+        assertTrue("no chart title in $texts", "Radar" in texts)
+        assertTrue("no placeholder in $texts", "Chart not displayed" in texts)
+        assertTrue("no alt text in $texts", "Sales by quarter" in texts)
+    }
+
+    @Test
+    fun `extended charts use their fallback picture`() {
+        val content = """
+            <mc:AlternateContent xmlns:mc="$MC_NS" xmlns:cx="$CX_NS" xmlns:c="$CHART_NS" xmlns:a="$A_NS" xmlns:r="$R_NS">
+              <mc:Choice Requires="cx"><c:chart r:id="rId2"/></mc:Choice>
+              <mc:Fallback>
+                <p:pic xmlns:p="$P_NS">
+                  <p:nvPicPr><p:cNvPr id="9" name="fallback"/><p:cNvPicPr/><p:nvPr/></p:nvPicPr>
+                  <p:blipFill><a:blip r:embed="rId3"/><a:stretch><a:fillRect/></a:stretch></p:blipFill>
+                  <p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="100" cy="100"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr>
+                </p:pic>
+              </mc:Fallback>
+            </mc:AlternateContent>
+        """.trimIndent()
+        val result = deck("ignored", content = content).let { source ->
+            val pkg = PptxPackage.read({ source.toBytes().inputStream() }, newParserFactory = OfficeFixtures::parser)
+            val presentation = PresentationParser(OfficeFixtures::parser)
+                .parse(source.parts.getValue("ppt/presentation.xml"))
+            StyleResolver(OfficeFixtures::parser).resolveAll(pkg, presentation).slides.single().scene
+        }
+        val frame = result.nodes.filterIsInstance<SceneGraphicFrame>().single { it.name == "chart" }
+        assertNotNull("no fallback picture", frame.fallbackPicture)
+        assertEquals(null, frame.chart)
+    }
+
     private fun Affine.isTranslation(): Boolean = a == 1.0 && b == 0.0 && c == 0.0 && d == 1.0
 
     private fun ChartShape.center(): io.github.pixelrick420.papyrus.viewer.pptx.ScenePoint =
@@ -545,5 +599,8 @@ class ChartPaintTest {
         const val CHART_Y = 50_000L
         const val CHART_WIDTH = 600_000L
         const val CHART_HEIGHT = 400_000L
+        const val MC_NS = "http://schemas.openxmlformats.org/markup-compatibility/2006"
+        const val CX_NS = "http://schemas.microsoft.com/office/drawing/2014/chart"
+        const val P_NS = "http://schemas.openxmlformats.org/presentationml/2006/main"
     }
 }
