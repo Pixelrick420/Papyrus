@@ -11,14 +11,14 @@ internal object ChartParser {
     fun parse(chartSpace: XNode, limits: PptxLimits): PptxChart? {
         val chart = chartSpace.child(CHART_NS, "chart") ?: return null
         val plotAreaNode = chart.child(CHART_NS, "plotArea") ?: return null
-        val series = parseSeries(plotAreaNode, limits) ?: return null
-        val axes = parseAxes(plotAreaNode)
-        val dataLabels = parseDataLabels(plotAreaNode)
+        val containers = parseContainers(plotAreaNode, limits) ?: return null
+        val container = containers.singleOrNull()?.takeIf { it.supported && it.series.isNotEmpty() }
+        val supported = container != null
         val plotArea = ChartPlotArea(
             manualLayout = plotAreaNode.child(CHART_NS, "layout")?.let(::parseManualLayout),
-            series = series,
-            axes = axes,
-            dataLabels = dataLabels,
+            series = container?.series.orEmpty(),
+            axes = if (supported) parseAxes(plotAreaNode) else emptyList(),
+            dataLabels = if (supported) parseDataLabels(plotAreaNode) else null,
             shapeProperties = plotAreaNode.child(CHART_NS, "spPr"),
         )
         return PptxChart(
@@ -27,91 +27,149 @@ internal object ChartParser {
             legend = chart.child(CHART_NS, "legend")?.let(::parseLegend),
             shapeProperties = chartSpace.child(CHART_NS, "spPr"),
             textProperties = chartSpace.child(CHART_NS, "txPr"),
+            type = container?.type ?: ChartType.OTHER,
+            varyColors = container?.varyColors ?: false,
+            gapWidth = container?.gapWidth,
+            overlap = container?.overlap,
+            holeSize = container?.holeSize,
+            firstSliceAngle = container?.firstSliceAngle,
+            scatterStyle = container?.scatterStyle,
+            supported = supported,
         )
     }
 
-    private fun parseSeries(plotArea: XNode, limits: PptxLimits): List<ChartSeries>? {
-        val series = ArrayList<ChartSeries>()
+    private class Container(
+        val type: ChartType,
+        val supported: Boolean,
+        val series: List<ChartSeries>,
+        val varyColors: Boolean = false,
+        val gapWidth: Int? = null,
+        val overlap: Int? = null,
+        val holeSize: Int? = null,
+        val firstSliceAngle: Double? = null,
+        val scatterStyle: String? = null,
+    )
+
+    private fun parseContainers(plotArea: XNode, limits: PptxLimits): List<Container>? {
+        val containers = ArrayList<Container>()
         var seriesCount = 0
         var pointCount = 0
         for (child in plotArea.children) {
-            val parsed = parseSeriesContainer(child) ?: continue
-            for (ser in parsed) {
+            val container = parseContainer(child) ?: continue
+            for (ser in container.series) {
                 seriesCount++
                 if (seriesCount > limits.maxChartSeries) return null
-                val count = maxOf(
+                pointCount += maxOf(
                     ser.categories?.points?.size ?: 0,
                     ser.values?.points?.size ?: 0,
                     ser.xValues?.points?.size ?: 0,
                     ser.yValues?.points?.size ?: 0,
                 )
-                pointCount += count
                 if (pointCount > limits.maxChartPoints) return null
-                series += ser
             }
+            containers += container
         }
-        return series
+        return containers
     }
 
-    private fun parseSeriesContainer(node: XNode): List<ChartSeries>? {
+    private fun parseContainer(node: XNode): Container? {
         if (node.name.namespace != CHART_NS) return null
+        val varyColors = node.child(CHART_NS, "varyColors")?.let { on(it.attribute("val")) }
         return when (node.name.localName) {
-            "barChart", "bar3DChart" -> parseBarLike(node)
-            "lineChart", "line3DChart", "stockChart" -> parseLineLike(node)
-            "pieChart", "pie3DChart", "ofPieChart" -> parseTypedSeries(node, ChartType.PIE)
-            "doughnutChart" -> parseTypedSeries(node, ChartType.DOUGHNUT)
-            "areaChart", "area3DChart" -> parseTypedSeries(node, ChartType.AREA)
-            "scatterChart", "bubbleChart" -> parseScatterSeries(node)
-            "radarChart", "surfaceChart", "surface3DChart" -> parseTypedSeries(node, ChartType.OTHER)
+            "barChart" -> {
+                val direction = if (node.child(CHART_NS, "barDir")?.attribute("val") == "bar") {
+                    BarDirection.BAR
+                } else {
+                    BarDirection.COLUMN
+                }
+                val grouping = groupingOf(node)
+                val type = if (direction == BarDirection.BAR) ChartType.BAR else ChartType.COLUMN
+                Container(
+                    type = type,
+                    supported = true,
+                    series = node.childrenOf(CHART_NS, "ser").map { ser ->
+                        parseSeriesNode(ser, type, grouping = grouping, direction = direction)
+                    },
+                    varyColors = varyColors == true,
+                    gapWidth = node.child(CHART_NS, "gapWidth")?.attribute("val")?.toIntOrNull(),
+                    overlap = node.child(CHART_NS, "overlap")?.attribute("val")?.toIntOrNull(),
+                )
+            }
+            "lineChart" -> Container(
+                ChartType.LINE,
+                supported = true,
+                series = node.childrenOf(CHART_NS, "ser").map { ser -> parseLineSeries(ser, groupingOf(node)) },
+                varyColors = varyColors == true,
+            )
+            "pieChart" -> Container(
+                ChartType.PIE,
+                supported = true,
+                series = node.childrenOf(CHART_NS, "ser").map { parseSeriesNode(it, ChartType.PIE) },
+                varyColors = varyColors ?: true,
+                firstSliceAngle = node.child(CHART_NS, "firstSliceAng")?.attribute("val")?.toDoubleOrNull(),
+            )
+            "doughnutChart" -> Container(
+                ChartType.DOUGHNUT,
+                supported = true,
+                series = node.childrenOf(CHART_NS, "ser").map { parseSeriesNode(it, ChartType.DOUGHNUT) },
+                varyColors = varyColors ?: true,
+                holeSize = node.child(CHART_NS, "holeSize")?.attribute("val")?.toIntOrNull(),
+                firstSliceAngle = node.child(CHART_NS, "firstSliceAng")?.attribute("val")?.toDoubleOrNull(),
+            )
+            "areaChart" -> Container(
+                ChartType.AREA,
+                supported = true,
+                series = node.childrenOf(CHART_NS, "ser").map { ser ->
+                    parseSeriesNode(ser, ChartType.AREA, grouping = groupingOf(node))
+                },
+                varyColors = varyColors == true,
+            )
+            "scatterChart" -> Container(
+                ChartType.SCATTER,
+                supported = true,
+                series = node.childrenOf(CHART_NS, "ser").map(::parseScatterSeries),
+                varyColors = varyColors == true,
+                scatterStyle = node.child(CHART_NS, "scatterStyle")?.attribute("val"),
+            )
+            "bar3DChart", "line3DChart", "pie3DChart", "ofPieChart", "stockChart",
+            "bubbleChart", "radarChart", "surfaceChart", "surface3DChart",
+            -> Container(ChartType.OTHER, supported = false, series = emptyList())
             else -> null
         }
     }
 
-    private fun parseBarLike(node: XNode): List<ChartSeries> {
-        val direction = if (node.child(CHART_NS, "barDir")?.attribute("val") == "bar") {
-            BarDirection.BAR
-        } else {
-            BarDirection.COLUMN
-        }
-        val grouping = when (node.child(CHART_NS, "grouping")?.attribute("val")) {
+    private fun groupingOf(node: XNode): BarGrouping =
+        when (node.child(CHART_NS, "grouping")?.attribute("val")) {
             "stacked" -> BarGrouping.STACKED
             "percentStacked" -> BarGrouping.PERCENT_STACKED
             else -> BarGrouping.CLUSTERED
         }
-        val type = if (direction == BarDirection.BAR) ChartType.BAR else ChartType.COLUMN
-        return node.childrenOf(CHART_NS, "ser").map { ser ->
-            parseSeriesNode(ser, type, grouping = grouping, direction = direction)
-        }
+
+    private fun parseLineSeries(ser: XNode, grouping: BarGrouping): ChartSeries {
+        val marker = ser.child(CHART_NS, "marker")?.child(CHART_NS, "symbol")?.attribute("val") != "none"
+        return parseSeriesNode(ser, ChartType.LINE, grouping = grouping, marker = marker)
     }
 
-    private fun parseLineLike(node: XNode): List<ChartSeries> =
-        node.childrenOf(CHART_NS, "ser").map { ser ->
-            val marker = ser.child(CHART_NS, "marker")?.child(CHART_NS, "symbol")?.attribute("val") != "none"
-            parseSeriesNode(ser, ChartType.LINE, marker = marker)
-        }
-
-    private fun parseTypedSeries(node: XNode, type: ChartType): List<ChartSeries> =
-        node.childrenOf(CHART_NS, "ser").map { ser -> parseSeriesNode(ser, type) }
-
-    private fun parseScatterSeries(node: XNode): List<ChartSeries> =
-        node.childrenOf(CHART_NS, "ser").map { ser ->
-            val idx = ser.child(CHART_NS, "idx")?.attribute("val")?.toIntOrNull() ?: 0
-            val order = ser.child(CHART_NS, "order")?.attribute("val")?.toIntOrNull() ?: idx
-            val xValues = ser.child(CHART_NS, "xVal")?.let(::parseCacheRef)
-            val yValues = ser.child(CHART_NS, "yVal")?.let(::parseCacheRef)
-            ChartSeries(
-                index = idx,
-                order = order,
-                name = seriesName(ser),
-                type = ChartType.SCATTER,
-                categories = xValues,
-                values = yValues,
-                xValues = xValues,
-                yValues = yValues,
-                shapeProperties = ser.child(CHART_NS, "spPr"),
-                textProperties = ser.child(CHART_NS, "txPr"),
-            )
-        }
+    private fun parseScatterSeries(ser: XNode): ChartSeries {
+        val xValues = ser.child(CHART_NS, "xVal")?.let(::parseCacheRef)
+        val yValues = ser.child(CHART_NS, "yVal")?.let(::parseCacheRef)
+        val idx = ser.child(CHART_NS, "idx")?.attribute("val")?.toIntOrNull() ?: 0
+        val order = ser.child(CHART_NS, "order")?.attribute("val")?.toIntOrNull() ?: idx
+        return ChartSeries(
+            index = idx,
+            order = order,
+            name = seriesName(ser),
+            type = ChartType.SCATTER,
+            categories = xValues,
+            values = yValues,
+            xValues = xValues,
+            yValues = yValues,
+            shapeProperties = ser.child(CHART_NS, "spPr"),
+            textProperties = ser.child(CHART_NS, "txPr"),
+            dataLabels = ser.child(CHART_NS, "dLbls")?.let(::parseDataLabels),
+            points = parsePoints(ser),
+        )
+    }
 
     private fun parseSeriesNode(
         ser: XNode,
@@ -134,8 +192,20 @@ internal object ChartParser {
             values = ser.child(CHART_NS, "val")?.let(::parseCacheRef),
             shapeProperties = ser.child(CHART_NS, "spPr"),
             textProperties = ser.child(CHART_NS, "txPr"),
+            dataLabels = ser.child(CHART_NS, "dLbls")?.let(::parseDataLabels),
+            points = parsePoints(ser),
         )
     }
+
+    private fun parsePoints(ser: XNode): List<ChartDataPoint> =
+        ser.childrenOf(CHART_NS, "dPt").mapNotNull { point ->
+            val index = point.child(CHART_NS, "idx")?.attribute("val")?.toIntOrNull() ?: return@mapNotNull null
+            ChartDataPoint(
+                index = index,
+                shapeProperties = point.child(CHART_NS, "spPr"),
+                explosion = point.child(CHART_NS, "explosion")?.attribute("val")?.toDoubleOrNull(),
+            )
+        }
 
     private fun seriesName(ser: XNode): String? {
         val tx = ser.child(CHART_NS, "tx") ?: return null

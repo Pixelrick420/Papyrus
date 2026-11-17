@@ -34,6 +34,12 @@ internal data class ChartCacheValue(val index: Int, val text: String, val number
 
 internal data class ChartCache(val formatCode: String?, val points: List<ChartCacheValue>)
 
+internal data class ChartDataPoint(
+    val index: Int,
+    val shapeProperties: XNode? = null,
+    val explosion: Double? = null,
+)
+
 internal data class ChartSeries(
     val index: Int,
     val order: Int,
@@ -48,6 +54,8 @@ internal data class ChartSeries(
     val yValues: ChartCache? = null,
     val shapeProperties: XNode? = null,
     val textProperties: XNode? = null,
+    val dataLabels: ChartDataLabels? = null,
+    val points: List<ChartDataPoint> = emptyList(),
 )
 
 internal data class ChartNumberFormat(
@@ -147,4 +155,12 @@ internal data class PptxChart(
     val shapeProperties: XNode? = null,
     val textProperties: XNode? = null,
     val layout: ChartLayoutResult? = null,
+    val type: ChartType = ChartType.OTHER,
+    val varyColors: Boolean = false,
+    val gapWidth: Int? = null,
+    val overlap: Int? = null,
+    val holeSize: Int? = null,
+    val firstSliceAngle: Double? = null,
+    val scatterStyle: String? = null,
+    val supported: Boolean = false,
 )

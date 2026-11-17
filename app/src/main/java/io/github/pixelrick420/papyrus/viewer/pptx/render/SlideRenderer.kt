@@ -21,6 +21,7 @@ import io.github.pixelrick420.papyrus.viewer.pptx.SceneLine
 import io.github.pixelrick420.papyrus.viewer.pptx.SceneNode
 import io.github.pixelrick420.papyrus.viewer.pptx.ScenePaint
 import io.github.pixelrick420.papyrus.viewer.pptx.ScenePicture
+import io.github.pixelrick420.papyrus.viewer.pptx.ScenePoint
 import io.github.pixelrick420.papyrus.viewer.pptx.ScenePreset
 import io.github.pixelrick420.papyrus.viewer.pptx.SceneRect
 import io.github.pixelrick420.papyrus.viewer.pptx.SceneShape
@@ -28,6 +29,7 @@ import io.github.pixelrick420.papyrus.viewer.pptx.ShapeGeometry
 import io.github.pixelrick420.papyrus.viewer.pptx.StrokeCompound
 import io.github.pixelrick420.papyrus.viewer.pptx.Strokes
 import io.github.pixelrick420.papyrus.viewer.pptx.XNode
+import io.github.pixelrick420.papyrus.viewer.pptx.chart.ChartDrawing
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import java.io.File
@@ -111,6 +113,7 @@ internal class SlideRenderer(
         is SceneGraphicFrame -> {
             graphicFrame(node, out, pictures)
             text?.paintTable(node, out)
+            node.chart?.let { text?.paintChart(node, it, out) }
             true
         }
         is SceneGroup -> group(scene, node, out, pictures, deadline)
@@ -205,6 +208,7 @@ internal class SlideRenderer(
 
     private fun graphicFrame(frame: SceneGraphicFrame, out: MutableList<DrawOp>, pictures: SlidePictureResolver) {
         frame.fallbackPicture?.let { picture(it, out, pictures) }
+        frame.chart?.let { chart(it, frame.frame, out) }
         val table = frame.table ?: return
         val layout = table.layout ?: return
         val origin = frame.frame ?: return
@@ -243,6 +247,35 @@ internal class SlideRenderer(
             )
         }
         out += DrawOp.Restore
+    }
+
+    /** Paints a chart's geometry in the frame's own space; chart text goes through the text engine separately. */
+    private fun chart(drawing: ChartDrawing, origin: SceneRect?, out: MutableList<DrawOp>) {
+        origin ?: return
+        val box = SceneRect(0.0, 0.0, origin.width, origin.height)
+        val ops = ArrayList<DrawOp>()
+        for (shape in drawing.shapes) {
+            val path = pathOf(shape.points, shape.closed) ?: continue
+            paintOf(shape.fill, box)?.let { ops += DrawOp.FillPath(path, it) }
+            shape.line?.let { strokeOf(it, box) }?.let { ops += DrawOp.StrokePath(path, it) }
+        }
+        if (ops.isEmpty()) return
+        out += DrawOp.Save
+        out += DrawOp.Concat(Affine.translate(origin.x, origin.y))
+        out += ops
+        out += DrawOp.Restore
+    }
+
+    private fun pathOf(points: List<ScenePoint>, closed: Boolean): PathData? {
+        if (points.size < 2) return null
+        val segments = ArrayList<PathSegment>(points.size + 1)
+        segments += PathSegment.MoveTo(points[0].x.toFloat(), points[0].y.toFloat())
+        for (index in 1 until points.size) {
+            val point = points[index]
+            segments += PathSegment.LineTo(point.x.toFloat(), point.y.toFloat())
+        }
+        if (closed) segments += PathSegment.Close
+        return PathData(segments)
     }
 
     /** The picture's clip outline in its own frame space, when its mask is anything but a plain rectangle. */

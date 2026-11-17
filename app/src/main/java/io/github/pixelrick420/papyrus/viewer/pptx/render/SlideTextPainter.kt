@@ -8,6 +8,7 @@ import io.github.pixelrick420.papyrus.viewer.pptx.SceneRect
 import io.github.pixelrick420.papyrus.viewer.pptx.SceneShape
 import io.github.pixelrick420.papyrus.viewer.pptx.SceneTextFrame
 import io.github.pixelrick420.papyrus.viewer.pptx.XNode
+import io.github.pixelrick420.papyrus.viewer.pptx.chart.ChartDrawing
 import io.github.pixelrick420.papyrus.viewer.pptx.table.TableCell
 import io.github.pixelrick420.papyrus.viewer.pptx.table.TableCellAnchor
 import io.github.pixelrick420.papyrus.viewer.pptx.text.BulletMarker
@@ -66,6 +67,27 @@ internal class SlideTextPainter(
                 transform = Affine.translate(origin.x + rect.x, origin.y + rect.y),
                 originX = margins.left + body.properties.insets.left,
                 originY = margins.top + body.properties.insets.top + anchorOffset(cell, rect, cellLayout),
+                box = SceneRect(0.0, 0.0, rect.width, rect.height),
+                out = out,
+            )
+        }
+    }
+
+    fun paintChart(node: SceneGraphicFrame, drawing: ChartDrawing, out: MutableList<DrawOp>) {
+        val origin = node.frame ?: return
+        for (text in drawing.texts) {
+            val rect = text.frame
+            if (rect.width <= 0.0 || rect.height <= 0.0) continue
+            val body = bodyOf(text.body) ?: continue
+            if (body.paragraphs.isEmpty()) continue
+            val layout = runCatching {
+                engine.layout(body, rect.width, rect.height, TextShapeTransform.NONE)
+            }.getOrNull() ?: continue
+            emit(
+                layout = layout,
+                transform = Affine.translate(origin.x + rect.x, origin.y + rect.y),
+                originX = body.properties.insets.left,
+                originY = body.properties.insets.top,
                 box = SceneRect(0.0, 0.0, rect.width, rect.height),
                 out = out,
             )

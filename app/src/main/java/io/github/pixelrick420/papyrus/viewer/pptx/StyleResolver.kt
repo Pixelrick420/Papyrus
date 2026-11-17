@@ -1,6 +1,9 @@
 package io.github.pixelrick420.papyrus.viewer.pptx
 
 import android.util.Xml
+import io.github.pixelrick420.papyrus.viewer.pptx.chart.ChartBuilder
+import io.github.pixelrick420.papyrus.viewer.pptx.chart.ChartParser
+import io.github.pixelrick420.papyrus.viewer.pptx.chart.ChartStyle
 import org.xmlpull.v1.XmlPullParser
 
 /**
@@ -54,12 +57,12 @@ internal class StyleResolver(
         val budget = TextBudget(limits.maxTextChars)
         val nodes = buildList {
             if (layout?.showMasterShapes != false) {
-                addAll(resolveNodes(context.masterTree?.nodes.orEmpty(), context, number, budget, 0, skipPlaceholders = true))
+                addAll(resolveNodes(context.masterTree?.nodes.orEmpty(), pkg, context, number, budget, 0, skipPlaceholders = true))
             }
             if (tree.showMasterShapes) {
-                addAll(resolveNodes(context.layoutTree?.nodes.orEmpty(), context, number, budget, 0, skipPlaceholders = true))
+                addAll(resolveNodes(context.layoutTree?.nodes.orEmpty(), pkg, context, number, budget, 0, skipPlaceholders = true))
             }
-            addAll(resolveNodes(tree.nodes, context, number, budget, 0))
+            addAll(resolveNodes(tree.nodes, pkg, context, number, budget, 0))
         }
         val background = backgroundOf(tree.background, context)
         return SlideScene(part, Scene(size, nodes, background), tree.incomplete || budget.truncated, tree.hidden)
@@ -67,6 +70,7 @@ internal class StyleResolver(
 
     private fun resolveNodes(
         nodes: List<SceneNode>,
+        pkg: PptxPackage,
         context: LayoutContext,
         number: Int,
         budget: TextBudget,
@@ -87,7 +91,7 @@ internal class StyleResolver(
                     decorative = node.decorative,
                     childFrame = node.childFrame,
                     children = if (depth < limits.maxGroupDepth) {
-                        resolveNodes(node.children, context, number, budget, depth + 1, skipPlaceholders)
+                        resolveNodes(node.children, pkg, context, number, budget, depth + 1, skipPlaceholders)
                     } else {
                         emptyList()
                     },
@@ -100,7 +104,7 @@ internal class StyleResolver(
                 is SceneShape -> resolved += resolveShape(node, context, number, budget)
                 is ScenePicture -> resolved += resolvePicture(node, context)
                 is SceneConnector -> resolved += resolveConnector(node, context)
-                is SceneGraphicFrame -> resolved += node
+                is SceneGraphicFrame -> resolved += resolveGraphicFrame(node, pkg, context)
             }
         }
         return resolved
@@ -196,6 +200,64 @@ internal class StyleResolver(
         format = formatOf(listOf(connector.properties to connector.style), context),
         sourcePart = connector.sourcePart,
     )
+
+    private fun resolveGraphicFrame(
+        frame: SceneGraphicFrame,
+        pkg: PptxPackage,
+        context: LayoutContext,
+    ): SceneGraphicFrame {
+        if (frame.kind != GraphicKind.CHART) return frame
+        val source = frame.sourcePart ?: return frame
+        val relationship = frame.relationshipId ?: return frame
+        val part = pkg.targetOf(source, relationship) ?: return frame
+        val bytes = pkg.part(part) ?: return frame
+        val tree = runCatching { reader.readTree(bytes.inputStream(), part) }.getOrNull() ?: return frame
+        val chart = runCatching { ChartParser.parse(tree, limits) }.getOrNull() ?: return frame
+        val bounds = frame.frame?.let { SceneRect(0.0, 0.0, it.width, it.height) } ?: return frame
+        if (bounds.width <= 0.0 || bounds.height <= 0.0) return frame
+        val drawing = ChartBuilder.build(chart, bounds, chartStyle(context), frame.description)
+        return SceneGraphicFrame(
+            id = frame.id,
+            name = frame.name,
+            frame = frame.frame,
+            hidden = frame.hidden,
+            description = frame.description,
+            decorative = frame.decorative,
+            kind = frame.kind,
+            relationshipId = frame.relationshipId,
+            hyperlink = frame.hyperlink,
+            table = frame.table,
+            chart = drawing,
+            fallbackPicture = frame.fallbackPicture,
+            sourcePart = frame.sourcePart,
+        )
+    }
+
+    private fun chartStyle(context: LayoutContext): ChartStyle {
+        fun scheme(slot: String, transform: ColorTransform? = null): Rgba? = context.colors.resolve(
+            ColorValue(ColorSource.Scheme(slot), listOfNotNull(transform)),
+        )
+        val palette = buildList {
+            for (slot in 1..6) scheme("accent$slot")?.let(::add)
+            for (slot in 1..6) {
+                scheme("accent$slot", ColorTransform(ColorTransformKind.LUM_MOD, DARKER_SERIES))?.let(::add)
+            }
+        }.ifEmpty { listOf(DEFAULT_CHART_ACCENT) }
+        return ChartStyle(
+            palette = palette,
+            text = scheme("tx1") ?: Rgba.BLACK,
+            grid = scheme("tx1", ColorTransform(ColorTransformKind.ALPHA, GRID_ALPHA)) ?: Rgba(217, 217, 217),
+            axis = scheme("tx1", ColorTransform(ColorTransformKind.ALPHA, AXIS_ALPHA)) ?: Rgba(128, 128, 128),
+            fillOf = { properties ->
+                properties?.let(::fillElementOf)?.let {
+                    Fills.paintOf(it, null, context.colors, limits.maxGradientStops)
+                }
+            },
+            lineOf = { properties ->
+                properties?.let { lineAcross(listOf(it to null), context) }?.takeIf { it.paint != null }
+            },
+        )
+    }
 
     private fun templateOf(node: SceneNode): Template? = when (node) {
         is SceneShape -> node.placeholder?.let {
@@ -578,6 +640,14 @@ internal class StyleResolver(
         const val HORIZONTAL_INSET = 91_440.0
 
         const val VERTICAL_INSET = 45_720.0
+
+        const val DARKER_SERIES = 75_000
+
+        const val GRID_ALPHA = 20_000
+
+        const val AXIS_ALPHA = 55_000
+
+        val DEFAULT_CHART_ACCENT = Rgba(68, 114, 196)
 
         val FILL_TAGS = setOf("noFill", "solidFill", "gradFill", "blipFill", "pattFill", "grpFill")
 
