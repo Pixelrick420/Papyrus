@@ -62,6 +62,7 @@ internal object Fills {
             "solidFill" -> solidOf(element, placeholder, colors) ?: ScenePaint.Complex(element, placeholder)
             "gradFill" -> gradientOf(element, placeholder, colors, maxStops)
                 ?: ScenePaint.Complex(element, placeholder)
+            "pattFill" -> patternOf(element, placeholder, colors) ?: ScenePaint.Complex(element, placeholder)
             else -> ScenePaint.Complex(element, placeholder)
         }
 
@@ -70,6 +71,18 @@ internal object Fills {
         val resolved = colors.resolve(colour, placeholder) ?: return null
         return ScenePaint.Solid(resolved)
     }
+
+    private fun patternOf(fill: XNode, placeholder: Rgba?, colors: ColorModel): ScenePaint? {
+        val tile = PatternFills.tileOf(fill.attribute("prst")) ?: return null
+        val foreground = resolvedColorOf(fill.child(OoxmlNamespace.A, "fgClr"), placeholder, colors) ?: return null
+        val background = resolvedColorOf(fill.child(OoxmlNamespace.A, "bgClr"), placeholder, colors)
+        val scale = fill.child(OoxmlNamespace.A, "scale")?.attribute("w")?.toDoubleOrNull()
+            ?.div(PERCENT_UNIT)?.coerceIn(TILE_SCALE_MIN, TILE_SCALE_MAX) ?: 1.0
+        return ScenePaint.Pattern(tile, foreground, background, scale)
+    }
+
+    private fun resolvedColorOf(node: XNode?, placeholder: Rgba?, colors: ColorModel): Rgba? =
+        node?.children?.firstNotNullOfOrNull(ColorModel::valueOf)?.let { colors.resolve(it, placeholder) }
 
     private fun gradientOf(element: XNode, placeholder: Rgba?, colors: ColorModel, maxStops: Int): ScenePaint? {
         val stops = stopsOf(element, placeholder, colors, maxStops)
@@ -120,4 +133,6 @@ internal object Fills {
 
     private const val ANGLE_UNIT = 60_000.0
     private const val PERCENT_UNIT = 100_000.0
+    private const val TILE_SCALE_MIN = 0.001
+    private const val TILE_SCALE_MAX = 100.0
 }

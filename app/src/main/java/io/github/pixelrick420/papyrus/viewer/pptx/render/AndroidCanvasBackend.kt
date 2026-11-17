@@ -1,6 +1,7 @@
 package io.github.pixelrick420.papyrus.viewer.pptx.render
 
 import android.graphics.Bitmap
+import android.graphics.BitmapShader
 import android.graphics.Canvas
 import android.graphics.DashPathEffect
 import android.graphics.LinearGradient
@@ -13,6 +14,8 @@ import android.graphics.RectF as AndroidRectF
 import android.graphics.Shader
 import android.graphics.Typeface
 import io.github.pixelrick420.papyrus.viewer.pptx.Affine
+import io.github.pixelrick420.papyrus.viewer.pptx.EMU_PER_PIXEL
+import io.github.pixelrick420.papyrus.viewer.pptx.PatternTile
 import io.github.pixelrick420.papyrus.viewer.pptx.Rgba
 import io.github.pixelrick420.papyrus.viewer.pptx.StrokeCap
 import io.github.pixelrick420.papyrus.viewer.pptx.StrokeJoin
@@ -238,9 +241,26 @@ internal class AndroidCanvasBackend(
                     Shader.TileMode.CLAMP,
                 )
             }
+            is PaintSpec.Pattern -> {
+                val shader = BitmapShader(patternBitmap(spec), Shader.TileMode.REPEAT, Shader.TileMode.REPEAT)
+                val tileScale = (EMU_PER_PIXEL * spec.scale.coerceAtLeast(MIN_TILE_SCALE)).toFloat()
+                shader.setLocalMatrix(Matrix().apply { setScale(tileScale, tileScale) })
+                paint.shader = shader
+            }
         }
         shadow?.let { paint.setShadowLayer(it.blur, it.dx, it.dy, it.color.argb) }
         return paint
+    }
+
+    private fun patternBitmap(spec: PaintSpec.Pattern): Bitmap {
+        val bitmap = Bitmap.createBitmap(PatternTile.SIZE, PatternTile.SIZE, Bitmap.Config.ARGB_8888)
+        for (y in 0 until PatternTile.SIZE) {
+            for (x in 0 until PatternTile.SIZE) {
+                val color = if (spec.tile.pixel(x, y)) spec.foreground.argb else (spec.background?.argb ?: 0)
+                bitmap.setPixel(x, y, color)
+            }
+        }
+        return bitmap
     }
 
     private fun pathOf(data: PathData): Path {
@@ -306,6 +326,7 @@ internal class AndroidCanvasBackend(
     private companion object {
         const val OPAQUE = 255
         const val MIN_RADIUS = 0.01f
+        const val MIN_TILE_SCALE = 0.001f
         const val MIN_DASH = 0.01f
         const val HEAVY_MULTIPLIER = 2f
         const val DOUBLE_GAP = 0.75f

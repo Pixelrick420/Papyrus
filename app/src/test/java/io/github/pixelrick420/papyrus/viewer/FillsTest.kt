@@ -3,6 +3,7 @@ package io.github.pixelrick420.papyrus.viewer
 import io.github.pixelrick420.papyrus.viewer.pptx.DeckScenes
 import io.github.pixelrick420.papyrus.viewer.pptx.GradientStop
 import io.github.pixelrick420.papyrus.viewer.pptx.LinearGradient
+import io.github.pixelrick420.papyrus.viewer.pptx.PatternFills
 import io.github.pixelrick420.papyrus.viewer.pptx.PptxLimits
 import io.github.pixelrick420.papyrus.viewer.pptx.PptxPackage
 import io.github.pixelrick420.papyrus.viewer.pptx.PresentationParser
@@ -15,6 +16,7 @@ import io.github.pixelrick420.papyrus.viewer.pptx.SceneShape
 import io.github.pixelrick420.papyrus.viewer.pptx.StyleResolver
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -196,6 +198,63 @@ class FillsTest {
         assertEquals(0.5, gradient.left, 1e-9)
         assertEquals(0.0, gradient.right, 1e-9)
         assertEquals(0.75, gradient.centerX, 1e-9)
+    }
+
+    @Test
+    fun `a pattern fill keeps its preset and resolved colours`() {
+        val paint = paintOf(
+            filled(
+                """<a:pattFill prst="smCheck">""" +
+                    """<a:fgClr><a:schemeClr val="accent1"/></a:fgClr>""" +
+                    """<a:bgClr><a:srgbClr val="FFFFFF"/></a:bgClr>""" +
+                    """<a:scale w="50000" h="50000"/>""" +
+                    """</a:pattFill>""",
+            ),
+        )
+
+        assertTrue(paint is ScenePaint.Pattern)
+        val pattern = paint as ScenePaint.Pattern
+        assertSame(PatternFills.tileOf("smCheck"), pattern.tile)
+        assertEquals(Rgba(0x44, 0x72, 0xC4), pattern.foreground)
+        assertEquals(Rgba(0xFF, 0xFF, 0xFF), pattern.background)
+        assertEquals(0.5, pattern.scale, 1e-9)
+    }
+
+    @Test
+    fun `a pattern fill without a background leaves it transparent`() {
+        val paint = paintOf(
+            filled("""<a:pattFill prst="pct10"><a:fgClr><a:srgbClr val="FF0000"/></a:fgClr></a:pattFill>"""),
+        )
+
+        val pattern = paint as ScenePaint.Pattern
+        assertNull(pattern.background)
+        assertEquals(1.0, pattern.scale, 1e-9)
+    }
+
+    @Test
+    fun `an unknown pattern preset stays complex`() {
+        val paint = paintOf(
+            filled("""<a:pattFill prst="nonesuch"><a:fgClr><a:srgbClr val="FF0000"/></a:fgClr></a:pattFill>"""),
+        )
+
+        assertTrue(paint is ScenePaint.Complex)
+    }
+
+    @Test
+    fun `all 48 pattern presets resolve to distinct 8x8 tiles`() {
+        val names = listOf(
+            "pct5", "pct10", "pct12_5", "pct20", "pct25", "pct30", "pct37_5", "pct40",
+            "pct50", "pct60", "pct62_5", "pct70", "pct75", "pct80", "pct87_5", "pct90",
+            "ltDnDiag", "ltUpDiag", "dkDnDiag", "dkUpDiag", "dnDiag", "upDiag", "wdDnDiag", "wdUpDiag",
+            "cross", "smCross", "diagCross", "ltGrid", "smGrid", "grid", "lgGrid", "dot", "dotGrid",
+            "lgCheck", "smCheck", "check", "horizontal", "vertical", "tri", "brick", "weave", "plaid",
+            "divot", "smConfetti", "lgConfetti", "pub10", "openDmnd", "filledDmnd",
+        )
+
+        val tiles = names.map { PatternFills.tileOf(it) }
+        assertEquals(48, names.size)
+        assertTrue(tiles.all { it != null && it.rows.size == 8 })
+        assertEquals(48, tiles.map { it!!.rows.joinToString() }.toSet().size)
     }
 
     @Test

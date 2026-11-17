@@ -16,6 +16,12 @@ internal object PaintSpecs {
         is ScenePaint.Solid -> PaintSpec.Solid(paint.color)
         is ScenePaint.Linear -> linear(paint.gradient, box)
         is ScenePaint.Radial -> radial(paint.gradient, box)
+        is ScenePaint.Pattern -> PaintSpec.Pattern(
+            paint.tile,
+            paint.foreground,
+            paint.background,
+            paint.scale.toFloat(),
+        )
         else -> null
     }
 

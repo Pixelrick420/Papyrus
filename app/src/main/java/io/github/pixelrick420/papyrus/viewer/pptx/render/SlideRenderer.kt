@@ -312,6 +312,7 @@ internal class SlideRenderer(
         is ScenePaint.Solid -> mode.adjust(fill.color)?.let { PaintSpec.Solid(it) }
         is ScenePaint.Linear -> if (mode == PresetFillMode.NONE) null else PaintSpecs.linear(fill.gradient, box)
         is ScenePaint.Radial -> if (mode == PresetFillMode.NONE) null else PaintSpecs.radial(fill.gradient, box)
+        is ScenePaint.Pattern -> if (mode == PresetFillMode.NONE) null else PaintSpecs.of(fill, box)
         else -> null
     }
 

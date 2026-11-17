@@ -10,6 +10,7 @@ import io.github.pixelrick420.papyrus.viewer.pptx.OoxmlReader
 import io.github.pixelrick420.papyrus.viewer.pptx.PictureCrop
 import io.github.pixelrick420.papyrus.viewer.pptx.PictureFill
 import io.github.pixelrick420.papyrus.viewer.pptx.PictureSource
+import io.github.pixelrick420.papyrus.viewer.pptx.PatternFills
 import io.github.pixelrick420.papyrus.viewer.pptx.PictureTile
 import io.github.pixelrick420.papyrus.viewer.pptx.PptxLimits
 import io.github.pixelrick420.papyrus.viewer.pptx.PresetGeometry
@@ -36,6 +37,7 @@ import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -192,6 +194,19 @@ class SlideRendererTest {
         val clip = image.effects.clip
         assertNotNull(clip)
         assertTrue(clip!!.segments.size > 4)
+    }
+
+    @Test
+    fun `a pattern fill becomes a repeating paint spec`() = runBlocking {
+        val tile = PatternFills.tileOf("pct10")!!
+        val paint = ScenePaint.Pattern(tile, red, black, 0.5)
+        val ops = renderer.render(scene(rect(format = SceneFormat(paint, null, null))))!!.ops
+
+        val spec = ops.filterIsInstance<DrawOp.FillPath>().single().paint as PaintSpec.Pattern
+        assertSame(tile, spec.tile)
+        assertEquals(red, spec.foreground)
+        assertEquals(black, spec.background)
+        assertEquals(0.5f, spec.scale)
     }
 
     @Test

@@ -1,6 +1,7 @@
 package io.github.pixelrick420.papyrus.viewer.pptx.render
 
 import io.github.pixelrick420.papyrus.viewer.pptx.Affine
+import io.github.pixelrick420.papyrus.viewer.pptx.PatternTile
 import io.github.pixelrick420.papyrus.viewer.pptx.Rgba
 import io.github.pixelrick420.papyrus.viewer.pptx.StrokeCap
 import io.github.pixelrick420.papyrus.viewer.pptx.StrokeJoin
@@ -70,6 +71,13 @@ internal sealed interface PaintSpec {
     data class Linear(val start: PointF, val end: PointF, val stops: List<ColorStop>) : PaintSpec
 
     data class Radial(val center: PointF, val radius: Float, val stops: List<ColorStop>) : PaintSpec
+
+    data class Pattern(
+        val tile: PatternTile,
+        val foreground: Rgba,
+        val background: Rgba?,
+        val scale: Float,
+    ) : PaintSpec
 }
 
 internal data class StrokeSpec(
