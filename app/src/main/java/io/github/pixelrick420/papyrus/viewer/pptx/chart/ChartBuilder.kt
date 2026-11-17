@@ -7,16 +7,19 @@ import io.github.pixelrick420.papyrus.viewer.pptx.ScenePoint
 import io.github.pixelrick420.papyrus.viewer.pptx.SceneRect
 import kotlin.math.abs
 import kotlin.math.ceil
+import kotlin.math.cos
 import kotlin.math.floor
 import kotlin.math.log10
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.pow
+import kotlin.math.sin
 
 internal object ChartBuilder {
 
     private const val EMU_PER_POINT = 12_700.0
     private const val TITLE_SIZE_PT = 14.0
+    private const val LABEL_SIZE_PT = 9.0
     private const val LEGEND_SIZE_PT = 9.0
     private const val TICK_SIZE_PT = 9.0
     private const val LINE_EMU = 9_525.0
@@ -32,7 +35,11 @@ internal object ChartBuilder {
         title(chart, layout, style, texts)
         when (chart.type) {
             ChartType.BAR, ChartType.COLUMN -> bars(chart, layout.plotArea, style, shapes, texts)
-            else -> Unit
+            ChartType.LINE -> lines(chart, layout.plotArea, style, shapes, texts)
+            ChartType.AREA -> areas(chart, layout.plotArea, style, shapes, texts)
+            ChartType.SCATTER -> scatter(chart, layout.plotArea, style, shapes, texts)
+            ChartType.PIE, ChartType.DOUGHNUT -> pie(chart, layout.plotArea, style, shapes, texts)
+            ChartType.OTHER -> Unit
         }
         legend(chart, layout.legend, style, shapes, texts)
         return ChartDrawing(shapes, texts)
@@ -78,6 +85,7 @@ internal object ChartBuilder {
         val negative = DoubleArray(count)
         val percentTotals = if (percent) categoryTotals(values, count) else null
         for ((s, ser) in series.withIndex()) {
+            val labelsOfSeries = ser.dataLabels ?: chart.plotArea.dataLabels
             for (c in 0 until count) {
                 val raw = values[s][c] ?: continue
                 val total = percentTotals?.get(c) ?: 0.0
@@ -114,6 +122,237 @@ internal object ChartBuilder {
                     seriesPaint(ser, c, chart.varyColors, style),
                     seriesLine(ser, c, style),
                 )
+                dataLabel(labelsOfSeries, ser, raw, value, labels.getOrNull(c), horizontal, bar, slot, style, texts)
+            }
+        }
+    }
+
+    private fun lines(
+        chart: PptxChart,
+        rect: SceneRect,
+        style: ChartStyle,
+        shapes: MutableList<ChartShape>,
+        texts: MutableList<ChartText>,
+    ) {
+        val series = chart.plotArea.series
+        val count = categoryCount(series)
+        if (count <= 0) return
+        val categoryAxis = categoryAxis(chart)
+        val valueAxis = valueAxis(chart)
+        val grouping = series.firstOrNull()?.grouping ?: BarGrouping.CLUSTERED
+        val grouped = grouping != BarGrouping.CLUSTERED
+        val percent = grouping == BarGrouping.PERCENT_STACKED
+        val values = series.map { cacheArray(it.values, count) }
+        val range = if (percent) ValueRange(0.0, 1.0, 0.2) else valueRange(totals(values, grouped, count), valueAxis)
+        val labels = categoryLabels(series, count)
+        axes(chart, rect, range, horizontal = false, style, shapes)
+        categoryTicks(categoryAxis, labels, rect, count, false, style, texts)
+        valueTicks(valueAxis, rect, range, false, style, texts)
+        val positive = DoubleArray(count)
+        val negative = DoubleArray(count)
+        val percentTotals = if (percent) categoryTotals(values, count) else null
+        for ((s, ser) in series.withIndex()) {
+            val dLbls = ser.dataLabels ?: chart.plotArea.dataLabels
+            val points = ArrayList<ScenePoint>()
+            val pointValues = ArrayList<Double>()
+            for (c in 0 until count) {
+                val raw = values[s][c] ?: continue
+                val total = percentTotals?.get(c) ?: 0.0
+                val value = if (percent && total > 0.0) raw / total else raw
+                val placed = if (grouped) {
+                    if (value >= 0.0) {
+                        val position = positive[c] + value
+                        positive[c] = position
+                        position
+                    } else {
+                        val position = negative[c] + value
+                        negative[c] = position
+                        position
+                    }
+                } else {
+                    value
+                }
+                points += ScenePoint(categoryX(rect, c, count, categoryAxis), valueY(rect, range, placed, valueAxis))
+                pointValues += raw
+            }
+            if (points.isEmpty()) continue
+            val line = seriesLine(ser, -1, style) ?: defaultLine(seriesColor(ser, -1, false, style))
+            if (points.size > 1) shapes += ChartShape(points, fill = null, line = line, closed = false)
+            if (ser.marker) {
+                for (point in points) shapes += marker(point, seriesPaint(ser, -1, false, style))
+            }
+            for ((index, point) in points.withIndex()) {
+                val label = labels.getOrNull(index)
+                val raw = pointValues.getOrNull(index) ?: continue
+                dataLabel(dLbls, ser, raw, raw, label, false, SceneRect(point.x, point.y, 0.0, 0.0), rect.width / count, style, texts)
+            }
+        }
+    }
+
+    private fun areas(
+        chart: PptxChart,
+        rect: SceneRect,
+        style: ChartStyle,
+        shapes: MutableList<ChartShape>,
+        texts: MutableList<ChartText>,
+    ) {
+        val series = chart.plotArea.series
+        val count = categoryCount(series)
+        if (count <= 0) return
+        val categoryAxis = categoryAxis(chart)
+        val valueAxis = valueAxis(chart)
+        val grouping = series.firstOrNull()?.grouping ?: BarGrouping.CLUSTERED
+        val grouped = grouping != BarGrouping.CLUSTERED
+        val percent = grouping == BarGrouping.PERCENT_STACKED
+        val values = series.map { cacheArray(it.values, count) }
+        val range = if (percent) ValueRange(0.0, 1.0, 0.2) else valueRange(totals(values, grouped, count), valueAxis)
+        val labels = categoryLabels(series, count)
+        axes(chart, rect, range, horizontal = false, style, shapes)
+        categoryTicks(categoryAxis, labels, rect, count, false, style, texts)
+        valueTicks(valueAxis, rect, range, false, style, texts)
+        val positive = DoubleArray(count)
+        val negative = DoubleArray(count)
+        val percentTotals = if (percent) categoryTotals(values, count) else null
+        for ((s, ser) in series.withIndex()) {
+            val dLbls = ser.dataLabels ?: chart.plotArea.dataLabels
+            val top = ArrayList<ScenePoint>()
+            val bottom = ArrayList<ScenePoint>()
+            val topValues = ArrayList<Pair<Double, String?>>()
+            for (c in 0 until count) {
+                val raw = values[s][c] ?: continue
+                val total = percentTotals?.get(c) ?: 0.0
+                val value = if (percent && total > 0.0) raw / total else raw
+                val base: Double
+                val end: Double
+                if (grouped) {
+                    if (value >= 0.0) {
+                        base = positive[c]
+                        end = base + value
+                        positive[c] = end
+                    } else {
+                        base = negative[c]
+                        end = base + value
+                        negative[c] = end
+                    }
+                } else {
+                    base = 0.0
+                    end = value
+                }
+                val x = categoryX(rect, c, count, categoryAxis)
+                top += ScenePoint(x, valueY(rect, range, end, valueAxis))
+                bottom += ScenePoint(x, valueY(rect, range, base, valueAxis))
+                topValues += raw to labels.getOrNull(c)
+            }
+            if (top.isEmpty()) continue
+            val color = seriesColor(ser, -1, false, style)
+            val fill = explicitFill(ser, -1, style)
+                ?: ScenePaint.Solid(if (grouped) color else Rgba(color.red, color.green, color.blue, 160))
+            val line = seriesLine(ser, -1, style) ?: defaultLine(color)
+            shapes += ChartShape(top + bottom.reversed(), fill = fill, line = line, closed = true)
+            if (top.size > 1) shapes += ChartShape(top, fill = null, line = line, closed = false)
+            if (dLbls?.hasContent() == true) {
+                for ((index, point) in top.withIndex()) {
+                    val (raw, label) = topValues.getOrNull(index) ?: continue
+                    dataLabel(dLbls, ser, raw, raw, label, false, SceneRect(point.x, point.y, 0.0, 0.0), rect.width / count, style, texts)
+                }
+            }
+        }
+    }
+
+    private fun scatter(
+        chart: PptxChart,
+        rect: SceneRect,
+        style: ChartStyle,
+        shapes: MutableList<ChartShape>,
+        texts: MutableList<ChartText>,
+    ) {
+        val series = chart.plotArea.series
+        val valueAxes = chart.plotArea.axes.filter { it.kind == AxisKind.VALUE }
+        val xAxis = valueAxes.firstOrNull { it.position == "b" } ?: valueAxes.getOrNull(0)
+        val yAxis = valueAxes.firstOrNull { it.position == "l" } ?: valueAxes.getOrNull(1)
+        val xValues = series.map { cacheArray(it.xValues ?: it.categories, Int.MAX_VALUE) }
+        val yValues = series.map { cacheArray(it.yValues ?: it.values, Int.MAX_VALUE) }
+        val rangeX = valueRange(xValues.flatMap { it.filterNotNull() }, xAxis)
+        val rangeY = valueRange(yValues.flatMap { it.filterNotNull() }, yAxis)
+        axes(chart, rect, rangeY, horizontal = false, style, shapes)
+        valueTicks(yAxis, rect, rangeY, horizontal = false, style, texts)
+        scatterTicks(xAxis, rect, rangeX, style, texts)
+        val connect = chart.scatterStyle?.lowercase()?.contains("line") == true
+        for ((s, ser) in series.withIndex()) {
+            val dLbls = ser.dataLabels ?: chart.plotArea.dataLabels
+            val points = ArrayList<ScenePoint>()
+            val size = minOf(xValues[s].size, yValues[s].size)
+            for (i in 0 until size) {
+                val x = xValues[s][i] ?: continue
+                val y = yValues[s][i] ?: continue
+                val point = ScenePoint(valueX(rect, rangeX, x, xAxis), valueY(rect, rangeY, y, yAxis))
+                points += point
+                dataLabel(dLbls, ser, y, y, null, false, SceneRect(point.x, point.y, 0.0, 0.0), rect.width / size.coerceAtLeast(1), style, texts)
+            }
+            if (connect && points.size > 1) {
+                shapes += ChartShape(points, fill = null, line = defaultLine(seriesColor(ser, -1, false, style)), closed = false)
+            }
+            for (point in points) shapes += marker(point, seriesPaint(ser, -1, false, style))
+        }
+    }
+
+    private fun pie(
+        chart: PptxChart,
+        rect: SceneRect,
+        style: ChartStyle,
+        shapes: MutableList<ChartShape>,
+        texts: MutableList<ChartText>,
+    ) {
+        val series = chart.plotArea.series
+        if (series.isEmpty()) return
+        val radius = min(rect.width, rect.height) / 2.0 * 0.9
+        if (radius <= 0.0) return
+        val center = ScenePoint(rect.x + rect.width / 2.0, rect.y + rect.height / 2.0)
+        val doughnut = chart.type == ChartType.DOUGHNUT
+        val holeRatio = if (doughnut) ((chart.holeSize ?: 50).coerceIn(10, 90)) / 100.0 else 0.0
+        val hole = radius * holeRatio
+        val rings = if (doughnut) series.size else 1
+        val thickness = if (doughnut) (radius - hole) / rings.coerceAtLeast(1) else radius - hole
+        for ((s, ser) in series.withIndex()) {
+            val outer = radius - s * thickness
+            val inner = (outer - thickness).coerceAtLeast(hole)
+            if (outer <= inner) continue
+            val values = cacheArray(ser.values, Int.MAX_VALUE).filterNotNull()
+            if (values.isEmpty()) continue
+            val total = values.sumOf { abs(it) }
+            if (total <= 0.0) continue
+            val categories = categoryLabels(listOf(ser), values.size)
+            var angle = chart.firstSliceAngle ?: 0.0
+            val dLbls = ser.dataLabels ?: chart.plotArea.dataLabels
+            for ((index, value) in values.withIndex()) {
+                val sweep = value / total * 360.0
+                val point = ser.points.firstOrNull { it.index == index }
+                val explosion = (point?.explosion ?: 0.0) / 100.0 * radius
+                val middle = Math.toRadians(angle + sweep / 2.0)
+                val shifted = ScenePoint(center.x + sin(middle) * explosion, center.y - cos(middle) * explosion)
+                val fill = seriesPaint(ser, index, true, style)
+                val line = seriesLine(ser, index, style) ?: SceneLine(EMU_PER_POINT, ScenePaint.Solid(style.text), null)
+                shapes += ChartShape(wedge(shifted, outer, inner, angle, angle + sweep), fill, line)
+                if (dLbls?.hasContent() == true) {
+                    dataLabel(
+                        dLbls,
+                        ser,
+                        value,
+                        value / total,
+                        categories.getOrNull(index),
+                        false,
+                        SceneRect(
+                            shifted.x + sin(middle) * (inner + (outer - inner) * 0.6),
+                            shifted.y - cos(middle) * (inner + (outer - inner) * 0.6),
+                            0.0,
+                            0.0,
+                        ),
+                        rect.width * 0.3,
+                        style,
+                        texts,
+                    )
+                }
+                angle += sweep
             }
         }
     }
@@ -207,6 +446,23 @@ internal object ChartBuilder {
         }
     }
 
+    private fun scatterTicks(
+        axis: ChartAxis?,
+        rect: SceneRect,
+        range: ValueRange,
+        style: ChartStyle,
+        texts: MutableList<ChartText>,
+    ) {
+        if (axis?.tickLabelPosition == TickLabelPosition.NONE || axis?.delete == true) return
+        for (tick in range.ticks()) {
+            val label = ChartNumberFormats.format(tick, axis?.numberFormat)
+            if (label.isEmpty()) continue
+            val x = valueX(rect, range, tick, axis)
+            val frame = SceneRect(x - 30 * EMU_PER_POINT, rect.bottom + 2 * EMU_PER_POINT, 60 * EMU_PER_POINT, 14 * EMU_PER_POINT)
+            texts += ChartText(ChartTextFactory.body(label, TICK_SIZE_PT, style.text), frame)
+        }
+    }
+
     private fun legend(
         chart: PptxChart,
         rect: SceneRect?,
@@ -261,6 +517,65 @@ internal object ChartBuilder {
             }
         }
 
+    private fun dataLabel(
+        labels: ChartDataLabels?,
+        series: ChartSeries,
+        raw: Double,
+        value: Double,
+        category: String?,
+        horizontal: Boolean,
+        anchor: SceneRect,
+        slot: Double,
+        style: ChartStyle,
+        texts: MutableList<ChartText>,
+    ) {
+        if (labels?.hasContent() != true) return
+        val text = labelText(labels, series.name, category, raw, value) ?: return
+        val position = labels.position
+        val frame = when {
+            horizontal -> {
+                val width = 60 * EMU_PER_POINT
+                val left = if (value >= 0.0) anchor.right + 3 * EMU_PER_POINT else anchor.x - width - 3 * EMU_PER_POINT
+                SceneRect(left, anchor.y, width, max(anchor.height, 14 * EMU_PER_POINT))
+            }
+            position == DataLabelPosition.CENTER -> SceneRect(anchor.x - slot / 2.0, anchor.y - 7 * EMU_PER_POINT, max(slot, 24 * EMU_PER_POINT), 14 * EMU_PER_POINT)
+            position == DataLabelPosition.INSIDE_END || position == DataLabelPosition.INSIDE_BASE -> SceneRect(anchor.x - slot / 2.0, anchor.y + 1 * EMU_PER_POINT, max(slot, 24 * EMU_PER_POINT), 14 * EMU_PER_POINT)
+            position == DataLabelPosition.BOTTOM -> SceneRect(anchor.x - slot / 2.0, anchor.y + 2 * EMU_PER_POINT, max(slot, 24 * EMU_PER_POINT), 14 * EMU_PER_POINT)
+            position == DataLabelPosition.LEFT || position == DataLabelPosition.RIGHT -> {
+                val width = 60 * EMU_PER_POINT
+                val left = if (position == DataLabelPosition.RIGHT) anchor.right + 2 * EMU_PER_POINT else anchor.x - width - 2 * EMU_PER_POINT
+                SceneRect(left, anchor.y - 7 * EMU_PER_POINT, width, 14 * EMU_PER_POINT)
+            }
+            else -> {
+                val width = max(slot, 24 * EMU_PER_POINT)
+                SceneRect(anchor.x - width / 2.0, anchor.y - 14 * EMU_PER_POINT, width, 14 * EMU_PER_POINT)
+            }
+        }
+        texts += ChartText(ChartTextFactory.body(text, LABEL_SIZE_PT, style.text), frame)
+    }
+
+    private fun labelText(
+        labels: ChartDataLabels,
+        seriesName: String?,
+        category: String?,
+        raw: Double,
+        value: Double,
+    ): String? {
+        val parts = ArrayList<String>()
+        if (labels.showSeriesName && !seriesName.isNullOrBlank()) parts += seriesName
+        if (labels.showCategoryName && !category.isNullOrBlank()) parts += category
+        if (labels.showValue) parts += ChartNumberFormats.format(raw, labels.numberFormat)
+        if (labels.showPercent) {
+            val format = labels.numberFormat ?: ChartNumberFormat("0%", "0%")
+            parts += ChartNumberFormats.format(value, format)
+        }
+        if (parts.isEmpty()) return null
+        return parts.joinToString("\n")
+    }
+
+    private fun ChartDataLabels.hasContent(): Boolean =
+        showValue || showCategoryName || showSeriesName || showPercent
+
     private fun explicitFill(series: ChartSeries, pointIndex: Int, style: ChartStyle): ScenePaint? {
         val point = if (pointIndex >= 0) series.points.firstOrNull { it.index == pointIndex } else null
         return style.fillOf(point?.shapeProperties) ?: style.fillOf(series.shapeProperties)
@@ -286,6 +601,33 @@ internal object ChartBuilder {
     }
 
     private fun defaultLine(color: Rgba): SceneLine = SceneLine(2 * EMU_PER_POINT, ScenePaint.Solid(color), null)
+
+    private fun marker(center: ScenePoint, fill: ScenePaint?): ChartShape {
+        val radius = 4 * EMU_PER_POINT
+        val points = ArrayList<ScenePoint>(12)
+        for (i in 0 until 12) {
+            val angle = Math.toRadians(i * 30.0)
+            points += ScenePoint(center.x + cos(angle) * radius, center.y + sin(angle) * radius)
+        }
+        return ChartShape(points, fill ?: ScenePaint.Solid(Rgba.BLACK), SceneLine(EMU_PER_POINT, ScenePaint.Solid(Rgba.BLACK), null))
+    }
+
+    private fun wedge(center: ScenePoint, outer: Double, inner: Double, start: Double, end: Double): List<ScenePoint> {
+        val sweep = end - start
+        val steps = max(2, ceil(abs(sweep) / 4.0).toInt())
+        val points = ArrayList<ScenePoint>(steps * 2 + 2)
+        for (i in 0..steps) {
+            val angle = Math.toRadians(start + sweep * i / steps)
+            points += ScenePoint(center.x + sin(angle) * outer, center.y - cos(angle) * outer)
+        }
+        if (inner > 0.0) {
+            for (i in steps downTo 0) {
+                val angle = Math.toRadians(start + sweep * i / steps)
+                points += ScenePoint(center.x + sin(angle) * inner, center.y - cos(angle) * inner)
+            }
+        }
+        return points
+    }
 
     private fun categoryCount(series: List<ChartSeries>): Int =
         series.maxOfOrNull { maxOf(it.categories?.points?.size ?: 0, it.values?.points?.size ?: 0) } ?: 0

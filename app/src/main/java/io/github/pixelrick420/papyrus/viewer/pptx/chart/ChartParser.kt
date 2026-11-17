@@ -18,7 +18,7 @@ internal object ChartParser {
             manualLayout = plotAreaNode.child(CHART_NS, "layout")?.let(::parseManualLayout),
             series = container?.series.orEmpty(),
             axes = if (supported) parseAxes(plotAreaNode) else emptyList(),
-            dataLabels = if (supported) parseDataLabels(plotAreaNode) else null,
+            dataLabels = if (supported) container?.dataLabels ?: parseDataLabels(plotAreaNode) else null,
             shapeProperties = plotAreaNode.child(CHART_NS, "spPr"),
         )
         return PptxChart(
@@ -48,6 +48,7 @@ internal object ChartParser {
         val holeSize: Int? = null,
         val firstSliceAngle: Double? = null,
         val scatterStyle: String? = null,
+        val dataLabels: ChartDataLabels? = null,
     )
 
     private fun parseContainers(plotArea: XNode, limits: PptxLimits): List<Container>? {
@@ -93,6 +94,7 @@ internal object ChartParser {
                     varyColors = varyColors == true,
                     gapWidth = node.child(CHART_NS, "gapWidth")?.attribute("val")?.toIntOrNull(),
                     overlap = node.child(CHART_NS, "overlap")?.attribute("val")?.toIntOrNull(),
+                    dataLabels = node.child(CHART_NS, "dLbls")?.let(::parseDataLabels),
                 )
             }
             "lineChart" -> Container(
@@ -100,6 +102,7 @@ internal object ChartParser {
                 supported = true,
                 series = node.childrenOf(CHART_NS, "ser").map { ser -> parseLineSeries(ser, groupingOf(node)) },
                 varyColors = varyColors == true,
+                dataLabels = node.child(CHART_NS, "dLbls")?.let(::parseDataLabels),
             )
             "pieChart" -> Container(
                 ChartType.PIE,
@@ -107,6 +110,7 @@ internal object ChartParser {
                 series = node.childrenOf(CHART_NS, "ser").map { parseSeriesNode(it, ChartType.PIE) },
                 varyColors = varyColors ?: true,
                 firstSliceAngle = node.child(CHART_NS, "firstSliceAng")?.attribute("val")?.toDoubleOrNull(),
+                dataLabels = node.child(CHART_NS, "dLbls")?.let(::parseDataLabels),
             )
             "doughnutChart" -> Container(
                 ChartType.DOUGHNUT,
@@ -115,6 +119,7 @@ internal object ChartParser {
                 varyColors = varyColors ?: true,
                 holeSize = node.child(CHART_NS, "holeSize")?.attribute("val")?.toIntOrNull(),
                 firstSliceAngle = node.child(CHART_NS, "firstSliceAng")?.attribute("val")?.toDoubleOrNull(),
+                dataLabels = node.child(CHART_NS, "dLbls")?.let(::parseDataLabels),
             )
             "areaChart" -> Container(
                 ChartType.AREA,
@@ -123,6 +128,7 @@ internal object ChartParser {
                     parseSeriesNode(ser, ChartType.AREA, grouping = groupingOf(node))
                 },
                 varyColors = varyColors == true,
+                dataLabels = node.child(CHART_NS, "dLbls")?.let(::parseDataLabels),
             )
             "scatterChart" -> Container(
                 ChartType.SCATTER,
@@ -130,6 +136,7 @@ internal object ChartParser {
                 series = node.childrenOf(CHART_NS, "ser").map(::parseScatterSeries),
                 varyColors = varyColors == true,
                 scatterStyle = node.child(CHART_NS, "scatterStyle")?.attribute("val"),
+                dataLabels = node.child(CHART_NS, "dLbls")?.let(::parseDataLabels),
             )
             "bar3DChart", "line3DChart", "pie3DChart", "ofPieChart", "stockChart",
             "bubbleChart", "radarChart", "surfaceChart", "surface3DChart",
