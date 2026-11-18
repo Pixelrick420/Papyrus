@@ -33,7 +33,19 @@ internal class TextLayoutEngine(
         }
         val layoutWidthEmu = if (vertical) frameHeightEmu ?: frameWidthEmu else frameWidthEmu
         val layoutHeightEmu = if (vertical) frameWidthEmu else frameHeightEmu
-        val widthPt = (layoutWidthEmu - layoutInsets.left - layoutInsets.right).coerceAtLeast(0.0) / EMU_PER_POINT
+        val availableWidthEmu = (layoutWidthEmu - layoutInsets.left - layoutInsets.right).coerceAtLeast(0.0)
+        val spacingEmu = (properties.columnSpacingEmu ?: 0.0).coerceAtLeast(0.0)
+        val maxColumns = maxOf(1, (availableWidthEmu / EMU_PER_POINT).toInt() + 1)
+        val spacingColumns = if (spacingEmu > 0.0) {
+            maxOf(1, (availableWidthEmu / spacingEmu).toInt())
+        } else {
+            Int.MAX_VALUE
+        }
+        val columnCount = properties.columnCount.coerceIn(1, minOf(maxColumns, spacingColumns))
+        val spacingPt = spacingEmu / EMU_PER_POINT
+        val columnWidthPt = (availableWidthEmu - spacingEmu * (columnCount - 1))
+            .coerceAtLeast(0.0) / columnCount / EMU_PER_POINT
+        val widthPt = if (columnCount > 1) columnWidthPt else availableWidthEmu / EMU_PER_POINT
         val autofit = AutofitScale.of(properties.autofit)
         val layouts = bullets.layouts(body, autofit)
         val lines = ArrayList<TextLine>()
@@ -53,16 +65,21 @@ internal class TextLayoutEngine(
         val layoutHeightPt = layoutHeightEmu?.let {
             (it - layoutInsets.top - layoutInsets.bottom).coerceAtLeast(0.0) / EMU_PER_POINT
         }
-        val placed = if (layoutHeightPt == null) {
-            lines
+        val (columnLines, columnHeightPt) = if (columnCount > 1) {
+            flowColumns(lines, properties, columnWidthPt, layoutHeightPt, columnCount, spacingPt)
         } else {
-            anchored(lines, properties, widthPt, layoutHeightPt, heightPt)
+            val placed = if (layoutHeightPt == null) {
+                lines
+            } else {
+                anchored(lines, properties, widthPt, layoutHeightPt, heightPt)
+            }
+            placed to heightPt
         }
         val orientation = TextOrientation.of(shape, properties)
         val framed = if (vertical) {
-            verticalLayout(placed, properties, frameWidthEmu, frameHeightEmu ?: frameWidthEmu, orientation)
+            verticalLayout(columnLines, properties, frameWidthEmu, frameHeightEmu ?: frameWidthEmu, orientation)
         } else {
-            placed
+            columnLines
         }
         return TextFrameLayout(
             lines = framed,
@@ -70,7 +87,7 @@ internal class TextLayoutEngine(
             heightPt = if (vertical && framed.isNotEmpty()) {
                 framed.maxOf { it.leftPt + it.widthPt } - framed.minOf { it.leftPt }
             } else {
-                heightPt
+                columnHeightPt
             },
             orientation = orientation,
             textWidthPt = widthPt,
@@ -113,6 +130,49 @@ internal class TextLayoutEngine(
         }
     }
 
+    private fun flowColumns(
+        lines: List<TextLine>,
+        properties: TextBodyProperties,
+        columnWidthPt: Double,
+        columnHeightPt: Double?,
+        columnCount: Int,
+        spacingPt: Double,
+    ): Pair<List<TextLine>, Double> {
+        if (lines.isEmpty() || columnHeightPt == null) {
+            return lines to (lines.maxOfOrNull { it.topPt + it.heightPt } ?: 0.0)
+        }
+        val chunks = ArrayList<List<TextLine>>()
+        val chunk = ArrayList<TextLine>()
+        var chunkTopPt = lines.first().topPt
+        for (line in lines) {
+            val usedPt = line.topPt - chunkTopPt + line.heightPt
+            if (chunk.isNotEmpty() && usedPt > columnHeightPt) {
+                chunks += chunk.toList()
+                chunk.clear()
+                chunkTopPt = line.topPt
+            }
+            chunk += line
+        }
+        if (chunk.isNotEmpty()) chunks += chunk.toList()
+
+        val placed = ArrayList<TextLine>(lines.size)
+        var contentHeightPt = 0.0
+        chunks.forEachIndexed { index, linesInChunk ->
+            val firstTopPt = linesInChunk.first().topPt
+            val local = linesInChunk.map { shifted(it, 0.0, -firstTopPt) }
+            val heightPt = local.maxOf { it.topPt + it.heightPt }
+            val aligned = anchored(local, properties, columnWidthPt, columnHeightPt, heightPt)
+            val target = if (index < columnCount) index else columnCount - 1
+            val columnIndex = if (properties.rightToLeftColumns) columnCount - 1 - target else target
+            val row = if (index < columnCount) 0 else index - columnCount + 1
+            val dx = properties.insets.left / EMU_PER_POINT + columnIndex * (columnWidthPt + spacingPt)
+            val dy = row * columnHeightPt
+            placed += aligned.map { shifted(it, dx, dy) }
+            contentHeightPt = maxOf(contentHeightPt, heightPt + dy)
+        }
+        return placed to contentHeightPt
+    }
+
     private fun shifted(line: TextLine, dx: Double, dy: Double): TextLine = TextLine(
         index = line.index,
         paragraph = line.paragraph,
@@ -136,6 +196,7 @@ internal class TextLayoutEngine(
                 rtl = it.rtl,
                 text = it.text,
                 decorations = it.decorations.map { decoration -> shifted(decoration, dx) },
+                rotationDeg = it.rotationDeg,
             )
         },
         characters = line.characters.map {
@@ -203,6 +264,7 @@ internal class TextLayoutEngine(
                         properties = run.properties,
                         rtl = run.rtl,
                         text = run.text,
+                        decorations = run.decorations,
                         rotationDeg = orientation.verticalRotationDeg,
                     ),
                 )
@@ -259,6 +321,7 @@ internal class TextLayoutEngine(
                 bullet = line.bullet,
                 markerLeftPt = minOf(markerLeft, markerRight),
                 markerRightPt = maxOf(markerLeft, markerRight),
+                decorations = line.decorations,
             )
         }
 
