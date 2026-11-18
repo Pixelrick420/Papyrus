@@ -44,6 +44,8 @@ data class PptxLimits(
     val maxImages: Int = 400,
     val maxImageBytes: Int = 32 * 1024 * 1024,
     val maxMediaBytes: Long = 160L * 1024 * 1024,
+    val maxFonts: Int = 32,
+    val maxFontBytes: Int = 16 * 1024 * 1024,
     val maxImagePixels: Long = 64_000_000,
     val maxGuideEvaluations: Int = 1_024,
     val maxPaths: Int = 256,
@@ -106,6 +108,7 @@ internal class PptxPackage(
     private val media: Map<String, File>,
     /** Media a slide names that could not be written, whether because the budget refused it or it is absent. */
     val mediaDropped: Int,
+    private val fonts: Map<String, ByteArray> = emptyMap(),
 ) {
 
     private val foldedParts by lazy { parts.keys.associateBy { it.lowercase() } }
@@ -114,9 +117,17 @@ internal class PptxPackage(
 
     private val foldedMedia by lazy { media.keys.associateBy { it.lowercase() } }
 
+    private val foldedFonts by lazy { fonts.keys.associateBy { it.lowercase() } }
+
     val partNames: Set<String> get() = parts.keys
 
     val mediaNames: Set<String> get() = media.keys
+
+    val fontNames: Set<String> get() = fonts.keys
+
+    fun font(name: String): ByteArray? = findFont(name)?.let { fonts[it] }
+
+    private fun findFont(name: String): String? = if (name in fonts) name else foldedFonts[name.lowercase()]
 
     fun findPart(name: String): String? = if (name in parts) name else foldedParts[name.lowercase()]
 
@@ -156,7 +167,11 @@ private class PptxReader(
     private val newParserFactory: () -> XmlPullParser,
 ) {
 
-    private class Scan(val parts: Map<String, ByteArray>, val contentTypes: ByteArray?)
+    private class Scan(
+        val parts: Map<String, ByteArray>,
+        val contentTypes: ByteArray?,
+        val fonts: Map<String, ByteArray>,
+    )
 
     fun read(openStream: () -> InputStream): PptxPackage {
         val scan = scanParts(openStream)
@@ -168,15 +183,17 @@ private class PptxReader(
             ?: throw PptxFormatException("main part ${types.mainPart()} is missing")
         if (types.ofType(SLIDE_CONTENT_TYPE).size > limits.maxSlides) throw PptxFormatException("too many slides")
         val (media, dropped) = readMedia(openStream, wantedMedia(rels))
-        return PptxPackage(main, types, scan.parts, rels, media, dropped)
+        return PptxPackage(main, types, scan.parts, rels, media, dropped, scan.fonts)
     }
 
     // One walk: XML and relationships in, everything else skipped, since which media a deck needs is only known
     // once its relationships are read.
     private fun scanParts(openStream: () -> InputStream): Scan {
         val parts = LinkedHashMap<String, ByteArray>()
+        val fonts = LinkedHashMap<String, ByteArray>()
         var contentTypes: ByteArray? = null
         var total = 0L
+        var fontTotal = 0
         val buffer = ByteArray(MEDIA_COPY_BUFFER)
         openStream().use { input ->
             BoundedZipInputStream(input, limits.zipLimits, ::formatError).use { zip ->
@@ -192,6 +209,14 @@ private class PptxReader(
                         contentTypes = bytes
                     } else {
                         val lower = name.lowercase()
+                        if (lower.endsWith(".fntdata")) {
+                            if (fonts.size >= limits.maxFonts) continue
+                            val cap = (limits.maxFontBytes - fontTotal).coerceAtLeast(0)
+                            val bytes = readBounded(zip, cap, buffer) ?: continue
+                            fontTotal += bytes.size
+                            fonts.putIfAbsent(name, bytes)
+                            continue
+                        }
                         if (!lower.endsWith(".xml") && !lower.endsWith(".rels")) continue
                         val bytes = readBounded(zip, limits.maxXmlPartBytes, buffer)
                             ?: throw PptxFormatException("$name is too large")
@@ -202,7 +227,7 @@ private class PptxReader(
                 }
             }
         }
-        return Scan(parts, contentTypes)
+        return Scan(parts, contentTypes, fonts)
     }
 
     private fun parseRelationships(parts: Map<String, ByteArray>): Map<String, List<PptxRelationship>> {

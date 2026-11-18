@@ -92,10 +92,17 @@ internal class AwtTextMeasurer(private val pixelsPerPoint: Double = 1.0) : TextM
 
     private fun face(font: ResolvedFont): Font = faces.getOrPut(key(font)) {
         val choice = font.choice
+        if (choice is FontChoice.Embedded) {
+            val base = Font.createFont(Font.TRUETYPE_FONT, choice.font.bytes.inputStream())
+            return@getOrPut if (choice.font.style != FaceStyle.of(font.bold, font.italic)) {
+                base.deriveFont(style(font))
+            } else {
+                base
+            }
+        }
         val face = when (choice) {
             is FontChoice.Bundled -> choice.font.face(FaceStyle.of(font.bold, font.italic))
-            is FontChoice.System -> null
-            is FontChoice.Platform -> null
+            else -> null
         }
         val file = File("src/main/assets/${face?.asset ?: FALLBACK_ASSET}")
         val base = Font.createFont(Font.TRUETYPE_FONT, file)
@@ -112,6 +119,7 @@ internal class AwtTextMeasurer(private val pixelsPerPoint: Double = 1.0) : TextM
         val choice = font.choice
         val name = when (choice) {
             is FontChoice.Bundled -> choice.font.face(FaceStyle.of(font.bold, font.italic)).asset
+            is FontChoice.Embedded -> "embedded:${choice.font.name}"
             is FontChoice.System -> choice.family
             is FontChoice.Platform -> choice.requested ?: FontSubstitution.SYSTEM_SANS
         }

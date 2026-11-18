@@ -2,6 +2,7 @@ package io.github.pixelrick420.papyrus.viewer.pptx.text
 
 import android.content.res.AssetManager
 import android.graphics.Typeface
+import java.io.File
 
 /** The four faces a font file can carry; [suffix] is the last part of its asset name. */
 internal enum class FaceStyle(val suffix: String) {
@@ -70,6 +71,7 @@ internal class BundledFont(
  */
 internal class FontCatalog(
     private val assets: AssetManager,
+    private val fontDir: File? = null,
     private val system: (String, Int) -> Typeface = { family, style -> Typeface.create(family, style) },
 ) {
 
@@ -86,6 +88,19 @@ internal class FontCatalog(
         return if (face.synthetic) Typeface.create(base, style.android()) else base
     }
 
+    fun embedded(font: EmbeddedFont, bold: Boolean, italic: Boolean): Typeface {
+        val key = "embedded:${font.name}"
+        return cache.get(key) {
+            val dir = fontDir ?: return@get null
+            runCatching {
+                val file = File(dir, "font-${font.name.substringAfterLast('/')}")
+                if (!file.exists()) file.writeBytes(font.bytes)
+                val base = Typeface.Builder(file).build()
+                if (font.style == FaceStyle.of(bold, italic)) base else Typeface.create(base, FaceStyle.of(bold, italic).android())
+            }.getOrNull()
+        } ?: Typeface.DEFAULT
+    }
+
     fun system(family: String, bold: Boolean, italic: Boolean): Typeface {
         val style = FaceStyle.of(bold, italic).android()
         return cache.get("family:$family:$style") { system(family, style) } ?: Typeface.DEFAULT
@@ -94,15 +109,19 @@ internal class FontCatalog(
     /** The face a resolved run draws with, which is the same choice [SfntMetrics] is read from. */
     fun typeface(font: ResolvedFont): Typeface = when (val choice = font.choice) {
         is FontChoice.Bundled -> bundled(choice.font, font.bold, font.italic)
+        is FontChoice.Embedded -> embedded(choice.font, font.bold, font.italic)
         is FontChoice.System -> system(choice.family, font.bold, font.italic)
         is FontChoice.Platform -> system(choice.requested ?: FontSubstitution.SYSTEM_SANS, font.bold, font.italic)
     }
 
-    /** The bundled face's own tables, which is where the exact underline and strikeout rules live. */
-    fun sfnt(font: ResolvedFont): SfntMetrics? {
-        val choice = font.choice as? FontChoice.Bundled ?: return null
-        val asset = choice.font.face(FaceStyle.of(font.bold, font.italic)).asset
-        return metrics.get(asset) { path -> reader(path)?.let(SfntMetrics::parse) }
+    /** The face's own tables, which is where the exact underline and strikeout rules live. */
+    fun sfnt(font: ResolvedFont): SfntMetrics? = when (val choice = font.choice) {
+        is FontChoice.Bundled -> {
+            val asset = choice.font.face(FaceStyle.of(font.bold, font.italic)).asset
+            metrics.get(asset) { path -> reader(path)?.let(SfntMetrics::parse) }
+        }
+        is FontChoice.Embedded -> metrics.get("embedded:${choice.font.name}") { SfntMetrics.parse(choice.font.bytes) }
+        else -> null
     }
 
     private fun reader(asset: String): ByteArray? =

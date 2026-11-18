@@ -85,6 +85,7 @@ internal class PaintTextMeasurer(private val catalog: FontCatalog) : TextMeasure
 
     private fun typefaceOf(font: ResolvedFont): Typeface = when (val choice = font.choice) {
         is FontChoice.Bundled -> catalog.bundled(choice.font, font.bold, font.italic)
+        is FontChoice.Embedded -> catalog.embedded(choice.font, font.bold, font.italic)
         is FontChoice.System -> catalog.system(choice.family, font.bold, font.italic)
         is FontChoice.Platform ->
             catalog.system(choice.requested ?: FontSubstitution.SYSTEM_SANS, font.bold, font.italic)
@@ -92,6 +93,7 @@ internal class PaintTextMeasurer(private val catalog: FontCatalog) : TextMeasure
 
     private fun keyOf(font: ResolvedFont): String = when (val choice = font.choice) {
         is FontChoice.Bundled -> "asset:${choice.font.family}:${font.bold}:${font.italic}"
+        is FontChoice.Embedded -> "embedded:${choice.font.name}:${font.bold}:${font.italic}"
         is FontChoice.System -> "family:${choice.family}:${font.bold}:${font.italic}"
         is FontChoice.Platform -> "platform:${choice.requested}:${font.bold}:${font.italic}"
     }

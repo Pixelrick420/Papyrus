@@ -24,6 +24,16 @@ internal sealed interface FontChoice {
             get() = requested != null && !requested.equals(font.family, ignoreCase = true)
     }
 
+    class Embedded(
+        override val requested: String?,
+        val font: EmbeddedFont,
+    ) : FontChoice {
+        override val compatible: Boolean get() = true
+
+        override val substituted: Boolean
+            get() = requested != null && !requested.equals(font.family, ignoreCase = true)
+    }
+
     class System(
         override val requested: String?,
         val family: String,
@@ -52,12 +62,16 @@ internal sealed interface FontChoice {
  * substitute's width against the system sans face until C-FONT supplies the requested widths.
  */
 internal class FontSubstitution(
+    embedded: List<EmbeddedFont> = emptyList(),
     private val installed: (String) -> Boolean = { false },
 ) {
+
+    private val embedded = embedded.associateBy { normalize(it.family) }
 
     fun substitute(family: String?, panose: String? = null, pitchFamily: String? = null): FontChoice {
         val requested = family?.trim()?.takeIf { it.isNotEmpty() }
             ?: return FontChoice.System(null, SYSTEM_SANS, compatible = true)
+        embedded[normalize(requested)]?.let { return FontChoice.Embedded(requested, it) }
         table[normalize(requested)]?.let { return it.choice(requested) }
         if (installed(requested)) return FontChoice.System(requested, requested, compatible = true)
         return when (hintOf(panose, pitchFamily)) {

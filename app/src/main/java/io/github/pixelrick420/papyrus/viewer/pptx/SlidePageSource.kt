@@ -18,9 +18,13 @@ import io.github.pixelrick420.papyrus.viewer.pptx.render.SlidePictureResolver
 import io.github.pixelrick420.papyrus.viewer.pptx.render.SlideRenderer
 import io.github.pixelrick420.papyrus.viewer.pptx.render.SlideTextPainter
 import io.github.pixelrick420.papyrus.viewer.pptx.render.SoftwareCanvas
+import io.github.pixelrick420.papyrus.viewer.pptx.text.EmbeddedFontDecoder
 import io.github.pixelrick420.papyrus.viewer.pptx.text.FontCatalog
+import io.github.pixelrick420.papyrus.viewer.pptx.text.FontSlots
+import io.github.pixelrick420.papyrus.viewer.pptx.text.FontSubstitution
 import io.github.pixelrick420.papyrus.viewer.pptx.text.PaintTextMeasurer
 import io.github.pixelrick420.papyrus.viewer.pptx.text.TextLayoutEngine
+import io.github.pixelrick420.papyrus.viewer.pptx.text.TextShaper
 import io.github.pixelrick420.papyrus.viewer.pptx.text.TextStyleResolver
 import io.github.pixelrick420.papyrus.viewer.pptx.text.TextWarpRenderer
 import kotlinx.coroutines.CoroutineScope
@@ -308,13 +312,15 @@ internal class SlidePageSource private constructor(
             val presentation = PresentationParser(newParserFactory, limits).parse(bytes, main)
             val scenes = StyleResolver(newParserFactory, limits).resolveAll(pkg, presentation)
             val resolver = TextStyleResolver(limits)
-            val fonts = assets?.let(::FontCatalog)
+            val embedded = pkg.fontNames.mapNotNull { name -> pkg.font(name)?.let { EmbeddedFontDecoder.decode(name, it) } }
+            val fonts = assets?.let { FontCatalog(it, mediaDir) }
             val warpSource = warps ?: assets?.let {
                 PresetGeometry(open = { it.open("ooxml/presetTextWarpDefinitions.xml") })
             }
             val engine = fonts?.let { fontCatalog ->
                 TextLayoutEngine(
                     measurer = PaintTextMeasurer(fontCatalog),
+                    shaper = TextShaper(FontSlots(FontSubstitution(embedded = embedded))),
                     warps = warpSource?.let(::TextWarpRenderer),
                 )
             }

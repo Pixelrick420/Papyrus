@@ -1,5 +1,6 @@
 package io.github.pixelrick420.papyrus.viewer
 
+import io.github.pixelrick420.papyrus.viewer.pptx.PptxLimits
 import io.github.pixelrick420.papyrus.viewer.pptx.PptxPackage
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
@@ -276,6 +277,44 @@ class PptxPackageTest {
 
         assertTrue(pkg.mediaNames.isEmpty())
         assertEquals(1, pkg.mediaDropped)
+    }
+
+    @Test
+    fun `embedded fonts are kept out of the xml parts and exposed by name`() {
+        val bytes = byteArrayOf(0, 1, 0, 0, 4, 2, 3)
+        val deck = pptx {
+            layout("Blank")
+            slide { title("hello") }
+            part("ppt/fonts/font1.fntdata", bytes)
+        }
+
+        val pkg = read(deck)
+
+        assertEquals(setOf("ppt/fonts/font1.fntdata"), pkg.fontNames)
+        assertArrayEquals(bytes, pkg.font("ppt/fonts/font1.fntdata"))
+        assertArrayEquals(bytes, pkg.font("PPT/FONTS/FONT1.FNTDATA"))
+        assertFalse(pkg.hasPart("ppt/fonts/font1.fntdata"))
+    }
+
+    @Test
+    fun `embedded font parts stop at the configured count`() {
+        val deck = pptx {
+            layout("Blank")
+            slide { title("hello") }
+            part("ppt/fonts/font1.fntdata", byteArrayOf(1))
+            part("ppt/fonts/font2.fntdata", byteArrayOf(2))
+        }
+        val limits = PptxLimits(maxFonts = 1)
+
+        val pkg = PptxPackage.read(
+            OfficeFixtures.streamFactory(deck.toBytes()),
+            null,
+            limits,
+            newParserFactory = OfficeFixtures::parser,
+        )
+
+        assertEquals(1, pkg.fontNames.size)
+        assertNotNull(pkg.font("ppt/fonts/font1.fntdata"))
     }
 
     private companion object {

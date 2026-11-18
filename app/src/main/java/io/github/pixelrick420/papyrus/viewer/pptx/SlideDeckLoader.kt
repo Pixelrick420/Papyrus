@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import android.util.Xml
 import io.github.pixelrick420.papyrus.viewer.OutlineEntry
+import io.github.pixelrick420.papyrus.viewer.pptx.text.EmbeddedFontDecoder
 import io.github.pixelrick420.papyrus.viewer.pptx.text.FontChoice
 import io.github.pixelrick420.papyrus.viewer.pptx.text.FontSubstitution
 import java.io.File
@@ -101,7 +102,8 @@ internal object SlideDeckLoader {
             val root = runCatching { reader.readTree(bytes.inputStream(), name) }.getOrNull() ?: continue
             collectTypefaces(root, requested)
         }
-        val substitution = FontSubstitution()
+        val embedded = pkg.fontNames.mapNotNull { name -> pkg.font(name)?.let { EmbeddedFontDecoder.decode(name, it) } }
+        val substitution = FontSubstitution(embedded = embedded)
         requested.mapNotNull { name ->
             val choice = substitution.substitute(name)
             if (choice.substituted && !choice.compatible) "$name → ${labelOf(choice)}" else null
@@ -117,6 +119,7 @@ internal object SlideDeckLoader {
 
     private fun labelOf(choice: FontChoice): String = when (choice) {
         is FontChoice.Bundled -> choice.font.family
+        is FontChoice.Embedded -> choice.font.family
         is FontChoice.System -> choice.family
         is FontChoice.Platform -> "System fallback"
     }
