@@ -73,11 +73,18 @@ internal class ImageCache(
     }
 
     fun trimMemory(evictAll: Boolean) {
-        if (evictAll) cache.evictAll() else cache.trimToSize(cache.maxSize() / 2)
+        if (evictAll) {
+            cache.evictAll()
+            boundsCache.evictAll()
+        } else {
+            cache.trimToSize(cache.maxSize() / 2)
+            boundsCache.trimToSize(boundsCache.maxSize() / 2)
+        }
     }
 
     fun clear() {
         cache.evictAll()
+        boundsCache.evictAll()
     }
 
     private data class ImageKey(val path: String, val sample: Int)

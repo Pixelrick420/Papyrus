@@ -14,7 +14,7 @@ import org.xmlpull.v1.XmlPullParser
  * The result is a [SlideScene] every later pass can paint without consulting a master, layout or theme again.
  */
 internal class StyleResolver(
-    newParserFactory: () -> XmlPullParser = { Xml.newPullParser() },
+    private val newParserFactory: () -> XmlPullParser = { Xml.newPullParser() },
     private val limits: PptxLimits = PptxLimits(),
 ) {
 
@@ -28,16 +28,43 @@ internal class StyleResolver(
     )
 
     fun resolveAll(pkg: PptxPackage, presentation: PresentationInfo): DeckScenes {
+        val provider = lazyScenes(pkg, presentation)
+        return DeckScenes(List(provider.count) { index -> provider.scene(index)!! })
+    }
+
+    /** Masters, layouts, themes and the slide list are read once; slide scenes are resolved on demand. */
+    fun lazyScenes(pkg: PptxPackage, presentation: PresentationInfo): LazyDeckScenes {
         val size = SceneSize(presentation.size.widthEmu.toDouble(), presentation.size.heightEmu.toDouble())
         val templates = Templates(pkg, layouts.parse(pkg), presentation.defaultTextStyle, shapes)
         val tableStyles = readTableStyles(pkg, ColorModel())
-        val slides = shapes.parts(pkg, presentation).mapIndexed { index, part ->
-            val scene = slide(pkg, part, size, presentation.firstSlideNumber + index, templates)
-            io.github.pixelrick420.papyrus.viewer.pptx.table.TableStyles.apply(scene.scene, tableStyles)
-            scene
-        }
-        return DeckScenes(slides)
+        val parts = shapes.parts(pkg, presentation)
+        return LazyDeckScenes(
+            count = parts.size,
+            size = size,
+            hidden = hiddenSlides(pkg, parts),
+            factory = { index ->
+                val part = parts[index]
+                val scene = slide(pkg, part, size, presentation.firstSlideNumber + index, templates)
+                io.github.pixelrick420.papyrus.viewer.pptx.table.TableStyles.apply(scene.scene, tableStyles)
+                scene
+            },
+        )
     }
+
+    private fun hiddenSlides(pkg: PptxPackage, parts: List<String>): Set<Int> =
+        parts.mapIndexedNotNull { index, part ->
+            val bytes = pkg.part(part) ?: return@mapIndexedNotNull null
+            val hidden = runCatching {
+                val parser = newParserFactory()
+                parser.setInput(bytes.inputStream(), null)
+                var event = parser.eventType
+                while (event != XmlPullParser.START_TAG && event != XmlPullParser.END_DOCUMENT) event = parser.next()
+                event == XmlPullParser.START_TAG && parser.getAttributeValue(null, "show").let { value ->
+                    value == "0" || value.equals("false", ignoreCase = true) || value.equals("off", ignoreCase = true)
+                }
+            }.getOrDefault(false)
+            index.takeIf { hidden }
+        }.toSet()
 
     private fun readTableStyles(pkg: PptxPackage, colors: ColorModel): io.github.pixelrick420.papyrus.viewer.pptx.table.TableStyleSheet {
         val part = pkg.part("ppt/tableStyles.xml")
@@ -909,6 +936,45 @@ private class Templates(
             textStyles = master?.textStyles,
             defaultTextStyle = defaultTextStyle,
         )
+    }
+}
+
+/** A bounded window over a deck's resolved slides, so a large deck does not keep every scene in memory. */
+internal class LazyDeckScenes internal constructor(
+    val count: Int,
+    val size: SceneSize,
+    val hidden: Set<Int>,
+    private val factory: (Int) -> SlideScene,
+    private val capacity: Int = DEFAULT_CAPACITY,
+) {
+
+    private val cache = object : LinkedHashMap<Int, SlideScene>(capacity, LOAD_FACTOR, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Int, SlideScene>?): Boolean = size > capacity
+    }
+
+    @Synchronized
+    fun scene(index: Int): SlideScene? {
+        if (index !in 0 until count) return null
+        return cache.get(index) ?: factory(index).also { cache.put(index, it) }
+    }
+
+    @Synchronized
+    fun trimMemory(evictAll: Boolean) {
+        if (evictAll) {
+            cache.clear()
+        } else {
+            val entries = cache.entries.toList()
+            entries.take((entries.size - capacity / 2).coerceAtLeast(0)).forEach { cache.remove(it.key) }
+        }
+    }
+
+    @Synchronized
+    fun clear() = cache.clear()
+
+    private companion object {
+        const val DEFAULT_CAPACITY = 6
+
+        const val LOAD_FACTOR = 0.75f
     }
 }
 

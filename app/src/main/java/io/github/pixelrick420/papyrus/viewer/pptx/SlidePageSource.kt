@@ -49,7 +49,7 @@ import kotlin.math.roundToInt
 @OptIn(ExperimentalCoroutinesApi::class)
 internal class SlidePageSource private constructor(
     private val pkg: PptxPackage,
-    private val slides: List<SlideScene>,
+    private val scenes: LazyDeckScenes,
     private val mediaDir: File,
     private val limits: PptxLimits,
     private val renderer: SlideRenderer,
@@ -58,7 +58,7 @@ internal class SlidePageSource private constructor(
     val hidden: Set<Int> = emptySet(),
 ) : PageBitmapSource {
 
-    override val pageCount: Int = slides.size
+    override val pageCount: Int = scenes.count
 
     private val dispatcher = Dispatchers.Default.limitedParallelism(1)
     private val lock = Mutex()
@@ -70,7 +70,7 @@ internal class SlidePageSource private constructor(
 
     private val images = ImageCache(maxPixels = limits.maxImagePixels, maxEdgePx = limits.maxRenderEdgePx)
 
-    private val lists = HashMap<Int, DisplayList>()
+    private val lists = object : LruCache<Int, DisplayList>(MAX_CACHED_LISTS) {}
 
     private val cache = object : LruCache<CacheKey, Bitmap>(cacheBudgetBytes) {
         override fun sizeOf(key: CacheKey, value: Bitmap): Int = value.allocationByteCount.coerceAtLeast(1)
@@ -78,8 +78,7 @@ internal class SlidePageSource private constructor(
 
     // Every slide shares the presentation size, so aspect ratios are known without opening a slide.
     override suspend fun loadAspectRatios(): List<Float> {
-        val size = slides.firstOrNull()?.scene?.size ?: return emptyList()
-        val ratio = slideAspectRatio(size)
+        val ratio = slideAspectRatio(scenes.size)
         return List(pageCount) { ratio }
     }
 
@@ -93,6 +92,8 @@ internal class SlidePageSource private constructor(
 
     override fun trimMemory(evictAll: Boolean) {
         if (evictAll) cache.evictAll() else cache.trimToSize(cache.maxSize() / 2)
+        if (evictAll) lists.evictAll() else lists.trimToSize(lists.maxSize() / 2)
+        scenes.trimMemory(evictAll)
         images.trimMemory(evictAll)
     }
 
@@ -107,7 +108,7 @@ internal class SlidePageSource private constructor(
                 if (closed) return@withLock null
                 cache.get(key)?.let { return@withLock it }
                 ensureActive()
-                val slide = slides.getOrNull(index) ?: return@withLock null
+                val slide = withContext(Dispatchers.IO) { scenes.scene(index) } ?: return@withLock null
                 try {
                     rasterize(index, slide, widthPx)?.also { cache.put(key, it) }
                 } catch (cancel: CancellationException) {
@@ -124,8 +125,8 @@ internal class SlidePageSource private constructor(
     }
 
     override fun tileGrid(index: Int, widthPx: Int): TileGrid? {
-        val slide = slides.getOrNull(index) ?: return null
-        val heightPx = slideHeightPx(widthPx, slide.scene.size, limits.maxRenderEdgePx)
+        val size = scenes.takeIf { index in 0 until pageCount }?.size ?: return null
+        val heightPx = slideHeightPx(widthPx, size, limits.maxRenderEdgePx)
         return TileGrid.forPage(widthPx, heightPx, maxRenderPixels)
     }
 
@@ -141,7 +142,7 @@ internal class SlidePageSource private constructor(
                 if (closed) return@withLock null
                 cache.get(key)?.let { return@withLock it }
                 ensureActive()
-                val slide = slides.getOrNull(index) ?: return@withLock null
+                val slide = withContext(Dispatchers.IO) { scenes.scene(index) } ?: return@withLock null
                 try {
                     rasterizeTile(index, slide, widthPx, rect)?.also { cache.put(key, it) }
                 } catch (cancel: CancellationException) {
@@ -208,11 +209,11 @@ internal class SlidePageSource private constructor(
         )
     }
 
-    private suspend fun displayListOf(index: Int, slide: SlideScene): DisplayList? {
-        lists[index]?.let { return it }
-        val list = renderer.render(slide.scene, resolverOf(slide)) ?: return null
-        lists[index] = list
-        return list
+    private suspend fun displayListOf(index: Int, slide: SlideScene): DisplayList? = withContext(Dispatchers.IO) {
+        lists.get(index)?.let { return@withContext it }
+        val list = renderer.render(slide.scene, resolverOf(slide)) ?: return@withContext null
+        lists.put(index, list)
+        list
     }
 
     private fun resolverOf(slide: SlideScene): SlidePictureResolver {
@@ -237,7 +238,8 @@ internal class SlidePageSource private constructor(
                     if (closed) return@withLock
                     closed = true
                     runCatching { cache.evictAll() }
-                    runCatching { lists.clear() }
+                    runCatching { lists.evictAll() }
+                    runCatching { scenes.clear() }
                     runCatching { images.clear() }
                     runCatching { mediaDir.deleteRecursively() }
                 }
@@ -260,6 +262,8 @@ internal class SlidePageSource private constructor(
         private const val BYTES_PER_PIXEL = 4
 
         private const val PAGES_PER_CACHE = 3
+
+        private const val MAX_CACHED_LISTS = 6
 
         private val openSources: MutableSet<SlidePageSource> =
             Collections.newSetFromMap(WeakHashMap<SlidePageSource, Boolean>())
@@ -310,7 +314,7 @@ internal class SlidePageSource private constructor(
             val main = pkg.mainPart
             val bytes = pkg.part(main) ?: throw PptxFormatException("$main is missing")
             val presentation = PresentationParser(newParserFactory, limits).parse(bytes, main)
-            val scenes = StyleResolver(newParserFactory, limits).resolveAll(pkg, presentation)
+            val scenes = StyleResolver(newParserFactory, limits).lazyScenes(pkg, presentation)
             val resolver = TextStyleResolver(limits)
             val embedded = pkg.fontNames.mapNotNull { name -> pkg.font(name)?.let { EmbeddedFontDecoder.decode(name, it) } }
             val fonts = assets?.let { FontCatalog(it, mediaDir) }
@@ -325,19 +329,21 @@ internal class SlidePageSource private constructor(
                 )
             }
             val textIndex = if (engine != null) {
-                SlideTextIndex.fromDeck(pkg, presentation, scenes.slides, resolver, engine)
+                val resolved = List(scenes.count) { index -> scenes.scene(index)!! }
+                SlideTextIndex.fromDeck(pkg, presentation, resolved, resolver, engine)
             } else {
                 SlideTextIndex(emptyList())
             }
+            scenes.scene(0)
             SlidePageSource(
                 pkg = pkg,
-                slides = scenes.slides,
+                scenes = scenes,
                 mediaDir = mediaDir,
                 limits = limits,
                 renderer = SlideRenderer(presets, limits, text = engine?.let { SlideTextPainter(resolver, it) }),
                 fonts = fonts,
                 textIndex = textIndex,
-                hidden = scenes.slides.mapIndexedNotNull { index, slide -> index.takeIf { slide.hidden } }.toSet(),
+                hidden = scenes.hidden,
             ).also { synchronized(openSources) { openSources.add(it) } }
         }
 
