@@ -6,8 +6,13 @@ import android.net.Uri
 import android.util.Log
 import android.util.LruCache
 import android.util.Xml
+import io.github.pixelrick420.papyrus.viewer.NormRect
 import io.github.pixelrick420.papyrus.viewer.PageBitmapSource
+import io.github.pixelrick420.papyrus.viewer.TileGrid
 import io.github.pixelrick420.papyrus.viewer.bitmapCacheBudgetBytes
+import io.github.pixelrick420.papyrus.viewer.pptx.render.DisplayList
+import io.github.pixelrick420.papyrus.viewer.pptx.render.RectF
+import io.github.pixelrick420.papyrus.viewer.pptx.render.RenderRegion
 import io.github.pixelrick420.papyrus.viewer.pptx.render.SlideImage
 import io.github.pixelrick420.papyrus.viewer.pptx.render.SlidePictureResolver
 import io.github.pixelrick420.papyrus.viewer.pptx.render.SlideRenderer
@@ -61,8 +66,10 @@ internal class SlidePageSource private constructor(
 
     private val images = ImageCache(maxPixels = limits.maxImagePixels, maxEdgePx = limits.maxRenderEdgePx)
 
-    private val cache = object : LruCache<PageKey, Bitmap>(cacheBudgetBytes) {
-        override fun sizeOf(key: PageKey, value: Bitmap): Int = value.allocationByteCount.coerceAtLeast(1)
+    private val lists = HashMap<Int, DisplayList>()
+
+    private val cache = object : LruCache<CacheKey, Bitmap>(cacheBudgetBytes) {
+        override fun sizeOf(key: CacheKey, value: Bitmap): Int = value.allocationByteCount.coerceAtLeast(1)
     }
 
     // Every slide shares the presentation size, so aspect ratios are known without opening a slide.
@@ -72,7 +79,7 @@ internal class SlidePageSource private constructor(
         return List(pageCount) { ratio }
     }
 
-    override fun cached(index: Int, widthPx: Int): Bitmap? = cache.get(PageKey(index, widthPx))
+    override fun cached(index: Int, widthPx: Int): Bitmap? = cache.get(CacheKey.Page(index, widthPx))
 
     override fun evictOutside(keep: IntRange) {
         for (key in cache.snapshot().keys) {
@@ -89,7 +96,7 @@ internal class SlidePageSource private constructor(
     // A draw failure drops one slide, not the deck, and its class is all a redacted log can carry.
     @Suppress("TooGenericExceptionCaught")
     override suspend fun render(index: Int, widthPx: Int): Bitmap? {
-        val key = PageKey(index, widthPx)
+        val key = CacheKey.Page(index, widthPx)
         cache.get(key)?.let { return it }
         return withContext(dispatcher) {
             lock.withLock {
@@ -98,7 +105,7 @@ internal class SlidePageSource private constructor(
                 ensureActive()
                 val slide = slides.getOrNull(index) ?: return@withLock null
                 try {
-                    rasterize(slide, widthPx)?.also { cache.put(key, it) }
+                    rasterize(index, slide, widthPx)?.also { cache.put(key, it) }
                 } catch (cancel: CancellationException) {
                     throw cancel
                 } catch (_: OutOfMemoryError) {
@@ -112,16 +119,46 @@ internal class SlidePageSource private constructor(
         }
     }
 
-    private suspend fun rasterize(slide: SlideScene, widthPx: Int): Bitmap? {
+    override fun tileGrid(index: Int, widthPx: Int): TileGrid? {
+        val slide = slides.getOrNull(index) ?: return null
+        val heightPx = slideHeightPx(widthPx, slide.scene.size, limits.maxRenderEdgePx)
+        return TileGrid.forPage(widthPx, heightPx, maxRenderPixels)
+    }
+
+    override fun cachedTile(index: Int, widthPx: Int, rect: NormRect): Bitmap? =
+        cache.get(CacheKey.Tile(index, widthPx, rect))
+
+    @Suppress("TooGenericExceptionCaught")
+    override suspend fun renderTile(index: Int, widthPx: Int, rect: NormRect): Bitmap? {
+        val key = CacheKey.Tile(index, widthPx, rect)
+        cache.get(key)?.let { return it }
+        return withContext(dispatcher) {
+            lock.withLock {
+                if (closed) return@withLock null
+                cache.get(key)?.let { return@withLock it }
+                ensureActive()
+                val slide = slides.getOrNull(index) ?: return@withLock null
+                try {
+                    rasterizeTile(index, slide, widthPx, rect)?.also { cache.put(key, it) }
+                } catch (cancel: CancellationException) {
+                    throw cancel
+                } catch (_: OutOfMemoryError) {
+                    logFailure(index, OutOfMemoryError::class.java.simpleName)
+                    null
+                } catch (error: RuntimeException) {
+                    logFailure(index, error)
+                    null
+                }
+            }
+        }
+    }
+
+    private suspend fun rasterize(index: Int, slide: SlideScene, widthPx: Int): Bitmap? {
         val size = slide.scene.size
         if (size.width <= 0.0 || size.height <= 0.0 || widthPx <= 0) return null
         val heightPx = slideHeightPx(widthPx, size, limits.maxRenderEdgePx)
         val scale = widthPx.toFloat() / size.width.toFloat()
-        val pictures = PictureImages(pkg, slide.part, images)
-        val resolver = SlidePictureResolver { picture ->
-            pictures.raster(picture.source)?.let { SlideImage(it.file, it.bounds) }
-        }
-        val list = renderer.render(slide.scene, resolver) ?: return null
+        val list = displayListOf(index, slide) ?: return null
         val decoded = HashMap<String, Bitmap?>()
         return SoftwareCanvas.render(
             list = list,
@@ -139,6 +176,48 @@ internal class SlidePageSource private constructor(
         )
     }
 
+    private suspend fun rasterizeTile(index: Int, slide: SlideScene, widthPx: Int, rect: NormRect): Bitmap? {
+        val size = slide.scene.size
+        if (size.width <= 0.0 || size.height <= 0.0 || widthPx <= 0) return null
+        val region = RenderRegion(
+            source = RectF(
+                rect.left * size.width.toFloat(),
+                rect.top * size.height.toFloat(),
+                rect.right * size.width.toFloat(),
+                rect.bottom * size.height.toFloat(),
+            ),
+            scale = widthPx.toFloat() / size.width.toFloat(),
+        )
+        val list = displayListOf(index, slide) ?: return null
+        val decoded = HashMap<String, Bitmap?>()
+        return SoftwareCanvas.renderRegion(
+            list = list,
+            region = region,
+            imageOf = { ref ->
+                if (decoded.containsKey(ref.key)) {
+                    decoded[ref.key]
+                } else {
+                    images.load(File(ref.key), region.widthPx)?.bitmap.also { decoded[ref.key] = it }
+                }
+            },
+            fonts = fonts,
+        )
+    }
+
+    private suspend fun displayListOf(index: Int, slide: SlideScene): DisplayList? {
+        lists[index]?.let { return it }
+        val list = renderer.render(slide.scene, resolverOf(slide)) ?: return null
+        lists[index] = list
+        return list
+    }
+
+    private fun resolverOf(slide: SlideScene): SlidePictureResolver {
+        val pictures = PictureImages(pkg, slide.part, images)
+        return SlidePictureResolver { picture ->
+            pictures.raster(picture.source)?.let { SlideImage(it.file, it.bounds) }
+        }
+    }
+
     /** The slide index and failure class only: a slide can hold text or names the reader owns. */
     private fun logFailure(index: Int, error: Throwable) = logFailure(index, error.javaClass.simpleName)
 
@@ -154,6 +233,7 @@ internal class SlidePageSource private constructor(
                     if (closed) return@withLock
                     closed = true
                     runCatching { cache.evictAll() }
+                    runCatching { lists.clear() }
                     runCatching { images.clear() }
                     runCatching { mediaDir.deleteRecursively() }
                 }
@@ -161,7 +241,13 @@ internal class SlidePageSource private constructor(
         }
     }
 
-    private data class PageKey(val index: Int, val widthPx: Int)
+    private sealed interface CacheKey {
+        val index: Int
+
+        data class Page(override val index: Int, val widthPx: Int) : CacheKey
+
+        data class Tile(override val index: Int, val widthPx: Int, val rect: NormRect) : CacheKey
+    }
 
     @Suppress("TooGenericExceptionCaught")
     companion object {

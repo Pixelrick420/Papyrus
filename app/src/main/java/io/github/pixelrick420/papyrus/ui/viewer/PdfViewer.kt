@@ -50,6 +50,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
@@ -299,6 +300,22 @@ internal fun PdfViewer(
                             semanticBody = pageSemanticBodies.getOrNull(index).orEmpty(),
                             isSlide = slideSemantics,
                             pageCount = source.pageCount,
+                            visibleRect = {
+                                val info = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == index }
+                                if (info == null) null else {
+                                    val pageWidth = renderWidthPx.toFloat().coerceAtLeast(1f)
+                                    val pageHeight = pageGeometry.value.heightOf(index)
+                                    val left = hScroll.value.toFloat().coerceIn(0f, pageWidth)
+                                    val right = (left + listState.layoutInfo.viewportSize.width).coerceAtMost(pageWidth)
+                                    val top = (-info.offset.toFloat()).coerceIn(0f, pageHeight)
+                                    val bottom = (listState.layoutInfo.viewportSize.height - info.offset).toFloat().coerceIn(top, pageHeight)
+                                    if (right > left && bottom > top) {
+                                        NormRect(left / pageWidth, top / pageHeight, right / pageWidth, bottom / pageHeight)
+                                    } else {
+                                        null
+                                    }
+                                }
+                            },
                         )
                     }
                 }
@@ -330,6 +347,8 @@ internal fun PdfViewer(
         }
     }
 }
+
+private data class TileImage(val rect: NormRect, val bitmap: ImageBitmap)
 
 private const val DEFAULT_ASPECT = 1.414f
 
@@ -368,6 +387,7 @@ private fun PdfPage(
     semanticBody: String = "",
     isSlide: Boolean = false,
     pageCount: Int = 0,
+    visibleRect: () -> NormRect? = { null },
 ) {
     // What is shown at the committed zoom, within the pixel budget: the box below keeps the shown width,
     // and the bitmap is scaled to it, so a capped page is softer rather than missing.
@@ -399,6 +419,22 @@ private fun PdfPage(
         } else {
             // `?.let` keeps the current bitmap when the source is closing, so a page never flashes.
             source.render(index, settledWidthPx)?.let { bitmap = it }
+        }
+    }
+
+    val grid = remember(source, index, widthPx) {
+        if (widthPx > rasterWidthPx) source.tileGrid(index, widthPx) else null
+    }
+    var tiles by remember(source, index) { mutableStateOf<List<TileImage>>(emptyList()) }
+    val visible = visibleRect()
+    LaunchedEffect(source, index, widthPx, grid, visible) {
+        if (grid == null || visible == null) {
+            tiles = emptyList()
+            return@LaunchedEffect
+        }
+        tiles = grid.covering(visible).mapNotNull { tile ->
+            val bitmap = source.cachedTile(index, widthPx, tile.rect) ?: source.renderTile(index, widthPx, tile.rect)
+            bitmap?.let { TileImage(tile.rect, it.asImageBitmap()) }
         }
     }
 
@@ -528,6 +564,26 @@ private fun PdfPage(
                 colorFilter = if (nightMode) PdfNightMode.Invert else null,
                 modifier = Modifier.fillMaxSize(),
             )
+        }
+        if (tiles.isNotEmpty()) {
+            Canvas(Modifier.fillMaxSize()) {
+                for (tile in tiles) {
+                    drawImage(
+                        image = tile.bitmap,
+                        srcOffset = IntOffset.Zero,
+                        srcSize = IntSize(tile.bitmap.width, tile.bitmap.height),
+                        dstOffset = IntOffset(
+                            (tile.rect.left * size.width).roundToInt(),
+                            (tile.rect.top * size.height).roundToInt(),
+                        ),
+                        dstSize = IntSize(
+                            ((tile.rect.right - tile.rect.left) * size.width).roundToInt(),
+                            ((tile.rect.bottom - tile.rect.top) * size.height).roundToInt(),
+                        ),
+                        colorFilter = if (nightMode) PdfNightMode.Invert else null,
+                    )
+                }
+            }
         }
         if (highlights.isNotEmpty()) {
             Canvas(Modifier.fillMaxSize()) { drawHighlights(highlights) }

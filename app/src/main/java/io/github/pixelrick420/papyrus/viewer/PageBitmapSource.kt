@@ -10,6 +10,9 @@ interface PageBitmapSource : Closeable {
     suspend fun loadAspectRatios(): List<Float>
     fun cached(index: Int, widthPx: Int): Bitmap?
     suspend fun render(index: Int, widthPx: Int): Bitmap?
+    fun tileGrid(index: Int, widthPx: Int): TileGrid? = null
+    fun cachedTile(index: Int, widthPx: Int, rect: NormRect): Bitmap? = null
+    suspend fun renderTile(index: Int, widthPx: Int, rect: NormRect): Bitmap? = null
     fun evictOutside(keep: IntRange)
     fun trimMemory(evictAll: Boolean)
 }
