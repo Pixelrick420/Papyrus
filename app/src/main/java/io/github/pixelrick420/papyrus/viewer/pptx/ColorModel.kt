@@ -307,7 +307,7 @@ private class Working(
 }
 
 /** Hue in degrees 0..360, saturation and luminance 0..1. */
-private data class Hsl(val hue: Double, val saturation: Double, val luminance: Double) {
+internal data class Hsl(val hue: Double, val saturation: Double, val luminance: Double) {
 
     fun toRgba(): Rgba {
         val h = normalise(hue)

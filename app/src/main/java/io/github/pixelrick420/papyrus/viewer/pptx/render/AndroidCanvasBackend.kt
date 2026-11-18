@@ -21,6 +21,7 @@ import android.graphics.Typeface
 import io.github.pixelrick420.papyrus.viewer.pptx.Affine
 import io.github.pixelrick420.papyrus.viewer.pptx.EMU_PER_PIXEL
 import io.github.pixelrick420.papyrus.viewer.pptx.PatternTile
+import io.github.pixelrick420.papyrus.viewer.pptx.PictureEffects
 import io.github.pixelrick420.papyrus.viewer.pptx.Rgba
 import io.github.pixelrick420.papyrus.viewer.pptx.StrokeCap
 import io.github.pixelrick420.papyrus.viewer.pptx.StrokeJoin
@@ -68,14 +69,15 @@ internal class AndroidCanvasBackend(
 
     override fun drawImage(image: ImageRef, src: RectF, dst: RectF, effects: ImageEffects) {
         val bitmap = imageOf(image) ?: return
+        val drawn = if (effects.recolor.hasPixelWork) recolour(bitmap, effects.recolor) else bitmap
         val paint = paintOf(PaintSpec.Solid(Rgba.WHITE))
         paint.alpha = (effects.alpha.coerceIn(0f, 1f) * OPAQUE).roundToInt()
         effects.recolor.matrix?.let { paint.colorFilter = ColorMatrixColorFilter(it.toFloatArray()) }
         val saved = effects.clip?.let { canvas.save(); canvas.clipPath(pathOf(it)); true } ?: false
         try {
             val source = src.takeIf { it.width > 0f && it.height > 0f }?.let { r ->
-                val sx = if (image.width > 0) bitmap.width.toFloat() / image.width else 1f
-                val sy = if (image.height > 0) bitmap.height.toFloat() / image.height else 1f
+                val sx = if (image.width > 0) drawn.width.toFloat() / image.width else 1f
+                val sy = if (image.height > 0) drawn.height.toFloat() / image.height else 1f
                 Rect(
                     (r.left * sx).roundToInt(),
                     (r.top * sy).roundToInt(),
@@ -83,10 +85,21 @@ internal class AndroidCanvasBackend(
                     (r.bottom * sy).roundToInt(),
                 )
             }
-            canvas.drawBitmap(bitmap, source, dst.toAndroid(), paint)
+            canvas.drawBitmap(drawn, source, dst.toAndroid(), paint)
         } finally {
             if (saved) canvas.restore()
         }
+    }
+
+    private fun recolour(bitmap: Bitmap, effects: PictureEffects): Bitmap {
+        val pixels = IntArray(bitmap.width * bitmap.height)
+        bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
+        for (index in pixels.indices) {
+            val packed = pixels[index]
+            val color = Rgba((packed shr 16) and 0xFF, (packed shr 8) and 0xFF, packed and 0xFF, (packed shr 24) and 0xFF)
+            pixels[index] = effects.applyTo(color).argb
+        }
+        return Bitmap.createBitmap(pixels, bitmap.width, bitmap.height, Bitmap.Config.ARGB_8888)
     }
 
     override fun drawGlyphRun(run: GlyphRun) {
