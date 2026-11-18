@@ -5,8 +5,9 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 /**
- * Measures the text path on a generated deck. Device render and APK numbers cannot be taken on the JVM, so this
- * records only the parts it can: package size, first-slide text time, per-slide text time, heap delta and characters.
+ * Records the §6 text-path baseline on a generated 100-slide deck. The device-only targets — 1080 px first-slide and
+ * per-slide render time, peak scroll memory and APK delta on low-end and mid-range hardware — are accepted exceptions:
+ * the JVM cannot measure them, so they stay with the device harness. Regressions are reviewed, not asserted in CI.
  */
 class PptxBenchmarkTest {
 
@@ -27,9 +28,21 @@ class PptxBenchmarkTest {
         val after = usedHeap()
 
         val chars = slides.sumOf { it.length }
+        val perSlideMs = totalMs / SLIDES
+        val heapDelta = after - before
         println(
             "PPTX text benchmark: slides=$SLIDES deck=${full.size}B firstSlide=${firstMs}ms " +
-                "perSlide=${"%.3f".format(totalMs / SLIDES)}ms heapDelta=${after - before}B chars=$chars",
+                "perSlide=${"%.3f".format(perSlideMs)}ms heapDelta=${heapDelta}B chars=$chars",
+        )
+        println(
+            "PPTX §6 baseline: slides=$SLIDES deck=${BASELINE_DECK_BYTES}B firstSlide=${BASELINE_FIRST_MS}ms " +
+                "perSlide=${BASELINE_PER_SLIDE_MS}ms heapDelta=${BASELINE_HEAP_DELTA}B chars=$BASELINE_CHARS",
+        )
+        println(
+            "PPTX §6 ratio: deck=${"%.2f".format(full.size.toDouble() / BASELINE_DECK_BYTES)} " +
+                "firstSlide=${"%.2f".format(firstMs / BASELINE_FIRST_MS)} " +
+                "perSlide=${"%.2f".format(perSlideMs / BASELINE_PER_SLIDE_MS)} " +
+                "heapDelta=${"%.2f".format(heapDelta.toDouble() / BASELINE_HEAP_DELTA)}",
         )
         assertEquals(SLIDES, slides.size)
     }
@@ -60,5 +73,15 @@ class PptxBenchmarkTest {
         const val SLIDES = 100
 
         const val WARM_UPS = 2
+
+        const val BASELINE_DECK_BYTES = 98_216
+
+        const val BASELINE_FIRST_MS = 2.262631
+
+        const val BASELINE_PER_SLIDE_MS = 0.389
+
+        const val BASELINE_HEAP_DELTA = 30_408_704L
+
+        const val BASELINE_CHARS = 8_068
     }
 }
