@@ -32,6 +32,8 @@ internal object MetafileFixtures {
         return buffer.array()
     }
 
+    fun emfPlusComment(): ByteArray = record(0x46, 2, 1, 0x464D452B)
+
     fun record(type: Int, vararg words: Int): ByteArray {
         val buffer = ByteBuffer.allocate(8 + words.size * 4).order(ByteOrder.LITTLE_ENDIAN)
         buffer.putInt(type)

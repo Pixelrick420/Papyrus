@@ -73,7 +73,12 @@ internal class EmfRenderer(
             }
             if (drawing.finished) break
         }
-        return drawing.result()
+        val image = drawing.result()
+        return if (drawing.emfPlus && !drawing.hasGdiDrawing) {
+            MetafileImage(image.bounds, image.displayList, image.dibs, EMF_PLUS_PLACEHOLDER)
+        } else {
+            image
+        }
     }
 
     private companion object {
@@ -82,6 +87,7 @@ internal class EmfRenderer(
         const val HEADER_BYTES = 88
         const val SIGNATURE = 0x464D4520L
         const val VERSION = 0x00010000L
+        const val EMF_PLUS_PLACEHOLDER = "EMF+ image not displayed"
     }
 }
 
@@ -93,6 +99,11 @@ private class EmfDrawing(
 
     var finished: Boolean = false
         private set
+
+    var emfPlus: Boolean = false
+        private set
+
+    val hasGdiDrawing: Boolean get() = target.ops.isNotEmpty()
 
     private var dibCount = 0
 
@@ -166,8 +177,21 @@ private class EmfDrawing(
             POLYPOLYLINE16 -> readPolygons(reader, SHORT_POINT_BYTES, close = false)
             POLYPOLYGON16 -> readPolygons(reader, SHORT_POINT_BYTES, close = true)
             EOF -> finished = true
+            COMMENT -> if (hasEmfPlus(reader)) emfPlus = true
             else -> Unit
         }
+    }
+
+    private fun hasEmfPlus(reader: GdiReader): Boolean {
+        if (reader.remaining < 8 || reader.u32().toInt() != EMF_PLUS_COMMENT) return false
+        for (i in reader.start until reader.end - 3) {
+            val value = (reader.bytes[i].toInt() and 0xFF) or
+                ((reader.bytes[i + 1].toInt() and 0xFF) shl 8) or
+                ((reader.bytes[i + 2].toInt() and 0xFF) shl 16) or
+                ((reader.bytes[i + 3].toInt() and 0xFF) shl 24)
+            if (value == EMF_PLUS_SIGNATURE) return true
+        }
+        return false
     }
 
     private fun createPen(reader: GdiReader) {
@@ -386,6 +410,7 @@ private class EmfDrawing(
         const val RECTANGLE = 0x2B
         const val ROUND_RECT = 0x2C
         const val LINETO = 0x36
+        const val COMMENT = 0x46
         const val SET_DIBITS_TO_DEVICE = 0x50
         const val STRETCH_DIBITS = 0x51
         const val EXT_CREATE_FONT_W = 0x52
@@ -398,6 +423,8 @@ private class EmfDrawing(
         const val POLYLINETO16 = 0x59
         const val POLYPOLYLINE16 = 0x5A
         const val POLYPOLYGON16 = 0x5B
+        const val EMF_PLUS_COMMENT = 0x00000002
+        const val EMF_PLUS_SIGNATURE = 0x464D452B
         const val MWT_IDENTITY = 1
         const val MWT_LEFT_MULTIPLY = 2
         const val MWT_RIGHT_MULTIPLY = 3

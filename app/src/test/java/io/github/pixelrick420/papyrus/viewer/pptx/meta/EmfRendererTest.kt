@@ -110,6 +110,34 @@ class EmfRendererTest {
     }
 
     @Test
+    fun dualEmfRendersGdiRecordsAndIgnoresEmfPlusComments() {
+        val file = MetafileFixtures.emf(
+            records = listOf(
+                MetafileFixtures.emfPlusComment(),
+                MetafileFixtures.record(0x2B, 10, 10, 20, 20),
+                MetafileFixtures.record(0x0E),
+            ),
+        )
+        val image = Metafiles.parse(file, "emf", MAX_EDGE, MAX_PIXELS)
+        assertNotNull(image)
+        assertEquals(1, image!!.displayList.ops.filterIsInstance<DrawOp.FillPath>().size)
+        assertNull(image.placeholderLabel)
+    }
+
+    @Test
+    fun emfPlusOnlyGetsALabelledPlaceholder() {
+        val file = MetafileFixtures.emf(
+            records = listOf(
+                MetafileFixtures.emfPlusComment(),
+                MetafileFixtures.record(0x0E),
+            ),
+        )
+        val image = Metafiles.parse(file, "emf", MAX_EDGE, MAX_PIXELS)
+        assertNotNull(image)
+        assertEquals("EMF+ image not displayed", image!!.placeholderLabel)
+    }
+
+    @Test
     fun dibBlitsCarryPixelsIntoTheDisplayList() {
         val info = MetafileFixtures.dibInfo(2, 2)
         val bits = byteArrayOf(

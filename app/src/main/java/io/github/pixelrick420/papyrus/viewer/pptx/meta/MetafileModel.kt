@@ -153,6 +153,7 @@ internal class MetafileImage(
     val bounds: ImageBounds,
     val displayList: DisplayList,
     val dibs: Map<String, DibPixels> = emptyMap(),
+    val placeholderLabel: String? = null,
 )
 
 internal class MetafilePage(
@@ -481,6 +482,8 @@ internal interface MetafileDecoder {
 
     fun bounds(file: File): ImageBounds?
 
+    fun placeholder(file: File): String?
+
     fun load(file: File, targetWidthPx: Int): PictureImage?
 }
 
@@ -492,6 +495,8 @@ internal class AndroidMetafileDecoder(
     private val cache = LruCache<String, MetafileImage>(MAX_CACHED)
 
     override fun bounds(file: File): ImageBounds? = image(file)?.bounds
+
+    override fun placeholder(file: File): String? = image(file)?.placeholderLabel
 
     override fun load(file: File, targetWidthPx: Int): PictureImage? {
         val image = image(file) ?: return null

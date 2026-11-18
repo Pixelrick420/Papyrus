@@ -60,10 +60,15 @@ internal class PictureImages(
             in NATIVE -> pkg.mediaFile(target)?.let { Resolved.Raster(it) } ?: Resolved.Fixed(UNAVAILABLE)
             in METAFILES -> {
                 val raster = siblingRaster(resolvePart, target)
-                when {
-                    raster != null -> Resolved.Raster(raster)
-                    else -> pkg.mediaFile(target)?.takeIf { metafiles.bounds(it) != null }?.let { Resolved.Metafile(it) }
-                        ?: Resolved.Fixed("${extension.uppercase()} image")
+                if (raster != null) Resolved.Raster(raster)
+                else {
+                    val file = pkg.mediaFile(target)
+                    val label = file?.let(metafiles::placeholder)
+                    when {
+                        label != null -> Resolved.Fixed(label)
+                        file != null && metafiles.bounds(file) != null -> Resolved.Metafile(file)
+                        else -> Resolved.Fixed("${extension.uppercase()} image")
+                    }
                 }
             }
             "svg" -> siblingRaster(resolvePart, target)?.let { Resolved.Raster(it) } ?: Resolved.Missing
