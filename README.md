@@ -440,7 +440,7 @@ matches.
 
 ## Known limitations
 
-- PowerPoint slides (PPTX, PPTM, POTX, POTM, PPSX and PPSM): basic slide content is shown. Charts, SmartArt, visual effects, find in file, slide navigation and placeholders beyond what is drawn now are not rendered yet.
+- PowerPoint slides (PPTX, PPTM, POTX, POTM, PPSX and PPSM): slides draw text, tables, shapes and pictures, bar, column, line, area, scatter, pie, doughnut, radar, bubble, combo and stock charts, SmartArt as node text, WordArt, vertical text, gradient and pattern fills, glow, soft edge, reflection and colour effects, and embedded fonts. Find in file, an outline from slide titles, bookmarks, links, slide jumps and read-along highlighting work over slides. EMF and WMF pictures render from their GDI records; EMF+ only pictures show an "EMF+ image not displayed" placeholder, 3-D effects stay flat, and speaker notes in a deck are not shown.
 - DOC files carry paragraphs and tables only: no images, and headings arrive as plain paragraphs. Encrypted and Word
   6/95 files are rejected.
 - Fixed-layout EPUB books keep one page boundary per page and the shape of a page-sized picture, but not absolutely

@@ -145,6 +145,8 @@ device face down if you want to remove visual cues.
 4. **Hidden slides:** a slide hidden in the editor still reads, and its stop ends with "Hidden".
 5. **No per-shape stops:** the whole slide is one bitmap and one focus stop, so swiping between
    shapes is not possible; the composed text is the only way its contents are read.
+6. **Speaker notes:** notes attached to a slide in the editor are not read; only the slide's own
+   text and alt text are.
 
 ### Focus order
 
