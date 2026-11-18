@@ -34,7 +34,11 @@ internal class BoundedZipInputStream private constructor(
 
     override fun getNextEntry(): ZipEntry? {
         // Finishing the previous entry is read through this class too, so it is charged to that entry.
-        val entry = super.getNextEntry() ?: return null
+        val entry = try {
+            super.getNextEntry()
+        } catch (_: IllegalArgumentException) {
+            throw fail("malformed archive")
+        } ?: return null
         if (++entries > limits.maxEntries) throw fail("too many entries")
         entryBytes = 0L
         entryFrom = counting.count

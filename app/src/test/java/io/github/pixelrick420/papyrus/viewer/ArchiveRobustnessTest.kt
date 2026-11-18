@@ -133,6 +133,24 @@ class ArchiveRobustnessTest {
         }
     }
 
+    @Test
+    fun `an entry name with malformed UTF-8 is an archive error, not a crash`() {
+        val bytes = docxBytes()
+        val corrupted = bytes.copyOf()
+        corrupted[30] = 0xFF.toByte()
+        val started = System.nanoTime()
+
+        val outcome = runCatching {
+            BoundedZipInputStream(corrupted.inputStream()).use { zip ->
+                while (zip.nextEntry != null) Unit
+            }
+        }.exceptionOrNull()
+
+        assertTrue("took ${(System.nanoTime() - started) / 1_000_000} ms", System.nanoTime() - started < 10_000_000_000L)
+        assertTrue("got $outcome", outcome is IOException)
+        assertEquals("malformed archive", outcome!!.message)
+    }
+
     private val slipNames = listOf(
         "../document.xml", "../../word/document.xml", "/word/document.xml", "\\word\\document.xml",
         "word/../word/document.xml", "word/../../evil.xml", "C:\\evil.xml", "word/media/../../../escaped.png",
