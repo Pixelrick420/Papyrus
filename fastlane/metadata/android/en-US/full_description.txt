@@ -6,6 +6,7 @@ Features:
 - PDF with zoom, links, text selection and copy, highlights and notes, form filling, bookmarks/outline and go-to-page
 - Word and OpenDocument with footnotes, comments, tables and images
 - EPUB reflowed with the book's own table of contents as the outline
+- PowerPoint slides with text, tables, pictures, charts, SmartArt text, WordArt, vertical text, EMF/WMF images and embedded fonts, plus find, outline, bookmarks and links
 - Markdown with tables, task lists, coloured code blocks, maths and embedded images
 - Plain text, logs and code with syntax highlighting for 30+ languages
 - Library search by title and by what is inside your documents
