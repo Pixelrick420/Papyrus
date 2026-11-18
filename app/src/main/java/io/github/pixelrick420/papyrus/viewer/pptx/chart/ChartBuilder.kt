@@ -351,7 +351,12 @@ internal object ChartBuilder {
         }
         val primarySeries = series.filter { it.axisGroup == AxisGroup.PRIMARY }
         val secondarySeries = series.filter { it.axisGroup == AxisGroup.SECONDARY }
-        val primaryRange = valueRange(primarySeries.flatMap { cacheArray(it.values, count).filterNotNull() }, value)
+        val primaryRange = valueRange(
+            primarySeries.flatMap { ser ->
+                (ser.values ?: ser.closeValues ?: ser.highValues)?.let { cacheArray(it, count).filterNotNull() }.orEmpty()
+            },
+            value,
+        )
         val secondaryRange = secondarySeries.takeIf { it.isNotEmpty() }?.let {
             valueRange(it.flatMap { cacheArray(it.values, count).filterNotNull() }, secondaryAxis)
         }
@@ -359,6 +364,7 @@ internal object ChartBuilder {
         categoryTicks(category, categoryLabels(series, count), rect, count, false, style, texts)
         valueTicks(value, rect, primaryRange, horizontal = false, style, texts)
         if (secondaryRange != null && secondaryAxis != null) {
+            shapes += line(rect.right, rect.y, rect.right, rect.bottom, ScenePaint.Solid(style.axis))
             secondaryTicks(secondaryAxis, rect, secondaryRange, style, texts)
         }
         val barSeries = series.filter { it.type == ChartType.BAR || it.type == ChartType.COLUMN }
@@ -379,9 +385,13 @@ internal object ChartBuilder {
                 shapes += ChartShape(rectanglePoints(bar), seriesPaint(ser, c, false, style), seriesLine(ser, c, style))
             }
         }
+        for (ser in series.filter { it.type == ChartType.STOCK }) {
+            val range = if (ser.axisGroup == AxisGroup.SECONDARY) secondaryRange ?: primaryRange else primaryRange
+            val axis = if (ser.axisGroup == AxisGroup.SECONDARY) secondaryAxis ?: value else value
+            stockSeries(ser, category, rect, range, axis, count, style, shapes)
+        }
         for (ser in series.filter {
-            it.type == ChartType.LINE || it.type == ChartType.AREA ||
-                it.type == ChartType.STOCK || it.type == ChartType.RADAR
+            it.type == ChartType.LINE || it.type == ChartType.AREA || it.type == ChartType.RADAR
         }) {
             val range = if (ser.axisGroup == AxisGroup.SECONDARY) secondaryRange ?: primaryRange else primaryRange
             val axis = if (ser.axisGroup == AxisGroup.SECONDARY) secondaryAxis ?: value else value
@@ -405,6 +415,52 @@ internal object ChartBuilder {
             }
             if (ser.marker) {
                 for (point in points) shapes += marker(point, seriesPaint(ser, -1, false, style))
+            }
+        }
+    }
+
+    private fun stockSeries(
+        series: ChartSeries,
+        category: ChartAxis?,
+        rect: SceneRect,
+        range: ValueRange,
+        axis: ChartAxis?,
+        count: Int,
+        style: ChartStyle,
+        shapes: MutableList<ChartShape>,
+    ) {
+        val highs = cacheArray(series.highValues, count)
+        val lows = cacheArray(series.lowValues, count)
+        val opens = cacheArray(series.openValues, count)
+        val closes = cacheArray(series.closeValues ?: series.values, count)
+        val color = seriesColor(series, -1, false, style)
+        val paint = SceneLine(LINE_EMU, ScenePaint.Solid(color), null)
+        for (c in 0 until count) {
+            val high = highs.getOrNull(c)
+            val low = lows.getOrNull(c)
+            val open = opens.getOrNull(c)
+            val close = closes.getOrNull(c)
+            val x = categoryX(rect, c, count, category)
+            if (high != null && low != null) {
+                shapes += ChartShape(
+                    listOf(
+                        ScenePoint(x, valueY(rect, range, high, axis)),
+                        ScenePoint(x, valueY(rect, range, low, axis)),
+                    ),
+                    fill = null,
+                    line = paint,
+                    closed = false,
+                )
+            }
+            if (open != null && close != null) {
+                val color = if (close >= open) Rgba(0x00, 0xB0, 0x50) else Rgba(0xC0, 0x00, 0x00)
+                val bar = SceneRect(
+                    x - 3 * EMU_PER_POINT,
+                    min(valueY(rect, range, open, axis), valueY(rect, range, close, axis)),
+                    6 * EMU_PER_POINT,
+                    abs(valueY(rect, range, close, axis) - valueY(rect, range, open, axis)).coerceAtLeast(LINE_EMU),
+                )
+                shapes += ChartShape(rectanglePoints(bar), ScenePaint.Solid(color), null)
             }
         }
     }
@@ -875,8 +931,17 @@ internal object ChartBuilder {
         return points
     }
 
-    private fun categoryCount(series: List<ChartSeries>): Int =
-        series.maxOfOrNull { maxOf(it.categories?.points?.size ?: 0, it.values?.points?.size ?: 0) } ?: 0
+    private fun categoryCount(series: List<ChartSeries>): Int = series.maxOfOrNull {
+        maxOf(
+            it.categories?.points?.size ?: 0,
+            it.values?.points?.size ?: 0,
+            it.xValues?.points?.size ?: 0,
+            it.highValues?.points?.size ?: 0,
+            it.lowValues?.points?.size ?: 0,
+            it.openValues?.points?.size ?: 0,
+            it.closeValues?.points?.size ?: 0,
+        )
+    } ?: 0
 
     private fun categoryLabels(series: List<ChartSeries>, count: Int): List<String> {
         val cache = series.firstNotNullOfOrNull { it.categories } ?: return (1..count).map { it.toString() }

@@ -387,7 +387,10 @@ internal object GoldenDecks {
     }
 
     private fun chartZoo(): ByteArray = pptx {
-        val frames = listOf("columns", "bars", "line", "area", "scatter", "bubble", "pie", "doughnut", "radar", "cx")
+        val frames = listOf(
+            "columns", "bars", "line", "area", "scatter", "bubble",
+            "pie", "doughnut", "radar", "combo", "stock", "cx",
+        )
         theme {
             accent1("C00000")
             accent2("00B050")
@@ -432,6 +435,8 @@ internal object GoldenDecks {
             "Radar",
             """<c:radarChart><c:radarStyle val="filled"/>${series(0, "Alpha", listOf(10.0, 20.0, 30.0, 15.0))}${series(1, "Beta", listOf(20.0, 5.0, 10.0, 25.0))}<c:axId val="1"/><c:axId val="2"/></c:radarChart>$chartAxes""",
         )
+        "combo" -> chartXml("Combo", comboChart())
+        "stock" -> chartXml("Stock", stockChart())
         else -> """<mc:AlternateContent xmlns:mc="$MC_NS" xmlns:cx="$CX_NS" xmlns:c="$CHART_NS" xmlns:a="$A_NS" xmlns:r="$R_NS">
             <mc:Choice Requires="cx"><c:chart r:id="rId21"/></mc:Choice>
             <mc:Fallback><p:pic xmlns:p="$P_NS">
@@ -487,6 +492,36 @@ internal object GoldenDecks {
             </c:scatterChart>
             <c:valAx><c:axId val="1"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:axPos val="b"/><c:numFmt formatCode="General" sourceLinked="1"/><c:crossAx val="2"/></c:valAx>
             <c:valAx><c:axId val="2"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:axPos val="l"/><c:majorGridlines/><c:numFmt formatCode="General" sourceLinked="1"/><c:crossAx val="1"/></c:valAx>
+        """.trimIndent()
+    }
+
+    private fun comboChart(): String = """
+        <c:barChart><c:barDir val="col"/><c:grouping val="clustered"/>
+          ${series(0, "Sales", listOf(10.0, 20.0, 30.0))}<c:axId val="1"/><c:axId val="2"/>
+        </c:barChart>
+        <c:lineChart><c:grouping val="standard"/>
+          ${series(1, "Margin", listOf(200.0, 400.0, 300.0))}<c:axId val="3"/><c:axId val="4"/>
+        </c:lineChart>
+        <c:catAx><c:axId val="1"/><c:axPos val="b"/><c:crossAx val="2"/></c:catAx>
+        <c:valAx><c:axId val="2"/><c:axPos val="l"/><c:crossAx val="1"/></c:valAx>
+        <c:catAx><c:axId val="3"/><c:axPos val="b"/><c:crossAx val="4"/><c:delete val="1"/></c:catAx>
+        <c:valAx><c:axId val="4"/><c:axPos val="r"/><c:crossAx val="3"/></c:valAx>
+    """.trimIndent()
+
+    private fun stockChart(): String {
+        fun values(tag: String, numbers: List<Double>): String {
+            val points = numbers.mapIndexed { i, value -> """<c:pt idx="$i"><c:v>$value</c:v></c:pt>""" }.joinToString("")
+            return """<c:$tag><c:numRef><c:numCache><c:ptCount val="${numbers.size}"/>$points</c:numCache></c:numRef></c:$tag>"""
+        }
+        return """
+            <c:stockChart>
+              <c:ser><c:idx val="0"/><c:order val="0"/><c:tx><c:v>Price</c:v></c:tx>
+                ${values("open", listOf(10.0, 20.0, 15.0))}${values("high", listOf(15.0, 25.0, 18.0))}
+                ${values("low", listOf(8.0, 18.0, 12.0))}${values("close", listOf(14.0, 19.0, 13.0))}
+              </c:ser>
+              <c:axId val="1"/><c:axId val="2"/>
+            </c:stockChart>
+            $chartAxes
         """.trimIndent()
     }
 

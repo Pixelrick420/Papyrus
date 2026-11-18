@@ -17,7 +17,11 @@ internal object ChartParser {
         val groups = axes.associate { it.id to it.group }
         val series = used.flatMap { container ->
             container.series.map { ser ->
-                val group = container.axisIds.firstNotNullOfOrNull { groups[it] } ?: AxisGroup.PRIMARY
+                val group = if (container.axisIds.any { groups[it] == AxisGroup.SECONDARY }) {
+                    AxisGroup.SECONDARY
+                } else {
+                    AxisGroup.PRIMARY
+                }
                 ser.copy(axisGroup = group)
             }
         }

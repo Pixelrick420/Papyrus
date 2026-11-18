@@ -300,6 +300,40 @@ class ChartPaintTest {
     }
 
     @Test
+    fun `combo charts paint bars and lines with a secondary value axis`() {
+        val root = io.github.pixelrick420.papyrus.viewer.pptx.OoxmlReader(OfficeFixtures::parser)
+            .readTree(comboChart().byteInputStream())!!
+        val chart = ChartParser.parse(root, io.github.pixelrick420.papyrus.viewer.pptx.PptxLimits())!!
+        assertEquals(ChartType.COMBO, chart.type)
+        assertEquals(AxisGroup.PRIMARY, chart.plotArea.series[0].axisGroup)
+        assertEquals(AxisGroup.SECONDARY, chart.plotArea.series[1].axisGroup)
+
+        val drawing = drawing(deck(comboChart()))
+        assertEquals(2, drawing.shapes.count { it.closed && it.fill != null && it.points.size == 4 })
+        assertEquals(
+            1,
+            drawing.shapes.count {
+                !it.closed && it.fill == null && it.points.size == 2 &&
+                    (it.line?.paint as? ScenePaint.Solid)?.color == Rgba(0x00, 0xB0, 0x50)
+            },
+        )
+    }
+
+    @Test
+    fun `stock charts draw high low ranges and up down close bars`() {
+        val drawing = drawing(deck(stockChart()))
+        val ranges = drawing.shapes.filter {
+            !it.closed && it.fill == null && it.points.size == 2 &&
+                (it.line?.paint as? ScenePaint.Solid)?.color == Rgba(0xC0, 0x00, 0x00)
+        }
+        assertEquals(3, ranges.size)
+        val bars = drawing.shapes.filter { it.closed && it.fill != null && it.points.size == 4 }
+        assertEquals(3, bars.size)
+        assertEquals(Rgba(0x00, 0xB0, 0x50), (bars[0].fill as ScenePaint.Solid).color)
+        assertEquals(Rgba(0xC0, 0x00, 0x00), (bars[1].fill as ScenePaint.Solid).color)
+    }
+
+    @Test
     fun `radar charts draw a web and one polygon per series`() {
         val drawing = drawing(
             deck(
@@ -576,6 +610,56 @@ class ChartPaintTest {
               ${cache("xVal", xs)}
               ${cache("yVal", ys)}
             </c:ser>
+        """.trimIndent()
+    }
+
+    private fun comboChart(): String = """
+        <c:chartSpace xmlns:c="$CHART_NS" xmlns:a="$A_NS" xmlns:r="$R_NS">
+          <c:chart>
+            <c:plotArea>
+              <c:barChart>
+                <c:barDir val="col"/><c:grouping val="clustered"/>
+                ${seriesXml(0, "Sales", listOf(10.0, 20.0))}
+                <c:axId val="1"/><c:axId val="2"/>
+              </c:barChart>
+              <c:lineChart>
+                <c:grouping val="standard"/>
+                ${seriesXml(1, "Margin", listOf(200.0, 400.0))}
+                <c:axId val="3"/><c:axId val="4"/>
+              </c:lineChart>
+              <c:catAx><c:axId val="1"/><c:axPos val="b"/><c:crossAx val="2"/></c:catAx>
+              <c:valAx><c:axId val="2"/><c:axPos val="l"/><c:crossAx val="1"/></c:valAx>
+              <c:catAx><c:axId val="3"/><c:axPos val="b"/><c:crossAx val="4"/><c:delete val="1"/></c:catAx>
+              <c:valAx><c:axId val="4"/><c:axPos val="r"/><c:crossAx val="3"/></c:valAx>
+            </c:plotArea>
+          </c:chart>
+        </c:chartSpace>
+    """.trimIndent()
+
+    private fun stockChart(): String {
+        fun values(tag: String, numbers: List<Double>): String {
+            val points = numbers.mapIndexed { i, value -> """<c:pt idx="$i"><c:v>$value</c:v></c:pt>""" }.joinToString("")
+            return """<c:$tag><c:numRef><c:numCache><c:ptCount val="${numbers.size}"/>$points</c:numCache></c:numRef></c:$tag>"""
+        }
+        return """
+            <c:chartSpace xmlns:c="$CHART_NS" xmlns:a="$A_NS" xmlns:r="$R_NS">
+              <c:chart>
+                <c:plotArea>
+                  <c:stockChart>
+                    <c:ser>
+                      <c:idx val="0"/><c:order val="0"/>
+                      <c:tx><c:v>Price</c:v></c:tx>
+                      ${values("open", listOf(10.0, 20.0, 15.0))}
+                      ${values("high", listOf(15.0, 25.0, 18.0))}
+                      ${values("low", listOf(8.0, 18.0, 12.0))}
+                      ${values("close", listOf(14.0, 19.0, 13.0))}
+                    </c:ser>
+                    <c:axId val="1"/><c:axId val="2"/>
+                  </c:stockChart>
+                  ${axes(false)}
+                </c:plotArea>
+              </c:chart>
+            </c:chartSpace>
         """.trimIndent()
     }
 
