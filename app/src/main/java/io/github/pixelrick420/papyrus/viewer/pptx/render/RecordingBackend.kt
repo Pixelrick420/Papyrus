@@ -57,4 +57,8 @@ internal class RecordingBackend : DrawTarget {
     override fun shadow(shadow: ShadowSpec?) {
         recorded += DrawOp.Shadow(shadow)
     }
+
+    override fun shapeShadow(path: PathData, shadow: ShapeShadowSpec) {
+        recorded += DrawOp.ShapeShadow(path, shadow)
+    }
 }

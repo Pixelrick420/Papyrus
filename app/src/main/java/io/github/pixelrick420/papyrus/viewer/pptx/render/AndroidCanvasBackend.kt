@@ -2,6 +2,7 @@ package io.github.pixelrick420.papyrus.viewer.pptx.render
 
 import android.graphics.Bitmap
 import android.graphics.BitmapShader
+import android.graphics.BlurMaskFilter
 import android.graphics.Canvas
 import android.graphics.DashPathEffect
 import android.graphics.LinearGradient
@@ -211,17 +212,18 @@ internal class AndroidCanvasBackend(
     }
 
     override fun concat(m: Affine) {
-        val matrix = Matrix().apply {
-            setValues(
-                floatArrayOf(
-                    m.a.toFloat(), m.c.toFloat(), m.e.toFloat(),
-                    m.b.toFloat(), m.d.toFloat(), m.f.toFloat(),
-                    0f, 0f, 1f,
-                ),
-            )
-        }
-        canvas.concat(matrix)
+        canvas.concat(matrixOf(m))
         transform = m.then(transform)
+    }
+
+    private fun matrixOf(m: Affine): Matrix = Matrix().apply {
+        setValues(
+            floatArrayOf(
+                m.a.toFloat(), m.c.toFloat(), m.e.toFloat(),
+                m.b.toFloat(), m.d.toFloat(), m.f.toFloat(),
+                0f, 0f, 1f,
+            ),
+        )
     }
 
     override fun clip(path: PathData) {
@@ -230,6 +232,21 @@ internal class AndroidCanvasBackend(
 
     override fun shadow(shadow: ShadowSpec?) {
         this.shadow = shadow
+    }
+
+    override fun shapeShadow(path: PathData, shadow: ShapeShadowSpec) {
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = shadow.color.argb
+            style = if (shadow.inner) Paint.Style.STROKE else Paint.Style.FILL
+            if (shadow.inner) strokeWidth = shadow.blur.coerceAtLeast(MIN_RADIUS)
+            maskFilter = BlurMaskFilter(shadow.blur.coerceAtLeast(MIN_RADIUS), BlurMaskFilter.Blur.NORMAL)
+        }
+        val androidPath = pathOf(path)
+        val saved = canvas.save()
+        if (shadow.inner) canvas.clipPath(androidPath)
+        canvas.concat(matrixOf(shadow.transform))
+        canvas.drawPath(androidPath, paint)
+        canvas.restoreToCount(saved)
     }
 
     private fun paintOf(spec: PaintSpec): Paint {

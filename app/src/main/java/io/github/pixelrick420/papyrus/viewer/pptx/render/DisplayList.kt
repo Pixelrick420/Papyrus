@@ -145,6 +145,14 @@ internal data class GlyphRun(
 
 internal data class ShadowSpec(val color: Rgba, val blur: Float, val dx: Float, val dy: Float)
 
+/** A blurred copy of a path; [transform] carries distance, scale, skew and alignment as one affine. */
+internal data class ShapeShadowSpec(
+    val color: Rgba,
+    val blur: Float,
+    val transform: Affine,
+    val inner: Boolean = false,
+)
+
 internal sealed interface DrawOp {
     data class FillPath(val path: PathData, val paint: PaintSpec) : DrawOp
 
@@ -168,6 +176,8 @@ internal sealed interface DrawOp {
     data class Clip(val path: PathData) : DrawOp
 
     data class Shadow(val shadow: ShadowSpec?) : DrawOp
+
+    data class ShapeShadow(val path: PathData, val shadow: ShapeShadowSpec) : DrawOp
 }
 
 internal interface DrawTarget {
@@ -188,6 +198,8 @@ internal interface DrawTarget {
     fun clip(path: PathData)
 
     fun shadow(shadow: ShadowSpec?)
+
+    fun shapeShadow(path: PathData, shadow: ShapeShadowSpec)
 }
 
 internal class DisplayList(val ops: List<DrawOp>) {
@@ -204,6 +216,7 @@ internal class DisplayList(val ops: List<DrawOp>) {
                 is DrawOp.Concat -> target.concat(op.matrix)
                 is DrawOp.Clip -> target.clip(op.path)
                 is DrawOp.Shadow -> target.shadow(op.shadow)
+                is DrawOp.ShapeShadow -> target.shapeShadow(op.path, op.shadow)
             }
         }
     }

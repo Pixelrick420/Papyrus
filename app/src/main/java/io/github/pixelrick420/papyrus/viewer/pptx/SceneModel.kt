@@ -63,8 +63,45 @@ internal class SceneLine(
     val tailEnd: ArrowEnd = ArrowEnd.NONE,
 )
 
+/** A resolved shape-effect list; 3-D elements are deliberately absent so the shape keeps its flat fill. */
+internal class SceneEffects(val items: List<SceneEffect>)
+
+internal sealed interface SceneEffect {
+
+    class Shadow(
+        val color: Rgba,
+        val blurEmu: Double,
+        val distanceEmu: Double,
+        val directionDegrees: Double,
+        val scaleX: Double = 1.0,
+        val scaleY: Double = 1.0,
+        val skewX: Double = 0.0,
+        val skewY: Double = 0.0,
+        val align: String? = null,
+        val rotateWithShape: Boolean = true,
+        val inner: Boolean = false,
+        val preset: Boolean = false,
+    ) : SceneEffect
+
+    class Glow(val color: Rgba, val radiusEmu: Double) : SceneEffect
+
+    class SoftEdge(val radiusEmu: Double) : SceneEffect
+
+    data object Blur : SceneEffect
+
+    class Reflection(
+        val blurEmu: Double,
+        val distanceEmu: Double,
+        val directionDegrees: Double,
+        val startAlpha: Double,
+        val endAlpha: Double,
+        val startPosition: Double,
+        val endPosition: Double,
+    ) : SceneEffect
+}
+
 /** The fill, line and effects of one shape, each already resolved independently of the others. */
-internal class SceneFormat(val fill: ScenePaint?, val line: SceneLine?, val effects: XNode?)
+internal class SceneFormat(val fill: ScenePaint?, val line: SceneLine?, val effects: SceneEffects?)
 
 /** One node of a resolved slide, in paint order. */
 internal sealed interface SceneNode {

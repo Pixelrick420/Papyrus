@@ -2,6 +2,7 @@ package io.github.pixelrick420.papyrus.viewer.pptx.render
 
 import io.github.pixelrick420.papyrus.viewer.pptx.Affine
 import io.github.pixelrick420.papyrus.viewer.pptx.ArrowType
+import io.github.pixelrick420.papyrus.viewer.pptx.EMU_PER_PIXEL
 import io.github.pixelrick420.papyrus.viewer.pptx.ImageBounds
 import io.github.pixelrick420.papyrus.viewer.pptx.PictureCrop
 import io.github.pixelrick420.papyrus.viewer.pptx.PictureFill
@@ -14,6 +15,7 @@ import io.github.pixelrick420.papyrus.viewer.pptx.PresetOutlinePath
 import io.github.pixelrick420.papyrus.viewer.pptx.PresetSegment
 import io.github.pixelrick420.papyrus.viewer.pptx.Scene
 import io.github.pixelrick420.papyrus.viewer.pptx.SceneConnector
+import io.github.pixelrick420.papyrus.viewer.pptx.SceneEffect
 import io.github.pixelrick420.papyrus.viewer.pptx.SceneFormat
 import io.github.pixelrick420.papyrus.viewer.pptx.SceneGraphicFrame
 import io.github.pixelrick420.papyrus.viewer.pptx.SceneGroup
@@ -33,6 +35,9 @@ import io.github.pixelrick420.papyrus.viewer.pptx.chart.ChartDrawing
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import java.io.File
+import kotlin.math.cos
+import kotlin.math.sin
+import kotlin.math.tan
 
 /** A picture resolved to its raster file and source size, which is all a display list needs to name it. */
 internal class SlideImage(val file: File, val bounds: ImageBounds) {
@@ -167,6 +172,7 @@ internal class SlideRenderer(
             outline,
             format,
             Affine.forShape(frame, rotation = rotation, flipH = flipH, flipV = flipV),
+            Affine.forShape(frame, rotation = 0.0, flipH = flipH, flipV = flipV),
             rotation / ROTATION_UNIT,
             out,
         )
@@ -183,6 +189,7 @@ internal class SlideRenderer(
             outline,
             format,
             Affine.forShape(frame, rotation = rotation, flipH = flipH, flipV = flipV),
+            Affine.forShape(frame, rotation = 0.0, flipH = flipH, flipV = flipV),
             rotation / ROTATION_UNIT,
             out,
         )
@@ -305,22 +312,57 @@ internal class SlideRenderer(
         outline: PresetOutline,
         format: SceneFormat,
         transform: Affine,
+        flatTransform: Affine,
         rotationDegrees: Double,
         out: MutableList<DrawOp>,
     ) {
+        val shadows = format.effects?.items?.filterIsInstance<SceneEffect.Shadow>().orEmpty()
+        val rotating = shadows.filter { it.rotateWithShape && !it.inner }
+        val flat = shadows.filter { !it.rotateWithShape && !it.inner }
+        val inner = shadows.filter { it.inner }
+        if (flat.isNotEmpty()) {
+            out += DrawOp.Save
+            out += DrawOp.Concat(flatTransform)
+            for (contour in outline.paths) {
+                val path = pathOf(contour)
+                for (shadow in flat) out += DrawOp.ShapeShadow(path, shadowSpec(shadow))
+            }
+            out += DrawOp.Restore
+        }
         val body = mutableListOf<DrawOp>()
         val box = SceneRect(0.0, 0.0, outline.textRect.width, outline.textRect.height)
         val stroke = strokeOf(format.line, box, rotationDegrees)
         for (contour in outline.paths) {
             val path = pathOf(contour)
+            for (shadow in rotating) body += DrawOp.ShapeShadow(path, shadowSpec(shadow))
             fillOf(format.fill, contour.fill, box, rotationDegrees)?.let { body += DrawOp.FillPath(path, it) }
             if (contour.stroke && stroke != null) body += DrawOp.StrokePath(path, stroke)
+            for (shadow in inner) body += DrawOp.ShapeShadow(path, shadowSpec(shadow))
         }
         if (body.isEmpty()) return
         out += DrawOp.Save
         out += DrawOp.Concat(transform)
         out += body
         out += DrawOp.Restore
+    }
+
+    private fun shadowSpec(shadow: SceneEffect.Shadow): ShapeShadowSpec {
+        val direction = shadow.align?.let(ALIGN_DIRECTIONS::get) ?: shadow.directionDegrees
+        val radians = Math.toRadians(direction)
+        val distance = if (shadow.align == "ctr") 0.0 else shadow.distanceEmu
+        return ShapeShadowSpec(
+            color = shadow.color,
+            blur = (shadow.blurEmu / EMU_PER_PIXEL).toFloat(),
+            transform = Affine(
+                a = shadow.scaleX,
+                b = tan(Math.toRadians(shadow.skewY)),
+                c = tan(Math.toRadians(shadow.skewX)),
+                d = shadow.scaleY,
+                e = cos(radians) * distance / EMU_PER_PIXEL,
+                f = sin(radians) * distance / EMU_PER_PIXEL,
+            ),
+            inner = shadow.inner,
+        )
     }
 
     private fun fillOf(
@@ -406,8 +448,7 @@ internal class SlideRenderer(
         this != null && (
             fill is ScenePaint.Complex ||
                 line?.paint is ScenePaint.Complex ||
-                (line != null && line.compound != StrokeCompound.SINGLE) ||
-                effects?.children?.isNotEmpty() == true
+                (line != null && line.compound != StrokeCompound.SINGLE)
             )
 
     private companion object {
@@ -415,5 +456,16 @@ internal class SlideRenderer(
         const val PERCENT_UNIT = 100_000.0
         const val ROTATION_UNIT = 60_000.0
         const val DEFAULT_LINE_EMU = 9_525.0
+        val ALIGN_DIRECTIONS = mapOf(
+            "t" to -90.0,
+            "tr" to -45.0,
+            "r" to 0.0,
+            "br" to 45.0,
+            "b" to 90.0,
+            "bl" to 135.0,
+            "l" to 180.0,
+            "tl" to 225.0,
+            "ctr" to 0.0,
+        )
     }
 }

@@ -21,6 +21,8 @@ import io.github.pixelrick420.papyrus.viewer.pptx.PresetGeometry
 import io.github.pixelrick420.papyrus.viewer.pptx.Rgba
 import io.github.pixelrick420.papyrus.viewer.pptx.Scene
 import io.github.pixelrick420.papyrus.viewer.pptx.SceneConnector
+import io.github.pixelrick420.papyrus.viewer.pptx.SceneEffect
+import io.github.pixelrick420.papyrus.viewer.pptx.SceneEffects
 import io.github.pixelrick420.papyrus.viewer.pptx.SceneFormat
 import io.github.pixelrick420.papyrus.viewer.pptx.SceneGroup
 import io.github.pixelrick420.papyrus.viewer.pptx.SceneLine
@@ -268,11 +270,48 @@ class SlideRendererTest {
     }
 
     @Test
+    fun `a shadow becomes a blurred copy of the shape path`() = runBlocking {
+        val shadow = SceneEffect.Shadow(
+            color = red,
+            blurEmu = 9_525.0,
+            distanceEmu = 9_525.0,
+            directionDegrees = 0.0,
+            rotateWithShape = false,
+        )
+        val ops = renderer.render(
+            scene(rect(format = SceneFormat(ScenePaint.Solid(black), null, SceneEffects(listOf(shadow))))),
+        )!!.ops
+
+        val emitted = ops.filterIsInstance<DrawOp.ShapeShadow>().single()
+        assertEquals(red, emitted.shadow.color)
+        assertEquals(1f, emitted.shadow.blur, 0f)
+        assertEquals(1.0, emitted.shadow.transform.e, 0.0)
+        assertEquals(0.0, emitted.shadow.transform.f, 0.0)
+        assertTrue(ops.indexOf(emitted) < ops.indexOfFirst { it is DrawOp.FillPath })
+    }
+
+    @Test
+    fun `an inner shadow stays clipped to the shape`() = runBlocking {
+        val shadow = SceneEffect.Shadow(
+            color = red,
+            blurEmu = 9_525.0,
+            distanceEmu = 0.0,
+            directionDegrees = 0.0,
+            inner = true,
+        )
+        val ops = renderer.render(
+            scene(rect(format = SceneFormat(ScenePaint.Solid(black), null, SceneEffects(listOf(shadow))))),
+        )!!.ops
+
+        assertTrue(ops.filterIsInstance<DrawOp.ShapeShadow>().single().shadow.inner)
+    }
+
+    @Test
     fun `nodes that cannot be drawn faithfully are dropped whole`() = runBlocking {
         val complex = ScenePaint.Complex(XNode(OoxmlName(OoxmlNamespace.A, "blipFill")), null)
-        val effects = XNode(OoxmlName(OoxmlNamespace.A, "effectLst")).apply {
-            children += XNode(OoxmlName(OoxmlNamespace.A, "outerShdw"))
-        }
+        val effects = SceneEffects(
+            listOf(SceneEffect.Shadow(Rgba.BLACK, blurEmu = 0.0, distanceEmu = 0.0, directionDegrees = 0.0)),
+        )
         val page = scene(
             rect(format = SceneFormat(complex, null, null)),
             rect(format = SceneFormat(ScenePaint.Solid(red), null, effects)),
@@ -296,7 +335,9 @@ class SlideRendererTest {
         val list = renderer.render(page, resolver)
 
         assertNotNull(list)
-        assertTrue(list!!.ops.isEmpty())
+        val ops = list!!.ops
+        assertTrue(ops.any { it is DrawOp.ShapeShadow })
+        assertEquals(1, ops.count { it is DrawOp.FillPath })
     }
 
     @Test

@@ -433,8 +433,12 @@ internal class StyleResolver(
         context.theme?.formats?.line(index)?.let { add(it to placeholderColour(reference, context)) }
     }
 
-    private fun effectsOf(properties: XNode?, style: XNode?, context: LayoutContext): XNode? {
-        properties?.child(OoxmlNamespace.A, "effectLst")?.let { return it }
+    private fun effectsOf(properties: XNode?, style: XNode?, context: LayoutContext): SceneEffects? {
+        val node = properties?.child(OoxmlNamespace.A, "effectLst") ?: effectFromStyle(style, context) ?: return null
+        return Effects.of(node, context.colors)
+    }
+
+    private fun effectFromStyle(style: XNode?, context: LayoutContext): XNode? {
         val reference = style?.child(OoxmlNamespace.A, "effectRef") ?: return null
         val index = reference.attribute("idx")?.toIntOrNull() ?: return null
         if (index <= 0) return null
