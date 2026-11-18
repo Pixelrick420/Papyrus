@@ -68,6 +68,22 @@ class EffectsTest {
     }
 
     @Test
+    fun `glow soft edge and blur are resolved`() {
+        val effects = effects(
+            """<a:glow rad="6350"><a:srgbClr val="00FF00"/></a:glow>""" +
+                """<a:softEdge rad="12700"/>""" +
+                """<a:blur/>""",
+        )
+
+        val glow = effects!!.items[0] as SceneEffect.Glow
+        val softEdge = effects.items[1] as SceneEffect.SoftEdge
+        assertTrue(effects.items[2] is SceneEffect.Blur)
+        assertEquals(Rgba(0, 255, 0), glow.color)
+        assertEquals(6_350.0, glow.radiusEmu, 0.0)
+        assertEquals(12_700.0, softEdge.radiusEmu, 0.0)
+    }
+
+    @Test
     fun `an empty effect list resolves to an empty model`() {
         assertNotNull(effects(""))
         assertTrue(effects("")!!.items.isEmpty())

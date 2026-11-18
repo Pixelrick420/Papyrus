@@ -291,6 +291,32 @@ class SlideRendererTest {
     }
 
     @Test
+    fun `glow and soft edge become blurred ops`() = runBlocking {
+        val effects = SceneEffects(
+            listOf(SceneEffect.Glow(red, 9_525.0), SceneEffect.SoftEdge(19_050.0)),
+        )
+        val ops = renderer.render(
+            scene(rect(format = SceneFormat(ScenePaint.Solid(black), null, effects))),
+        )!!.ops
+
+        val glow = ops.filterIsInstance<DrawOp.Glow>().single()
+        val edge = ops.filterIsInstance<DrawOp.SoftEdge>().single()
+        assertEquals(red, glow.color)
+        assertEquals(1f, glow.radius, 0f)
+        assertEquals(2f, edge.radius, 0f)
+    }
+
+    @Test
+    fun `blur becomes a blurred fill`() = runBlocking {
+        val effects = SceneEffects(listOf(SceneEffect.Blur))
+        val ops = renderer.render(
+            scene(rect(format = SceneFormat(ScenePaint.Solid(black), null, effects))),
+        )!!.ops
+
+        assertEquals((50_800.0 / 9_525.0).toFloat(), ops.filterIsInstance<DrawOp.Blur>().single().radius, 0f)
+    }
+
+    @Test
     fun `an inner shadow stays clipped to the shape`() = runBlocking {
         val shadow = SceneEffect.Shadow(
             color = red,

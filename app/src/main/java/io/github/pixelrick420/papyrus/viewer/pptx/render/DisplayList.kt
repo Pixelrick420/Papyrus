@@ -178,6 +178,12 @@ internal sealed interface DrawOp {
     data class Shadow(val shadow: ShadowSpec?) : DrawOp
 
     data class ShapeShadow(val path: PathData, val shadow: ShapeShadowSpec) : DrawOp
+
+    data class Glow(val path: PathData, val color: Rgba, val radius: Float) : DrawOp
+
+    data class SoftEdge(val path: PathData, val paint: PaintSpec, val radius: Float) : DrawOp
+
+    data class Blur(val path: PathData, val paint: PaintSpec, val radius: Float) : DrawOp
 }
 
 internal interface DrawTarget {
@@ -200,6 +206,12 @@ internal interface DrawTarget {
     fun shadow(shadow: ShadowSpec?)
 
     fun shapeShadow(path: PathData, shadow: ShapeShadowSpec)
+
+    fun glow(path: PathData, color: Rgba, radius: Float)
+
+    fun softEdge(path: PathData, paint: PaintSpec, radius: Float)
+
+    fun blur(path: PathData, paint: PaintSpec, radius: Float)
 }
 
 internal class DisplayList(val ops: List<DrawOp>) {
@@ -217,6 +229,9 @@ internal class DisplayList(val ops: List<DrawOp>) {
                 is DrawOp.Clip -> target.clip(op.path)
                 is DrawOp.Shadow -> target.shadow(op.shadow)
                 is DrawOp.ShapeShadow -> target.shapeShadow(op.path, op.shadow)
+                is DrawOp.Glow -> target.glow(op.path, op.color, op.radius)
+                is DrawOp.SoftEdge -> target.softEdge(op.path, op.paint, op.radius)
+                is DrawOp.Blur -> target.blur(op.path, op.paint, op.radius)
             }
         }
     }

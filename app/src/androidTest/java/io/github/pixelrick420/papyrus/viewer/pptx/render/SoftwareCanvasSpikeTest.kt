@@ -84,6 +84,29 @@ class SoftwareCanvasSpikeTest {
     }
 
     @Test
+    fun a_glow_and_soft_edge_produce_alpha_ramps() {
+        val effects = DisplayList(
+            listOf(
+                DrawOp.Glow(PathData.rect(RectF(40f, 40f, 120f, 120f)), Rgba(0, 0, 255), radius = 8f),
+                DrawOp.SoftEdge(
+                    PathData.rect(RectF(40f, 40f, 120f, 120f)),
+                    PaintSpec.Solid(Rgba(255, 0, 0)),
+                    radius = 8f,
+                ),
+            ),
+        )
+
+        val bitmap = SoftwareCanvas.render(effects, WIDTH, HEIGHT)
+
+        assertEquals("soft edge centre", 255, Color.alpha(bitmap.getPixel(80, 80)))
+        val glow = Color.alpha(bitmap.getPixel(30, 80))
+        assertTrue("glow ramp alpha was $glow", glow in 1..254)
+        val edge = Color.alpha(bitmap.getPixel(40, 80))
+        assertTrue("soft edge ramp alpha was $edge", edge in 1..254)
+        assertEquals("untouched corner", 0, Color.alpha(bitmap.getPixel(400, 400)))
+    }
+
+    @Test
     fun a_640_by_480_frame_stays_within_the_software_budget() {
         val frame = effectsFrame()
         repeat(WARMUP) { SoftwareCanvas.render(frame, WIDTH, HEIGHT) }

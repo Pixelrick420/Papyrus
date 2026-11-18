@@ -11,6 +11,9 @@ internal object Effects {
                 "outerShdw" -> shadow(child, colors, inner = false, preset = false)
                 "innerShdw" -> shadow(child, colors, inner = true, preset = false)
                 "prstShdw" -> preset(child, colors)
+                "glow" -> glow(child, colors)
+                "softEdge" -> SceneEffect.SoftEdge(child.number("rad", fallback = DEFAULT_BLUR_EMU))
+                "blur" -> SceneEffect.Blur
                 else -> null
             }
         })
@@ -28,6 +31,11 @@ internal object Effects {
             blur = node.number("blurRad", fallback = blur),
         )
     }
+
+    private fun glow(node: XNode, colors: ColorModel): SceneEffect.Glow = SceneEffect.Glow(
+        color = node.children.firstNotNullOfOrNull(ColorModel::valueOf)?.let(colors::resolve) ?: Rgba.BLACK,
+        radiusEmu = node.number("rad", fallback = DEFAULT_BLUR_EMU),
+    )
 
     private fun shadow(
         node: XNode,
@@ -58,6 +66,7 @@ internal object Effects {
     private const val ROTATION_UNITS = 60_000.0
     private const val PERCENT_UNIT = 100_000.0
     private const val PT = 12_700.0
+    private const val DEFAULT_BLUR_EMU = 4 * PT
 
     private val PRESETS: Map<String, Triple<Double, Double, Double>> = listOf(
         "shdw1" to Triple(2 * PT, 45.0, 0.0),

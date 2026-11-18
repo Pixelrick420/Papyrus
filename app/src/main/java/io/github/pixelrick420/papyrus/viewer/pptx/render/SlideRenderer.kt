@@ -316,10 +316,14 @@ internal class SlideRenderer(
         rotationDegrees: Double,
         out: MutableList<DrawOp>,
     ) {
-        val shadows = format.effects?.items?.filterIsInstance<SceneEffect.Shadow>().orEmpty()
+        val effects = format.effects?.items.orEmpty()
+        val shadows = effects.filterIsInstance<SceneEffect.Shadow>()
         val rotating = shadows.filter { it.rotateWithShape && !it.inner }
         val flat = shadows.filter { !it.rotateWithShape && !it.inner }
         val inner = shadows.filter { it.inner }
+        val glows = effects.filterIsInstance<SceneEffect.Glow>()
+        val softEdges = effects.filterIsInstance<SceneEffect.SoftEdge>()
+        val blurred = effects.any { it is SceneEffect.Blur }
         if (flat.isNotEmpty()) {
             out += DrawOp.Save
             out += DrawOp.Concat(flatTransform)
@@ -335,7 +339,17 @@ internal class SlideRenderer(
         for (contour in outline.paths) {
             val path = pathOf(contour)
             for (shadow in rotating) body += DrawOp.ShapeShadow(path, shadowSpec(shadow))
-            fillOf(format.fill, contour.fill, box, rotationDegrees)?.let { body += DrawOp.FillPath(path, it) }
+            for (glow in glows) {
+                body += DrawOp.Glow(path, glow.color, (glow.radiusEmu / EMU_PER_PIXEL).toFloat())
+            }
+            fillOf(format.fill, contour.fill, box, rotationDegrees)?.let { paint ->
+                val edge = softEdges.lastOrNull()
+                when {
+                    edge != null -> body += DrawOp.SoftEdge(path, paint, (edge.radiusEmu / EMU_PER_PIXEL).toFloat())
+                    blurred -> body += DrawOp.Blur(path, paint, (DEFAULT_BLUR_EMU / EMU_PER_PIXEL).toFloat())
+                    else -> body += DrawOp.FillPath(path, paint)
+                }
+            }
             if (contour.stroke && stroke != null) body += DrawOp.StrokePath(path, stroke)
             for (shadow in inner) body += DrawOp.ShapeShadow(path, shadowSpec(shadow))
         }
@@ -456,6 +470,7 @@ internal class SlideRenderer(
         const val PERCENT_UNIT = 100_000.0
         const val ROTATION_UNIT = 60_000.0
         const val DEFAULT_LINE_EMU = 9_525.0
+        const val DEFAULT_BLUR_EMU = 50_800.0
         val ALIGN_DIRECTIONS = mapOf(
             "t" to -90.0,
             "tr" to -45.0,

@@ -249,6 +249,31 @@ internal class AndroidCanvasBackend(
         canvas.restoreToCount(saved)
     }
 
+    override fun glow(path: PathData, color: Rgba, radius: Float) {
+        val blur = radius.coerceAtLeast(MIN_RADIUS)
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            this.color = color.argb
+            style = Paint.Style.STROKE
+            strokeWidth = blur
+            maskFilter = BlurMaskFilter(blur, BlurMaskFilter.Blur.NORMAL)
+        }
+        canvas.drawPath(pathOf(path), paint)
+    }
+
+    override fun softEdge(path: PathData, paint: PaintSpec, radius: Float) =
+        blurredFill(path, paint, radius)
+
+    override fun blur(path: PathData, paint: PaintSpec, radius: Float) =
+        blurredFill(path, paint, radius)
+
+    private fun blurredFill(path: PathData, spec: PaintSpec, radius: Float) {
+        val paint = paintOf(spec).apply {
+            style = Paint.Style.FILL
+            maskFilter = BlurMaskFilter(radius.coerceAtLeast(MIN_RADIUS), BlurMaskFilter.Blur.NORMAL)
+        }
+        canvas.drawPath(pathOf(path), paint)
+    }
+
     private fun paintOf(spec: PaintSpec): Paint {
         val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
         when (spec) {

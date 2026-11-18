@@ -1,6 +1,7 @@
 package io.github.pixelrick420.papyrus.viewer.pptx.render
 
 import io.github.pixelrick420.papyrus.viewer.pptx.Affine
+import io.github.pixelrick420.papyrus.viewer.pptx.Rgba
 
 /** A [DrawTarget] that keeps every op, so a test can assert on the display list without pixels. */
 internal class RecordingBackend : DrawTarget {
@@ -60,5 +61,17 @@ internal class RecordingBackend : DrawTarget {
 
     override fun shapeShadow(path: PathData, shadow: ShapeShadowSpec) {
         recorded += DrawOp.ShapeShadow(path, shadow)
+    }
+
+    override fun glow(path: PathData, color: Rgba, radius: Float) {
+        recorded += DrawOp.Glow(path, color, radius)
+    }
+
+    override fun softEdge(path: PathData, paint: PaintSpec, radius: Float) {
+        recorded += DrawOp.SoftEdge(path, paint, radius)
+    }
+
+    override fun blur(path: PathData, paint: PaintSpec, radius: Float) {
+        recorded += DrawOp.Blur(path, paint, radius)
     }
 }
