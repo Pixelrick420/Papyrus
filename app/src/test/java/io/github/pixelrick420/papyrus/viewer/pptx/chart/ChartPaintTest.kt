@@ -375,6 +375,98 @@ class ChartPaintTest {
     }
 
     @Test
+    fun `trendlines and error bars are parsed and painted`() {
+        val refinement = """
+            <c:trendline>
+              <c:trendlineType val="linear"/><c:dispEq val="1"/><c:dispRSqr val="1"/>
+            </c:trendline>
+            <c:errBars>
+              <c:errDir val="y"/><c:errBarType val="both"/><c:errValType val="fixedVal"/><c:val val="5"/>
+            </c:errBars>
+        """.trimIndent()
+        val chart = lineChart(
+            listOf("Alpha" to listOf(10.0, 20.0, 30.0)),
+            extras = listOf(refinement),
+        )
+        val parsed = ChartParser.parse(
+            io.github.pixelrick420.papyrus.viewer.pptx.OoxmlReader(OfficeFixtures::parser)
+                .readTree(chart.byteInputStream())!!,
+            io.github.pixelrick420.papyrus.viewer.pptx.PptxLimits(),
+        )!!
+        assertEquals(TrendlineType.LINEAR, parsed.plotArea.series[0].trendlines.single().type)
+        assertEquals(ErrorBarType.FIXED_VALUE, parsed.plotArea.series[0].errorBars.single().type)
+
+        val drawing = drawing(deck(chart))
+        val trend = drawing.shapes.single { it.line?.dash == "dash" }
+        assertEquals(3, trend.points.size)
+        val stems = drawing.shapes.filter {
+            !it.closed && it.points.size == 2 && it.line?.dash == null &&
+                (it.line?.paint as? ScenePaint.Solid)?.color == Rgba(0xC0, 0x00, 0x00)
+        }
+        assertEquals(9, stems.size)
+        val labels = texts(drawing)
+        assertTrue("no equation in $labels", labels.any { it.startsWith("y = ") })
+        assertTrue("no r squared in $labels", labels.any { "R² = " in it })
+    }
+
+    @Test
+    fun `gap width and overlap change clustered bar geometry`() {
+        val wideGap = bars(drawing(deck(columnChart(
+            dir = "col",
+            grouping = "clustered",
+            series = listOf("Alpha" to listOf(10.0, 20.0), "Beta" to listOf(30.0, 10.0)),
+            gapWidth = 250,
+        ))))
+        val narrowGap = bars(drawing(deck(columnChart(
+            dir = "col",
+            grouping = "clustered",
+            series = listOf("Alpha" to listOf(10.0, 20.0), "Beta" to listOf(30.0, 10.0)),
+            gapWidth = 50,
+        ))))
+        assertTrue("a smaller gap makes wider bars", narrowGap[0].rect.width > wideGap[0].rect.width)
+
+        val overlapped = bars(drawing(deck(columnChart(
+            dir = "col",
+            grouping = "clustered",
+            series = listOf("Alpha" to listOf(10.0, 20.0), "Beta" to listOf(30.0, 10.0)),
+            overlap = 100,
+        ))))
+        assertEquals(overlapped[0].rect.x, overlapped[2].rect.x, 1e-6)
+        assertTrue("the default overlap keeps the series apart", wideGap[2].rect.x > wideGap[0].rect.x)
+    }
+
+    @Test
+    fun `up down bars honour gap width and hide`() {
+        fun stock(upDown: String): String = stockChart(upDown)
+
+        val wide = bars(drawing(deck(stock("""<c:upDownBars><c:gapWidth val="0"/></c:upDownBars>"""))))
+        val narrow = bars(drawing(deck(stock("""<c:upDownBars><c:gapWidth val="400"/></c:upDownBars>"""))))
+        assertEquals(3, wide.size)
+        assertTrue("a larger gap makes narrower bars", narrow[0].rect.width < wide[0].rect.width)
+        assertEquals(
+            0,
+            bars(drawing(deck(stock("""<c:upDownBars><c:hide val="1"/></c:upDownBars>""")))).size,
+        )
+    }
+
+    @Test
+    fun `chart style recolours charts that omit spPr`() {
+        val plain = bars(drawing(deck(columnChart(
+            dir = "col",
+            grouping = "clustered",
+            series = listOf("Alpha" to listOf(10.0, 20.0)),
+        ))))
+        val styled = bars(drawing(deck(columnChart(
+            dir = "col",
+            grouping = "clustered",
+            series = listOf("Alpha" to listOf(10.0, 20.0)),
+            style = 2,
+        ))))
+        assertEquals(Rgba(0xC0, 0x00, 0x00), (plain[0].fill as ScenePaint.Solid).color)
+        assertEquals(Rgba(0xD1, 0x47, 0x47), (styled[0].fill as ScenePaint.Solid).color)
+    }
+
+    @Test
     fun `data labels print the value beside each bar`() {
         val drawing = drawing(
             deck(
@@ -457,21 +549,28 @@ class ChartPaintTest {
         title: String? = null,
         legend: Boolean = false,
         labels: Boolean = false,
+        gapWidth: Int = 150,
+        overlap: Int? = null,
+        style: Int? = null,
     ): String {
         val plot = series.mapIndexed { index, (name, values) -> seriesXml(index, name, values, labels = labels) }.joinToString("")
         val titleXml = title?.let {
             """<c:title><c:tx><c:rich><a:bodyPr/><a:p><a:r><a:t>$it</a:t></a:r></a:p></c:rich></c:tx></c:title>"""
         }.orEmpty()
         val legendXml = if (legend) """<c:legend><c:legendPos val="r"/></c:legend>""" else ""
+        val overlapXml = overlap?.let { """<c:overlap val="$it"/>""" }.orEmpty()
+        val styleXml = style?.let { """<c:style val="$it"/>""" }.orEmpty()
         return """
             <c:chartSpace xmlns:c="$CHART_NS" xmlns:a="$A_NS" xmlns:r="$R_NS">
+              $styleXml
               <c:chart>
                 $titleXml
                 <c:plotArea>
                   <c:barChart>
                     <c:barDir val="$dir"/>
                     <c:grouping val="$grouping"/>
-                    <c:gapWidth val="150"/>
+                    <c:gapWidth val="$gapWidth"/>
+                    $overlapXml
                     $plot
                     <c:axId val="1"/>
                     <c:axId val="2"/>
@@ -516,9 +615,10 @@ class ChartPaintTest {
         series: List<Pair<String, List<Double>>>,
         markers: Boolean = true,
         labels: Boolean = false,
+        extras: List<String> = emptyList(),
     ): String {
         val plot = series.mapIndexed { index, (name, values) ->
-            seriesXml(index, name, values, marker = markers, labels = labels)
+            seriesXml(index, name, values, marker = markers, labels = labels, extra = extras.getOrNull(index).orEmpty())
         }.joinToString("")
         return """
             <c:chartSpace xmlns:c="$CHART_NS" xmlns:a="$A_NS" xmlns:r="$R_NS">
@@ -636,7 +736,7 @@ class ChartPaintTest {
         </c:chartSpace>
     """.trimIndent()
 
-    private fun stockChart(): String {
+    private fun stockChart(upDown: String = ""): String {
         fun values(tag: String, numbers: List<Double>): String {
             val points = numbers.mapIndexed { i, value -> """<c:pt idx="$i"><c:v>$value</c:v></c:pt>""" }.joinToString("")
             return """<c:$tag><c:numRef><c:numCache><c:ptCount val="${numbers.size}"/>$points</c:numCache></c:numRef></c:$tag>"""
@@ -654,6 +754,7 @@ class ChartPaintTest {
                       ${values("low", listOf(8.0, 18.0, 12.0))}
                       ${values("close", listOf(14.0, 19.0, 13.0))}
                     </c:ser>
+                    $upDown
                     <c:axId val="1"/><c:axId val="2"/>
                   </c:stockChart>
                   ${axes(false)}

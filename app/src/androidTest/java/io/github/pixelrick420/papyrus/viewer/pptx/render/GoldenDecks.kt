@@ -388,8 +388,8 @@ internal object GoldenDecks {
 
     private fun chartZoo(): ByteArray = pptx {
         val frames = listOf(
-            "columns", "bars", "line", "area", "scatter", "bubble",
-            "pie", "doughnut", "radar", "combo", "stock", "cx",
+            "columns", "bars", "line", "area", "scatter", "bubble", "pie",
+            "doughnut", "radar", "combo", "stock", "refined", "cx",
         )
         theme {
             accent1("C00000")
@@ -404,9 +404,9 @@ internal object GoldenDecks {
                     uri = CHART_URI,
                     content = """<c:chart xmlns:c="$CHART_NS" xmlns:r="$R_NS" r:id="$rel"/>""",
                     x = M + (index % 4) * 2_950_000L,
-                    y = 400_000L + (index / 4) * 2_000_000L,
+                    y = 250_000L + (index / 4) * 1_600_000L,
                     w = 2_800_000L,
-                    h = 1_600_000L,
+                    h = 1_400_000L,
                     name = name,
                 )
                 rel(rel, CHART_RELATIONSHIP, "../charts/$name.xml")
@@ -437,6 +437,7 @@ internal object GoldenDecks {
         )
         "combo" -> chartXml("Combo", comboChart())
         "stock" -> chartXml("Stock", stockChart())
+        "refined" -> refinedChart()
         else -> """<mc:AlternateContent xmlns:mc="$MC_NS" xmlns:cx="$CX_NS" xmlns:c="$CHART_NS" xmlns:a="$A_NS" xmlns:r="$R_NS">
             <mc:Choice Requires="cx"><c:chart r:id="rId21"/></mc:Choice>
             <mc:Fallback><p:pic xmlns:p="$P_NS">
@@ -519,9 +520,37 @@ internal object GoldenDecks {
                 ${values("open", listOf(10.0, 20.0, 15.0))}${values("high", listOf(15.0, 25.0, 18.0))}
                 ${values("low", listOf(8.0, 18.0, 12.0))}${values("close", listOf(14.0, 19.0, 13.0))}
               </c:ser>
+              <c:upDownBars><c:gapWidth val="100"/>
+                <c:upBars><c:spPr><a:solidFill><a:srgbClr val="00B050"/></a:solidFill></c:spPr></c:upBars>
+                <c:downBars><c:spPr><a:solidFill><a:srgbClr val="C00000"/></a:solidFill></c:spPr></c:downBars>
+              </c:upDownBars>
               <c:axId val="1"/><c:axId val="2"/>
             </c:stockChart>
             $chartAxes
+        """.trimIndent()
+    }
+
+    private fun refinedChart(): String {
+        val refinements = """
+            <c:trendline><c:trendlineType val="linear"/><c:dispEq val="1"/><c:dispRSqr val="1"/></c:trendline>
+            <c:errBars><c:errDir val="y"/><c:errBarType val="both"/><c:errValType val="fixedVal"/><c:val val="4"/></c:errBars>
+        """.trimIndent()
+        return """
+            <c:chartSpace xmlns:c="$CHART_NS" xmlns:a="$A_NS" xmlns:r="$R_NS">
+              <c:style val="2"/>
+              <c:chart>
+                <c:title><c:tx><c:rich><a:bodyPr/><a:p><a:r><a:t>Refined</a:t></a:r></a:p></c:rich></c:tx></c:title>
+                <c:plotArea>
+                  <c:barChart><c:barDir val="col"/><c:grouping val="clustered"/>
+                    <c:gapWidth val="80"/><c:overlap val="-20"/>
+                    ${series(0, "Alpha", listOf(10.0, 20.0, 30.0), refinements)}
+                    ${series(1, "Beta", listOf(20.0, 10.0, 5.0))}
+                    <c:axId val="1"/><c:axId val="2"/>
+                  </c:barChart>
+                  $chartAxes
+                </c:plotArea>
+              </c:chart>
+            </c:chartSpace>
         """.trimIndent()
     }
 

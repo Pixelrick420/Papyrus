@@ -309,7 +309,9 @@ internal object ChartParser {
     }
 
     private fun parseUpDownBars(node: XNode): ChartUpDownBars? {
-        val bars = node.child(CHART_NS, "upDownBars") ?: return null
+        val bars = node.child(CHART_NS, "upDownBars")
+            ?: node.children.firstNotNullOfOrNull { it.child(CHART_NS, "upDownBars") }
+            ?: return null
         return ChartUpDownBars(
             gapWidth = bars.child(CHART_NS, "gapWidth")?.attribute("val")?.toIntOrNull() ?: 150,
             upBars = bars.child(CHART_NS, "upBars")?.child(CHART_NS, "spPr"),

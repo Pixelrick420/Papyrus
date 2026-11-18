@@ -9,11 +9,14 @@ import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.cos
 import kotlin.math.floor
+import kotlin.math.exp
+import kotlin.math.ln
 import kotlin.math.log10
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.pow
 import kotlin.math.sin
+import kotlin.math.sqrt
 
 internal object ChartBuilder {
 
@@ -24,8 +27,9 @@ internal object ChartBuilder {
     private const val TICK_SIZE_PT = 9.0
     private const val LINE_EMU = 9_525.0
 
-    fun build(chart: PptxChart, bounds: SceneRect, style: ChartStyle, description: String?): ChartDrawing {
+    fun build(chart: PptxChart, bounds: SceneRect, baseStyle: ChartStyle, description: String?): ChartDrawing {
         if (bounds.width <= 0.0 || bounds.height <= 0.0) return ChartDrawing()
+        val style = chart.style?.let { styleFor(it, baseStyle) } ?: baseStyle
         val layout = ChartLayout.layout(chart, bounds)
         val shapes = ArrayList<ChartShape>()
         val texts = ArrayList<ChartText>()
@@ -49,6 +53,33 @@ internal object ChartBuilder {
         }
         legend(chart, layout.legend, style, shapes, texts)
         return ChartDrawing(shapes, texts)
+    }
+
+    private fun styleFor(index: Int, base: ChartStyle): ChartStyle {
+        val tone = (index - 1).coerceAtLeast(0) % 7
+        val lighten = when {
+            tone < 3 -> 0.28
+            tone > 4 -> -0.18
+            else -> 0.0
+        }
+        val alpha = if (tone == 6) 200 else 255
+        return ChartStyle(
+            palette = base.palette.map { adjust(it, lighten, alpha) },
+            text = base.text,
+            grid = base.grid,
+            axis = base.axis,
+            fillOf = base.fillOf,
+            lineOf = base.lineOf,
+        )
+    }
+
+    private fun adjust(color: Rgba, lighten: Double, alpha: Int): Rgba {
+        fun channel(value: Int): Int = if (lighten >= 0.0) {
+            value + ((255 - value) * lighten).toInt()
+        } else {
+            (value * (1.0 + lighten)).toInt().coerceIn(0, 255)
+        }
+        return Rgba(channel(color.red), channel(color.green), channel(color.blue), alpha)
     }
 
     private fun placeholder(
@@ -161,6 +192,21 @@ internal object ChartBuilder {
                 )
                 dataLabel(labelsOfSeries, ser, raw, value, labels.getOrNull(c), horizontal, bar, slot, style, texts)
             }
+            refinements(
+                ser,
+                (0 until count).map { it.toDouble() },
+                values[s].toList(),
+                { index, v ->
+                    if (horizontal) {
+                        ScenePoint(valueX(rect, range, v, valueAxis), rect.y + (index + 0.5) * slot)
+                    } else {
+                        ScenePoint(rect.x + (index + 0.5) * slot, valueY(rect, range, v, valueAxis))
+                    }
+                },
+                style,
+                shapes,
+                texts,
+            )
         }
     }
 
@@ -223,6 +269,15 @@ internal object ChartBuilder {
                 val raw = pointValues.getOrNull(index) ?: continue
                 dataLabel(dLbls, ser, raw, raw, label, false, SceneRect(point.x, point.y, 0.0, 0.0), rect.width / count, style, texts)
             }
+            refinements(
+                ser,
+                (0 until count).map { it.toDouble() },
+                values[s].toList(),
+                { index, v -> ScenePoint(categoryX(rect, index, count, categoryAxis), valueY(rect, range, v, valueAxis)) },
+                style,
+                shapes,
+                texts,
+            )
         }
     }
 
@@ -293,6 +348,15 @@ internal object ChartBuilder {
                     dataLabel(dLbls, ser, raw, raw, label, false, SceneRect(point.x, point.y, 0.0, 0.0), rect.width / count, style, texts)
                 }
             }
+            refinements(
+                ser,
+                (0 until count).map { it.toDouble() },
+                values[s].toList(),
+                { index, v -> ScenePoint(categoryX(rect, index, count, categoryAxis), valueY(rect, range, v, valueAxis)) },
+                style,
+                shapes,
+                texts,
+            )
         }
     }
 
@@ -330,6 +394,18 @@ internal object ChartBuilder {
                 shapes += ChartShape(points, fill = null, line = defaultLine(seriesColor(ser, -1, false, style)), closed = false)
             }
             for (point in points) shapes += marker(point, seriesPaint(ser, -1, false, style))
+            refinements(
+                ser,
+                xValues[s].filterNotNull(),
+                yValues[s].toList(),
+                { index, v ->
+                    val x = xValues[s].filterNotNull().getOrNull(index) ?: 0.0
+                    ScenePoint(valueX(rect, rangeX, x, xAxis), valueY(rect, rangeY, v, yAxis))
+                },
+                style,
+                shapes,
+                texts,
+            )
         }
     }
 
@@ -388,7 +464,7 @@ internal object ChartBuilder {
         for (ser in series.filter { it.type == ChartType.STOCK }) {
             val range = if (ser.axisGroup == AxisGroup.SECONDARY) secondaryRange ?: primaryRange else primaryRange
             val axis = if (ser.axisGroup == AxisGroup.SECONDARY) secondaryAxis ?: value else value
-            stockSeries(ser, category, rect, range, axis, count, style, shapes)
+            stockSeries(ser, chart.upDownBars, category, rect, range, axis, count, style, shapes)
         }
         for (ser in series.filter {
             it.type == ChartType.LINE || it.type == ChartType.AREA || it.type == ChartType.RADAR
@@ -416,11 +492,21 @@ internal object ChartBuilder {
             if (ser.marker) {
                 for (point in points) shapes += marker(point, seriesPaint(ser, -1, false, style))
             }
+            refinements(
+                ser,
+                (0 until count).map { it.toDouble() },
+                values.toList(),
+                { index, v -> ScenePoint(categoryX(rect, index, count, category), valueY(rect, range, v, axis)) },
+                style,
+                shapes,
+                texts,
+            )
         }
     }
 
     private fun stockSeries(
         series: ChartSeries,
+        upDownBars: ChartUpDownBars?,
         category: ChartAxis?,
         rect: SceneRect,
         range: ValueRange,
@@ -452,15 +538,20 @@ internal object ChartBuilder {
                     closed = false,
                 )
             }
-            if (open != null && close != null) {
-                val color = if (close >= open) Rgba(0x00, 0xB0, 0x50) else Rgba(0xC0, 0x00, 0x00)
+            if (open != null && close != null && upDownBars?.hide != true) {
+                val up = close >= open
+                val color = if (up) Rgba(0x00, 0xB0, 0x50) else Rgba(0xC0, 0x00, 0x00)
+                val explicit = if (up) upDownBars?.upBars else upDownBars?.downBars
+                val paint = explicit?.let { style.fillOf(it) } ?: ScenePaint.Solid(color)
+                val gap = ((upDownBars?.gapWidth ?: 150).coerceIn(0, 500)) / 100.0
+                val width = (rect.width / count / (1.0 + gap)).coerceAtLeast(LINE_EMU)
                 val bar = SceneRect(
-                    x - 3 * EMU_PER_POINT,
+                    x - width / 2.0,
                     min(valueY(rect, range, open, axis), valueY(rect, range, close, axis)),
-                    6 * EMU_PER_POINT,
+                    width,
                     abs(valueY(rect, range, close, axis) - valueY(rect, range, open, axis)).coerceAtLeast(LINE_EMU),
                 )
-                shapes += ChartShape(rectanglePoints(bar), ScenePaint.Solid(color), null)
+                shapes += ChartShape(rectanglePoints(bar), paint, null)
             }
         }
     }
@@ -518,6 +609,18 @@ internal object ChartBuilder {
                 val center = ScenePoint(valueX(rect, rangeX, x, xAxis), valueY(rect, rangeY, y, yAxis))
                 shapes += marker(center, seriesPaint(ser, i, true, style), radius)
             }
+            refinements(
+                ser,
+                xs[s].filterNotNull(),
+                ys[s].toList(),
+                { index, v ->
+                    val x = xs[s].filterNotNull().getOrNull(index) ?: 0.0
+                    ScenePoint(valueX(rect, rangeX, x, xAxis), valueY(rect, rangeY, v, yAxis))
+                },
+                style,
+                shapes,
+                texts,
+            )
         }
     }
 
@@ -587,6 +690,175 @@ internal object ChartBuilder {
             }
         }
     }
+
+    private fun refinements(
+        series: ChartSeries,
+        xs: List<Double>,
+        values: List<Double?>,
+        pointAt: (Int, Double) -> ScenePoint,
+        style: ChartStyle,
+        shapes: MutableList<ChartShape>,
+        texts: MutableList<ChartText>,
+    ) {
+        val pairs = xs.zip(values).mapNotNull { (x, y) -> y?.let { x to it } }
+        for (trend in series.trendlines) {
+            val fit = fit(trend, pairs) ?: continue
+            val points = pairs.mapIndexed { index, (x, _) -> pointAt(index, fit(x)) }
+            if (points.size < 2) continue
+            val color = seriesColor(series, -1, false, style)
+            shapes += ChartShape(
+                points,
+                fill = null,
+                line = SceneLine(2 * EMU_PER_POINT, ScenePaint.Solid(color), "dash"),
+                closed = false,
+            )
+            val last = points.last()
+            val label = buildString {
+                if (trend.displayEquation) append(trend.equation(pairs))
+                if (trend.displayRSqr) {
+                    if (isNotEmpty()) append('\n')
+                    append("R² = ${trend.rSquared(pairs)}")
+                }
+            }
+            if (label.isNotBlank()) {
+                texts += ChartText(
+                    ChartTextFactory.body(label, LABEL_SIZE_PT, style.text),
+                    SceneRect(last.x - 60 * EMU_PER_POINT, last.y - 30 * EMU_PER_POINT, 120 * EMU_PER_POINT, 26 * EMU_PER_POINT),
+                )
+            }
+        }
+        for (bars in series.errorBars) {
+            for ((index, value) in values.withIndex()) {
+                val y = value ?: continue
+                val magnitudes = values.filterNotNull()
+                val spread = when (bars.type) {
+                    ErrorBarType.FIXED_VALUE -> bars.value ?: 0.0
+                    ErrorBarType.PERCENT -> abs(y) * (bars.value ?: 0.0) / 100.0
+                    ErrorBarType.STANDARD_DEVIATION -> deviation(magnitudes) * (bars.value ?: 1.0)
+                    ErrorBarType.STANDARD_ERROR -> deviation(magnitudes) / sqrt(magnitudes.size.toDouble().coerceAtLeast(1.0))
+                    ErrorBarType.CUSTOM -> 0.0
+                }
+                val upper = if (bars.type == ErrorBarType.CUSTOM) {
+                    bars.plus?.points?.firstOrNull { it.index == index }?.number
+                } else if (bars.showPositive) spread else 0.0
+                val lower = if (bars.type == ErrorBarType.CUSTOM) {
+                    bars.minus?.points?.firstOrNull { it.index == index }?.number
+                } else if (bars.showNegative) spread else 0.0
+                val top = pointAt(index, y + (upper ?: 0.0))
+                val bottom = pointAt(index, y - (lower ?: 0.0))
+                val color = seriesColor(series, -1, false, style)
+                shapes += ChartShape(
+                    listOf(top, bottom),
+                    fill = null,
+                    line = SceneLine(EMU_PER_POINT, ScenePaint.Solid(color), null),
+                    closed = false,
+                )
+                if (!bars.noEndCaps) {
+                    val cap = 3 * EMU_PER_POINT
+                    shapes += line(top.x - cap, top.y, top.x + cap, top.y, ScenePaint.Solid(color))
+                    shapes += line(bottom.x - cap, bottom.y, bottom.x + cap, bottom.y, ScenePaint.Solid(color))
+                }
+            }
+        }
+    }
+
+    private fun deviation(values: List<Double>): Double {
+        if (values.size < 2) return 0.0
+        val mean = values.average()
+        return sqrt(values.sumOf { (it - mean) * (it - mean) } / (values.size - 1))
+    }
+
+    private fun fit(trend: ChartTrendline, points: List<Pair<Double, Double>>): ((Double) -> Double)? {
+        if (points.size < 2) return null
+        when (trend.type) {
+            TrendlineType.LINEAR -> {
+                val (a, b) = linear(points.map { it.first to it.second }) ?: return null
+                return { x: Double -> a + b * x }
+            }
+            TrendlineType.LOGARITHMIC -> {
+                val logs = points.filter { it.first > 0.0 }.map { ln(it.first) to it.second }
+                val (a, b) = linear(logs) ?: return null
+                return { x: Double -> a + b * ln(x.coerceAtLeast(1e-9)) }
+            }
+            TrendlineType.EXPONENTIAL -> {
+                val logs = points.filter { it.second > 0.0 }.map { it.first to ln(it.second) }
+                val (a, b) = linear(logs) ?: return null
+                return { x: Double -> exp(a + b * x) }
+            }
+            TrendlineType.POWER -> {
+                val logs = points.filter { it.first > 0.0 && it.second > 0.0 }
+                    .map { ln(it.first) to ln(it.second) }
+                val (a, b) = linear(logs) ?: return null
+                return { x: Double -> exp(a + b * ln(x.coerceAtLeast(1e-9))) }
+            }
+            TrendlineType.POLYNOMIAL -> return polynomial(points, trend.order.coerceIn(1, 6))
+            TrendlineType.MOVING_AVERAGE -> {
+                val period: Int = minOf(maxOf(trend.period, 1), points.size)
+                return { x: Double ->
+                    val index = points.indexOfFirst { it.first == x }.coerceAtLeast(0)
+                    points.subList((index - period + 1).coerceAtLeast(0), index + 1).map { it.second }.average()
+                }
+            }
+        }
+    }
+
+    private fun linear(points: List<Pair<Double, Double>>): Pair<Double, Double>? {
+        if (points.size < 2) return null
+        val mx = points.map { it.first }.average()
+        val my = points.map { it.second }.average()
+        val denominator = points.sumOf { (it.first - mx) * (it.first - mx) }
+        if (denominator < 1e-12) return null
+        val b = points.sumOf { (it.first - mx) * (it.second - my) } / denominator
+        return my - b * mx to b
+    }
+
+    private fun polynomial(points: List<Pair<Double, Double>>, degree: Int): ((Double) -> Double)? {
+        val size = degree + 1
+        val matrix = Array(size) { DoubleArray(size + 1) }
+        for (row in 0 until size) {
+            for (column in 0 until size) {
+                matrix[row][column] = points.sumOf { p -> Math.pow(p.first, (row + column).toDouble()) }
+            }
+            matrix[row][size] = points.sumOf { p -> p.second * Math.pow(p.first, row.toDouble()) }
+        }
+        for (column in 0 until size) {
+            val pivot = (column until size).maxByOrNull { abs(matrix[it][column]) } ?: return null
+            if (abs(matrix[pivot][column]) < 1e-12) return null
+            val swap = matrix[column]
+            matrix[column] = matrix[pivot]
+            matrix[pivot] = swap
+            val divisor = matrix[column][column]
+            for (i in column..size) matrix[column][i] /= divisor
+            for (row in 0 until size) {
+                if (row == column) continue
+                val factor = matrix[row][column]
+                for (i in column..size) matrix[row][i] -= factor * matrix[column][i]
+            }
+        }
+        val coefficients = DoubleArray(size) { matrix[it][size] }
+        return { x -> (0 until size).sumOf { coefficients[it] * Math.pow(x, it.toDouble()) } }
+    }
+
+    private fun ChartTrendline.equation(points: List<Pair<Double, Double>>): String {
+        val linear = linear(points.map { it.first to it.second })
+        val slope = linear?.second ?: 0.0
+        val intercept = linear?.first ?: points.first().second
+        return "y = ${round(slope)}x + ${round(intercept)}"
+    }
+
+    private fun ChartTrendline.rSquared(points: List<Pair<Double, Double>>): String {
+        val linear = linear(points.map { it.first to it.second }) ?: return "0.00"
+        val mean = points.map { it.second }.average()
+        val total = points.sumOf { (it.second - mean) * (it.second - mean) }
+        if (total < 1e-12) return "1.00"
+        val residual = points.sumOf { p ->
+            val predicted = linear.first + linear.second * p.first
+            (p.second - predicted) * (p.second - predicted)
+        }
+        return round((1.0 - residual / total).coerceIn(0.0, 1.0))
+    }
+
+    private fun round(value: Double): String = String.format("%.2f", value)
 
     private fun pie(
         chart: PptxChart,
