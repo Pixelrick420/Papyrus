@@ -17,6 +17,7 @@ import io.github.pixelrick420.papyrus.viewer.pptx.text.FontCatalog
 import io.github.pixelrick420.papyrus.viewer.pptx.text.PaintTextMeasurer
 import io.github.pixelrick420.papyrus.viewer.pptx.text.TextLayoutEngine
 import io.github.pixelrick420.papyrus.viewer.pptx.text.TextStyleResolver
+import io.github.pixelrick420.papyrus.viewer.pptx.text.TextWarpRenderer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -210,6 +211,7 @@ internal class SlidePageSource private constructor(
             open: () -> InputStream,
             mediaDir: File,
             presets: PresetGeometry,
+            warps: PresetGeometry? = null,
             limits: PptxLimits = PptxLimits(),
             newParserFactory: () -> XmlPullParser = { Xml.newPullParser() },
             assets: android.content.res.AssetManager? = null,
@@ -221,7 +223,15 @@ internal class SlidePageSource private constructor(
             val scenes = StyleResolver(newParserFactory, limits).resolveAll(pkg, presentation)
             val resolver = TextStyleResolver(limits)
             val fonts = assets?.let(::FontCatalog)
-            val engine = fonts?.let { TextLayoutEngine(PaintTextMeasurer(it)) }
+            val warpSource = warps ?: assets?.let {
+                PresetGeometry(open = { it.open("ooxml/presetTextWarpDefinitions.xml") })
+            }
+            val engine = fonts?.let { fontCatalog ->
+                TextLayoutEngine(
+                    measurer = PaintTextMeasurer(fontCatalog),
+                    warps = warpSource?.let(::TextWarpRenderer),
+                )
+            }
             val textIndex = if (engine != null) {
                 SlideTextIndex.fromDeck(pkg, presentation, scenes.slides, resolver, engine)
             } else {

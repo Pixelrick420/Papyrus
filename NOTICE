@@ -103,6 +103,14 @@ govern the component itself.
     reusing the Reserved Font Names. The license is kept beside the files in LICENSE.
     tools/pptx/subset-fonts.py reproduces the subsetting.
 
+15. presetTextWarpDefinitions.xml (app/src/main/assets/ooxml/)
+    License: Ecma International Copyright License and Disclaimer (ECMA-376)
+    Bundled component: yes
+    The ECMA-376 preset WordArt warp definitions used to bend PowerPoint text. Vendored unmodified
+    from Apache OpenOffice (Apache License, Version 2.0), revision
+    b3b486c6f12b7baba6a5d71c7012f6454f487e5a.
+    The Ecma notice is kept beside the file in ECMA-NOTICE.txt.
+
 ----------------------------------------------------------------------
 Licensing rules for the PPTX feature
 ----------------------------------------------------------------------

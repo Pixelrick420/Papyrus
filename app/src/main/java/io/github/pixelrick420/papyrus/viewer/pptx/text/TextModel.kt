@@ -36,6 +36,9 @@ internal enum class TextAnchor(val value: String) {
 
 internal enum class TextWrap { SQUARE, NONE }
 
+/** A `prstTxWarp` preset and its explicit adjust formulas. */
+internal data class TextWarp(val preset: String, val adjusts: Map<String, String> = emptyMap())
+
 internal enum class TextVertical(val value: String) {
     HORZ("horz"),
     VERT("vert"),
@@ -75,6 +78,7 @@ internal class TextBodyProperties(
     val rightToLeftColumns: Boolean = false,
     val columnCount: Int = 1,
     val columnSpacingEmu: Double? = null,
+    val warp: TextWarp? = null,
     val autofit: TextAutofit = TextAutofit.None,
     val upright: Boolean = false,
     val compatibleLineSpacing: Boolean = false,

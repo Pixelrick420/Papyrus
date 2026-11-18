@@ -56,10 +56,25 @@ internal class TextStyleResolver(private val limits: PptxLimits = PptxLimits()) 
             rightToLeftColumns = isSwitch(attribute("rtlCol")),
             columnCount = attribute("numCol")?.toIntOrNull()?.coerceAtLeast(1) ?: 1,
             columnSpacingEmu = attribute("spcCol")?.toDoubleOrNull(),
+            warp = warpOf(sources),
             autofit = autofitOf(sources),
             upright = isSwitch(attribute("upright")),
             compatibleLineSpacing = isSwitch(attribute("compatLnSpc")),
         )
+    }
+
+    private fun warpOf(sources: List<XNode>): TextWarp? {
+        val node = sources.firstNotNullOfOrNull { it.child(OoxmlNamespace.A, "prstTxWarp") } ?: return null
+        val preset = node.attribute("prst")?.takeIf { it.isNotBlank() } ?: return null
+        val adjusts = node.child(OoxmlNamespace.A, "avLst")?.childrenOf(OoxmlNamespace.A, "gd")
+            ?.mapNotNull { guide ->
+                val name = guide.attribute("name")
+                val formula = guide.attribute("fmla")
+                if (name.isNullOrBlank() || formula.isNullOrBlank()) null else name to formula
+            }
+            ?.toMap()
+            ?: emptyMap()
+        return TextWarp(preset, adjusts)
     }
 
     private fun autofitOf(sources: List<XNode>): TextAutofit {

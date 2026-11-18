@@ -14,6 +14,7 @@ internal class TextLayoutEngine(
     private val breaker: LineBreaker = LineBreaker(),
     private val lineMetrics: LineMetricsModel = LineMetricsModel.DEFAULT,
     private val bullets: BulletResolver = BulletResolver(),
+    private val warps: TextWarpRenderer? = null,
 ) {
 
     private val filler = LineFiller(measurer)
@@ -81,8 +82,9 @@ internal class TextLayoutEngine(
         } else {
             columnLines
         }
+        val warped = warps?.warp(framed, properties, frameWidthEmu, frameHeightEmu ?: frameWidthEmu) ?: framed
         return TextFrameLayout(
-            lines = framed,
+            lines = warped,
             widthPt = frameWidthEmu / EMU_PER_POINT,
             heightPt = if (vertical && framed.isNotEmpty()) {
                 framed.maxOf { it.leftPt + it.widthPt } - framed.minOf { it.leftPt }

@@ -435,7 +435,9 @@ class TextStyleResolverTest {
             body(
                 """<a:bodyPr lIns="1" tIns="2" rIns="3" bIns="4" anchor="dist" anchorCtr="1" wrap="none" """ +
                     """vert="vert270" rot="5400000" rtlCol="1" numCol="2" spcCol="100000" upright="1" """ +
-                    """compatLnSpc="1"><a:normAutofit fontScale="62500" lnSpcReduction="20000"/></a:bodyPr>""" +
+                    """compatLnSpc="1"><a:prstTxWarp prst="textArchUp"><a:avLst>""" +
+                    """<a:gd name="adj" fmla="val 1000"/></a:avLst></a:prstTxWarp>""" +
+                    """<a:normAutofit fontScale="62500" lnSpcReduction="20000"/></a:bodyPr>""" +
                     """<a:p/>""",
             ),
         ).properties
@@ -449,6 +451,7 @@ class TextStyleResolverTest {
         assertTrue(textProperties.rightToLeftColumns)
         assertEquals(2, textProperties.columnCount)
         assertEquals(100000.0, textProperties.columnSpacingEmu!!, 0.0)
+        assertEquals(TextWarp("textArchUp", mapOf("adj" to "val 1000")), textProperties.warp)
         assertTrue(textProperties.upright)
         assertTrue(textProperties.compatibleLineSpacing)
         val autofit = textProperties.autofit as TextAutofit.Normal
