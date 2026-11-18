@@ -41,7 +41,10 @@ internal object ChartBuilder {
             ChartType.LINE -> lines(chart, layout.plotArea, style, shapes, texts)
             ChartType.AREA -> areas(chart, layout.plotArea, style, shapes, texts)
             ChartType.SCATTER -> scatter(chart, layout.plotArea, style, shapes, texts)
+            ChartType.BUBBLE -> bubble(chart, layout.plotArea, style, shapes, texts)
+            ChartType.RADAR -> radar(chart, layout.plotArea, style, shapes, texts)
             ChartType.PIE, ChartType.DOUGHNUT -> pie(chart, layout.plotArea, style, shapes, texts)
+            ChartType.COMBO, ChartType.STOCK -> combined(chart, layout.plotArea, style, shapes, texts)
             ChartType.OTHER -> Unit
         }
         legend(chart, layout.legend, style, shapes, texts)
@@ -330,6 +333,205 @@ internal object ChartBuilder {
         }
     }
 
+    private fun combined(
+        chart: PptxChart,
+        rect: SceneRect,
+        style: ChartStyle,
+        shapes: MutableList<ChartShape>,
+        texts: MutableList<ChartText>,
+    ) {
+        val series = chart.plotArea.series
+        if (series.isEmpty()) return
+        val count = categoryCount(series)
+        if (count <= 0) return
+        val category = categoryAxis(chart)
+        val value = valueAxis(chart)
+        val secondaryAxis = chart.plotArea.axes.firstOrNull {
+            it.kind == AxisKind.VALUE && it.group == AxisGroup.SECONDARY
+        }
+        val primarySeries = series.filter { it.axisGroup == AxisGroup.PRIMARY }
+        val secondarySeries = series.filter { it.axisGroup == AxisGroup.SECONDARY }
+        val primaryRange = valueRange(primarySeries.flatMap { cacheArray(it.values, count).filterNotNull() }, value)
+        val secondaryRange = secondarySeries.takeIf { it.isNotEmpty() }?.let {
+            valueRange(it.flatMap { cacheArray(it.values, count).filterNotNull() }, secondaryAxis)
+        }
+        axes(chart, rect, primaryRange, horizontal = false, style, shapes)
+        categoryTicks(category, categoryLabels(series, count), rect, count, false, style, texts)
+        valueTicks(value, rect, primaryRange, horizontal = false, style, texts)
+        if (secondaryRange != null && secondaryAxis != null) {
+            secondaryTicks(secondaryAxis, rect, secondaryRange, style, texts)
+        }
+        val barSeries = series.filter { it.type == ChartType.BAR || it.type == ChartType.COLUMN }
+        val slot = rect.width / count
+        val gap = ((chart.gapWidth ?: 150).coerceIn(0, 500)) / 100.0
+        val barWidth = slot / (1.0 + gap) / barSeries.size.coerceAtLeast(1)
+        for ((s, ser) in barSeries.withIndex()) {
+            val range = if (ser.axisGroup == AxisGroup.SECONDARY) secondaryRange ?: primaryRange else primaryRange
+            val axis = if (ser.axisGroup == AxisGroup.SECONDARY) secondaryAxis ?: value else value
+            val values = cacheArray(ser.values, count)
+            for (c in 0 until count) {
+                val v = values[c] ?: continue
+                val x = rect.x + c * slot + (slot - barWidth * barSeries.size) / 2.0 + s * barWidth
+                val y1 = valueY(rect, range, 0.0, axis)
+                val y2 = valueY(rect, range, v, axis)
+                val bar = SceneRect(x, min(y1, y2), barWidth, abs(y2 - y1))
+                if (bar.height <= 0.0) continue
+                shapes += ChartShape(rectanglePoints(bar), seriesPaint(ser, c, false, style), seriesLine(ser, c, style))
+            }
+        }
+        for (ser in series.filter {
+            it.type == ChartType.LINE || it.type == ChartType.AREA ||
+                it.type == ChartType.STOCK || it.type == ChartType.RADAR
+        }) {
+            val range = if (ser.axisGroup == AxisGroup.SECONDARY) secondaryRange ?: primaryRange else primaryRange
+            val axis = if (ser.axisGroup == AxisGroup.SECONDARY) secondaryAxis ?: value else value
+            val values = cacheArray(ser.values, count)
+            val points = ArrayList<ScenePoint>()
+            for (c in 0 until count) {
+                val v = values[c] ?: continue
+                points += ScenePoint(categoryX(rect, c, count, category), valueY(rect, range, v, axis))
+            }
+            if (points.isEmpty()) continue
+            val color = seriesColor(ser, -1, false, style)
+            val line = seriesLine(ser, -1, style) ?: defaultLine(color)
+            if (points.size > 1) shapes += ChartShape(points, fill = null, line = line, closed = false)
+            if (ser.type == ChartType.AREA) {
+                val baseline = valueY(rect, range, 0.0, axis)
+                shapes += ChartShape(
+                    points + ScenePoint(points.last().x, baseline) + ScenePoint(points.first().x, baseline),
+                    explicitFill(ser, -1, style) ?: ScenePaint.Solid(Rgba(color.red, color.green, color.blue, 120)),
+                    line,
+                )
+            }
+            if (ser.marker) {
+                for (point in points) shapes += marker(point, seriesPaint(ser, -1, false, style))
+            }
+        }
+    }
+
+    private fun secondaryTicks(
+        axis: ChartAxis?,
+        rect: SceneRect,
+        range: ValueRange,
+        style: ChartStyle,
+        texts: MutableList<ChartText>,
+    ) {
+        if (axis?.tickLabelPosition == TickLabelPosition.NONE || axis?.delete == true) return
+        for (tick in range.ticks()) {
+            val label = ChartNumberFormats.format(tick, axis?.numberFormat)
+            if (label.isEmpty()) continue
+            val y = valueY(rect, range, tick, axis)
+            texts += ChartText(
+                ChartTextFactory.body(label, TICK_SIZE_PT, style.text, align = "l"),
+                SceneRect(rect.right + 2 * EMU_PER_POINT, y - 7 * EMU_PER_POINT, 58 * EMU_PER_POINT, 14 * EMU_PER_POINT),
+            )
+        }
+    }
+
+    private fun bubble(
+        chart: PptxChart,
+        rect: SceneRect,
+        style: ChartStyle,
+        shapes: MutableList<ChartShape>,
+        texts: MutableList<ChartText>,
+    ) {
+        val series = chart.plotArea.series
+        val valueAxes = chart.plotArea.axes.filter { it.kind == AxisKind.VALUE }
+        val xAxis = valueAxes.firstOrNull { it.position == "b" } ?: valueAxes.getOrNull(0)
+        val yAxis = valueAxes.firstOrNull { it.position == "l" } ?: valueAxes.getOrNull(1)
+        val xs = series.map { cacheArray(it.xValues ?: it.categories, Int.MAX_VALUE) }
+        val ys = series.map { cacheArray(it.yValues ?: it.values, Int.MAX_VALUE) }
+        val sizes = series.map { cacheArray(it.bubbleSizes, Int.MAX_VALUE) }
+        val allSizes = sizes.flatMap { it.filterNotNull() }
+        val minSize = allSizes.minOrNull() ?: 0.0
+        val maxSize = allSizes.maxOrNull() ?: 1.0
+        val rangeX = valueRange(xs.flatMap { it.filterNotNull() }, xAxis)
+        val rangeY = valueRange(ys.flatMap { it.filterNotNull() }, yAxis)
+        axes(chart, rect, rangeY, horizontal = false, style, shapes)
+        valueTicks(yAxis, rect, rangeY, horizontal = false, style, texts)
+        scatterTicks(xAxis, rect, rangeX, style, texts)
+        for ((s, ser) in series.withIndex()) {
+            val count = minOf(xs[s].size, ys[s].size)
+            for (i in 0 until count) {
+                val x = xs[s][i] ?: continue
+                val y = ys[s][i] ?: continue
+                val fraction = sizes[s].getOrNull(i)?.let { size ->
+                    if (maxSize - minSize < 1e-9) 0.6 else 0.3 + 0.7 * (size - minSize) / (maxSize - minSize)
+                } ?: 0.3
+                val radius = fraction * min(rect.width, rect.height) / 14.0
+                val center = ScenePoint(valueX(rect, rangeX, x, xAxis), valueY(rect, rangeY, y, yAxis))
+                shapes += marker(center, seriesPaint(ser, i, true, style), radius)
+            }
+        }
+    }
+
+    private fun radar(
+        chart: PptxChart,
+        rect: SceneRect,
+        style: ChartStyle,
+        shapes: MutableList<ChartShape>,
+        texts: MutableList<ChartText>,
+    ) {
+        val series = chart.plotArea.series
+        val count = categoryCount(series)
+        if (count < 3) return
+        val values = series.map { cacheArray(it.values, count) }
+        val peak = values.flatMap { it.filterNotNull().map(::abs) }.maxOrNull()?.takeIf { it > 0.0 } ?: 1.0
+        val radius = min(rect.width, rect.height) / 2.0 * 0.82
+        if (radius <= 0.0) return
+        val center = ScenePoint(rect.x + rect.width / 2.0, rect.y + rect.height / 2.0)
+        for (ring in 1..4) {
+            val r = radius * ring / 4.0
+            shapes += ChartShape(
+                spokePoints(center, r, count),
+                fill = null,
+                line = SceneLine(LINE_EMU, ScenePaint.Solid(style.grid), null),
+            )
+        }
+        for (i in 0 until count) {
+            val angle = spokeAngle(i, count)
+            shapes += line(
+                center.x,
+                center.y,
+                center.x + sin(angle) * radius,
+                center.y - cos(angle) * radius,
+                ScenePaint.Solid(style.axis),
+            )
+        }
+        val labels = categoryLabels(series, count)
+        for (i in 0 until count) {
+            val angle = spokeAngle(i, count)
+            val frame = SceneRect(
+                center.x + sin(angle) * radius * 1.06 - 20 * EMU_PER_POINT,
+                center.y - cos(angle) * radius * 1.06 - 7 * EMU_PER_POINT,
+                40 * EMU_PER_POINT,
+                14 * EMU_PER_POINT,
+            )
+            texts += ChartText(ChartTextFactory.body(labels[i], TICK_SIZE_PT, style.text, align = "ctr"), frame)
+        }
+        for ((s, ser) in series.withIndex()) {
+            val points = ArrayList<ScenePoint>()
+            for (i in 0 until count) {
+                val value = values[s][i] ?: continue
+                val r = radius * (abs(value) / peak).coerceIn(0.0, 1.0)
+                val angle = spokeAngle(i, count)
+                points += ScenePoint(center.x + sin(angle) * r, center.y - cos(angle) * r)
+            }
+            if (points.isEmpty()) continue
+            val color = seriesColor(ser, -1, false, style)
+            val line = seriesLine(ser, -1, style) ?: defaultLine(color)
+            val fill = if (chart.radarStyle == RadarStyle.FILLED) {
+                explicitFill(ser, -1, style) ?: ScenePaint.Solid(Rgba(color.red, color.green, color.blue, 120))
+            } else {
+                null
+            }
+            shapes += ChartShape(points, fill, line)
+            if (chart.radarStyle == RadarStyle.MARKER) {
+                for (point in points) shapes += marker(point, seriesPaint(ser, -1, false, style))
+            }
+        }
+    }
+
     private fun pie(
         chart: PptxChart,
         rect: SceneRect,
@@ -541,7 +743,7 @@ internal object ChartBuilder {
                 }
             }
             else -> chart.plotArea.series.map { series ->
-                val line = if (chart.type == ChartType.LINE || chart.type == ChartType.SCATTER) {
+                val line = if (chart.type == ChartType.LINE || chart.type == ChartType.SCATTER || chart.type == ChartType.RADAR) {
                     seriesLine(series, -1, style) ?: defaultLine(seriesColor(series, -1, false, style))
                 } else {
                     null
@@ -636,8 +838,10 @@ internal object ChartBuilder {
 
     private fun defaultLine(color: Rgba): SceneLine = SceneLine(2 * EMU_PER_POINT, ScenePaint.Solid(color), null)
 
-    private fun marker(center: ScenePoint, fill: ScenePaint?): ChartShape {
-        val radius = 4 * EMU_PER_POINT
+    private fun marker(center: ScenePoint, fill: ScenePaint?): ChartShape =
+        marker(center, fill, 4 * EMU_PER_POINT)
+
+    private fun marker(center: ScenePoint, fill: ScenePaint?, radius: Double): ChartShape {
         val points = ArrayList<ScenePoint>(12)
         for (i in 0 until 12) {
             val angle = Math.toRadians(i * 30.0)
@@ -645,6 +849,14 @@ internal object ChartBuilder {
         }
         return ChartShape(points, fill ?: ScenePaint.Solid(Rgba.BLACK), SceneLine(EMU_PER_POINT, ScenePaint.Solid(Rgba.BLACK), null))
     }
+
+    private fun spokeAngle(index: Int, count: Int): Double = 2.0 * Math.PI * index / count
+
+    private fun spokePoints(center: ScenePoint, radius: Double, count: Int): List<ScenePoint> =
+        (0 until count).map { i ->
+            val angle = spokeAngle(i, count)
+            ScenePoint(center.x + sin(angle) * radius, center.y - cos(angle) * radius)
+        }
 
     private fun wedge(center: ScenePoint, outer: Double, inner: Double, start: Double, end: Double): List<ScenePoint> {
         val sweep = end - start

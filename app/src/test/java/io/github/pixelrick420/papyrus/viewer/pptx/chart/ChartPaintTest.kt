@@ -300,6 +300,47 @@ class ChartPaintTest {
     }
 
     @Test
+    fun `radar charts draw a web and one polygon per series`() {
+        val drawing = drawing(
+            deck(
+                radarChart(
+                    listOf(
+                        "Alpha" to listOf(10.0, 20.0, 30.0, 15.0),
+                        "Beta" to listOf(20.0, 5.0, 10.0, 25.0),
+                    ),
+                    style = "filled",
+                ),
+            ),
+        )
+
+        val rings = drawing.shapes.filter { it.closed && it.fill == null && it.points.size == 4 }
+        assertEquals(4, rings.size)
+        val polygons = drawing.shapes.filter { it.closed && it.points.size == 4 && it.fill != null }
+        assertEquals(2, polygons.size)
+        assertEquals(Rgba(0xC0, 0x00, 0x00, 120), (polygons[0].fill as ScenePaint.Solid).color)
+        assertTrue("categories around the web", listOf("A", "B", "C", "D").all { it in texts(drawing) })
+    }
+
+    @Test
+    fun `bubble sizes scale the markers on both value axes`() {
+        val drawing = drawing(
+            deck(
+                bubbleChart(
+                    listOf(Quad("Alpha", listOf(0.0, 10.0, 20.0), listOf(5.0, 15.0, 10.0), listOf(5.0, 20.0, 10.0))),
+                ),
+            ),
+        )
+
+        val markers = drawing.shapes.filter { it.points.size == 12 }
+        assertEquals(3, markers.size)
+        val widthOf = { index: Int ->
+            markers[index].points.maxOf { it.x } - markers[index].points.minOf { it.x }
+        }
+        assertTrue("larger bubble is wider", widthOf(1) > widthOf(0))
+        assertTrue("smaller bubble is narrower", widthOf(2) < widthOf(1))
+    }
+
+    @Test
     fun `data labels print the value beside each bar`() {
         val drawing = drawing(
             deck(
@@ -537,6 +578,66 @@ class ChartPaintTest {
             </c:ser>
         """.trimIndent()
     }
+
+    private fun radarChart(
+        series: List<Pair<String, List<Double>>>,
+        style: String = "marker",
+    ): String {
+        val plot = series.mapIndexed { index, (name, values) -> seriesXml(index, name, values) }.joinToString("")
+        return """
+            <c:chartSpace xmlns:c="$CHART_NS" xmlns:a="$A_NS" xmlns:r="$R_NS">
+              <c:chart>
+                <c:plotArea>
+                  <c:radarChart>
+                    <c:radarStyle val="$style"/>
+                    $plot
+                    <c:axId val="1"/>
+                    <c:axId val="2"/>
+                  </c:radarChart>
+                  ${axes(false)}
+                </c:plotArea>
+              </c:chart>
+            </c:chartSpace>
+        """.trimIndent()
+    }
+
+    private fun bubbleChart(
+        series: List<Quad>,
+    ): String {
+        val plot = series.mapIndexed { index, (name, xs, ys, sizes) ->
+            """
+            <c:ser>
+              <c:idx val="$index"/><c:order val="$index"/>
+              <c:tx><c:strRef><c:strCache><c:ptCount val="1"/><c:pt idx="0"><c:v>$name</c:v></c:pt></c:strCache></c:strRef></c:tx>
+              ${cached("xVal", xs)}${cached("yVal", ys)}${cached("bubbleSize", sizes)}
+            </c:ser>
+            """.trimIndent()
+        }.joinToString("")
+        return """
+            <c:chartSpace xmlns:c="$CHART_NS" xmlns:a="$A_NS" xmlns:r="$R_NS">
+              <c:chart>
+                <c:plotArea>
+                  <c:bubbleChart>
+                    <c:bubble3D val="0"/>
+                    $plot
+                    <c:axId val="1"/>
+                    <c:axId val="2"/>
+                  </c:bubbleChart>
+                  <c:valAx><c:axId val="1"/><c:axPos val="b"/><c:crossAx val="2"/></c:valAx>
+                  <c:valAx><c:axId val="2"/><c:axPos val="l"/><c:crossAx val="1"/></c:valAx>
+                </c:plotArea>
+              </c:chart>
+            </c:chartSpace>
+        """.trimIndent()
+    }
+
+    private fun cached(tag: String, values: List<Double>): String {
+        val points = values.mapIndexed { i, value -> """<c:pt idx="$i"><c:v>$value</c:v></c:pt>""" }.joinToString("")
+        return """<c:$tag><c:numRef><c:numCache><c:formatCode>General</c:formatCode>""" +
+            """<c:ptCount val="${values.size}"/>$points</c:numCache></c:numRef></c:$tag>"""
+    }
+
+    private data class Quad(val name: String, val xs: List<Double>, val ys: List<Double>, val sizes: List<Double>)
 
     private fun pieChart(
         values: List<Double>,

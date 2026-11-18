@@ -12,13 +12,27 @@ internal object ChartParser {
         val chart = chartSpace.child(CHART_NS, "chart") ?: return null
         val plotAreaNode = chart.child(CHART_NS, "plotArea") ?: return null
         val containers = parseContainers(plotAreaNode, limits) ?: return null
-        val container = containers.singleOrNull()?.takeIf { it.supported && it.series.isNotEmpty() }
-        val supported = container != null
+        val used = containers.filter { it.supported && it.series.isNotEmpty() }
+        val axes = if (used.isNotEmpty()) parseAxes(plotAreaNode) else emptyList()
+        val groups = axes.associate { it.id to it.group }
+        val series = used.flatMap { container ->
+            container.series.map { ser ->
+                val group = container.axisIds.firstNotNullOfOrNull { groups[it] } ?: AxisGroup.PRIMARY
+                ser.copy(axisGroup = group)
+            }
+        }
+        val supported = series.isNotEmpty()
+        val primary = used.firstOrNull()
+        val type = when {
+            used.any { it.type == ChartType.STOCK } -> ChartType.STOCK
+            used.size > 1 -> ChartType.COMBO
+            else -> primary?.type ?: ChartType.OTHER
+        }
         val plotArea = ChartPlotArea(
             manualLayout = plotAreaNode.child(CHART_NS, "layout")?.let(::parseManualLayout),
-            series = container?.series.orEmpty(),
-            axes = if (supported) parseAxes(plotAreaNode) else emptyList(),
-            dataLabels = if (supported) container?.dataLabels ?: parseDataLabels(plotAreaNode) else null,
+            series = series,
+            axes = axes,
+            dataLabels = primary?.dataLabels ?: parseDataLabels(plotAreaNode),
             shapeProperties = plotAreaNode.child(CHART_NS, "spPr"),
         )
         return PptxChart(
@@ -27,13 +41,16 @@ internal object ChartParser {
             legend = chart.child(CHART_NS, "legend")?.let(::parseLegend),
             shapeProperties = chartSpace.child(CHART_NS, "spPr"),
             textProperties = chartSpace.child(CHART_NS, "txPr"),
-            type = container?.type ?: ChartType.OTHER,
-            varyColors = container?.varyColors ?: false,
-            gapWidth = container?.gapWidth,
-            overlap = container?.overlap,
-            holeSize = container?.holeSize,
-            firstSliceAngle = container?.firstSliceAngle,
-            scatterStyle = container?.scatterStyle,
+            style = chartSpace.child(CHART_NS, "style")?.attribute("val")?.toIntOrNull(),
+            type = type,
+            varyColors = primary?.varyColors ?: false,
+            gapWidth = primary?.gapWidth,
+            overlap = primary?.overlap,
+            holeSize = primary?.holeSize,
+            firstSliceAngle = primary?.firstSliceAngle,
+            scatterStyle = primary?.scatterStyle,
+            radarStyle = primary?.radarStyle ?: RadarStyle.MARKER,
+            upDownBars = parseUpDownBars(plotAreaNode),
             supported = supported,
         )
     }
@@ -42,12 +59,14 @@ internal object ChartParser {
         val type: ChartType,
         val supported: Boolean,
         val series: List<ChartSeries>,
+        val axisIds: List<Int> = emptyList(),
         val varyColors: Boolean = false,
         val gapWidth: Int? = null,
         val overlap: Int? = null,
         val holeSize: Int? = null,
         val firstSliceAngle: Double? = null,
         val scatterStyle: String? = null,
+        val radarStyle: RadarStyle = RadarStyle.MARKER,
         val dataLabels: ChartDataLabels? = null,
     )
 
@@ -65,6 +84,11 @@ internal object ChartParser {
                     ser.values?.points?.size ?: 0,
                     ser.xValues?.points?.size ?: 0,
                     ser.yValues?.points?.size ?: 0,
+                    ser.bubbleSizes?.points?.size ?: 0,
+                    ser.openValues?.points?.size ?: 0,
+                    ser.highValues?.points?.size ?: 0,
+                    ser.lowValues?.points?.size ?: 0,
+                    ser.closeValues?.points?.size ?: 0,
                 )
                 if (pointCount > limits.maxChartPoints) return null
             }
@@ -92,6 +116,7 @@ internal object ChartParser {
                         parseSeriesNode(ser, type, grouping = grouping, direction = direction)
                     },
                     varyColors = varyColors == true,
+                    axisIds = axisIds(node),
                     gapWidth = node.child(CHART_NS, "gapWidth")?.attribute("val")?.toIntOrNull(),
                     overlap = node.child(CHART_NS, "overlap")?.attribute("val")?.toIntOrNull(),
                     dataLabels = node.child(CHART_NS, "dLbls")?.let(::parseDataLabels),
@@ -101,6 +126,7 @@ internal object ChartParser {
                 ChartType.LINE,
                 supported = true,
                 series = node.childrenOf(CHART_NS, "ser").map { ser -> parseLineSeries(ser, groupingOf(node)) },
+                axisIds = axisIds(node),
                 varyColors = varyColors == true,
                 dataLabels = node.child(CHART_NS, "dLbls")?.let(::parseDataLabels),
             )
@@ -127,6 +153,7 @@ internal object ChartParser {
                 series = node.childrenOf(CHART_NS, "ser").map { ser ->
                     parseSeriesNode(ser, ChartType.AREA, grouping = groupingOf(node))
                 },
+                axisIds = axisIds(node),
                 varyColors = varyColors == true,
                 dataLabels = node.child(CHART_NS, "dLbls")?.let(::parseDataLabels),
             )
@@ -134,16 +161,49 @@ internal object ChartParser {
                 ChartType.SCATTER,
                 supported = true,
                 series = node.childrenOf(CHART_NS, "ser").map(::parseScatterSeries),
+                axisIds = axisIds(node),
                 varyColors = varyColors == true,
                 scatterStyle = node.child(CHART_NS, "scatterStyle")?.attribute("val"),
                 dataLabels = node.child(CHART_NS, "dLbls")?.let(::parseDataLabels),
             )
-            "bar3DChart", "line3DChart", "pie3DChart", "ofPieChart", "stockChart",
-            "bubbleChart", "radarChart", "surfaceChart", "surface3DChart",
+            "radarChart" -> Container(
+                ChartType.RADAR,
+                supported = true,
+                series = node.childrenOf(CHART_NS, "ser").map { parseSeriesNode(it, ChartType.RADAR) },
+                axisIds = axisIds(node),
+                varyColors = varyColors == true,
+                radarStyle = when (node.child(CHART_NS, "radarStyle")?.attribute("val")) {
+                    "filled" -> RadarStyle.FILLED
+                    "none" -> RadarStyle.NONE
+                    else -> RadarStyle.MARKER
+                },
+                dataLabels = node.child(CHART_NS, "dLbls")?.let(::parseDataLabels),
+            )
+            "bubbleChart" -> Container(
+                ChartType.BUBBLE,
+                supported = true,
+                series = node.childrenOf(CHART_NS, "ser").map(::parseBubbleSeries),
+                axisIds = axisIds(node),
+                varyColors = varyColors == true,
+                dataLabels = node.child(CHART_NS, "dLbls")?.let(::parseDataLabels),
+            )
+            "stockChart" -> Container(
+                ChartType.STOCK,
+                supported = true,
+                series = node.childrenOf(CHART_NS, "ser").map(::parseStockSeries),
+                axisIds = axisIds(node),
+                varyColors = varyColors == true,
+                dataLabels = node.child(CHART_NS, "dLbls")?.let(::parseDataLabels),
+            )
+            "bar3DChart", "line3DChart", "pie3DChart", "ofPieChart",
+            "surfaceChart", "surface3DChart",
             -> Container(ChartType.OTHER, supported = false, series = emptyList())
             else -> null
         }
     }
+
+    private fun axisIds(node: XNode): List<Int> =
+        node.childrenOf(CHART_NS, "axId").mapNotNull { it.attribute("val")?.toIntOrNull() }
 
     private fun groupingOf(node: XNode): BarGrouping =
         when (node.child(CHART_NS, "grouping")?.attribute("val")) {
@@ -174,7 +234,83 @@ internal object ChartParser {
             shapeProperties = ser.child(CHART_NS, "spPr"),
             textProperties = ser.child(CHART_NS, "txPr"),
             dataLabels = ser.child(CHART_NS, "dLbls")?.let(::parseDataLabels),
+            trendlines = ser.childrenOf(CHART_NS, "trendline").mapNotNull(::parseTrendline),
+            errorBars = ser.childrenOf(CHART_NS, "errBars").mapNotNull(::parseErrorBars),
             points = parsePoints(ser),
+        )
+    }
+
+    private fun parseBubbleSeries(ser: XNode): ChartSeries {
+        val base = parseScatterSeries(ser)
+        return base.copy(
+            type = ChartType.BUBBLE,
+            bubbleSizes = ser.child(CHART_NS, "bubbleSize")?.let(::parseCacheRef),
+        )
+    }
+
+    private fun parseStockSeries(ser: XNode): ChartSeries {
+        val base = parseSeriesNode(ser, ChartType.STOCK)
+        return base.copy(
+            openValues = ser.child(CHART_NS, "open")?.let(::parseCacheRef),
+            highValues = ser.child(CHART_NS, "high")?.let(::parseCacheRef),
+            lowValues = ser.child(CHART_NS, "low")?.let(::parseCacheRef),
+            closeValues = ser.child(CHART_NS, "close")?.let(::parseCacheRef),
+        )
+    }
+
+    private fun parseTrendline(node: XNode): ChartTrendline? {
+        val type = when (node.child(CHART_NS, "trendlineType")?.attribute("val")) {
+            "log" -> TrendlineType.LOGARITHMIC
+            "exp" -> TrendlineType.EXPONENTIAL
+            "power" -> TrendlineType.POWER
+            "poly" -> TrendlineType.POLYNOMIAL
+            "movingAvg" -> TrendlineType.MOVING_AVERAGE
+            else -> TrendlineType.LINEAR
+        }
+        return ChartTrendline(
+            type = type,
+            order = node.child(CHART_NS, "order")?.attribute("val")?.toIntOrNull() ?: 2,
+            period = node.child(CHART_NS, "period")?.attribute("val")?.toIntOrNull() ?: 2,
+            displayEquation = on(node.child(CHART_NS, "dispEq")?.attribute("val")),
+            displayRSqr = on(node.child(CHART_NS, "dispRSqr")?.attribute("val")),
+            name = node.child(CHART_NS, "name")?.text?.trim()?.ifEmpty { null },
+            shapeProperties = node.child(CHART_NS, "spPr"),
+        )
+    }
+
+    private fun parseErrorBars(node: XNode): ChartErrorBars? {
+        val direction = if (node.child(CHART_NS, "errDir")?.attribute("val") == "x") {
+            ErrorBarDirection.X
+        } else {
+            ErrorBarDirection.Y
+        }
+        val (type, value) = when (node.child(CHART_NS, "errValType")?.attribute("val")) {
+            "percentage" -> ErrorBarType.PERCENT to node.child(CHART_NS, "val")?.attribute("val")?.toDoubleOrNull()
+            "stdDev" -> ErrorBarType.STANDARD_DEVIATION to node.child(CHART_NS, "val")?.attribute("val")?.toDoubleOrNull()
+            "stdErr" -> ErrorBarType.STANDARD_ERROR to null
+            "cust" -> ErrorBarType.CUSTOM to null
+            else -> ErrorBarType.FIXED_VALUE to node.child(CHART_NS, "val")?.attribute("val")?.toDoubleOrNull()
+        }
+        return ChartErrorBars(
+            direction = direction,
+            type = type,
+            value = value,
+            plus = node.child(CHART_NS, "plus")?.let(::parseCacheRef),
+            minus = node.child(CHART_NS, "minus")?.let(::parseCacheRef),
+            showPositive = node.child(CHART_NS, "errBarType")?.attribute("val") != "minus",
+            showNegative = node.child(CHART_NS, "errBarType")?.attribute("val") != "plus",
+            noEndCaps = on(node.child(CHART_NS, "noEndCap")?.attribute("val")),
+            shapeProperties = node.child(CHART_NS, "spPr"),
+        )
+    }
+
+    private fun parseUpDownBars(node: XNode): ChartUpDownBars? {
+        val bars = node.child(CHART_NS, "upDownBars") ?: return null
+        return ChartUpDownBars(
+            gapWidth = bars.child(CHART_NS, "gapWidth")?.attribute("val")?.toIntOrNull() ?: 150,
+            upBars = bars.child(CHART_NS, "upBars")?.child(CHART_NS, "spPr"),
+            downBars = bars.child(CHART_NS, "downBars")?.child(CHART_NS, "spPr"),
+            hide = on(bars.child(CHART_NS, "hide")?.attribute("val")),
         )
     }
 
@@ -200,6 +336,8 @@ internal object ChartParser {
             shapeProperties = ser.child(CHART_NS, "spPr"),
             textProperties = ser.child(CHART_NS, "txPr"),
             dataLabels = ser.child(CHART_NS, "dLbls")?.let(::parseDataLabels),
+            trendlines = ser.childrenOf(CHART_NS, "trendline").mapNotNull(::parseTrendline),
+            errorBars = ser.childrenOf(CHART_NS, "errBars").mapNotNull(::parseErrorBars),
             points = parsePoints(ser),
         )
     }
@@ -285,10 +423,12 @@ internal object ChartParser {
         } else {
             ChartScaling()
         }
+        val position = node.child(CHART_NS, "axPos")?.attribute("val")
         return ChartAxis(
             id = node.child(CHART_NS, "axId")?.attribute("val")?.toIntOrNull() ?: 0,
             kind = kind,
-            position = node.child(CHART_NS, "axPos")?.attribute("val"),
+            position = position,
+            group = if (position == "r" || position == "t") AxisGroup.SECONDARY else AxisGroup.PRIMARY,
             scaling = scaling,
             majorGridlines = node.child(CHART_NS, "majorGridlines"),
             minorGridlines = node.child(CHART_NS, "minorGridlines"),

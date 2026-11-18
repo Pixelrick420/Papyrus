@@ -387,7 +387,7 @@ internal object GoldenDecks {
     }
 
     private fun chartZoo(): ByteArray = pptx {
-        val frames = listOf("columns", "bars", "line", "area", "scatter", "pie", "doughnut", "radar", "cx")
+        val frames = listOf("columns", "bars", "line", "area", "scatter", "bubble", "pie", "doughnut", "radar", "cx")
         theme {
             accent1("C00000")
             accent2("00B050")
@@ -400,10 +400,10 @@ internal object GoldenDecks {
                 graphicFrame(
                     uri = CHART_URI,
                     content = """<c:chart xmlns:c="$CHART_NS" xmlns:r="$R_NS" r:id="$rel"/>""",
-                    x = M + (index % 3) * 3_900_000L,
-                    y = 600_000L + (index / 3) * 2_100_000L,
-                    w = 3_700_000L,
-                    h = 1_900_000L,
+                    x = M + (index % 4) * 2_950_000L,
+                    y = 400_000L + (index / 4) * 2_000_000L,
+                    w = 2_800_000L,
+                    h = 1_600_000L,
                     name = name,
                 )
                 rel(rel, CHART_RELATIONSHIP, "../charts/$name.xml")
@@ -425,9 +425,13 @@ internal object GoldenDecks {
         )
         "area" -> chartXml("Area", """<c:areaChart><c:grouping val="stacked"/>${series(0, "Alpha", listOf(10.0, 20.0, 30.0))}${series(1, "Beta", listOf(20.0, 10.0, 5.0))}<c:axId val="1"/><c:axId val="2"/></c:areaChart>$chartAxes""")
         "scatter" -> chartXml("Scatter", scatterChart())
+        "bubble" -> chartXml("Bubble", bubbleChart())
         "pie" -> chartXml("Pie", """<c:pieChart><c:varyColors val="1"/>${series(0, "Share", listOf(1.0, 2.0, 3.0))}</c:pieChart>""")
         "doughnut" -> chartXml("Doughnut", """<c:doughnutChart><c:varyColors val="1"/><c:holeSize val="70"/>${series(0, "Share", listOf(1.0, 2.0, 3.0))}</c:doughnutChart>""")
-        "radar" -> chartXml("Radar", """<c:radarChart><c:radarStyle val="marker"/></c:radarChart>""")
+        "radar" -> chartXml(
+            "Radar",
+            """<c:radarChart><c:radarStyle val="filled"/>${series(0, "Alpha", listOf(10.0, 20.0, 30.0, 15.0))}${series(1, "Beta", listOf(20.0, 5.0, 10.0, 25.0))}<c:axId val="1"/><c:axId val="2"/></c:radarChart>$chartAxes""",
+        )
         else -> """<mc:AlternateContent xmlns:mc="$MC_NS" xmlns:cx="$CX_NS" xmlns:c="$CHART_NS" xmlns:a="$A_NS" xmlns:r="$R_NS">
             <mc:Choice Requires="cx"><c:chart r:id="rId21"/></mc:Choice>
             <mc:Fallback><p:pic xmlns:p="$P_NS">
@@ -483,6 +487,25 @@ internal object GoldenDecks {
             </c:scatterChart>
             <c:valAx><c:axId val="1"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:axPos val="b"/><c:numFmt formatCode="General" sourceLinked="1"/><c:crossAx val="2"/></c:valAx>
             <c:valAx><c:axId val="2"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:axPos val="l"/><c:majorGridlines/><c:numFmt formatCode="General" sourceLinked="1"/><c:crossAx val="1"/></c:valAx>
+        """.trimIndent()
+    }
+
+    private fun bubbleChart(): String {
+        fun cache(tag: String, values: List<Double>): String {
+            val points = values.mapIndexed { i, value -> """<c:pt idx="$i"><c:v>$value</c:v></c:pt>""" }.joinToString("")
+            return """<c:$tag><c:numRef><c:numCache><c:formatCode>General</c:formatCode>""" +
+                """<c:ptCount val="${values.size}"/>$points</c:numCache></c:numRef></c:$tag>"""
+        }
+        return """
+            <c:bubbleChart>
+              <c:ser><c:idx val="0"/><c:order val="0"/>
+                <c:tx><c:strRef><c:strCache><c:ptCount val="1"/><c:pt idx="0"><c:v>Bubbles</c:v></c:pt></c:strCache></c:strRef></c:tx>
+                ${cache("xVal", listOf(0.0, 10.0, 20.0))}${cache("yVal", listOf(5.0, 15.0, 10.0))}${cache("bubbleSize", listOf(5.0, 20.0, 10.0))}
+              </c:ser>
+              <c:axId val="1"/><c:axId val="2"/>
+            </c:bubbleChart>
+            <c:valAx><c:axId val="1"/><c:axPos val="b"/><c:crossAx val="2"/></c:valAx>
+            <c:valAx><c:axId val="2"/><c:axPos val="l"/><c:majorGridlines/><c:crossAx val="1"/></c:valAx>
         """.trimIndent()
     }
 

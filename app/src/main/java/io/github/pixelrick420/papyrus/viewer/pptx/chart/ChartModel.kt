@@ -11,8 +11,22 @@ internal enum class ChartType {
     DOUGHNUT,
     AREA,
     SCATTER,
+    RADAR,
+    BUBBLE,
+    COMBO,
+    STOCK,
     OTHER,
 }
+
+internal enum class RadarStyle { MARKER, FILLED, NONE }
+
+internal enum class TrendlineType { LINEAR, LOGARITHMIC, EXPONENTIAL, POWER, POLYNOMIAL, MOVING_AVERAGE }
+
+internal enum class ErrorBarDirection { X, Y }
+
+internal enum class ErrorBarType { FIXED_VALUE, PERCENT, STANDARD_DEVIATION, STANDARD_ERROR, CUSTOM }
+
+internal enum class AxisGroup { PRIMARY, SECONDARY }
 
 internal enum class BarGrouping { CLUSTERED, STACKED, PERCENT_STACKED }
 
@@ -40,6 +54,28 @@ internal data class ChartDataPoint(
     val explosion: Double? = null,
 )
 
+internal data class ChartTrendline(
+    val type: TrendlineType,
+    val order: Int = 2,
+    val period: Int = 2,
+    val displayEquation: Boolean = false,
+    val displayRSqr: Boolean = false,
+    val name: String? = null,
+    val shapeProperties: XNode? = null,
+)
+
+internal data class ChartErrorBars(
+    val direction: ErrorBarDirection,
+    val type: ErrorBarType,
+    val value: Double? = null,
+    val plus: ChartCache? = null,
+    val minus: ChartCache? = null,
+    val showPositive: Boolean = true,
+    val showNegative: Boolean = true,
+    val noEndCaps: Boolean = false,
+    val shapeProperties: XNode? = null,
+)
+
 internal data class ChartSeries(
     val index: Int,
     val order: Int,
@@ -52,6 +88,14 @@ internal data class ChartSeries(
     val values: ChartCache?,
     val xValues: ChartCache? = null,
     val yValues: ChartCache? = null,
+    val bubbleSizes: ChartCache? = null,
+    val openValues: ChartCache? = null,
+    val highValues: ChartCache? = null,
+    val lowValues: ChartCache? = null,
+    val closeValues: ChartCache? = null,
+    val axisGroup: AxisGroup = AxisGroup.PRIMARY,
+    val trendlines: List<ChartTrendline> = emptyList(),
+    val errorBars: List<ChartErrorBars> = emptyList(),
     val shapeProperties: XNode? = null,
     val textProperties: XNode? = null,
     val dataLabels: ChartDataLabels? = null,
@@ -97,6 +141,7 @@ internal data class ChartAxis(
     val id: Int,
     val kind: AxisKind,
     val position: String?,
+    val group: AxisGroup = AxisGroup.PRIMARY,
     val scaling: ChartScaling = ChartScaling(),
     val majorGridlines: XNode? = null,
     val minorGridlines: XNode? = null,
@@ -148,6 +193,13 @@ internal data class ChartLayoutResult(
     val title: SceneRect?,
 )
 
+internal data class ChartUpDownBars(
+    val gapWidth: Int = 150,
+    val upBars: XNode? = null,
+    val downBars: XNode? = null,
+    val hide: Boolean = false,
+)
+
 internal data class PptxChart(
     val title: ChartTitle?,
     val plotArea: ChartPlotArea,
@@ -162,5 +214,8 @@ internal data class PptxChart(
     val holeSize: Int? = null,
     val firstSliceAngle: Double? = null,
     val scatterStyle: String? = null,
+    val radarStyle: RadarStyle = RadarStyle.MARKER,
+    val upDownBars: ChartUpDownBars? = null,
+    val style: Int? = null,
     val supported: Boolean = false,
 )
