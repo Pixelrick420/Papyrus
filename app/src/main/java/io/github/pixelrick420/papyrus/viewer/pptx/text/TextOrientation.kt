@@ -36,8 +36,14 @@ internal data class TextShapeTransform(
     }
 }
 
-/** How far the text block turns clockwise, from the shape and the body's own `rot` (plan §3.3 #12). */
-internal data class TextOrientation(val rotationDeg: Double = 0.0) {
+/**
+ * How far the text block turns clockwise, from the shape and the body's own `rot` (plan §3.3 #12).
+ * [verticalRotationDeg] is the extra turn each laid-out run takes for `vert`-style text.
+ */
+internal data class TextOrientation(
+    val rotationDeg: Double = 0.0,
+    val verticalRotationDeg: Double = 0.0,
+) {
 
     companion object {
 
@@ -46,7 +52,16 @@ internal data class TextOrientation(val rotationDeg: Double = 0.0) {
         fun of(shape: TextShapeTransform, properties: TextBodyProperties): TextOrientation {
             val shapeRotation = if (properties.upright) 0.0 else shape.rotationDeg
             val flip = if (shape.flipV) HALF_TURN_DEG else 0.0
-            return TextOrientation(normalized(properties.rotation + shapeRotation + flip))
+            return TextOrientation(
+                rotationDeg = normalized(properties.rotation + shapeRotation + flip),
+                verticalRotationDeg = normalized(verticalTurnOf(properties.vertical)),
+            )
+        }
+
+        private fun verticalTurnOf(vertical: TextVertical): Double = when (vertical) {
+            TextVertical.VERT, TextVertical.WORD_ART_VERTICAL -> QUARTER_TURN_DEG
+            TextVertical.VERT_270 -> THREE_QUARTER_TURN_DEG
+            else -> 0.0
         }
 
         private fun normalized(degrees: Double): Double {
@@ -57,5 +72,9 @@ internal data class TextOrientation(val rotationDeg: Double = 0.0) {
         private const val FULL_TURN_DEG = 360.0
 
         private const val HALF_TURN_DEG = 180.0
+
+        private const val QUARTER_TURN_DEG = 90.0
+
+        private const val THREE_QUARTER_TURN_DEG = 270.0
     }
 }

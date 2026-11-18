@@ -24,9 +24,17 @@ internal class TextLayoutEngine(
         frameHeightEmu: Double? = null,
         shape: TextShapeTransform = TextShapeTransform.NONE,
     ): TextFrameLayout {
-        val insets = body.properties.insets
-        val widthPt = (frameWidthEmu - insets.left - insets.right).coerceAtLeast(0.0) / EMU_PER_POINT
-        val autofit = AutofitScale.of(body.properties.autofit)
+        val properties = body.properties
+        val vertical = properties.vertical.isVertical
+        val layoutInsets = if (vertical) {
+            TextInsets(properties.insets.top, properties.insets.left, properties.insets.bottom, properties.insets.right)
+        } else {
+            properties.insets
+        }
+        val layoutWidthEmu = if (vertical) frameHeightEmu ?: frameWidthEmu else frameWidthEmu
+        val layoutHeightEmu = if (vertical) frameWidthEmu else frameHeightEmu
+        val widthPt = (layoutWidthEmu - layoutInsets.left - layoutInsets.right).coerceAtLeast(0.0) / EMU_PER_POINT
+        val autofit = AutofitScale.of(properties.autofit)
         val layouts = bullets.layouts(body, autofit)
         val lines = ArrayList<TextLine>()
         var heightPt = 0.0
@@ -36,24 +44,36 @@ internal class TextLayoutEngine(
                 index = index,
                 bullet = layouts[index],
                 widthPt = widthPt,
-                body = body.properties,
+                body = properties,
                 autofit = autofit,
                 topPt = heightPt,
                 lines = lines,
             )
         }
-        val frameHeightPt = frameHeightEmu?.let {
-            (it - insets.top - insets.bottom).coerceAtLeast(0.0) / EMU_PER_POINT
+        val layoutHeightPt = layoutHeightEmu?.let {
+            (it - layoutInsets.top - layoutInsets.bottom).coerceAtLeast(0.0) / EMU_PER_POINT
+        }
+        val placed = if (layoutHeightPt == null) {
+            lines
+        } else {
+            anchored(lines, properties, widthPt, layoutHeightPt, heightPt)
+        }
+        val orientation = TextOrientation.of(shape, properties)
+        val framed = if (vertical) {
+            verticalLayout(placed, properties, frameWidthEmu, frameHeightEmu ?: frameWidthEmu, orientation)
+        } else {
+            placed
         }
         return TextFrameLayout(
-            lines = if (frameHeightPt == null) {
-                lines
-            } else {
-                anchored(lines, body.properties, widthPt, frameHeightPt, heightPt)
-            },
+            lines = framed,
             widthPt = frameWidthEmu / EMU_PER_POINT,
-            heightPt = heightPt,
-            orientation = TextOrientation.of(shape, body.properties),
+            heightPt = if (vertical && framed.isNotEmpty()) {
+                framed.maxOf { it.leftPt + it.widthPt } - framed.minOf { it.leftPt }
+            } else {
+                heightPt
+            },
+            orientation = orientation,
+            textWidthPt = widthPt,
         )
     }
 
@@ -143,6 +163,107 @@ internal class TextLayoutEngine(
         thicknessPt = decoration.thicknessPt,
         paint = decoration.paint,
     )
+
+    private fun verticalLayout(
+        lines: List<TextLine>,
+        properties: TextBodyProperties,
+        frameWidthEmu: Double,
+        frameHeightEmu: Double,
+        orientation: TextOrientation,
+    ): List<TextLine> {
+        val width = frameWidthEmu / EMU_PER_POINT
+        val height = frameHeightEmu / EMU_PER_POINT
+        val left = properties.insets.left / EMU_PER_POINT
+        val top = properties.insets.top / EMU_PER_POINT
+        val right = properties.insets.right / EMU_PER_POINT
+        val bottom = properties.insets.bottom / EMU_PER_POINT
+        val vertical = properties.vertical
+
+        fun point(x: Double, y: Double): Pair<Double, Double> = when (vertical) {
+            TextVertical.VERT, TextVertical.WORD_ART_VERTICAL, TextVertical.EAST_ASIAN_VERTICAL ->
+                width - right - y to top + x
+            TextVertical.MONGOLIAN_VERTICAL -> left + y to top + x
+            TextVertical.VERT_270 -> left + y to height - bottom - x
+            TextVertical.HORZ -> x to y
+        }
+
+        fun mapRun(run: GlyphRun, characters: List<CharacterBox>): List<GlyphRun> {
+            val start = point(run.leftPt, run.baselinePt)
+            if (!vertical.isUpright) {
+                val end = point(run.rightPt, run.baselinePt)
+                return listOf(
+                    GlyphRun(
+                        start = run.start,
+                        end = run.end,
+                        leftPt = minOf(start.first, end.first),
+                        rightPt = maxOf(start.first, end.first),
+                        baselinePt = start.second,
+                        font = run.font,
+                        sizePt = run.sizePt,
+                        properties = run.properties,
+                        rtl = run.rtl,
+                        text = run.text,
+                        rotationDeg = orientation.verticalRotationDeg,
+                    ),
+                )
+            }
+            return characters.mapNotNull { character ->
+                val from = maxOf(character.start, run.start)
+                val to = minOf(character.end, run.end)
+                if (from >= to) return@mapNotNull null
+                val placed = point(character.leftPt, run.baselinePt)
+                GlyphRun(
+                    start = from,
+                    end = to,
+                    leftPt = placed.first,
+                    rightPt = placed.first,
+                    baselinePt = placed.second,
+                    font = run.font,
+                    sizePt = run.sizePt,
+                    properties = run.properties,
+                    rtl = run.rtl,
+                    text = run.text.substring(from - run.start, to - run.start),
+                )
+            }
+        }
+
+        fun mapLine(line: TextLine): TextLine {
+            val first = point(line.leftPt, line.topPt)
+            val last = point(line.leftPt + line.widthPt, line.topPt + line.heightPt)
+            val baseline = point(line.leftPt, line.baselinePt)
+            val markerLeft = point(line.markerLeftPt, line.baselinePt).first
+            val markerRight = point(line.markerRightPt, line.baselinePt).first
+            return TextLine(
+                index = line.index,
+                paragraph = line.paragraph,
+                start = line.start,
+                end = line.end,
+                leftPt = minOf(first.first, last.first),
+                topPt = minOf(first.second, last.second),
+                widthPt = kotlin.math.abs(last.first - first.first),
+                heightPt = kotlin.math.abs(last.second - first.second),
+                baselinePt = baseline.second,
+                runs = line.runs.flatMap { mapRun(it, line.characters) },
+                characters = line.characters.map { character ->
+                    val a = point(character.leftPt, character.topPt)
+                    val b = point(character.rightPt, character.bottomPt)
+                    CharacterBox(
+                        character.start,
+                        character.end,
+                        minOf(a.first, b.first),
+                        maxOf(a.first, b.first),
+                        minOf(a.second, b.second),
+                        maxOf(a.second, b.second),
+                    )
+                },
+                bullet = line.bullet,
+                markerLeftPt = minOf(markerLeft, markerRight),
+                markerRightPt = maxOf(markerLeft, markerRight),
+            )
+        }
+
+        return lines.map(::mapLine)
+    }
 
     private fun layoutParagraph(
         paragraph: TextParagraph,

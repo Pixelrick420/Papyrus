@@ -45,6 +45,10 @@ internal enum class TextVertical(val value: String) {
     MONGOLIAN_VERTICAL("mongolianVert"),
     ;
 
+    val isVertical: Boolean get() = this != HORZ
+
+    val isUpright: Boolean get() = this == EAST_ASIAN_VERTICAL || this == MONGOLIAN_VERTICAL
+
     companion object {
         fun of(value: String?): TextVertical = entries.firstOrNull { it.value == value } ?: HORZ
     }

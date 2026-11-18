@@ -4,6 +4,7 @@ import io.github.pixelrick420.papyrus.viewer.pptx.Affine
 import io.github.pixelrick420.papyrus.viewer.pptx.Rgba
 import io.github.pixelrick420.papyrus.viewer.pptx.Scene
 import io.github.pixelrick420.papyrus.viewer.pptx.SceneGraphicFrame
+import io.github.pixelrick420.papyrus.viewer.pptx.ScenePoint
 import io.github.pixelrick420.papyrus.viewer.pptx.SceneRect
 import io.github.pixelrick420.papyrus.viewer.pptx.SceneShape
 import io.github.pixelrick420.papyrus.viewer.pptx.SceneTextFrame
@@ -127,7 +128,7 @@ internal class SlideTextPainter(
         for (line in layout.lines) {
             for (run in line.runs) {
                 if (run.text.isEmpty()) continue
-                runs += DrawOp.DrawGlyphRun(displayRun(run, originX, originY, box))
+                runs += runOps(displayRun(run, originX, originY, box))
             }
             bullet(line, originX, originY)?.let(runs::add)
         }
@@ -136,6 +137,13 @@ internal class SlideTextPainter(
         out += DrawOp.Concat(transform)
         out += runs
         out += DrawOp.Restore
+    }
+
+    private fun runOps(run: GlyphRun): List<DrawOp> {
+        if (run.rotationDeg == 0.0) return listOf(DrawOp.DrawGlyphRun(run))
+        val origin = ScenePoint(run.x.toDouble(), run.y.toDouble())
+        val turn = Affine.about(origin, Affine.rotate(Math.toRadians(run.rotationDeg)))
+        return listOf(DrawOp.Save, DrawOp.Concat(turn), DrawOp.DrawGlyphRun(run), DrawOp.Restore)
     }
 
     private fun displayRun(run: LayoutGlyphRun, originX: Double, originY: Double, box: SceneRect): GlyphRun {
@@ -158,6 +166,7 @@ internal class SlideTextPainter(
             shadow = shadowOf(run.properties.shadow),
             rules = run.decorations.mapNotNull { ruleOf(it, originX, baselineEmu, box) },
             font = run.font,
+            rotationDeg = run.rotationDeg,
         )
     }
 

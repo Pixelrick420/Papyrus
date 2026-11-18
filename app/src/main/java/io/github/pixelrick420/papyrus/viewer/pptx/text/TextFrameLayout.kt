@@ -17,6 +17,8 @@ internal class GlyphRun(
     val text: String = "",
     /** This run's own underline and strike rules, already offset from its baseline. */
     val decorations: List<TextDecoration> = emptyList(),
+    /** Extra clockwise turn applied to this run after the line has been placed. */
+    val rotationDeg: Double = 0.0,
 )
 
 /** Where one character sits, which is what find, selection, TTS and link hit-testing step through. */
@@ -55,4 +57,5 @@ internal class TextFrameLayout(
     val widthPt: Double,
     val heightPt: Double,
     val orientation: TextOrientation = TextOrientation.NONE,
+    val textWidthPt: Double = widthPt,
 ) : LaidOutText

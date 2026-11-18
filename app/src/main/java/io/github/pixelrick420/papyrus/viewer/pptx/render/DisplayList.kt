@@ -146,6 +146,8 @@ internal data class GlyphRun(
     val rules: List<TextRule> = emptyList(),
     /** The bundled or system face the text pass resolved; when null the backend builds one from [family]. */
     val font: ResolvedFont? = null,
+    /** Clockwise degrees to turn the run about its baseline start when it is drawn. */
+    val rotationDeg: Double = 0.0,
 )
 
 internal data class ShadowSpec(val color: Rgba, val blur: Float, val dx: Float, val dy: Float)
