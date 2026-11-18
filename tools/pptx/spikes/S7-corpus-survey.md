@@ -21,4 +21,4 @@ Corpus decks surveyed: 0
 
 - No local corpus was available at survey time (0 decks). M5 ordering remains as planned pending a corpus run: charts step 1, SmartArt cached drawings, OLE/media fallbacks, EMF/WMF GDI subset, SVG-pictures fallback, pattern fills.
 - Decision #8: keep M5 chart priority unless a corpus run shows charts in most decks, in which case pull Tier A charts before EMF.
-- EMF+ prevalence (decision in 049.md) to be confirmed by corpus run; treat EMF+ as best-effort over EMF until measured.
+- Decision #7 (EMF scope): the S7 survey found 0 EMF+ only decks in 0 decks surveyed — no local corpus was available. Keep the GDI subset only; no EMF+ renderer. Dual files render from GDI records and ignore EMF+ comments; EMF+ only files get a labelled placeholder. Revisit if a corpus run finds EMF+ only decks.
