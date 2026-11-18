@@ -481,4 +481,17 @@ internal object SoftwareCanvas {
         AndroidCanvasBackend(canvas, imageOf, fonts, initialScale = scale).also { list.play(it) }
         return bitmap
     }
+
+    fun renderRegion(
+        list: DisplayList,
+        region: RenderRegion,
+        imageOf: (ImageRef) -> Bitmap? = { null },
+        fonts: FontCatalog? = null,
+    ): Bitmap {
+        val bitmap = Bitmap.createBitmap(region.widthPx, region.heightPx, Bitmap.Config.ARGB_8888)
+        bitmap.density = Bitmap.DENSITY_NONE
+        val canvas = Canvas(bitmap)
+        AndroidCanvasBackend(canvas, imageOf, fonts).also { list.playRegion(it, region) }
+        return bitmap
+    }
 }

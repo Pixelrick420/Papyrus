@@ -124,4 +124,27 @@ class DisplayListTest {
 
         assertEquals(0, recorder.depth)
     }
+
+    @Test
+    fun `a region clips and translates the display list once`() {
+        val ops = listOf(DrawOp.Save, DrawOp.FillPath(path, PaintSpec.Solid(Rgba.WHITE)), DrawOp.Restore)
+        val recorder = RecordingBackend()
+
+        DisplayList(ops).playRegion(recorder, RenderRegion(RectF(100f, 200f, 300f, 400f), 2f))
+
+        assertEquals(DrawOp.Save, recorder.ops.first())
+        assertEquals(DrawOp.Clip(PathData.rect(RectF(0f, 0f, 400f, 400f))), recorder.ops[1])
+        val concat = recorder.ops[2] as DrawOp.Concat
+        assertEquals(Affine(2.0, 0.0, 0.0, 2.0, -200.0, -400.0).map(100.0, 200.0), concat.matrix.map(100.0, 200.0))
+        assertEquals(ops + DrawOp.Restore, recorder.ops.drop(3))
+        assertEquals(0, recorder.depth)
+    }
+
+    @Test
+    fun `a region is sized in device pixels at its own scale`() {
+        val region = RenderRegion(RectF(10f, 20f, 30f, 60f), 1.5f)
+
+        assertEquals(30, region.widthPx)
+        assertEquals(60, region.heightPx)
+    }
 }

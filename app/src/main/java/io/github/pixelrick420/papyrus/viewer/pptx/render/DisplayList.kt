@@ -7,6 +7,7 @@ import io.github.pixelrick420.papyrus.viewer.pptx.Rgba
 import io.github.pixelrick420.papyrus.viewer.pptx.StrokeCap
 import io.github.pixelrick420.papyrus.viewer.pptx.StrokeJoin
 import io.github.pixelrick420.papyrus.viewer.pptx.text.ResolvedFont
+import kotlin.math.roundToInt
 
 internal data class PointF(val x: Float, val y: Float)
 
@@ -235,7 +236,31 @@ internal interface DrawTarget {
     fun reflection(path: PathData, paint: PaintSpec, spec: ReflectionSpec)
 }
 
+internal data class RenderRegion(val source: RectF, val scale: Float) {
+
+    val widthPx: Int get() = (source.width * scale).roundToInt().coerceAtLeast(1)
+
+    val heightPx: Int get() = (source.height * scale).roundToInt().coerceAtLeast(1)
+}
+
 internal class DisplayList(val ops: List<DrawOp>) {
+
+    fun playRegion(target: DrawTarget, region: RenderRegion) {
+        target.save()
+        target.clip(PathData.rect(RectF(0f, 0f, region.widthPx.toFloat(), region.heightPx.toFloat())))
+        target.concat(
+            Affine(
+                a = region.scale.toDouble(),
+                b = 0.0,
+                c = 0.0,
+                d = region.scale.toDouble(),
+                e = -region.source.left * region.scale.toDouble(),
+                f = -region.source.top * region.scale.toDouble(),
+            ),
+        )
+        play(target)
+        target.restore()
+    }
 
     fun play(target: DrawTarget) {
         for (op in ops) {
