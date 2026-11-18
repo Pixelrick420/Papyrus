@@ -317,6 +317,29 @@ class SlideRendererTest {
     }
 
     @Test
+    fun `a reflection becomes a mirrored paint with a fade`() = runBlocking {
+        val reflection = SceneEffect.Reflection(
+            blurEmu = 9_525.0,
+            distanceEmu = 9_525.0,
+            directionDegrees = 90.0,
+            startAlpha = 0.8,
+            endAlpha = 0.0,
+            startPosition = 0.0,
+            endPosition = 1.0,
+        )
+        val ops = renderer.render(
+            scene(rect(format = SceneFormat(ScenePaint.Solid(black), null, SceneEffects(listOf(reflection))))),
+        )!!.ops
+
+        val emitted = ops.filterIsInstance<DrawOp.Reflection>().single().spec
+        assertEquals(1f, emitted.blur, 0f)
+        assertEquals(1f, emitted.distance, 0f)
+        assertEquals(90f, emitted.directionDegrees, 0f)
+        assertEquals(0.8f, emitted.startAlpha, 0f)
+        assertEquals(0f, emitted.endAlpha, 0f)
+    }
+
+    @Test
     fun `an inner shadow stays clipped to the shape`() = runBlocking {
         val shadow = SceneEffect.Shadow(
             color = red,

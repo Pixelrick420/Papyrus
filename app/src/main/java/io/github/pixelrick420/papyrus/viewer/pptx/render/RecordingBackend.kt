@@ -74,4 +74,8 @@ internal class RecordingBackend : DrawTarget {
     override fun blur(path: PathData, paint: PaintSpec, radius: Float) {
         recorded += DrawOp.Blur(path, paint, radius)
     }
+
+    override fun reflection(path: PathData, paint: PaintSpec, spec: ReflectionSpec) {
+        recorded += DrawOp.Reflection(path, paint, spec)
+    }
 }

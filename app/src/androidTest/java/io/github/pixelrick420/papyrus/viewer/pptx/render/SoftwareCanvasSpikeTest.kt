@@ -107,6 +107,34 @@ class SoftwareCanvasSpikeTest {
     }
 
     @Test
+    fun a_reflection_is_a_faded_mirrored_copy() {
+        val reflection = DisplayList(
+            listOf(
+                DrawOp.Reflection(
+                    PathData.rect(RectF(40f, 40f, 120f, 80f)),
+                    PaintSpec.Solid(Rgba(255, 0, 0)),
+                    ReflectionSpec(
+                        blur = 0f,
+                        distance = 10f,
+                        directionDegrees = 90f,
+                        startAlpha = 0.8f,
+                        endAlpha = 0f,
+                        startPosition = 0f,
+                        endPosition = 1f,
+                    ),
+                ),
+            ),
+        )
+
+        val bitmap = SoftwareCanvas.render(reflection, WIDTH, HEIGHT)
+
+        assertEquals("shape is absent", 0, Color.alpha(bitmap.getPixel(80, 60)))
+        val faded = Color.alpha(bitmap.getPixel(80, 100))
+        assertTrue("reflection alpha was $faded", faded in 1..254)
+        assertEquals("gap below shape", 0, Color.alpha(bitmap.getPixel(80, 85)))
+    }
+
+    @Test
     fun a_640_by_480_frame_stays_within_the_software_budget() {
         val frame = effectsFrame()
         repeat(WARMUP) { SoftwareCanvas.render(frame, WIDTH, HEIGHT) }

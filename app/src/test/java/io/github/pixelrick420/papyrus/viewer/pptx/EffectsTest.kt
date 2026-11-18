@@ -68,6 +68,23 @@ class EffectsTest {
     }
 
     @Test
+    fun `a reflection resolves its fade and offset`() {
+        val effects = effects(
+            """<a:reflection blurRad="12700" dist="25400" dir="5400000" """ +
+                """stA="60000" endA="10000" stPos="10000" endPos="90000"/>""",
+        )
+
+        val reflection = effects!!.items.single() as SceneEffect.Reflection
+        assertEquals(12_700.0, reflection.blurEmu, 0.0)
+        assertEquals(25_400.0, reflection.distanceEmu, 0.0)
+        assertEquals(90.0, reflection.directionDegrees, 0.0)
+        assertEquals(0.6, reflection.startAlpha, 0.0)
+        assertEquals(0.1, reflection.endAlpha, 0.0)
+        assertEquals(0.1, reflection.startPosition, 0.0)
+        assertEquals(0.9, reflection.endPosition, 0.0)
+    }
+
+    @Test
     fun `glow soft edge and blur are resolved`() {
         val effects = effects(
             """<a:glow rad="6350"><a:srgbClr val="00FF00"/></a:glow>""" +

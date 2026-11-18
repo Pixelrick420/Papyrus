@@ -34,7 +34,43 @@ internal object GoldenDecks {
         GoldenDeck("preset-adjusts", presetAdjusts()),
         GoldenDeck("text-frames", textFrames()),
         GoldenDeck("chart-zoo", chartZoo()),
+        GoldenDeck("effects", effects()),
     )
+
+    private fun effects(): ByteArray = pptx {
+        slide {
+            background(rgb = "FFFFFF")
+            val cellW = 2_700_000L
+            val cellH = 2_500_000L
+            val entries = listOf(
+                """<a:effectLst><a:outerShdw blurRad="127000" dist="127000" dir="2700000">""" +
+                    """<a:srgbClr val="000000"><a:alpha val="50000"/></a:srgbClr></a:outerShdw></a:effectLst>""" to "4472C4",
+                """<a:effectLst><a:innerShdw blurRad="63500" dist="63500" dir="5400000">""" +
+                    """<a:srgbClr val="FFFFFF"/></a:innerShdw></a:effectLst>""" to "ED7D31",
+                """<a:effectLst><a:prstShdw prst="shdw5">""" +
+                    """<a:schemeClr val="accent1"/></a:prstShdw></a:effectLst>""" to "70AD47",
+                """<a:effectLst><a:glow rad="127000">""" +
+                    """<a:srgbClr val="FFC000"/></a:glow></a:effectLst>""" to "1F4E79",
+                """<a:effectLst><a:softEdge rad="127000"/></a:effectLst>""" to "A5A5A5",
+                """<a:effectLst><a:blur/></a:effectLst>""" to "C00000",
+                """<a:effectLst><a:reflection blurRad="12700" dist="127000" dir="5400000" """ +
+                    """stA="60000" endA="0" stPos="0" endPos="100000"/></a:effectLst>""" to "5B9BD5",
+                """<a:effectLst><a:outerShdw blurRad="63500" dist="63500" dir="2700000"/></a:effectLst>""" +
+                    """<a:scene3d><a:camera prst="orthographicFront"/>""" +
+                    """<a:lightRig rig="threePt" dir="t"/></a:scene3d>""" +
+                    """<a:sp3d><a:bevelT w="63500" h="63500" prst="circle"/></a:sp3d>""" to "7030A0",
+            )
+            entries.forEachIndexed { index, (effect, colour) ->
+                val x = M + (index % 4) * cellW
+                val y = 700_000L + (index / 4) * cellH
+                shape(Preset.RECT, x, y, cellW - 200_000, cellH - 300_000) {
+                    fillRgb(colour)
+                    noLine()
+                    effectRaw(effect)
+                }
+            }
+        }
+    }.toBytes()
 
     private fun shapeZoo(): ByteArray = pptx {
         slide {

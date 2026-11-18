@@ -4,11 +4,14 @@ import android.graphics.Bitmap
 import android.graphics.BitmapShader
 import android.graphics.BlurMaskFilter
 import android.graphics.Canvas
+import android.graphics.Color
 import android.graphics.DashPathEffect
 import android.graphics.LinearGradient
 import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.PorterDuff
+import android.graphics.PorterDuffXfermode
 import android.graphics.RadialGradient
 import android.graphics.Rect
 import android.graphics.RectF as AndroidRectF
@@ -21,6 +24,7 @@ import io.github.pixelrick420.papyrus.viewer.pptx.Rgba
 import io.github.pixelrick420.papyrus.viewer.pptx.StrokeCap
 import io.github.pixelrick420.papyrus.viewer.pptx.StrokeJoin
 import io.github.pixelrick420.papyrus.viewer.pptx.text.FontCatalog
+import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.roundToInt
 import kotlin.math.sin
@@ -273,6 +277,54 @@ internal class AndroidCanvasBackend(
         }
         canvas.drawPath(pathOf(path), paint)
     }
+
+    override fun reflection(path: PathData, paint: PaintSpec, spec: ReflectionSpec) {
+        val androidPath = pathOf(path)
+        val bounds = AndroidRectF()
+        androidPath.computeBounds(bounds, true)
+        val width = bounds.right - bounds.left
+        val height = bounds.bottom - bounds.top
+        if (width <= 0f || height <= 0f) return
+        val radians = Math.toRadians(spec.directionDegrees.toDouble())
+        val dx = (cos(radians) * spec.distance).toFloat()
+        val dy = (sin(radians) * spec.distance).toFloat()
+        val blur = spec.blur.coerceAtLeast(0f)
+        val reflected = AndroidRectF(
+            bounds.left + dx - blur,
+            bounds.bottom + dy - blur,
+            bounds.right + dx + blur,
+            bounds.bottom + dy + height + blur,
+        )
+        val layer = canvas.saveLayer(reflected, null)
+        val saved = canvas.save()
+        canvas.translate(bounds.left + dx, bounds.bottom + dy)
+        canvas.scale(1f, -1f)
+        canvas.translate(-bounds.left, -bounds.bottom)
+        val reflectionPaint = paintOf(paint).apply {
+            style = Paint.Style.FILL
+            if (blur > 0f) maskFilter = BlurMaskFilter(blur, BlurMaskFilter.Blur.NORMAL)
+        }
+        canvas.drawPath(androidPath, reflectionPaint)
+        canvas.restoreToCount(saved)
+        val top = reflected.top
+        val span = reflected.bottom - top
+        val start = top + span * spec.startPosition.coerceIn(0f, 1f)
+        val end = (top + span * spec.endPosition.coerceIn(0f, 1f)).coerceAtLeast(start + MIN_RADIUS)
+        val mask = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            shader = LinearGradient(
+                0f, start, 0f, end,
+                intArrayOf(alphaColor(spec.startAlpha), alphaColor(spec.endAlpha)),
+                floatArrayOf(0f, 1f),
+                Shader.TileMode.CLAMP,
+            )
+            xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_IN)
+        }
+        canvas.drawRect(reflected, mask)
+        canvas.restoreToCount(layer)
+    }
+
+    private fun alphaColor(alpha: Float): Int =
+        Color.argb((alpha.coerceIn(0f, 1f) * OPAQUE).roundToInt(), OPAQUE, OPAQUE, OPAQUE)
 
     private fun paintOf(spec: PaintSpec): Paint {
         val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)

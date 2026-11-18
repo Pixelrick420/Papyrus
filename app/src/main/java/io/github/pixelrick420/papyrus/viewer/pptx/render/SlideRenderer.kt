@@ -324,6 +324,7 @@ internal class SlideRenderer(
         val glows = effects.filterIsInstance<SceneEffect.Glow>()
         val softEdges = effects.filterIsInstance<SceneEffect.SoftEdge>()
         val blurred = effects.any { it is SceneEffect.Blur }
+        val reflections = effects.filterIsInstance<SceneEffect.Reflection>()
         if (flat.isNotEmpty()) {
             out += DrawOp.Save
             out += DrawOp.Concat(flatTransform)
@@ -351,6 +352,11 @@ internal class SlideRenderer(
                 }
             }
             if (contour.stroke && stroke != null) body += DrawOp.StrokePath(path, stroke)
+            if (reflections.isNotEmpty()) {
+                fillOf(format.fill, contour.fill, box, rotationDegrees)?.let { paint ->
+                    for (reflection in reflections) body += DrawOp.Reflection(path, paint, reflectionSpec(reflection))
+                }
+            }
             for (shadow in inner) body += DrawOp.ShapeShadow(path, shadowSpec(shadow))
         }
         if (body.isEmpty()) return
@@ -378,6 +384,16 @@ internal class SlideRenderer(
             inner = shadow.inner,
         )
     }
+
+    private fun reflectionSpec(reflection: SceneEffect.Reflection): ReflectionSpec = ReflectionSpec(
+        blur = (reflection.blurEmu / EMU_PER_PIXEL).toFloat(),
+        distance = (reflection.distanceEmu / EMU_PER_PIXEL).toFloat(),
+        directionDegrees = reflection.directionDegrees.toFloat(),
+        startAlpha = reflection.startAlpha.toFloat(),
+        endAlpha = reflection.endAlpha.toFloat(),
+        startPosition = reflection.startPosition.toFloat(),
+        endPosition = reflection.endPosition.toFloat(),
+    )
 
     private fun fillOf(
         fill: ScenePaint?,

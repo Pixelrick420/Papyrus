@@ -853,6 +853,7 @@ internal class TextBodyBuilder {
 internal class ShapeBuilder {
     private var fillXml: String? = null
     private var lineXml: String? = null
+    private var effectXml: String? = null
     private var styleXml: String? = null
     private var rotation: Int? = null
     private var flippedH = false
@@ -875,6 +876,11 @@ internal class ShapeBuilder {
     /** A fill written as it is, for gradients and colour transforms no helper expresses. */
     fun fillRaw(xml: String) {
         fillXml = xml
+    }
+
+    /** Effects and 3-D properties written as they are, for the effect deck. */
+    fun effectRaw(xml: String) {
+        effectXml = xml
     }
 
     fun line(
@@ -922,7 +928,7 @@ internal class ShapeBuilder {
     }
 
     /** The `spPr` children a caller can add to a placeholder it does not build itself. */
-    internal fun spPrExtras(): String = fillXml.orEmpty() + lineXml.orEmpty()
+    internal fun spPrExtras(): String = fillXml.orEmpty() + lineXml.orEmpty() + effectXml.orEmpty()
 
     internal fun emit(
         id: Int,
@@ -945,7 +951,7 @@ internal class ShapeBuilder {
         return """<p:sp><p:nvSpPr><p:cNvPr id="$id" name="${esc(name)}"$hiddenAttr/>$cNvSpPr<p:nvPr/></p:nvSpPr>""" +
             """<p:spPr><a:xfrm$attrs><a:off x="$x" y="$y"/><a:ext cx="$w" cy="$h"/></a:xfrm>""" +
             """<a:prstGeom prst="$prst"><a:avLst>${adjusts.joinToString("")}</a:avLst></a:prstGeom>""" +
-            "${fillXml.orEmpty()}${lineXml.orEmpty()}</p:spPr>" +
+            "${fillXml.orEmpty()}${lineXml.orEmpty()}${effectXml.orEmpty()}</p:spPr>" +
             styleXml.orEmpty() +
             textBody?.emit("p:txBody").orEmpty() + "</p:sp>"
     }

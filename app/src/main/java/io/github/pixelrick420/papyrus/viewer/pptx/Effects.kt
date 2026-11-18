@@ -1,6 +1,6 @@
 package io.github.pixelrick420.papyrus.viewer.pptx
 
-/** Resolves an `a:effectLst` into the effects the software canvas can paint. */
+/** Resolves an `a:effectLst` into the effects the software canvas can paint; 3-D nodes are ignored. */
 internal object Effects {
 
     fun of(node: XNode?, colors: ColorModel): SceneEffects? {
@@ -14,6 +14,7 @@ internal object Effects {
                 "glow" -> glow(child, colors)
                 "softEdge" -> SceneEffect.SoftEdge(child.number("rad", fallback = DEFAULT_BLUR_EMU))
                 "blur" -> SceneEffect.Blur
+                "reflection" -> reflection(child)
                 else -> null
             }
         })
@@ -31,6 +32,16 @@ internal object Effects {
             blur = node.number("blurRad", fallback = blur),
         )
     }
+
+    private fun reflection(node: XNode): SceneEffect.Reflection = SceneEffect.Reflection(
+        blurEmu = node.number("blurRad"),
+        distanceEmu = node.number("dist"),
+        directionDegrees = node.number("dir", ROTATION_UNITS),
+        startAlpha = node.number("stA", PERCENT_UNIT, 0.5),
+        endAlpha = node.number("endA", PERCENT_UNIT),
+        startPosition = node.number("stPos", PERCENT_UNIT),
+        endPosition = node.number("endPos", PERCENT_UNIT, 1.0),
+    )
 
     private fun glow(node: XNode, colors: ColorModel): SceneEffect.Glow = SceneEffect.Glow(
         color = node.children.firstNotNullOfOrNull(ColorModel::valueOf)?.let(colors::resolve) ?: Rgba.BLACK,
