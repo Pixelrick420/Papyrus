@@ -105,6 +105,7 @@ internal class PictureSource(
     val crop: PictureCrop = PictureCrop.NONE,
     val fill: PictureFill = PictureFill.Stretch(),
     val part: String? = null,
+    val effects: PictureEffects = PictureEffects.EMPTY,
 )
 
 internal object PictureFills {
@@ -123,6 +124,7 @@ internal object PictureFills {
             crop = cropOf(blipFill.child(OoxmlNamespace.A, "srcRect")),
             fill = fillOf(blipFill),
             part = part,
+            effects = PictureEffects.of(blip),
         )
     }
 

@@ -5,6 +5,7 @@ import android.graphics.BitmapShader
 import android.graphics.BlurMaskFilter
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.ColorMatrixColorFilter
 import android.graphics.DashPathEffect
 import android.graphics.LinearGradient
 import android.graphics.Matrix
@@ -69,6 +70,7 @@ internal class AndroidCanvasBackend(
         val bitmap = imageOf(image) ?: return
         val paint = paintOf(PaintSpec.Solid(Rgba.WHITE))
         paint.alpha = (effects.alpha.coerceIn(0f, 1f) * OPAQUE).roundToInt()
+        effects.recolor.matrix?.let { paint.colorFilter = ColorMatrixColorFilter(it.toFloatArray()) }
         val saved = effects.clip?.let { canvas.save(); canvas.clipPath(pathOf(it)); true } ?: false
         try {
             val source = src.takeIf { it.width > 0f && it.height > 0f }?.let { r ->

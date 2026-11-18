@@ -2,6 +2,7 @@ package io.github.pixelrick420.papyrus.viewer.pptx.render
 
 import io.github.pixelrick420.papyrus.viewer.pptx.Affine
 import io.github.pixelrick420.papyrus.viewer.pptx.PatternTile
+import io.github.pixelrick420.papyrus.viewer.pptx.PictureEffects
 import io.github.pixelrick420.papyrus.viewer.pptx.Rgba
 import io.github.pixelrick420.papyrus.viewer.pptx.StrokeCap
 import io.github.pixelrick420.papyrus.viewer.pptx.StrokeJoin
@@ -105,7 +106,11 @@ internal data class StrokeSpec(
 /** Identifies a decoded image by [key]; the backend resolves it to pixels. */
 internal data class ImageRef(val key: String, val width: Int = 0, val height: Int = 0)
 
-internal data class ImageEffects(val alpha: Float = 1f, val clip: PathData? = null)
+internal data class ImageEffects(
+    val alpha: Float = 1f,
+    val clip: PathData? = null,
+    val recolor: PictureEffects = PictureEffects.EMPTY,
+)
 
 internal enum class TextRuleKind { UNDERLINE, STRIKE }
 

@@ -224,7 +224,7 @@ internal class SlideRenderer(
                 ((1.0 - crop.bottom) * heightPx).toFloat(),
             ),
             dst = RectF(0f, 0f, frame.width.toFloat(), frame.height.toFloat()),
-            effects = ImageEffects(alpha = source.alpha.toFloat(), clip = maskOf(picture)),
+            effects = ImageEffects(alpha = source.alpha.toFloat(), clip = maskOf(picture), recolor = source.effects),
         )
         out += DrawOp.Restore
     }
