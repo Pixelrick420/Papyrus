@@ -35,6 +35,31 @@ class EmbeddedFontDecoderTest {
     }
 
     @Test
+    fun an_eot_container_declares_its_family_and_style() {
+        val font = EmbeddedFontDecoder.decode("font1.fntdata", eotOf(fontBytes(), "EOT Family", "Bold Italic", 0))
+
+        assertEquals("EOT Family", font?.family)
+        assertEquals(FaceStyle.BOLD_ITALIC, font?.style)
+        assertArrayEquals(fontBytes(), font?.bytes)
+    }
+
+    @Test
+    fun an_xor_obfuscated_eot_is_deobfuscated() {
+        val bytes = eotOf(fontBytes(), "EOT Family", "Regular", 0x10000000)
+
+        val font = EmbeddedFontDecoder.decode("font1.fntdata", bytes)
+
+        assertArrayEquals(fontBytes(), font?.bytes)
+    }
+
+    @Test
+    fun a_compressed_eot_is_left_for_the_mtx_decoder() {
+        val bytes = eotOf(fontBytes(), "EOT Family", "Regular", 0x00000004)
+
+        assertNull(EmbeddedFontDecoder.decode("font1.fntdata", bytes))
+    }
+
+    @Test
     fun an_embedded_face_wins_over_the_substitution_table() {
         val font = EmbeddedFont("font1.fntdata", "Calibri", FaceStyle.REGULAR, ByteArray(0))
 
@@ -79,6 +104,51 @@ class EmbeddedFontDecoderTest {
         }
         System.arraycopy(strings, 0, out, 28 + header, strings.size)
         return out
+    }
+
+    private fun fontBytes(): ByteArray = byteArrayOf(11, 22, 33, 44, 55)
+
+    private fun eotOf(fontData: ByteArray, family: String, style: String, flags: Int): ByteArray {
+        val fixed = ByteArray(82)
+        fun put16(at: Int, value: Int) {
+            fixed[at] = (value and 0xFF).toByte()
+            fixed[at + 1] = ((value shr 8) and 0xFF).toByte()
+        }
+        fun put32(at: Int, value: Int) {
+            put16(at, value and 0xFFFF)
+            put16(at + 2, (value ushr 16) and 0xFFFF)
+        }
+        val strings = ArrayList<Byte>()
+        fun addString(text: String) {
+            val bytes = text.toByteArray(Charsets.UTF_16LE)
+            strings.add((bytes.size and 0xFF).toByte())
+            strings.add(((bytes.size shr 8) and 0xFF).toByte())
+            bytes.forEach(strings::add)
+        }
+        fun addPadding() {
+            strings.add(0)
+            strings.add(0)
+        }
+        addString(family)
+        addPadding()
+        addString(style)
+        addPadding()
+        addString("Version 1.0")
+        addPadding()
+        addString("$family $style")
+
+        val data = if (flags and 0x10000000 != 0) {
+            fontData.map { (it.toInt() xor 0x50).toByte() }.toByteArray()
+        } else {
+            fontData
+        }
+        put32(0, fixed.size + strings.size + data.size)
+        put32(4, fontData.size)
+        put32(8, 0x00010000)
+        put32(12, flags)
+        put16(34, 0x504C)
+
+        return fixed + ByteArray(strings.size) { strings[it] } + data
     }
 
     private companion object {

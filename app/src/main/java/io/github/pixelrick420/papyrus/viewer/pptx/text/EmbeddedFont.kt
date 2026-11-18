@@ -11,16 +11,26 @@ internal data class EmbeddedFont(
 internal object EmbeddedFontDecoder {
 
     fun decode(name: String, bytes: ByteArray): EmbeddedFont? {
-        val tables = sfntTables(bytes) ?: return null
-        val names = names(bytes, tables["name"] ?: return null)
-        val family = names[1] ?: return null
-        val subfamily = names[2].orEmpty()
-        val style = FaceStyle.of(
-            bold = has(subfamily, "bold"),
-            italic = has(subfamily, "italic") || has(subfamily, "oblique"),
-        )
-        return EmbeddedFont(name, family, style, bytes)
+        val tables = sfntTables(bytes)
+        if (tables != null) {
+            val names = names(bytes, tables["name"] ?: return null)
+            val family = names[1] ?: return null
+            return EmbeddedFont(name, family, styleOf(names[2].orEmpty()), bytes)
+        }
+        val eot = EotReader.open(bytes) ?: return null
+        if (eot.compressed) return null
+        val eotNames = sfntTables(eot.fontData)?.get("name")?.let { names(eot.fontData, it) }
+        val family = eotNames?.get(1)?.takeIf { it.isNotEmpty() } ?: eot.familyName.takeIf { it.isNotEmpty() }
+            ?: return null
+        val subfamily = eotNames?.get(2)?.takeIf { it.isNotEmpty() }
+            ?: eot.styleName.takeIf { it.isNotEmpty() } ?: eot.fullName
+        return EmbeddedFont(name, family, styleOf(subfamily), eot.fontData)
     }
+
+    private fun styleOf(subfamily: String): FaceStyle = FaceStyle.of(
+        bold = has(subfamily, "bold"),
+        italic = has(subfamily, "italic") || has(subfamily, "oblique"),
+    )
 
     private fun has(text: String, word: String): Boolean =
         text.contains(word, ignoreCase = true)
