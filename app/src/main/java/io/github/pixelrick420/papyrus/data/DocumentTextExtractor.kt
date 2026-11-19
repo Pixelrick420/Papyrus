@@ -57,7 +57,7 @@ class DocumentTextExtractor(
             throw cancellation
         } catch (expectedDrm: EpubProtectedException) {
             ExtractedText("", TextIndexState.SKIPPED)
-        } catch (oom: OutOfMemoryError) {
+        } catch (ignoredOom: OutOfMemoryError) {
             ExtractedText("", TextIndexState.FAILED)
         } catch (ignored: Exception) {
             // A bad document must not stall the index queue, so every parse failure ends as FAILED.
