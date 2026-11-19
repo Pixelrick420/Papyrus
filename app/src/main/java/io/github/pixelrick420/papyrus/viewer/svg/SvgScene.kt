@@ -110,9 +110,6 @@ internal class SvgSceneBuilder(
         if (stack.isNotEmpty()) stack.removeAt(stack.lastIndex)
     }
 
-    /** Text is not drawn: its glyphs are not shapes, and its words are already in the text flow. */
-    fun text(@Suppress("UNUSED_PARAMETER") value: String) = Unit
-
     fun scene(): SvgScene? {
         if (shapes.isEmpty()) return null
         val w = width ?: (shapes.maxOf { s -> s.ops.maxOf { op -> xOf(op) } }.coerceAtLeast(DEFAULT_SIZE))

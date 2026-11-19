@@ -5,7 +5,7 @@
 <h1 align="center">Papyrus</h1>
 
 <p align="center">
-  <em>Offline document viewer for Android: PDF, Word, OpenDocument, EPUB, Markdown, text and code.</em><br>
+  <em>Offline document viewer for Android: PDF, Word, OpenDocument, EPUB, PowerPoint, Markdown, text, code and CSV/TSV.</em><br>
   <sub>No internet permission. No ads. No accounts. No analytics.</sub>
 </p>
 
@@ -112,7 +112,7 @@ an XML root, JSON or Objective-C.
   filter and the starred filter, with a badge counting what is on and a live count of matching files.
 - **Sort** by last opened, name (A to Z or Z to A), date added or size. Names sort the way a person reads them, so
   `file2` comes before `file10`, and the choice is remembered.
-- **File-type filters** for PDF, Word, ODT, EPUB, Markdown, text, CSV, TSV and code, plus starred files. They combine
+- **File-type filters** for PDF, Word, ODT, EPUB, PowerPoint, Markdown, text, CSV, TSV and code, plus starred files. They combine
   with search and sorting, survive rotation, and a **Clear filters** button appears when nothing matches.
 - **Star** a file from its row menu. Reopening it or re-granting access keeps the star.
 - **Thumbnails** for every document, with the format label until one is ready.
@@ -125,7 +125,7 @@ an XML root, JSON or Objective-C.
   crash report) a document still fills the window.
 - **Share** sends a read-only grant, so the receiving app cannot write, rename or delete the file.
 - **Remove** with **Undo**. Your own file on disk is never touched.
-- **File info**: name, format, size, provider type, page count for PDFs, both timestamps and the content URI.
+- **File info**: name, format, size, provider type, page count for PDFs, slide count, size and font substitutions for presentations, both timestamps and the content URI.
 
 ### Reading
 

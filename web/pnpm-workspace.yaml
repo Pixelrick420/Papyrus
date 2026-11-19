@@ -1,7 +1,6 @@
 # pnpm 11+ reads project settings from here, not from the "pnpm" field in package.json.
 allowBuilds:
   esbuild: true
-  sharp: true
 
 # pnpm 12's 24h minimumReleaseAge failed every install on tslib@2.9.1 (ERR_PNPM_MINIMUM_RELEASE_AGE_VIOLATION).
 # Drop this exemption once 2.9.1 is no longer a fresh release.

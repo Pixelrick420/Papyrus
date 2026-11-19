@@ -434,7 +434,6 @@ internal abstract class GdiRenderer(
     fun result(): MetafileImage = MetafileImage(ImageBounds(page.width, page.height), DisplayList(target.ops), dibs.toMap())
 
     protected companion object {
-        const val PS_SOLID = 0
         const val PS_DASH = 1
         const val PS_DOT = 2
         const val PS_DASHDOT = 3

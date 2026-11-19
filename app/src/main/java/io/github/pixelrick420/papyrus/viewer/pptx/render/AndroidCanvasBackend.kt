@@ -431,9 +431,6 @@ internal class AndroidCanvasBackend(
 
     private fun RectF.toAndroid(): AndroidRectF = AndroidRectF(left, top, right, bottom)
 
-    private fun RectF.toAndroidRect(): Rect =
-        Rect(left.roundToInt(), top.roundToInt(), right.roundToInt(), bottom.roundToInt())
-
     private fun GlyphRun.typefaceStyle(): Int = when {
         bold && italic -> Typeface.BOLD_ITALIC
         bold -> Typeface.BOLD

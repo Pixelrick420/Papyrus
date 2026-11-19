@@ -26,8 +26,6 @@ internal class TableBorders(
     val bottomLeftToTopRight: TableBorder? = null,
 )
 
-internal enum class TableStyleBand { WHOLE_TABLE, BAND1_H, BAND2_H, BAND1_V, BAND2_V, FIRST_ROW, LAST_ROW, FIRST_COL, LAST_COL, NORTH_WEST, NORTH_EAST, SOUTH_WEST, SOUTH_EAST }
-
 internal class TableStyleFlags(
     val firstRow: Boolean = false,
     val lastRow: Boolean = false,

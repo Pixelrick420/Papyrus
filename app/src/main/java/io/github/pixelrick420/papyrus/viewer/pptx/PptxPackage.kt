@@ -422,8 +422,6 @@ private class PptxReader(
     }
 
     private companion object {
-        const val SLIDE_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.presentationml.slide+xml"
-
         val IMAGE_EXTENSIONS = setOf("png", "jpg", "jpeg", "gif", "bmp", "webp", "svg", "tif", "tiff", "emf", "wmf")
     }
 }
