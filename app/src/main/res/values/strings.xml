@@ -152,6 +152,7 @@ access</string>
     <string name="viewer_page_indicator">%1$d / %2$d</string>
     <string name="viewer_slide_indicator">Slide %1$d / %2$d</string>
     <string name="viewer_slide_hidden">Hidden</string>
+    <string name="viewer_slide_heading_label">(heading)</string>
     <string name="viewer_office_image_loading">Loading image…</string>
     <string
         name="viewer_office_image_failed"
@@ -263,7 +264,14 @@ access</string>
     <string name="viewer_info_slides">Slides</string>
     <string name="viewer_info_slides_value">%1$d</string>
     <string name="viewer_info_slide_size">Slide size</string>
+    <string name="viewer_info_slide_size_value">%1$.2f × %2$.2f in</string>
+    <string name="viewer_info_font_system_fallback">System fallback</string>
     <string name="viewer_info_fonts">Fonts</string>
+    <string name="viewer_outline_slide">Slide %1$d</string>
+    <string name="viewer_picture_unavailable">Image unavailable</string>
+    <string name="viewer_picture_unsupported">Unsupported image</string>
+    <string name="viewer_picture_extension">%1$s image</string>
+    <string name="viewer_picture_svg">SVG image</string>
     <string name="viewer_info_fonts_none">None</string>
     <string name="viewer_info_uri">URI</string>
     <string name="viewer_info_size">Size</string>

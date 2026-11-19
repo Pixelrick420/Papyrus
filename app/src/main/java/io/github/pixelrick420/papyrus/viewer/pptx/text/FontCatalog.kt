@@ -2,6 +2,7 @@ package io.github.pixelrick420.papyrus.viewer.pptx.text
 
 import android.content.res.AssetManager
 import android.graphics.Typeface
+import io.github.pixelrick420.papyrus.viewer.pptx.recover
 import java.io.File
 
 /** The four faces a font file can carry; [suffix] is the last part of its asset name. */
@@ -83,22 +84,22 @@ internal class FontCatalog(
         val style = FaceStyle.of(bold, italic)
         val face = font.face(style)
         val base = cache.get(face.asset) {
-            runCatching { Typeface.createFromAsset(assets, it) }.getOrNull()
+            recover<Typeface?>(null) { Typeface.createFromAsset(assets, it) }
         } ?: return Typeface.DEFAULT
         return if (face.synthetic) Typeface.create(base, style.android()) else base
     }
 
     fun embedded(font: EmbeddedFont, bold: Boolean, italic: Boolean): Typeface {
-        val key = "embedded:${font.name}"
-        return cache.get(key) {
+        val base = cache.get("embedded:${font.name}") {
             val dir = fontDir ?: return@get null
-            runCatching {
+            recover(null) {
                 val file = File(dir, "font-${font.name.substringAfterLast('/')}")
                 if (!file.exists()) file.writeBytes(font.bytes)
-                val base = Typeface.Builder(file).build()
-                if (font.style == FaceStyle.of(bold, italic)) base else Typeface.create(base, FaceStyle.of(bold, italic).android())
-            }.getOrNull()
-        } ?: Typeface.DEFAULT
+                Typeface.Builder(file).build()
+            }
+        } ?: return Typeface.DEFAULT
+        val style = FaceStyle.of(bold, italic)
+        return if (font.style == style) base else Typeface.create(base, style.android())
     }
 
     fun system(family: String, bold: Boolean, italic: Boolean): Typeface {
@@ -125,7 +126,7 @@ internal class FontCatalog(
     }
 
     private fun reader(asset: String): ByteArray? =
-        runCatching { assets.open(asset).use { it.readBytes() } }.getOrNull()
+        recover<ByteArray?>(null) { assets.open(asset).use { it.readBytes() } }
 }
 
 /** Caches a null result too: a font that failed to load must not be retried for every glyph run. */
@@ -133,8 +134,9 @@ internal class LazyCache<K, V> {
 
     private val values = HashMap<K, V?>()
 
-    fun get(key: K, load: (K) -> V?): V? =
+    fun get(key: K, load: (K) -> V?): V? = synchronized(this) {
         if (values.containsKey(key)) values[key] else load(key).also { values[key] = it }
+    }
 }
 
 private fun FaceStyle.android(): Int = when (this) {

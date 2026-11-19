@@ -140,8 +140,8 @@ internal object Strokes {
         return if (width > 0.0) width else max(devicePixelEmu, 0.0)
     }
 
-    fun customDash(dash: XNode): List<DashStop> =
-        dash.childrenOf(OoxmlNamespace.A, "ds").mapNotNull { stop ->
+    fun customDash(dash: XNode, maxEntries: Int = PptxLimits().maxDashEntries): List<DashStop> =
+        dash.childrenOf(OoxmlNamespace.A, "ds").take(maxEntries).mapNotNull { stop ->
             val length = stop.attribute("d")?.toDoubleOrNull() ?: return@mapNotNull null
             val space = stop.attribute("sp")?.toDoubleOrNull() ?: return@mapNotNull null
             DashStop(max(0.0, length / PERCENT_UNIT), max(0.0, space / PERCENT_UNIT))

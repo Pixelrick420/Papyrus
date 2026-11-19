@@ -18,6 +18,7 @@ import io.github.pixelrick420.papyrus.viewer.EpubExtractor
 import io.github.pixelrick420.papyrus.viewer.OfficeBlock
 import io.github.pixelrick420.papyrus.viewer.OfficeTextExtractor
 import io.github.pixelrick420.papyrus.viewer.PdfPageSource
+import io.github.pixelrick420.papyrus.viewer.pptx.SlidePageSource
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
@@ -25,6 +26,7 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.io.ByteArrayOutputStream
 import java.io.FileNotFoundException
 import java.io.InputStream
@@ -155,14 +157,18 @@ class ThumbnailLoader(private val context: Context) {
     }
 
     private suspend fun renderPptx(uri: Uri): Bitmap? = try {
-        kotlinx.coroutines.withTimeoutOrNull(PPTX_THUMBNAIL_BUDGET_MS) {
-            io.github.pixelrick420.papyrus.viewer.pptx.SlidePageSource.open(context, uri).use { source ->
-                val page = source.render(0, THUMBNAIL_PDF_WIDTH_PX) ?: return@withTimeoutOrNull null
+        withTimeoutOrNull(PPTX_THUMBNAIL_BUDGET_MS) {
+            // No text index for a thumbnail, and skip hidden leading slides so the tile shows a real page.
+            SlidePageSource.open(context, uri, buildTextIndex = false).use { source ->
+                val first = (0 until source.pageCount).firstOrNull { it !in source.hidden } ?: 0
+                val page = source.render(first, THUMBNAIL_PDF_WIDTH_PX) ?: return@withTimeoutOrNull null
                 page.scale(THUMBNAIL_WIDTH_PX, THUMBNAIL_HEIGHT_PX, true)
             }
         }
     } catch (e: CancellationException) {
         throw e
+    } catch (_: OutOfMemoryError) {
+        null
     } catch (_: Exception) {
         null
     }

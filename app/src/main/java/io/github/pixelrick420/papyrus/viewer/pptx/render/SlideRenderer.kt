@@ -81,9 +81,17 @@ internal class SlideRenderer(
         val ops = mutableListOf<DrawOp>()
         text?.layoutTables(scene)
         background(scene, ops)
-        val deadline = nowNanos() + limits.maxSlideRenderMillis * NANOS_PER_MILLI
-        val complete = walk(scene, scene.nodes, ops, pictures, deadline)
+        val budget = Budget(nowNanos() + limits.maxSlideRenderMillis * NANOS_PER_MILLI, limits.maxSlideRenderUnits)
+        val complete = walk(scene, scene.nodes, ops, pictures, budget)
         return DisplayList(ops, complete)
+    }
+
+    private inner class Budget(private val deadline: Long, private var units: Int) {
+        val expired: Boolean get() = units <= 0 || nowNanos() >= deadline
+
+        fun spend(count: Int = 1) {
+            units -= count
+        }
     }
 
     private suspend fun walk(
@@ -91,12 +99,13 @@ internal class SlideRenderer(
         nodes: List<SceneNode>,
         out: MutableList<DrawOp>,
         pictures: SlidePictureResolver,
-        deadline: Long,
+        budget: Budget,
     ): Boolean {
         for (node in nodes) {
             currentCoroutineContext().ensureActive()
-            if (!drawNode(scene, node, out, pictures, deadline)) return false
-            if (nowNanos() >= deadline) return false
+            budget.spend()
+            if (!drawNode(scene, node, out, pictures, budget)) return false
+            if (budget.expired) return false
         }
         return true
     }
@@ -106,7 +115,7 @@ internal class SlideRenderer(
         node: SceneNode,
         out: MutableList<DrawOp>,
         pictures: SlidePictureResolver,
-        deadline: Long,
+        budget: Budget,
     ): Boolean {
         return when (node) {
             is SceneShape -> {
@@ -128,12 +137,12 @@ internal class SlideRenderer(
                 node.chart?.let { text?.paintChart(node, it, out) }
                 val art = node.smartArt
                 if (art != null) {
-                    if (!walk(scene, art.nodes, out, pictures, deadline)) return false
+                    if (!walk(scene, art.nodes, out, pictures, budget)) return false
                     text?.paintSmartArt(art, out)
                 }
                 true
             }
-            is SceneGroup -> group(scene, node, out, pictures, deadline)
+            is SceneGroup -> group(scene, node, out, pictures, budget)
         }
     }
 
@@ -151,11 +160,11 @@ internal class SlideRenderer(
         group: SceneGroup,
         out: MutableList<DrawOp>,
         pictures: SlidePictureResolver,
-        deadline: Long,
+        budget: Budget,
     ): Boolean {
         val frame = group.frame?.takeIf(::isDrawable) ?: return true
         val children = mutableListOf<DrawOp>()
-        val complete = walk(scene, group.children, children, pictures, deadline)
+        val complete = walk(scene, group.children, children, pictures, budget)
         if (children.isNotEmpty()) {
             out += DrawOp.Save
             out += DrawOp.Concat(

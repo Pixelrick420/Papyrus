@@ -14,6 +14,18 @@ import kotlin.math.roundToInt
 /** The raster file a picture resolves to, with the source pixel size a display list needs to crop it. */
 internal class RasterPicture(val file: File, val bounds: ImageBounds)
 
+/** User-visible placeholder text, resolved from resources so it can be localized. */
+internal data class PictureLabels(
+    val unavailable: String,
+    val unsupported: String,
+    val extensionImage: (String) -> String,
+    val svg: String,
+) {
+    companion object {
+        val Default = PictureLabels("Image unavailable", "Unsupported image", { "$it image" }, "SVG image")
+    }
+}
+
 internal sealed interface PictureContent {
 
     class Image(val image: PictureImage) : PictureContent
@@ -35,6 +47,7 @@ internal class PictureImages(
     private val maxEdgePx: Int = PptxLimits().maxRenderEdgePx,
     private val metafiles: MetafileDecoder = AndroidMetafileDecoder(maxEdgePx),
     private val generated: MutableMap<String, RasterPicture> = HashMap(),
+    private val labels: PictureLabels = PictureLabels.Default,
 ) {
 
     fun bounds(source: PictureSource?): ImageBounds? = when (val resolved = resolve(source)) {
@@ -57,10 +70,10 @@ internal class PictureImages(
         when (val resolved = resolve(source)) {
             is Resolved.Raster -> cache.load(resolved.file, targetWidthPx)
                 ?.let { PictureContent.Image(it) }
-                ?: PictureContent.Placeholder(UNAVAILABLE)
+                ?: PictureContent.Placeholder(labels.unavailable)
             is Resolved.Metafile -> metafiles.load(resolved.file, targetWidthPx)
                 ?.let { PictureContent.Image(it) }
-                ?: PictureContent.Placeholder(UNAVAILABLE)
+                ?: PictureContent.Placeholder(labels.unavailable)
             is Resolved.Fixed -> PictureContent.Placeholder(resolved.label)
             Resolved.Missing -> PictureContent.Missing
         }
@@ -74,7 +87,7 @@ internal class PictureImages(
         val target = relationship.target
         val extension = target.substringAfterLast('.', "").lowercase()
         return when (extension) {
-            in NATIVE -> pkg.mediaFile(target)?.let { Resolved.Raster(it) } ?: Resolved.Fixed(UNAVAILABLE)
+            in NATIVE -> pkg.mediaFile(target)?.let { Resolved.Raster(it) } ?: Resolved.Fixed(labels.unavailable)
             in METAFILES -> {
                 val raster = siblingRaster(resolvePart, target)
                 if (raster != null) Resolved.Raster(raster)
@@ -84,13 +97,13 @@ internal class PictureImages(
                     when {
                         label != null -> Resolved.Fixed(label)
                         file != null && metafiles.bounds(file) != null -> Resolved.Metafile(file)
-                        else -> Resolved.Fixed("${extension.uppercase()} image")
+                        else -> Resolved.Fixed(labels.extensionImage(extension.uppercase()))
                     }
                 }
             }
-            "svg" -> siblingRaster(resolvePart, target)?.let { Resolved.Raster(it) } ?: Resolved.Fixed("SVG image")
-            in NOT_DECODABLE -> Resolved.Fixed("${extension.uppercase()} image")
-            else -> Resolved.Fixed(UNSUPPORTED)
+            "svg" -> siblingRaster(resolvePart, target)?.let { Resolved.Raster(it) } ?: Resolved.Fixed(labels.svg)
+            in NOT_DECODABLE -> Resolved.Fixed(labels.extensionImage(extension.uppercase()))
+            else -> Resolved.Fixed(labels.unsupported)
         }
     }
 
@@ -178,9 +191,6 @@ internal class PictureImages(
     }
 
     private companion object {
-        const val UNAVAILABLE = "Image unavailable"
-        const val UNSUPPORTED = "Unsupported image"
-
         const val PNG_QUALITY = 100
         const val RASTER_EDGE = 2_048
         const val PLACEHOLDER_EDGE = 512

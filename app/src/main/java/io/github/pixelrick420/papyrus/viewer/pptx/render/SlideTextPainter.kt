@@ -11,6 +11,7 @@ import io.github.pixelrick420.papyrus.viewer.pptx.SceneTextFrame
 import io.github.pixelrick420.papyrus.viewer.pptx.XNode
 import io.github.pixelrick420.papyrus.viewer.pptx.chart.ChartDrawing
 import io.github.pixelrick420.papyrus.viewer.pptx.diagram.SmartArtDrawing
+import io.github.pixelrick420.papyrus.viewer.pptx.recover
 import io.github.pixelrick420.papyrus.viewer.pptx.table.TableCell
 import io.github.pixelrick420.papyrus.viewer.pptx.table.TableLayout
 import io.github.pixelrick420.papyrus.viewer.pptx.text.BulletMarker
@@ -87,9 +88,9 @@ internal class SlideTextPainter(
             if (rect.width <= 0.0 || rect.height <= 0.0) continue
             val body = bodyOf(text.body) ?: continue
             if (body.paragraphs.isEmpty()) continue
-            val layout = runCatching {
+            val layout = recover<TextFrameLayout?>(null) {
                 engine.layout(body, rect.width, rect.height, TextShapeTransform.NONE)
-            }.getOrNull() ?: continue
+            } ?: continue
             emit(
                 layout = layout,
                 transform = Affine.translate(origin.x + rect.x, origin.y + rect.y),
@@ -107,9 +108,9 @@ internal class SlideTextPainter(
             if (frame.width <= 0.0 || frame.height <= 0.0) continue
             val body = bodyOf(text.body) ?: continue
             if (body.paragraphs.isEmpty()) continue
-            val layout = runCatching {
+            val layout = recover<TextFrameLayout?>(null) {
                 engine.layout(body, frame.width, frame.height, TextShapeTransform.NONE)
-            }.getOrNull() ?: continue
+            } ?: continue
             emit(
                 layout = layout,
                 transform = Affine.forShape(frame),
@@ -268,7 +269,7 @@ internal class SlideTextPainter(
 
     private fun bodyOf(textBody: XNode?, sources: TextStyleSources? = null): TextBody? {
         textBody ?: return null
-        return runCatching { resolver.resolve(textBody, sources ?: TextStyleSources()) }.getOrNull()
+        return recover<TextBody?>(null) { resolver.resolve(textBody, sources ?: TextStyleSources()) }
     }
 
     private fun layoutOf(
@@ -279,9 +280,9 @@ internal class SlideTextPainter(
         transform: TextShapeTransform,
     ): TextFrameLayout? {
         (key?.let { scene.textLayouts[it] } as? TextFrameLayout)?.let { return it }
-        val layout = runCatching {
+        val layout = recover<TextFrameLayout?>(null) {
             engine.layout(body, frame.width, frame.height, transform)
-        }.getOrNull() ?: return null
+        } ?: return null
         if (key != null) scene.textLayouts[key] = layout
         return layout
     }

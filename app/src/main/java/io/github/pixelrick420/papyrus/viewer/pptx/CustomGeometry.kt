@@ -14,7 +14,7 @@ internal sealed interface CustomGeometry {
     companion object {
         fun read(properties: XNode?, limits: PptxLimits = PptxLimits()): CustomGeometry {
             val element = properties?.child(OoxmlNamespace.A, "custGeom") ?: return Absent
-            return runCatching { parse(element, limits) }.getOrElse { Invalid }
+            return recover(Invalid) { parse(element, limits) }
         }
 
         private fun parse(element: XNode, limits: PptxLimits): CustomGeometry {

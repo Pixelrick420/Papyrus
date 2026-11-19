@@ -5,6 +5,8 @@ import io.github.pixelrick420.papyrus.viewer.PdfLinkTarget
 import io.github.pixelrick420.papyrus.viewer.PdfPageLink
 import io.github.pixelrick420.papyrus.viewer.PdfPageText
 import io.github.pixelrick420.papyrus.viewer.pptx.table.TableLayout
+import io.github.pixelrick420.papyrus.viewer.pptx.text.FontCatalog
+import io.github.pixelrick420.papyrus.viewer.pptx.text.PaintTextMeasurer
 import io.github.pixelrick420.papyrus.viewer.pptx.text.TextBody
 import io.github.pixelrick420.papyrus.viewer.pptx.text.TextFrameLayout
 import io.github.pixelrick420.papyrus.viewer.pptx.text.TextLayoutEngine
@@ -17,15 +19,23 @@ import org.xmlpull.v1.XmlPullParser
 import java.io.InputStream
 import java.util.BitSet
 
+/**
+ * Canonical text path for slides: find-in-file, TTS and the library index all read these layout-based pages.
+ * [SlideTextExtractor] is a legacy fallback only, used when a scene index cannot be built.
+ */
 internal class SlideTextIndex(
     val pages: List<PdfPageText>,
     val links: List<List<PdfPageLink>> = emptyList(),
     val semanticTexts: List<String> = emptyList(),
+    val titles: List<String> = emptyList(),
 ) {
 
     fun textOf(index: Int): String = pages.getOrNull(index)?.text.orEmpty()
 
     companion object {
+
+        /** One engine shape for the viewer's find index and the library indexer, so their words agree. */
+        fun engine(fonts: FontCatalog): TextLayoutEngine = TextLayoutEngine(PaintTextMeasurer(fonts))
 
         fun fromScenes(
             scenes: List<SlideScene>,
@@ -36,13 +46,15 @@ internal class SlideTextIndex(
             val pages = ArrayList<PdfPageText>(scenes.size)
             val links = ArrayList<List<PdfPageLink>>(scenes.size)
             val semantics = ArrayList<String>(scenes.size)
+            val titles = ArrayList<String>(scenes.size)
             scenes.forEachIndexed { index, slide ->
                 val page = pageOf(slide.scene, resolver, engine, index, slide.part, linkOf)
                 pages += page.text
                 links += page.links
                 semantics += semanticTextOf(slide.scene)
+                titles += titleOf(slide.scene)
             }
-            return SlideTextIndex(pages, links, semantics)
+            return SlideTextIndex(pages, links, semantics, titles)
         }
 
         /** Resolves one slide at a time so the bounded scene window can evict earlier ones as it walks. */
@@ -53,6 +65,7 @@ internal class SlideTextIndex(
             sceneAt: (Int) -> SlideScene?,
             resolver: TextStyleResolver,
             engine: TextLayoutEngine,
+            checkCancellation: () -> Unit = {},
         ): SlideTextIndex {
             val slideOfPart = presentation.slides
                 .mapIndexedNotNull { index, ref ->
@@ -72,12 +85,15 @@ internal class SlideTextIndex(
             val pages = ArrayList<PdfPageText>(count)
             val links = ArrayList<List<PdfPageLink>>(count)
             val semantics = ArrayList<String>(count)
+            val titles = ArrayList<String>(count)
             for (index in 0 until count) {
+                checkCancellation()
                 val slide = sceneAt(index)
                 if (slide == null) {
                     pages.add(PdfPageText("", FloatArray(0)))
                     links.add(emptyList())
                     semantics.add("")
+                    titles.add("")
                     continue
                 }
                 TableLayout.layout(slide.scene, resolver, engine)
@@ -85,8 +101,9 @@ internal class SlideTextIndex(
                 pages.add(page.text)
                 links.add(page.links)
                 semantics.add(semanticTextOf(slide.scene))
+                titles.add(titleOf(slide.scene))
             }
-            return SlideTextIndex(pages, links, semantics)
+            return SlideTextIndex(pages, links, semantics, titles)
         }
 
         /** The text find-in-file sees, page by page, so the search index and the screen never disagree. */
@@ -95,6 +112,24 @@ internal class SlideTextIndex(
             measurer: TextMeasurer,
             newParserFactory: () -> XmlPullParser,
             limits: PptxLimits = PptxLimits(),
+            includeHidden: Boolean = false,
+        ): List<String> = indexPages(open, TextLayoutEngine(measurer), newParserFactory, limits, includeHidden)
+
+        /** Library-index entry point: same engine shape as the viewer, driven by the app's font catalogue. */
+        fun indexPages(
+            open: () -> InputStream,
+            fonts: FontCatalog,
+            newParserFactory: () -> XmlPullParser,
+            limits: PptxLimits = PptxLimits(),
+            includeHidden: Boolean = false,
+        ): List<String> = indexPages(open, engine(fonts), newParserFactory, limits, includeHidden)
+
+        private fun indexPages(
+            open: () -> InputStream,
+            engine: TextLayoutEngine,
+            newParserFactory: () -> XmlPullParser,
+            limits: PptxLimits,
+            includeHidden: Boolean,
         ): List<String> {
             val pkg = PptxPackage.read(open, mediaDir = null, limits = limits, newParserFactory = newParserFactory)
             val main = pkg.mainPart
@@ -102,8 +137,32 @@ internal class SlideTextIndex(
             val presentation = PresentationParser(newParserFactory, limits).parse(bytes, main)
             val scenes = StyleResolver(newParserFactory, limits).lazyScenes(pkg, presentation)
             val resolver = TextStyleResolver(limits)
-            val engine = TextLayoutEngine(measurer)
-            return fromDeck(pkg, presentation, scenes.count, scenes::scene, resolver, engine).pages.map { it.text }
+            val hidden = if (includeHidden) emptySet() else scenes.hidden
+            return fromDeck(pkg, presentation, scenes.count, scenes::scene, resolver, engine)
+                .pages.mapIndexed { index, page -> if (index in hidden) "" else page.text }
+        }
+
+        /** Prefer the `title`/`ctrTitle` placeholder; callers keep a first-line fallback when none is set. */
+        private fun titleOf(scene: Scene): String {
+            fun textOf(node: SceneNode): String = when (node) {
+                is SceneShape -> node.text?.paragraphs.orEmpty().joinToString(" ") { paragraph ->
+                    paragraph.runs.joinToString("") { it.text }
+                }.trim()
+                is SceneGroup -> node.children.firstNotNullOfOrNull { child ->
+                    textOf(child).takeIf { it.isNotEmpty() }
+                }.orEmpty()
+                else -> ""
+            }
+            fun walk(nodes: List<SceneNode>): String {
+                for (node in nodes) {
+                    if (node is SceneShape && isTitlePlaceholder(node.placeholder)) {
+                        textOf(node).takeIf { it.isNotEmpty() }?.let { return it }
+                    }
+                    if (node is SceneGroup) walk(node.children).takeIf { it.isNotEmpty() }?.let { return it }
+                }
+                return ""
+            }
+            return walk(scene.nodes)
         }
 
         internal fun semanticTextOf(scene: Scene): String {
@@ -257,12 +316,12 @@ internal class SlideTextIndex(
             val frame = shape.frame ?: return null
             if (frame.width <= 0.0 || frame.height <= 0.0) return null
             val body = shape.textBody?.let { node ->
-                runCatching { resolver.resolve(node, shape.text?.textSources ?: TextStyleSources()) }.getOrNull()
+                recover<TextBody?>(null) { resolver.resolve(node, shape.text?.textSources ?: TextStyleSources()) }
             } ?: return null
             if (!body.hasText()) return null
-            val layout = runCatching {
+            val layout = recover<TextFrameLayout?>(null) {
                 engine.layout(body, frame.width, frame.height, TextShapeTransform.of(shape.transform))
-            }.getOrNull() ?: return null
+            } ?: return null
             if (layout.lines.isEmpty()) return null
             val insets = body.properties.insets
             val placed = transform.then(

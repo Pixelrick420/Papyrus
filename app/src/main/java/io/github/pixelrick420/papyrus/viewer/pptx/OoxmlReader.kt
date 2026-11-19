@@ -116,17 +116,18 @@ internal class OoxmlCursor internal constructor(
             when (val event = advance()) {
                 XmlPullParser.START_TAG -> {
                     val found = nameOf(parser)
-                    readIgnorable()
+                    val attrs = attributesOf(parser)
+                    readIgnorable(attrs)
                     // A namespace the reader declares it can consume is not ignorable to it.
                     if (found.namespace in ignorable && found.namespace !in implemented) {
                         skipParserSubtree()
                         continue
                     }
                     if (found.matches(OoxmlNamespace.MC, "AlternateContent")) {
-                        enqueueAlternateContent()
+                        enqueueAlternateContent(attrs)
                         continue
                     }
-                    return start(found, attributesOf(parser))
+                    return start(found, attrs)
                 }
                 XmlPullParser.END_TAG -> return end(nameOf(parser))
                 XmlPullParser.TEXT, XmlPullParser.CDSECT, XmlPullParser.ENTITY_REF -> return text(parser.text.orEmpty())
@@ -222,8 +223,8 @@ internal class OoxmlCursor internal constructor(
         return event
     }
 
-    private fun readIgnorable() {
-        val prefixes = attributesOf(parser)
+    private fun readIgnorable(attrs: List<OoxmlAttribute>) {
+        val prefixes = attrs
             .firstOrNull { it.namespace == OoxmlNamespace.MC && it.localName == "Ignorable" }
             ?.value ?: return
         for (prefix in prefixes.split(' ')) {
@@ -243,9 +244,9 @@ internal class OoxmlCursor internal constructor(
         }
     }
 
-    private fun enqueueAlternateContent() {
+    private fun enqueueAlternateContent(attrs: List<OoxmlAttribute>) {
         val scope = namespaceScope()
-        val alternate = readTreeFromParser()
+        val alternate = readTreeFromParser(attrs)
         val branch = choose(alternate, scope) ?: return
         for (child in branch.children) enqueue(child, scope)
     }
@@ -274,8 +275,8 @@ internal class OoxmlCursor internal constructor(
         pending.addLast(Event.End(node.name))
     }
 
-    private fun readTreeFromParser(): XNode {
-        val root = XNode(nameOf(parser), attributesOf(parser))
+    private fun readTreeFromParser(attrs: List<OoxmlAttribute>): XNode {
+        val root = XNode(nameOf(parser), attrs)
         val stack = ArrayDeque<XNode>().apply { addLast(root) }
         while (true) {
             when (advance()) {

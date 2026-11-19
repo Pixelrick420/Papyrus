@@ -156,7 +156,7 @@ internal class MasterLayoutParser(
 
     private fun parseTheme(pkg: PptxPackage, part: String): Theme? {
         val bytes = pkg.part(part) ?: return null
-        return runCatching { ThemeParser(newParserFactory, limits).parse(bytes, part) }.getOrNull()
+        return recover<Theme?>(null) { ThemeParser(newParserFactory, limits).parse(bytes, part) }
     }
 
     private fun read(pkg: PptxPackage, part: String, expected: String): XNode? {

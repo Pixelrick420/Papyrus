@@ -19,6 +19,7 @@ import java.io.FileOutputStream
 import java.io.IOException
 import java.io.InputStream
 import java.util.UUID
+import java.util.zip.ZipFile
 import java.util.zip.ZipInputStream
 
 class PptxFormatException(message: String, cause: Throwable? = null) : IOException(message, cause)
@@ -30,6 +31,7 @@ data class PptxLimits(
     val maxEntries: Int = ZipLimits().maxEntries,
     val maxEntryBytes: Long = ZipLimits().maxEntryBytes,
     val maxTotalBytes: Long = ZipLimits().maxTotalBytes,
+    val maxSourceBytes: Long = 512L * 1024 * 1024,
     val maxRatio: Int = ZipLimits().maxRatio,
     val ratioFloorBytes: Long = ZipLimits().ratioFloorBytes,
     val maxXmlPartBytes: Int = 32 * 1024 * 1024,
@@ -60,6 +62,8 @@ data class PptxLimits(
     val maxRenderEdgePx: Int = PdfPageSource.MAX_PAGE_HEIGHT_PX,
     val maxSlideEdgeInches: Int = 56,
     val maxSlideRenderMillis: Long = 5_000,
+    /** Deterministic cap so a fast machine cannot spend unbounded time on a pathological slide. */
+    val maxSlideRenderUnits: Int = 200_000,
 ) {
     val zipLimits: ZipLimits get() = ZipLimits(maxEntries, maxEntryBytes, maxTotalBytes, maxRatio, ratioFloorBytes)
 }
@@ -111,6 +115,8 @@ internal class PptxPackage(
     /** Media a slide names that could not be written, whether because the budget refused it or it is absent. */
     val mediaDropped: Int,
     private val fonts: Map<String, ByteArray> = emptyMap(),
+    /** Relationship parts that could not be parsed; the deck still opens but is marked incomplete. */
+    val relFailures: Int = 0,
 ) {
 
     private val foldedParts by lazy { parts.keys.associateBy { it.lowercase() } }
@@ -127,12 +133,15 @@ internal class PptxPackage(
 
     val fontNames: Set<String> get() = fonts.keys
 
-    /** Typefaces named by the package's XML, read without a second XML parse. */
+    /** Typefaces named by the package's XML, read without a second XML parse and under a byte budget. */
     fun requestedTypefaces(): Set<String> {
         val found = LinkedHashSet<String>()
+        var scanned = 0L
         for ((name, bytes) in parts) {
             if (!name.endsWith(".xml", ignoreCase = true)) continue
-            val xml = String(bytes, Charsets.UTF_8)
+            scanned += bytes.size
+            if (scanned > TYPEFACE_SCAN_BYTES) break
+            val xml = SCRIPT_FONT_PATTERN.replace(String(bytes, Charsets.UTF_8), "")
             for (match in TYPEFACE_PATTERN.findAll(xml)) {
                 val value = match.groupValues[1].trim()
                 if (value.isNotEmpty() && !value.startsWith('+')) found += value
@@ -183,6 +192,8 @@ private class PptxReader(
     private val newParserFactory: () -> XmlPullParser,
 ) {
 
+    private var relFailures = 0
+
     private class Scan(
         val parts: Map<String, ByteArray>,
         val contentTypes: ByteArray?,
@@ -194,8 +205,18 @@ private class PptxReader(
         if (cached != null) {
             mediaDir?.mkdirs()
             try {
+                val buffer = ByteArray(MEDIA_COPY_BUFFER)
+                var copied = 0L
                 openStream().use { input ->
-                    FileOutputStream(cached).use { output -> input.copyTo(output, MEDIA_COPY_BUFFER) }
+                    FileOutputStream(cached).use { output ->
+                        while (true) {
+                            val n = input.read(buffer)
+                            if (n < 0) break
+                            copied += n
+                            if (copied > limits.maxSourceBytes) throw PptxFormatException("source is too large")
+                            output.write(buffer, 0, n)
+                        }
+                    }
                 }
             } catch (error: IOException) {
                 cached.delete()
@@ -211,8 +232,8 @@ private class PptxReader(
             val rels = parseRelationships(scan.parts)
             val main = actualPart(mainPart(types, rels[""].orEmpty()), scan.parts)
                 ?: throw PptxFormatException("main part ${types.mainPart()} is missing")
-            val (media, dropped) = readMedia(stream, wantedMedia(rels))
-            return PptxPackage(main, types, scan.parts, rels, media, dropped, scan.fonts)
+            val (media, dropped) = readMedia(cached, stream, wantedMedia(rels))
+            return PptxPackage(main, types, scan.parts, rels, media, dropped, scan.fonts, relFailures)
         } finally {
             cached?.delete()
         }
@@ -284,8 +305,10 @@ private class PptxReader(
                 event = parser.next()
             }
         } catch (_: XmlPullParserException) {
+            relFailures++
             return emptyList()
         } catch (_: IOException) {
+            relFailures++
             return emptyList()
         }
         return found.values.toList()
@@ -330,30 +353,73 @@ private class PptxReader(
         return wanted
     }
 
-    private fun readMedia(openStream: () -> InputStream, wanted: Map<String, String>): Pair<Map<String, File>, Int> {
+    private fun readMedia(
+        cached: File?,
+        openStream: () -> InputStream,
+        wanted: Map<String, String>,
+    ): Pair<Map<String, File>, Int> {
         if (wanted.isEmpty()) return emptyMap<String, File>() to 0
         val dir = mediaDir ?: return emptyMap<String, File>() to wanted.size
         val written = LinkedHashMap<String, File>()
         var total = 0L
         val buffer = ByteArray(MEDIA_COPY_BUFFER)
-        openStream().use { input ->
-            BoundedZipInputStream(input, limits.zipLimits, ::formatError).use { zip ->
-                while (true) {
-                    val entry = zip.nextEntry ?: break
+
+        fun accept(name: String, read: () -> ByteArray?) {
+            val target = wanted[name.lowercase()] ?: return
+            val key = target.lowercase()
+            if (written.containsKey(key) || written.size >= limits.maxImages) return
+            val bytes = read() ?: return
+            if (total + bytes.size > limits.maxMediaBytes) return
+            val file = writeMedia(dir, target, bytes) ?: return
+            written[key] = file
+            total += bytes.size
+        }
+
+        if (cached != null) {
+            // Random access skips unwanted entries without inflating them a second time.
+            ZipFile(cached).use { zip ->
+                val entries = zip.entries()
+                while (entries.hasMoreElements()) {
+                    val entry = entries.nextElement()
                     if (entry.isDirectory) continue
-                    val target = wanted[entry.name.lowercase()] ?: continue
-                    // Reserve before reading: an entry the budget can never accept is not buffered at all.
-                    if (written.size >= limits.maxImages) continue
-                    if (entry.size > limits.maxImageBytes) continue
-                    val bytes = readBounded(zip, limits.maxImageBytes, buffer) ?: continue
-                    if (total + bytes.size > limits.maxMediaBytes) continue
-                    val file = writeMedia(dir, target, bytes) ?: continue
-                    total += bytes.size
-                    written[target] = file
+                    accept(entry.name) {
+                        if (entry.size > limits.maxImageBytes) null else readEntryBounded(zip, entry, buffer)
+                    }
+                }
+            }
+        } else {
+            openStream().use { input ->
+                BoundedZipInputStream(input, limits.zipLimits, ::formatError).use { zip ->
+                    while (true) {
+                        val entry = zip.nextEntry ?: break
+                        if (entry.isDirectory) continue
+                        accept(entry.name) {
+                            if (entry.size > limits.maxImageBytes) null
+                            else readBounded(zip, limits.maxImageBytes, buffer)
+                        }
+                    }
                 }
             }
         }
         return written to (wanted.size - written.size)
+    }
+
+    private fun readEntryBounded(zip: ZipFile, entry: java.util.zip.ZipEntry, buffer: ByteArray): ByteArray? {
+        val cap = limits.maxImageBytes
+        val out = ByteArrayOutputStream(minOf(cap, MEDIA_COPY_BUFFER))
+        val compressed = entry.compressedSize
+        zip.getInputStream(entry).use { input ->
+            while (true) {
+                val n = input.read(buffer)
+                if (n < 0) break
+                if (out.size() + n > cap) return null
+                out.write(buffer, 0, n)
+                if (out.size() >= limits.ratioFloorBytes && compressed > 0 &&
+                    out.size() / compressed > limits.maxRatio
+                ) throw formatError("implausible compression")
+            }
+        }
+        return out.toByteArray()
     }
 
     private fun writeMedia(dir: File, zipName: String, bytes: ByteArray): File? {
@@ -460,5 +526,9 @@ private class PptxReader(
 }
 
 private val TYPEFACE_PATTERN = Regex("""typeface\s*=\s*["']([^"']+)["']""")
+
+private val SCRIPT_FONT_PATTERN = Regex("""<\w+:font\b[^>]*\bscript\s*=[^>]*/?>""", RegexOption.IGNORE_CASE)
+
+private const val TYPEFACE_SCAN_BYTES = 8L * 1024 * 1024
 
 private const val CONTENT_TYPES_PART = "[Content_Types].xml"

@@ -23,7 +23,7 @@ internal class SlideTextExtractor(
         val presentation = PresentationParser(newParserFactory, limits).parse(bytes, mainPart)
         val parts = ShapeTreeParser(newParserFactory, limits).parts(pkg, presentation)
         val cap = TextCap(limits.maxTextChars)
-        return parts.map { part -> runCatching { slideText(pkg, part, cap) }.getOrDefault("") }
+        return parts.map { part -> recover("") { slideText(pkg, part, cap) } }
     }
 
     private fun slideText(pkg: PptxPackage, part: String, cap: TextCap): String {
@@ -135,7 +135,7 @@ internal class SlideTextExtractor(
     }
 
     private fun readPart(pkg: PptxPackage, part: String): XNode? =
-        pkg.part(part)?.let { bytes -> runCatching { reader.readTree(bytes.inputStream(), part) }.getOrNull() }
+        pkg.part(part)?.let { bytes -> recover<XNode?>(null) { reader.readTree(bytes.inputStream(), part) } }
 
     private fun textOfBody(body: XNode): String = body.childrenOf(OoxmlNamespace.A, "p")
         .map(::textOfParagraph)

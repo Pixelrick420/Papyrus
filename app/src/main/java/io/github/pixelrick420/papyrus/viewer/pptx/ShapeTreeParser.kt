@@ -52,8 +52,9 @@ internal class ShapeTreeParser(
     }
 
     private fun slideOrEmpty(pkg: PptxPackage, part: String, size: SceneSize): SlideScene =
-        runCatching { parse(pkg, part, size) }
-            .getOrElse { SlideScene(part, Scene(size, emptyList()), incomplete = true) }
+        io.github.pixelrick420.papyrus.viewer.pptx.recover(
+            SlideScene(part, Scene(size, emptyList()), incomplete = true),
+        ) { parse(pkg, part, size) }
 
     fun parts(pkg: PptxPackage, presentation: PresentationInfo): List<String> {
         val related = presentation.slides.mapNotNull { ref -> pkg.targetOf(pkg.mainPart, ref.relationshipId) }
@@ -150,7 +151,9 @@ private class SlideReading(
             return null
         }
         val shapeDepth = cursor.depth
-        val node = runCatching { nodeOf(cursor.readTree(), TOP_LEVEL) }.getOrNull()
+        val node = io.github.pixelrick420.papyrus.viewer.pptx.recover<SceneNode?>(null) {
+            nodeOf(cursor.readTree(), TOP_LEVEL)
+        }
         if (node != null) return node
         incomplete = true
         if (!recover(shapeDepth)) truncated = true
@@ -264,7 +267,8 @@ private class SlideReading(
             return emptyList()
         }
         return shapes.mapNotNull { child ->
-            runCatching { nodeOf(child, depth + 1) }.getOrNull().also { if (it == null) incomplete = true }
+            io.github.pixelrick420.papyrus.viewer.pptx.recover<SceneNode?>(null) { nodeOf(child, depth + 1) }
+                .also { if (it == null) incomplete = true }
         }
     }
 

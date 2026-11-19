@@ -32,6 +32,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.derivedStateOf
@@ -97,9 +98,10 @@ internal fun slideSemanticDescription(
     altText: String?,
     hidden: Boolean,
     hiddenLabel: String,
+    headingLabel: String = "(heading)",
 ): String {
     val sentences = mutableListOf<String>()
-    if (title.isNotBlank()) sentences += "${title.trim()} (heading)"
+    if (title.isNotBlank()) sentences += "${title.trim()} $headingLabel"
     text?.trim()?.takeIf { it.isNotEmpty() }?.let(sentences::add)
     altText?.trim()?.takeIf { it.isNotEmpty() }?.let(sentences::add)
     if (hidden) sentences += hiddenLabel
@@ -153,6 +155,7 @@ internal fun PdfViewer(
     pageSemanticBodies: List<String> = emptyList(),
     slideSemantics: Boolean = false,
 ) {
+    val renderIncomplete by source.incomplete.collectAsState(false)
     val restoreTarget = rememberRestoredTarget(LocationKind.PAGE, source.pageCount, position)
     val listState = rememberLazyListState(initialFirstVisibleItemIndex = restoreTarget?.unit ?: 0)
     val geometry = rememberLazyScrollGeometry(listState)
@@ -319,6 +322,16 @@ internal fun PdfViewer(
                         )
                     }
                 }
+                if (renderIncomplete) {
+                    item(key = "incomplete") {
+                        Text(
+                            text = stringResource(R.string.viewer_incomplete),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 12.dp),
+                        )
+                    }
+                }
             }
 
             Box(
@@ -427,12 +440,17 @@ private fun PdfPage(
     }
     var tiles by remember(source, index) { mutableStateOf<List<TileImage>>(emptyList()) }
     val visible = visibleRect()
-    LaunchedEffect(source, index, widthPx, grid, visible) {
-        if (grid == null || visible == null) {
+    // Key the effect on the *set* of covering tiles, which is unchanged across most scroll frames.
+    // Keying on the raw rect restarted a render on every frame even when the same tiles still covered it.
+    val covering = remember(grid, visible) {
+        if (grid == null || visible == null) emptyList() else grid.covering(visible)
+    }
+    LaunchedEffect(source, index, widthPx, covering) {
+        if (covering.isEmpty()) {
             tiles = emptyList()
             return@LaunchedEffect
         }
-        tiles = grid.covering(visible).mapNotNull { tile ->
+        tiles = covering.mapNotNull { tile ->
             val bitmap = source.cachedTile(index, widthPx, tile.rect) ?: source.renderTile(index, widthPx, tile.rect)
             bitmap?.let { TileImage(tile.rect, it.asImageBitmap()) }
         }
@@ -546,6 +564,7 @@ private fun PdfPage(
                     altText = semanticBody,
                     hidden = isHidden,
                     hiddenLabel = stringResource(R.string.viewer_slide_hidden),
+                    headingLabel = stringResource(R.string.viewer_slide_heading_label),
                 )
             } else {
                 val label = pageTitle.takeIf { it.isNotBlank() }?.trim()

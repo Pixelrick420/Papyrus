@@ -33,6 +33,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -44,6 +47,7 @@ import java.io.InputStream
 import java.util.Collections
 import java.util.UUID
 import java.util.WeakHashMap
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.math.roundToInt
 
@@ -57,9 +61,11 @@ internal class SlidePageSource private constructor(
     private val limits: PptxLimits,
     private val renderer: SlideRenderer,
     private val fonts: FontCatalog? = null,
-    val textIndex: SlideTextIndex,
     val fontSubstitution: FontSubstitution,
     val hidden: Set<Int> = emptySet(),
+    private val generated: MutableMap<String, RasterPicture> = HashMap(),
+    private val placeholderLabels: PictureLabels = PictureLabels.Default,
+    val textIndex: SlideTextIndex,
 ) : PageBitmapSource {
 
     override val pageCount: Int = scenes.count
@@ -72,9 +78,13 @@ internal class SlidePageSource private constructor(
 
     override val maxRenderPixels: Int = cacheBudgetBytes / (BYTES_PER_PIXEL * PAGES_PER_CACHE)
 
-    /** Package drops, truncated slide lists and per-slide drops are all worth telling the reader about. */
-    fun incomplete(): Boolean =
-        pkg.mediaDropped > 0 || presentationInfo.slidesTruncated || scenes.incomplete
+    private val incompleteFlow = MutableStateFlow(false)
+    override val incomplete: StateFlow<Boolean> = incompleteFlow.asStateFlow()
+
+    /** Package drops, truncated slide lists, failed rels and truncated renders are worth telling the reader about. */
+    fun isIncomplete(): Boolean =
+        pkg.mediaDropped > 0 || pkg.relFailures > 0 || presentationInfo.slidesTruncated ||
+            scenes.incomplete || incompleteFlow.value
 
     private val images = ImageCache(maxPixels = limits.maxImagePixels, maxEdgePx = limits.maxRenderEdgePx)
 
@@ -82,7 +92,7 @@ internal class SlidePageSource private constructor(
 
     private val lists = object : LruCache<Int, DisplayList>(MAX_CACHED_LISTS) {}
 
-    private val incompleteRenders = HashSet<Int>()
+    private val incompleteRenders = ConcurrentHashMap.newKeySet<Int>()
 
     private val cache = object : LruCache<CacheKey, Bitmap>(cacheBudgetBytes) {
         override fun sizeOf(key: CacheKey, value: Bitmap): Int = value.allocationByteCount.coerceAtLeast(1)
@@ -105,6 +115,7 @@ internal class SlidePageSource private constructor(
     override fun trimMemory(evictAll: Boolean) {
         if (evictAll) cache.evictAll() else cache.trimToSize(cache.maxSize() / 2)
         if (evictAll) lists.evictAll() else lists.trimToSize(lists.maxSize() / 2)
+        if (evictAll) synchronized(generated) { generated.clear() }
         scenes.trimMemory(evictAll)
         images.trimMemory(evictAll)
         metafiles.trimMemory(evictAll)
@@ -243,14 +254,24 @@ internal class SlidePageSource private constructor(
         lists.get(index)?.let { return@withContext it }
         val list = renderer.render(slide.scene, resolverOf(slide))
         if (!list.complete && incompleteRenders.add(index)) {
-            Log.w(TAG, "Slide $index render stopped at its time budget")
+            incompleteFlow.value = true
+            Log.w(TAG, "Slide $index render stopped at its work budget")
         }
         lists.put(index, list)
         list
     }
 
     private fun resolverOf(slide: SlideScene): SlidePictureResolver {
-        val pictures = PictureImages(pkg, slide.part, images, mediaDir, limits.maxRenderEdgePx, metafiles)
+        val pictures = PictureImages(
+            pkg = pkg,
+            part = slide.part,
+            cache = images,
+            mediaDir = mediaDir,
+            maxEdgePx = limits.maxRenderEdgePx,
+            metafiles = metafiles,
+            generated = generated,
+            labels = placeholderLabels,
+        )
         return SlidePictureResolver { picture ->
             pictures.raster(picture.source, picture.frame)?.let { SlideImage(it.file, it.bounds) }
         }
@@ -274,6 +295,7 @@ internal class SlidePageSource private constructor(
                     runCatching { lists.evictAll() }
                     runCatching { scenes.clear() }
                     runCatching { images.clear() }
+                    runCatching { synchronized(generated) { generated.clear() } }
                     runCatching { metafiles.trimMemory(evictAll = true) }
                     runCatching { mediaDir.deleteRecursively() }
                 }
@@ -301,6 +323,9 @@ internal class SlidePageSource private constructor(
 
         private const val PPTX_DIR_PREFIX = "pptx-"
 
+        /** Only dirs left by an earlier process are stale; a dir created this run may still be in use. */
+        private val processStartMillis = System.currentTimeMillis()
+
         private val openSources: MutableSet<SlidePageSource> =
             Collections.newSetFromMap(WeakHashMap<SlidePageSource, Boolean>())
 
@@ -311,11 +336,17 @@ internal class SlidePageSource private constructor(
 
         /** Media directories are per-open UUIDs; a killed process leaves them behind for the next start. */
         fun sweepStaleTempDirs(cacheDir: File) {
-            cacheDir.listFiles { file -> file.isDirectory && file.name.startsWith(PPTX_DIR_PREFIX) }
-                ?.forEach { runCatching { it.deleteRecursively() } }
+            cacheDir.listFiles { file ->
+                file.isDirectory && file.name.startsWith(PPTX_DIR_PREFIX) && file.lastModified() < processStartMillis
+            }?.forEach { runCatching { it.deleteRecursively() } }
         }
 
-        suspend fun open(context: Context, uri: Uri): SlidePageSource = withContext(Dispatchers.IO) {
+        suspend fun open(
+            context: Context,
+            uri: Uri,
+            buildTextIndex: Boolean = true,
+            labels: PictureLabels = PictureLabels.Default,
+        ): SlidePageSource = withContext(Dispatchers.IO) {
             val dir = mediaDir(context)
             try {
                 openStream(
@@ -326,6 +357,8 @@ internal class SlidePageSource private constructor(
                     mediaDir = dir,
                     presets = presets(context),
                     assets = context.assets,
+                    buildTextIndex = buildTextIndex,
+                    labels = labels,
                 )
             } catch (error: Exception) {
                 dir.deleteRecursively()
@@ -333,10 +366,22 @@ internal class SlidePageSource private constructor(
             }
         }
 
-        suspend fun openFile(context: Context, file: File): SlidePageSource = withContext(Dispatchers.IO) {
+        suspend fun openFile(
+            context: Context,
+            file: File,
+            buildTextIndex: Boolean = true,
+            labels: PictureLabels = PictureLabels.Default,
+        ): SlidePageSource = withContext(Dispatchers.IO) {
             val dir = mediaDir(context)
             try {
-                openStream(open = { file.inputStream() }, mediaDir = dir, presets = presets(context), assets = context.assets)
+                openStream(
+                    open = { file.inputStream() },
+                    mediaDir = dir,
+                    presets = presets(context),
+                    assets = context.assets,
+                    buildTextIndex = buildTextIndex,
+                    labels = labels,
+                )
             } catch (error: Exception) {
                 dir.deleteRecursively()
                 throw error
@@ -351,15 +396,20 @@ internal class SlidePageSource private constructor(
             limits: PptxLimits = PptxLimits(),
             newParserFactory: () -> XmlPullParser = { Xml.newPullParser() },
             assets: android.content.res.AssetManager? = null,
+            buildTextIndex: Boolean = true,
+            labels: PictureLabels = PictureLabels.Default,
         ): SlidePageSource = withContext(Dispatchers.IO) {
             mediaDir.mkdirs()
             val pkg = PptxPackage.read(open, mediaDir, limits, newParserFactory)
+            ensureActive()
             val main = pkg.mainPart
             val bytes = pkg.part(main) ?: throw PptxFormatException("$main is missing")
             val presentation = PresentationParser(newParserFactory, limits).parse(bytes, main)
+            ensureActive()
             val scenes = StyleResolver(newParserFactory, limits).lazyScenes(pkg, presentation)
             val resolver = TextStyleResolver(limits)
             val embedded = pkg.fontNames.mapNotNull { name -> pkg.font(name)?.let { EmbeddedFontDecoder.decode(name, it) } }
+            ensureActive()
             val fonts = assets?.let { FontCatalog(it, mediaDir) }
             val warpSource = warps ?: assets?.let {
                 PresetGeometry(open = { it.open("ooxml/presetTextWarpDefinitions.xml") })
@@ -372,12 +422,14 @@ internal class SlidePageSource private constructor(
                     warps = warpSource?.let(::TextWarpRenderer),
                 )
             }
-            val textIndex = if (engine != null) {
+            ensureActive()
+            scenes.scene(0)
+            ensureActive()
+            val textIndex = if (buildTextIndex && engine != null) {
                 SlideTextIndex.fromDeck(pkg, presentation, scenes.count, { index -> scenes.scene(index) }, resolver, engine)
             } else {
                 SlideTextIndex(emptyList())
             }
-            scenes.scene(0)
             SlidePageSource(
                 pkg = pkg,
                 scenes = scenes,
@@ -386,9 +438,10 @@ internal class SlidePageSource private constructor(
                 limits = limits,
                 renderer = SlideRenderer(presets, limits, text = engine?.let { SlideTextPainter(resolver, it) }),
                 fonts = fonts,
-                textIndex = textIndex,
                 fontSubstitution = substitution,
                 hidden = scenes.hidden,
+                textIndex = textIndex,
+                placeholderLabels = labels,
             ).also { synchronized(openSources) { openSources.add(it) } }
         }
 
@@ -405,5 +458,8 @@ private data class RenderSize(val widthPx: Int, val heightPx: Int, val scale: Fl
 internal fun slideAspectRatio(size: SceneSize): Float =
     if (size.width > 0.0) (size.height / size.width).toFloat() else 0f
 
-internal fun slideHeightPx(widthPx: Int, size: SceneSize, maxEdgePx: Int): Int =
-    (widthPx.toDouble() * size.height / size.width).roundToInt().coerceIn(1, maxEdgePx)
+internal fun slideHeightPx(widthPx: Int, size: SceneSize, maxEdgePx: Int): Int {
+    if (size.width <= 0.0 || size.height <= 0.0 || widthPx <= 0) return 1
+    val height = widthPx.toDouble() * size.height / size.width
+    return if (height.isFinite()) height.roundToInt().coerceIn(1, maxEdgePx) else 1
+}

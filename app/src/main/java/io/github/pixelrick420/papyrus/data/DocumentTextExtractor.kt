@@ -15,7 +15,6 @@ import io.github.pixelrick420.papyrus.viewer.PdfPageTextSource
 import io.github.pixelrick420.papyrus.viewer.TextCacheKey
 import io.github.pixelrick420.papyrus.viewer.pptx.SlideTextIndex
 import io.github.pixelrick420.papyrus.viewer.pptx.text.FontCatalog
-import io.github.pixelrick420.papyrus.viewer.pptx.text.PaintTextMeasurer
 import io.github.pixelrick420.papyrus.viewer.readTextString
 import io.github.pixelrick420.papyrus.viewer.textCacheKey
 import kotlinx.coroutines.CancellationException
@@ -58,6 +57,7 @@ class DocumentTextExtractor(
         } catch (expectedDrm: EpubProtectedException) {
             ExtractedText("", TextIndexState.SKIPPED)
         } catch (ignoredOom: OutOfMemoryError) {
+            // Deliberate: a single huge document must not kill the background indexer or stall its queue.
             ExtractedText("", TextIndexState.FAILED)
         } catch (ignored: Exception) {
             // A bad document must not stall the index queue, so every parse failure ends as FAILED.
@@ -111,7 +111,7 @@ class DocumentTextExtractor(
         // mediaDir = null: a deck's words are indexed, not its pictures.
         val pages = SlideTextIndex.indexPages(
             open = { openStream(uri) },
-            measurer = PaintTextMeasurer(fonts),
+            fonts = fonts,
             newParserFactory = { Xml.newPullParser() },
         )
         return indexable(pages.joinToString("\n"))

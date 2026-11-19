@@ -4,9 +4,12 @@ import android.util.Xml
 import io.github.pixelrick420.papyrus.viewer.pptx.chart.ChartBuilder
 import io.github.pixelrick420.papyrus.viewer.pptx.chart.ChartDrawing
 import io.github.pixelrick420.papyrus.viewer.pptx.chart.ChartParser
+import io.github.pixelrick420.papyrus.viewer.pptx.chart.PptxChart
 import io.github.pixelrick420.papyrus.viewer.pptx.chart.ChartStyle
 import io.github.pixelrick420.papyrus.viewer.pptx.diagram.SmartArtDrawing
 import io.github.pixelrick420.papyrus.viewer.pptx.diagram.SmartArtStyle
+import io.github.pixelrick420.papyrus.viewer.pptx.table.TableStyles
+import io.github.pixelrick420.papyrus.viewer.pptx.table.TableStyleSheet
 import io.github.pixelrick420.papyrus.viewer.pptx.text.TextStyleSources
 import org.xmlpull.v1.XmlPullParser
 
@@ -46,7 +49,7 @@ internal class StyleResolver(
             factory = { index ->
                 val part = parts[index]
                 val scene = slide(pkg, part, size, presentation.firstSlideNumber + index, templates)
-                io.github.pixelrick420.papyrus.viewer.pptx.table.TableStyles.apply(scene.scene, tableStyles)
+                TableStyles.apply(scene.scene, tableStyles)
                 scene
             },
         )
@@ -55,7 +58,7 @@ internal class StyleResolver(
     private fun hiddenSlides(pkg: PptxPackage, parts: List<String>): Set<Int> =
         parts.mapIndexedNotNull { index, part ->
             val bytes = pkg.part(part) ?: return@mapIndexedNotNull null
-            val hidden = runCatching {
+            val hidden = recover(false) {
                 val parser = configureXmlParser(newParserFactory(), namespaces = false)
                 parser.setInput(bytes.inputStream(), null)
                 var event = parser.eventType
@@ -63,17 +66,17 @@ internal class StyleResolver(
                 event == XmlPullParser.START_TAG && parser.getAttributeValue(null, "show").let { value ->
                     value == "0" || value.equals("false", ignoreCase = true) || value.equals("off", ignoreCase = true)
                 }
-            }.getOrDefault(false)
+            }
             index.takeIf { hidden }
         }.toSet()
 
-    private fun readTableStyles(pkg: PptxPackage, colors: ColorModel): io.github.pixelrick420.papyrus.viewer.pptx.table.TableStyleSheet {
+    private fun readTableStyles(pkg: PptxPackage, colors: ColorModel): TableStyleSheet {
         val part = pkg.part("ppt/tableStyles.xml")
             ?: pkg.relationshipsOf(pkg.mainPart).firstOrNull {
                 it.type.substringAfterLast('/').equals("tableStyles", ignoreCase = true)
             }?.let { pkg.targetOf(pkg.mainPart, it.id)?.let(pkg::part) }
         val root = part?.let { reader.readTree(it.inputStream(), "ppt/tableStyles.xml") }
-        return io.github.pixelrick420.papyrus.viewer.pptx.table.TableStyles.read(root, limits, colors)
+        return TableStyles.read(root, limits, colors)
     }
 
     private fun slide(
@@ -83,7 +86,7 @@ internal class StyleResolver(
         number: Int,
         templates: Templates,
     ): SlideScene {
-        val tree = runCatching { shapes.parsePart(pkg, part) }.getOrNull()
+        val tree = recover<ParsedShapeTree?>(null) { shapes.parsePart(pkg, part) }
             ?: return SlideScene(part, Scene(size, emptyList()), incomplete = true)
         val layout = pkg.relationshipsOf(part)
             .firstOrNull { it.type.substringAfterLast('/').equals("slideLayout", ignoreCase = true) }
@@ -275,8 +278,8 @@ internal class StyleResolver(
         val relationship = frame.relationshipId ?: return null
         val part = pkg.targetOf(source, relationship) ?: return null
         val bytes = pkg.part(part) ?: return null
-        val tree = runCatching { reader.readTree(bytes.inputStream(), part) }.getOrNull() ?: return null
-        val chart = runCatching { ChartParser.parse(tree, limits) }.getOrNull() ?: return null
+        val tree = recover<XNode?>(null) { reader.readTree(bytes.inputStream(), part) } ?: return null
+        val chart = recover<PptxChart?>(null) { ChartParser.parse(tree, limits) } ?: return null
         val bounds = frame.frame?.let { SceneRect(0.0, 0.0, it.width, it.height) } ?: return null
         if (bounds.width <= 0.0 || bounds.height <= 0.0) return null
         return ChartBuilder.build(chart, bounds, chartStyle(context), frame.description)
@@ -287,7 +290,7 @@ internal class StyleResolver(
         val modelRelation = frame.relationshipId ?: return null
         val modelPart = pkg.targetOf(source, modelRelation) ?: return null
         val model = pkg.part(modelPart)?.let { bytes ->
-            runCatching { diagramReader.readTree(bytes.inputStream(), modelPart) }.getOrNull()
+            recover<XNode?>(null) { diagramReader.readTree(bytes.inputStream(), modelPart) }
         }
         val nodeText = model?.let(::dataModelText).orEmpty()
         val origin = frame.frame ?: return null
@@ -297,7 +300,7 @@ internal class StyleResolver(
             ?.let { pkg.targetOf(modelPart, it.id) }
             ?: return SmartArtDrawing.fallback(origin, style, nodeText)
         val bytes = pkg.part(drawingPart) ?: return SmartArtDrawing.fallback(origin, style, nodeText)
-        val root = runCatching { diagramReader.readTree(bytes.inputStream(), drawingPart) }.getOrNull()
+        val root = recover<XNode?>(null) { diagramReader.readTree(bytes.inputStream(), drawingPart) }
         return SmartArtDrawing.read(root, drawingPart, style, origin, nodeText)
     }
 
@@ -422,7 +425,7 @@ internal class StyleResolver(
         val compound = sources.firstNotNullOfOrNull { (line) -> line.attribute("cmpd") }
             ?.let(StrokeCompound::of) ?: StrokeCompound.SINGLE
         val customDash = sources.firstNotNullOfOrNull { (line) ->
-            line.child(OoxmlNamespace.A, "custDash")?.let(Strokes::customDash)?.ifEmpty { null }
+            line.child(OoxmlNamespace.A, "custDash")?.let { Strokes.customDash(it, limits.maxDashEntries) }?.ifEmpty { null }
         }.orEmpty()
         val headEnd = sources.firstNotNullOfOrNull { (line) -> arrow(line, "headEnd") } ?: ArrowEnd.NONE
         val tailEnd = sources.firstNotNullOfOrNull { (line) -> arrow(line, "tailEnd") } ?: ArrowEnd.NONE
@@ -923,11 +926,11 @@ private class Templates(
     private fun build(layout: SlideLayout): LayoutContext {
         val master = layout.masterPart?.let(layouts::master)
         val layoutTree = layoutTrees.getOrPut(layout.part.lowercase()) {
-            runCatching { shapes.parsePart(pkg, layout.part, "sldLayout") }.getOrNull()
+            recover<ParsedShapeTree?>(null) { shapes.parsePart(pkg, layout.part, "sldLayout") }
         } ?: return LayoutContext.EMPTY
         val masterTree = master?.let {
             masterTrees.getOrPut(it.part.lowercase()) {
-                runCatching { shapes.parsePart(pkg, it.part, "sldMaster") }.getOrNull()
+                recover<ParsedShapeTree?>(null) { shapes.parsePart(pkg, it.part, "sldMaster") }
             }
         }
         val theme = master?.theme
@@ -960,17 +963,18 @@ internal class LazyDeckScenes internal constructor(
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Int, SlideScene>?): Boolean = size > capacity
     }
 
-    private var sawIncomplete = false
+    private val sawIncomplete = java.util.concurrent.atomic.AtomicBoolean(false)
 
     /** True once any slide resolved so far reported a dropped shape or part. */
-    @get:Synchronized
-    val incomplete: Boolean get() = sawIncomplete
+    val incomplete: Boolean get() = sawIncomplete.get()
 
-    @Synchronized
     fun scene(index: Int): SlideScene? {
         if (index !in 0 until count) return null
-        val resolved = cache.get(index) ?: factory(index).also { cache.put(index, it) }
-        if (resolved.incomplete) sawIncomplete = true
+        synchronized(cache) { cache.get(index) }?.let { return it }
+        // Resolve outside the monitor: parsing a slide can be slow, and other slides must stay readable.
+        val resolved = factory(index)
+        synchronized(cache) { cache.put(index, resolved) }
+        if (resolved.incomplete) sawIncomplete.set(true)
         return resolved
     }
 
@@ -997,6 +1001,10 @@ internal class LazyDeckScenes internal constructor(
 private val TYPE_ALIASES = mapOf("ctrTitle" to "title", "subTitle" to "body", "obj" to "body")
 
 private fun canonicalType(type: String?): String? = type?.let { TYPE_ALIASES[it] ?: it }
+
+/** The real slide title is the `title`/`ctrTitle` placeholder, not the first line of flattened text. */
+internal fun isTitlePlaceholder(placeholder: PlaceholderIdentity?): Boolean =
+    placeholder?.type?.let { canonicalType(it) == "title" } ?: false
 
 private fun fillElementOf(node: XNode): XNode? =
     node.children.firstOrNull { it.name.namespace == OoxmlNamespace.A && it.name.localName in FILL_TAGS }

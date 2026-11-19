@@ -4,7 +4,11 @@ import io.github.pixelrick420.papyrus.viewer.OutlineEntry
 import io.github.pixelrick420.papyrus.viewer.cleanOutlineTitle
 
 /** Section names become parent entries over the slides they cover; every other slide is its own entry. */
-internal fun slideOutline(info: PresentationInfo, titles: List<String>): List<OutlineEntry> {
+internal fun slideOutline(
+    info: PresentationInfo,
+    titles: List<String>,
+    fallbackTitle: (Int) -> String = { index -> "Slide ${index + 1}" },
+): List<OutlineEntry> {
     val indexOfId = info.slides.mapIndexed { index, ref -> ref.id to index }.toMap()
     val groups = info.sections.mapNotNull { section ->
         val indexes = section.slideIds.mapNotNull { indexOfId[it] }.distinct().sorted()
@@ -15,7 +19,7 @@ internal fun slideOutline(info: PresentationInfo, titles: List<String>): List<Ou
     val grouped = groups.flatMapTo(HashSet()) { it.indexes }
 
     fun titleOf(index: Int): String =
-        titles.getOrNull(index)?.let(::cleanOutlineTitle)?.takeIf { it.isNotEmpty() } ?: "Slide ${index + 1}"
+        titles.getOrNull(index)?.let(::cleanOutlineTitle)?.takeIf { it.isNotEmpty() } ?: fallbackTitle(index)
 
     val entries = ArrayList<OutlineEntry>(info.slides.size + groups.size)
     for (index in info.slides.indices) {
