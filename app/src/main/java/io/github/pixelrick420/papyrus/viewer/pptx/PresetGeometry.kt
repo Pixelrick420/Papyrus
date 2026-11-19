@@ -112,8 +112,7 @@ internal class PresetGeometry(
 
     private fun parse(name: String): PresetShape? {
         open().use { input ->
-            val parser = newParserFactory().apply {
-                setFeature(XmlPullParser.FEATURE_PROCESS_NAMESPACES, true)
+            val parser = configureXmlParser(newParserFactory(), namespaces = true).apply {
                 setInput(input, null)
             }
             while (parser.next() != XmlPullParser.END_DOCUMENT) {

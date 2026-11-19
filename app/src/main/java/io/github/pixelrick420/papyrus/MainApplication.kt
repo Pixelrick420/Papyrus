@@ -151,6 +151,7 @@ class MainApplication : Application() {
     private fun sweepUnlocked() {
         runCatching { File(cacheDir, PDF_UNLOCK_DIR).deleteRecursively() }
         runCatching { File(cacheDir, OFFICE_UNLOCK_DIR).deleteRecursively() }
+        SlidePageSource.sweepStaleTempDirs(cacheDir)
     }
 
     private companion object {

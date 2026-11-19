@@ -463,16 +463,25 @@ internal object Metafiles {
 
 internal object MetafileBitmaps {
 
-    fun rasterize(image: MetafileImage): Bitmap? {
+    fun rasterize(image: MetafileImage, targetWidthPx: Int = image.bounds.width): Bitmap? {
         if (image.bounds.pixels < 1) return null
-        val bitmap = Bitmap.createBitmap(image.bounds.width, image.bounds.height, Bitmap.Config.ARGB_8888)
-        val backend = AndroidCanvasBackend(Canvas(bitmap), imageOf = { ref: ImageRef ->
-            image.dibs[ref.key]?.let { dib ->
-                Bitmap.createBitmap(dib.width, dib.height, Bitmap.Config.ARGB_8888).apply {
-                    setPixels(dib.argb, 0, dib.width, 0, 0, dib.width, dib.height)
+        val scale = if (targetWidthPx > 0 && image.bounds.width > 0) {
+            (targetWidthPx.toFloat() / image.bounds.width).coerceIn(0f, 1f)
+        } else 1f
+        val width = maxOf(1, (image.bounds.width * scale).roundToInt())
+        val height = maxOf(1, (image.bounds.height * scale).roundToInt())
+        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        val backend = AndroidCanvasBackend(
+            canvas = Canvas(bitmap),
+            imageOf = { ref: ImageRef ->
+                image.dibs[ref.key]?.let { dib ->
+                    Bitmap.createBitmap(dib.width, dib.height, Bitmap.Config.ARGB_8888).apply {
+                        setPixels(dib.argb, 0, dib.width, 0, 0, dib.width, dib.height)
+                    }
                 }
-            }
-        })
+            },
+            initialScale = scale,
+        )
         image.displayList.play(backend)
         return bitmap
     }
@@ -485,6 +494,8 @@ internal interface MetafileDecoder {
     fun placeholder(file: File): String?
 
     fun load(file: File, targetWidthPx: Int): PictureImage?
+
+    fun trimMemory(evictAll: Boolean) = Unit
 }
 
 internal class AndroidMetafileDecoder(
@@ -492,31 +503,55 @@ internal class AndroidMetafileDecoder(
     private val maxPixels: Long = PptxLimits().maxImagePixels,
 ) : MetafileDecoder {
 
-    private val cache = LruCache<String, MetafileImage>(MAX_CACHED)
+    private val parsed = LruCache<String, MetafileImage>(MAX_CACHED)
+
+    private val rasters = object : LruCache<RasterKey, PictureImage>(MAX_RASTER_BYTES) {
+        override fun sizeOf(key: RasterKey, value: PictureImage): Int =
+            value.bitmap.allocationByteCount.coerceAtLeast(1)
+    }
 
     override fun bounds(file: File): ImageBounds? = image(file)?.bounds
 
     override fun placeholder(file: File): String? = image(file)?.placeholderLabel
 
     override fun load(file: File, targetWidthPx: Int): PictureImage? {
+        val width = targetWidthPx.coerceIn(1, maxEdgePx)
+        val key = RasterKey(file.path, width)
+        rasters.get(key)?.let { return it }
         val image = image(file) ?: return null
-        return MetafileBitmaps.rasterize(image)?.let { PictureImage(it, image.bounds) }
+        val raster = MetafileBitmaps.rasterize(image, minOf(width, image.bounds.width)) ?: return null
+        val result = PictureImage(raster, ImageBounds(raster.width, raster.height))
+        rasters.put(key, result)
+        return result
+    }
+
+    override fun trimMemory(evictAll: Boolean) {
+        if (evictAll) {
+            parsed.evictAll()
+            rasters.evictAll()
+        } else {
+            parsed.trimToSize(parsed.maxSize() / 2)
+            rasters.trimToSize(rasters.maxSize() / 2)
+        }
     }
 
     private fun image(file: File): MetafileImage? {
-        cache.get(file.path)?.let { return it }
+        parsed.get(file.path)?.let { return it }
         if (!file.isFile || file.length() > MAX_FILE_BYTES) return null
-        val parsed = try {
+        val raster = try {
             Metafiles.parse(file.readBytes(), file.extension.lowercase(), maxEdgePx, maxPixels)
         } catch (_: OutOfMemoryError) {
             null
         }
-        parsed?.let { cache.put(file.path, it) }
-        return parsed
+        raster?.let { parsed.put(file.path, it) }
+        return raster
     }
+
+    private data class RasterKey(val path: String, val width: Int)
 
     private companion object {
         const val MAX_CACHED = 64
+        const val MAX_RASTER_BYTES = 24 * 1024 * 1024
         const val MAX_FILE_BYTES = 32L * 1024 * 1024
     }
 }

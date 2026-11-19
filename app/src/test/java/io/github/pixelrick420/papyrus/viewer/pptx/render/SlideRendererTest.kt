@@ -54,6 +54,7 @@ import io.github.pixelrick420.papyrus.viewer.pptx.text.TextStyleSources
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
@@ -426,8 +427,7 @@ class SlideRendererTest {
         val resolver = SlidePictureResolver { SlideImage(File("image1.png"), ImageBounds(10, 10)) }
         val list = renderer.render(page, resolver)
 
-        assertNotNull(list)
-        val ops = list!!.ops
+        val ops = list.ops
         assertTrue(ops.any { it is DrawOp.ShapeShadow })
         assertEquals(1, ops.count { it is DrawOp.FillPath })
     }
@@ -459,10 +459,12 @@ class SlideRendererTest {
     }
 
     @Test
-    fun `a spent time budget abandons the slide`() = runBlocking {
+    fun `a spent time budget returns a partial slide`() = runBlocking {
         val budgeted = SlideRenderer(presets, PptxLimits(maxSlideRenderMillis = 0))
 
-        assertNull(budgeted.render(scene(rect())))
+        val list = budgeted.render(scene(rect()))
+        assertFalse(list.complete)
+        assertTrue(list.ops.isNotEmpty())
     }
 
     @Test

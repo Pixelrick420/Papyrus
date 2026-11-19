@@ -29,6 +29,7 @@ internal class PresentationInfo(
     /** The `p:defaultTextStyle` list style, held whole for the text parser. */
     val defaultTextStyle: XNode?,
     val firstSlideNumber: Int,
+    val slidesTruncated: Boolean = false,
 )
 
 internal class PresentationParser(
@@ -44,12 +45,14 @@ internal class PresentationParser(
         if (!root.name.matches(OoxmlNamespace.P, "presentation")) {
             throw PptxFormatException("$part is not a presentation")
         }
+        val declared = slideRefsOf(root.child(OoxmlNamespace.P, "sldIdLst"))
         return PresentationInfo(
             size = sizeOf(root.child(OoxmlNamespace.P, "sldSz")),
-            slides = slidesOf(root.child(OoxmlNamespace.P, "sldIdLst")),
+            slides = declared.take(limits.maxSlides),
             sections = sectionsOf(root.child(OoxmlNamespace.P14, "sectionLst")),
             defaultTextStyle = root.child(OoxmlNamespace.P, "defaultTextStyle"),
             firstSlideNumber = root.attribute("firstSlideNum")?.toIntOrNull() ?: DEFAULT_FIRST_SLIDE,
+            slidesTruncated = declared.size > limits.maxSlides,
         )
     }
 
@@ -64,7 +67,7 @@ internal class PresentationParser(
         return value.coerceAtMost(limits.maxSlideEdgeInches * EMU_PER_INCH_LONG)
     }
 
-    private fun slidesOf(node: XNode?): List<SlideRef> = node
+    private fun slideRefsOf(node: XNode?): List<SlideRef> = node
         ?.childrenOf(OoxmlNamespace.P, "sldId")
         .orEmpty()
         .mapNotNull { entry ->
@@ -72,7 +75,6 @@ internal class PresentationParser(
             val relationship = entry.attribute(OoxmlNamespace.R, "id") ?: return@mapNotNull null
             SlideRef(id, relationship)
         }
-        .take(limits.maxSlides)
 
     private fun sectionsOf(node: XNode?): List<Section> = node
         ?.childrenOf(OoxmlNamespace.P14, "section")

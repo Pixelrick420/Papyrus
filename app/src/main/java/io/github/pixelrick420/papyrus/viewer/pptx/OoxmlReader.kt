@@ -32,7 +32,18 @@ internal class XNode(val name: OoxmlName, val attributes: List<OoxmlAttribute> =
 
     val children: MutableList<XNode> = mutableListOf()
 
-    var text: String = ""
+    private val textBuilder = StringBuilder()
+
+    var text: String
+        get() = textBuilder.toString()
+        set(value) {
+            textBuilder.setLength(0)
+            appendText(value)
+        }
+
+    fun appendText(value: String) {
+        if (value.isNotEmpty()) textBuilder.append(value)
+    }
 
     fun attribute(namespace: String, localName: String): String? =
         attributes.firstOrNull { it.namespace == namespace && it.localName == localName }?.value
@@ -56,12 +67,7 @@ internal class OoxmlReader(
 ) {
 
     fun open(stream: InputStream, part: String = "xml"): OoxmlCursor = OoxmlCursor(
-        newParserFactory().apply {
-            setFeature(XmlPullParser.FEATURE_PROCESS_NAMESPACES, true)
-            // kxml2 refuses this feature and leaves entity references unresolved, which is the same outcome.
-            runCatching { setFeature(FEATURE_PROCESS_DOCDECL, false) }
-            setInput(stream, null)
-        },
+        configureXmlParser(newParserFactory(), namespaces = true).apply { setInput(stream, null) },
         part,
         implemented,
         limits,
@@ -159,7 +165,7 @@ internal class OoxmlCursor internal constructor(
                     stack.last().children += it
                     stack.addLast(it)
                 }
-                XmlPullParser.TEXT -> stack.last().text += text
+                XmlPullParser.TEXT -> stack.last().appendText(text)
                 XmlPullParser.END_TAG -> stack.removeLast()
                 XmlPullParser.END_DOCUMENT -> return root
             }
@@ -273,7 +279,8 @@ internal class OoxmlCursor internal constructor(
                     stack.last().children += it
                     stack.addLast(it)
                 }
-                XmlPullParser.TEXT, XmlPullParser.CDSECT, XmlPullParser.ENTITY_REF -> stack.last().text += parser.text.orEmpty()
+                XmlPullParser.TEXT, XmlPullParser.CDSECT, XmlPullParser.ENTITY_REF ->
+                    stack.last().appendText(parser.text.orEmpty())
                 XmlPullParser.END_TAG -> {
                     stack.removeLast()
                     if (stack.isEmpty()) return root
@@ -310,6 +317,12 @@ private sealed interface Event {
     class Start(val name: OoxmlName, val attributes: List<OoxmlAttribute>) : Event
     class Text(val text: String) : Event
     class End(val name: OoxmlName) : Event
+}
+
+internal fun configureXmlParser(parser: XmlPullParser, namespaces: Boolean): XmlPullParser = parser.apply {
+    setFeature(XmlPullParser.FEATURE_PROCESS_NAMESPACES, namespaces)
+    // kxml2 refuses this feature and leaves entity references unresolved, which is the same outcome.
+    runCatching { setFeature(FEATURE_PROCESS_DOCDECL, false) }
 }
 
 private const val FEATURE_PROCESS_DOCDECL = "http://xmlpull.org/v1/doc/features.html#process-docdecl"

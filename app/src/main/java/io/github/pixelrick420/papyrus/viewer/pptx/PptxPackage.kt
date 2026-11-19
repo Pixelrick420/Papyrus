@@ -181,7 +181,6 @@ private class PptxReader(
         val rels = parseRelationships(scan.parts)
         val main = actualPart(mainPart(types, rels[""].orEmpty()), scan.parts)
             ?: throw PptxFormatException("main part ${types.mainPart()} is missing")
-        if (types.ofType(SLIDE_CONTENT_TYPE).size > limits.maxSlides) throw PptxFormatException("too many slides")
         val (media, dropped) = readMedia(openStream, wantedMedia(rels))
         return PptxPackage(main, types, scan.parts, rels, media, dropped, scan.fonts)
     }
@@ -393,10 +392,8 @@ private class PptxReader(
         return PptxContentTypes(defaults, overrides)
     }
 
-    private fun newParser(stream: InputStream): XmlPullParser = newParserFactory().apply {
-        setFeature(XmlPullParser.FEATURE_PROCESS_NAMESPACES, false)
-        setInput(stream, null)
-    }
+    private fun newParser(stream: InputStream): XmlPullParser =
+        configureXmlParser(newParserFactory(), namespaces = false).apply { setInput(stream, null) }
 
     private fun formatError(reason: String): IOException = PptxFormatException(reason)
 
@@ -413,14 +410,14 @@ private class PptxReader(
         val lower = name.lowercase()
         return lower.startsWith("ppt/embeddings/") ||
             lower.startsWith("ppt/printersettings/") ||
-            lower.contains("thumbnail") ||
+            lower.startsWith("docprops/thumbnail.") ||
             lower.endsWith("vbaproject.bin")
     }
 
     private fun isMediaTarget(target: String): Boolean {
         val lower = target.lowercase()
         if (lower.startsWith("ppt/embeddings/") || lower.startsWith("ppt/printersettings/")) return false
-        if (lower.contains("thumbnail")) return false
+        if (lower.startsWith("docprops/thumbnail.")) return false
         return lower.substringAfterLast('.', "") in IMAGE_EXTENSIONS
     }
 

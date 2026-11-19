@@ -428,39 +428,53 @@ class ViewerViewModel(
         // previous load is stale: drop the extracted find text and the decrypted copy.
         pdfPageText = null
         findBudgetWarned = false
-        _state.value.content.closePageSource()
+        val previous = _state.value.content
+        var previousClosed = false
+        fun closePrevious() {
+            if (!previousClosed) {
+                previousClosed = true
+                previous.closePageSource()
+            }
+        }
         pageTextSource?.close()
         pageTextSource = null
         pageTextSourceUri = null
         unlocked.discard()
-        val doc = repository.getById(documentId)?.let { withCurrentFormat(it) }
-        if (doc == null) {
-            _state.value = ViewerUiState(content = ViewerContent.Failed(UiText(R.string.viewer_error_not_found)))
-            return
-        }
-        val restore = restoreFor(doc)
-        restoreGate = if (restore == null) null else CompletableDeferred()
-        viewport = null
-        tracker.beginLoad(restorePending = restore != null)
-        _state.value = ViewerUiState(
-            document = doc,
-            canSaveToLibrary = if (isCrashReport) false else doc.id < 0,
-            encodingOverride = encodingName,
-            restore = restore,
-            isCrashReport = isCrashReport,
-        )
-        repository.markOpened(doc.id)
-        val content = loadContentSafely(doc)
-        _state.update { it.copy(content = content) }
-        loadSpeakableText(content, doc)
-        loadPdfOutline()
-        loadPdfForm()
-        autosaveIfEnabled()
-        val term = pendingArrivalTerm
-        pendingArrivalTerm = null
-        if (term != null) {
-            if (restore != null) withTimeoutOrNull(ARRIVAL_RESTORE_TIMEOUT_MILLIS) { restoreGate?.await() }
-            applyArrival(term, content)
+        try {
+            val doc = repository.getById(documentId)?.let { withCurrentFormat(it) }
+            if (doc == null) {
+                closePrevious()
+                _state.value = ViewerUiState(content = ViewerContent.Failed(UiText(R.string.viewer_error_not_found)))
+                return
+            }
+            val restore = restoreFor(doc)
+            restoreGate = if (restore == null) null else CompletableDeferred()
+            viewport = null
+            tracker.beginLoad(restorePending = restore != null)
+            _state.value = ViewerUiState(
+                document = doc,
+                canSaveToLibrary = if (isCrashReport) false else doc.id < 0,
+                encodingOverride = encodingName,
+                restore = restore,
+                isCrashReport = isCrashReport,
+            )
+            repository.markOpened(doc.id)
+            val content = loadContentSafely(doc)
+            // Keep the old page until the new one exists, so a failed load never leaves a blank viewer.
+            closePrevious()
+            _state.update { it.copy(content = content) }
+            loadSpeakableText(content, doc)
+            loadPdfOutline()
+            loadPdfForm()
+            autosaveIfEnabled()
+            val term = pendingArrivalTerm
+            pendingArrivalTerm = null
+            if (term != null) {
+                if (restore != null) withTimeoutOrNull(ARRIVAL_RESTORE_TIMEOUT_MILLIS) { restoreGate?.await() }
+                applyArrival(term, content)
+            }
+        } finally {
+            closePrevious()
         }
     }
 

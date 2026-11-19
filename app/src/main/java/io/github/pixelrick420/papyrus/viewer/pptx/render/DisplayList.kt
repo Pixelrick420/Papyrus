@@ -243,7 +243,8 @@ internal data class RenderRegion(val source: RectF, val scale: Float) {
     val heightPx: Int get() = (source.height * scale).roundToInt().coerceAtLeast(1)
 }
 
-internal class DisplayList(val ops: List<DrawOp>) {
+/** [complete] is false when the renderer ran out of time and stopped part-way through the slide. */
+internal class DisplayList(val ops: List<DrawOp>, val complete: Boolean = true) {
 
     fun playRegion(target: DrawTarget, region: RenderRegion) {
         target.save()

@@ -67,14 +67,15 @@ internal object SlideDeckLoader {
             runCatching { SlideTextExtractor().extract(openStream) }.getOrDefault(emptyList())
         }
         val titles = texts.map { text -> text.lineSequence().firstOrNull { it.isNotBlank() }?.trim().orEmpty() }
-        val (info, substitutions) = deckMetadata(openStream)
-        val size = info?.let { String.format(Locale.US, "%.2f × %.2f in", it.size.widthInches, it.size.heightInches) }
+        val info = source.presentationInfo
+        val substitutions = fontSubstitutions(source.pkg)
+        val size = String.format(Locale.US, "%.2f × %.2f in", info.size.widthInches, info.size.heightInches)
         return SlideDeck(
             source = source,
             aspectRatios = aspectRatios,
-            outline = info?.let { slideOutline(it, titles) }.orEmpty(),
+            outline = slideOutline(info, titles),
             hidden = source.hidden,
-            incomplete = false,
+            incomplete = source.incomplete(),
             titles = titles,
             slideTexts = texts,
             slideSize = size,
@@ -83,17 +84,6 @@ internal object SlideDeckLoader {
             links = textIndex.links,
             semanticTexts = textIndex.semanticTexts,
         )
-    }
-
-    private fun deckMetadata(openStream: () -> InputStream): Pair<PresentationInfo?, List<String>> {
-        val pkg = runCatching { PptxPackage.read(openStream, mediaDir = null) }.getOrNull()
-        val info = pkg?.let { p ->
-            runCatching {
-                val bytes = p.part(p.mainPart) ?: return@runCatching null
-                PresentationParser().parse(bytes, p.mainPart)
-            }.getOrNull()
-        }
-        return info to (pkg?.let(::fontSubstitutions).orEmpty())
     }
 
     private fun fontSubstitutions(pkg: PptxPackage): List<String> = runCatching {

@@ -56,7 +56,7 @@ internal class StyleResolver(
         parts.mapIndexedNotNull { index, part ->
             val bytes = pkg.part(part) ?: return@mapIndexedNotNull null
             val hidden = runCatching {
-                val parser = newParserFactory()
+                val parser = configureXmlParser(newParserFactory(), namespaces = false)
                 parser.setInput(bytes.inputStream(), null)
                 var event = parser.eventType
                 while (event != XmlPullParser.START_TAG && event != XmlPullParser.END_DOCUMENT) event = parser.next()
@@ -960,10 +960,18 @@ internal class LazyDeckScenes internal constructor(
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Int, SlideScene>?): Boolean = size > capacity
     }
 
+    private var sawIncomplete = false
+
+    /** True once any slide resolved so far reported a dropped shape or part. */
+    @get:Synchronized
+    val incomplete: Boolean get() = sawIncomplete
+
     @Synchronized
     fun scene(index: Int): SlideScene? {
         if (index !in 0 until count) return null
-        return cache.get(index) ?: factory(index).also { cache.put(index, it) }
+        val resolved = cache.get(index) ?: factory(index).also { cache.put(index, it) }
+        if (resolved.incomplete) sawIncomplete = true
+        return resolved
     }
 
     @Synchronized

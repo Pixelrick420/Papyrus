@@ -69,17 +69,21 @@ internal class SlideRenderer(
 
     private val geometry = ShapeGeometry(presets)
 
-    /** Null when the slide could not be finished: its time budget ran out, or the caller cancelled it. */
+    /**
+     * A slide that runs out of time is returned as a partial list rather than dropped: a half-drawn slide is
+     * more useful than a blank one, and it stops the viewer retrying the same render on every scroll.
+     * Cancellation still throws to the caller.
+     */
     suspend fun render(
         scene: Scene,
         pictures: SlidePictureResolver = SlidePictureResolver.NONE,
-    ): DisplayList? {
+    ): DisplayList {
         val ops = mutableListOf<DrawOp>()
         text?.layoutTables(scene)
         background(scene, ops)
         val deadline = nowNanos() + limits.maxSlideRenderMillis * NANOS_PER_MILLI
-        if (!walk(scene, scene.nodes, ops, pictures, deadline)) return null
-        return DisplayList(ops)
+        val complete = walk(scene, scene.nodes, ops, pictures, deadline)
+        return DisplayList(ops, complete)
     }
 
     private suspend fun walk(
@@ -91,8 +95,8 @@ internal class SlideRenderer(
     ): Boolean {
         for (node in nodes) {
             currentCoroutineContext().ensureActive()
-            if (nowNanos() >= deadline) return false
             if (!drawNode(scene, node, out, pictures, deadline)) return false
+            if (nowNanos() >= deadline) return false
         }
         return true
     }

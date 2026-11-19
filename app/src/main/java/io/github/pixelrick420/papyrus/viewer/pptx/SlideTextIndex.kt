@@ -45,30 +45,48 @@ internal class SlideTextIndex(
             return SlideTextIndex(pages, links, semantics)
         }
 
+        /** Resolves one slide at a time so the bounded scene window can evict earlier ones as it walks. */
         fun fromDeck(
             pkg: PptxPackage,
             presentation: PresentationInfo,
-            scenes: List<SlideScene>,
+            count: Int,
+            sceneAt: (Int) -> SlideScene?,
             resolver: TextStyleResolver,
             engine: TextLayoutEngine,
         ): SlideTextIndex {
-            for (slide in scenes) TableLayout.layout(slide.scene, resolver, engine)
             val slideOfPart = presentation.slides
                 .mapIndexedNotNull { index, ref ->
                     pkg.targetOf(pkg.mainPart, ref.relationshipId)?.let { it.lowercase() to index }
                 }
                 .toMap()
-            val slideCount = scenes.size
-            return fromScenes(scenes, resolver, engine) { index, part, relationshipId, action ->
+            val linkOf: (Int, String, String?, String?) -> PdfLinkTarget? = { index, part, relationshipId, action ->
                 val rel = relationshipId?.let { pkg.relationship(part, it) }
                 slideLinkTarget(
                     action = action,
                     externalUrl = rel?.takeIf { it.external }?.target,
                     targetSlide = rel?.takeUnless { it.external }?.target?.let { slideOfPart[it.lowercase()] },
                     current = index,
-                    slideCount = slideCount,
+                    slideCount = count,
                 )
             }
+            val pages = ArrayList<PdfPageText>(count)
+            val links = ArrayList<List<PdfPageLink>>(count)
+            val semantics = ArrayList<String>(count)
+            for (index in 0 until count) {
+                val slide = sceneAt(index)
+                if (slide == null) {
+                    pages.add(PdfPageText("", FloatArray(0)))
+                    links.add(emptyList())
+                    semantics.add("")
+                    continue
+                }
+                TableLayout.layout(slide.scene, resolver, engine)
+                val page = pageOf(slide.scene, resolver, engine, index, slide.part, linkOf)
+                pages.add(page.text)
+                links.add(page.links)
+                semantics.add(semanticTextOf(slide.scene))
+            }
+            return SlideTextIndex(pages, links, semantics)
         }
 
         /** The text find-in-file sees, page by page, so the search index and the screen never disagree. */
@@ -85,7 +103,7 @@ internal class SlideTextIndex(
             val scenes = StyleResolver(newParserFactory, limits).resolveAll(pkg, presentation)
             val resolver = TextStyleResolver(limits)
             val engine = TextLayoutEngine(measurer)
-            return fromDeck(pkg, presentation, scenes.slides, resolver, engine).pages.map { it.text }
+            return fromDeck(pkg, presentation, scenes.slides.size, scenes.slides::get, resolver, engine).pages.map { it.text }
         }
 
         internal fun semanticTextOf(scene: Scene): String {
@@ -127,13 +145,13 @@ internal class SlideTextIndex(
         ): SlidePage {
             val placed = ArrayList<PlacedLayout>()
             collectNodes(scene.nodes, scene, resolver, engine, placed, slidePart, Affine.IDENTITY)
-            placed.sortWith(compareBy({ it.top }, { it.left }))
+            val ordered = readingOrder(scene.size, placed)
             val links = ArrayList<PdfPageLink>()
             collectNodeLinks(scene.nodes, scene, Affine.IDENTITY, slideIndex, slidePart, linkOf, links)
             val text = StringBuilder()
             val boxes = ArrayList<Float>()
             val breaks = BitSet()
-            for (item in placed.withIndex()) {
+            for (item in ordered.withIndex()) {
                 if (item.index > 0 && text.isNotEmpty() && text.last() != '\n') {
                     breaks.set(text.length)
                     appendChar(text, boxes, '\n', Float.NaN, Float.NaN, Float.NaN, Float.NaN)
@@ -369,6 +387,22 @@ internal class SlideTextIndex(
             boxes += b
         }
 
+        /** Shapes on the same visual line read left to right, even when their tops differ by a few pixels. */
+        private fun readingOrder(slide: SceneSize, placed: List<PlacedLayout>): List<PlacedLayout> {
+            val byTop = placed.sortedBy { it.top }
+            val rowTolerance = slide.height * READING_ORDER_ROW_FRACTION
+            val out = ArrayList<PlacedLayout>(byTop.size)
+            var start = 0
+            while (start < byTop.size) {
+                val top = byTop[start].top
+                var end = start + 1
+                while (end < byTop.size && byTop[end].top - top <= rowTolerance) end++
+                out += byTop.subList(start, end).sortedBy { it.left }
+                start = end
+            }
+            return out
+        }
+
         private fun normX(v: Double, w: Double): Float = (v / w).toFloat().coerceIn(0f, 1f)
         private fun normY(v: Double, h: Double): Float = (v / h).toFloat().coerceIn(0f, 1f)
 
@@ -418,6 +452,8 @@ internal class SlideTextIndex(
         }
 
         private const val EMU_PER_POINT = 12_700.0
+
+        private const val READING_ORDER_ROW_FRACTION = 0.02
     }
 
     private class SlidePage(val text: PdfPageText, val links: List<PdfPageLink>)

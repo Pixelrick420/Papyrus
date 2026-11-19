@@ -3,6 +3,7 @@ package io.github.pixelrick420.papyrus.viewer
 import io.github.pixelrick420.papyrus.viewer.pptx.PptxFormatException
 import io.github.pixelrick420.papyrus.viewer.pptx.PptxLimits
 import io.github.pixelrick420.papyrus.viewer.pptx.PptxPackage
+import io.github.pixelrick420.papyrus.viewer.pptx.PresentationParser
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -152,15 +153,23 @@ class PptxPackageRobustnessTest {
     }
 
     @Test
-    fun `slides are accepted at the cap and refused above it`() {
+    fun `slides are truncated above the cap without refusing the deck`() {
         val deck = pptx {
             layout("Blank")
             slide { title("one") }
             slide { title("two") }
         }
+        fun infoOf(limits: PptxLimits) = read(deck.toBytes(), null, limits).let { pkg ->
+            PresentationParser(OfficeFixtures::parser, limits).parse(pkg.part(pkg.mainPart)!!, pkg.mainPart)
+        }
 
-        assertNotNull(read(deck.toBytes(), null, PptxLimits(maxSlides = 2)))
-        assertEquals("too many slides", refusal(deck.toBytes(), PptxLimits(maxSlides = 1)))
+        val atCap = infoOf(PptxLimits(maxSlides = 2))
+        assertFalse(atCap.slidesTruncated)
+        assertEquals(2, atCap.slides.size)
+
+        val overCap = infoOf(PptxLimits(maxSlides = 1))
+        assertTrue(overCap.slidesTruncated)
+        assertEquals(1, overCap.slides.size)
     }
 
     @Test

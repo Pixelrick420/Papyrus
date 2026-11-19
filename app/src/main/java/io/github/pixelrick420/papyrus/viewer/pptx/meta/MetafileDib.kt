@@ -45,7 +45,8 @@ internal object MetafileDib {
         if (stride * height + bitsOffset > bytes.size.toLong()) return null
 
         val palette = paletteOf(bytes, infoOffset, header, headerSize)
-        val masks = masksOf(bytes, infoOffset, headerSize, header) ?: return null
+        val masks = masksOf(bytes, infoOffset, headerSize, header)
+        if (header.depth in HIGH_COLOUR_DEPTHS && masks == null) return null
         var outWidth = minOf(width, maxOf(1, maxEdgePx))
         var outHeight = minOf(height, maxOf(1, maxEdgePx))
         val scale = minOf(1.0, kotlin.math.sqrt(maxPixels.toDouble() / (outWidth.toLong() * outHeight)))
@@ -95,21 +96,26 @@ internal object MetafileDib {
         headerSize: Int,
         header: DibHeader,
     ): Masks? {
-        if (header.depth <= 8) return null
+        if (header.depth !in HIGH_COLOUR_DEPTHS) return null
+        val fallback = when (header.depth) {
+            16 -> Masks(0x7C00, 0x03E0, 0x001F, 0)
+            32 -> Masks(0x00FF0000, 0x0000FF00, 0x000000FF, -0x1000000)
+            else -> return null
+        }
         if (header.compression == BI_BITFIELDS && headerSize < V4_HEADER_BYTES) {
             if (infoOffset + headerSize + 12 > bytes.size) return null
             val reader = GdiReader(bytes, infoOffset + headerSize)
             return Masks(reader.u32().toInt(), reader.u32().toInt(), reader.u32().toInt(), 0)
         }
-        if (infoOffset + V4_HEADER_BYTES <= bytes.size) {
+        if (headerSize >= V4_HEADER_BYTES && infoOffset + V4_HEADER_BYTES <= bytes.size) {
             val reader = GdiReader(bytes, infoOffset + 40)
-            return Masks(reader.u32().toInt(), reader.u32().toInt(), reader.u32().toInt(), reader.u32().toInt())
+            val red = reader.u32().toInt()
+            val green = reader.u32().toInt()
+            val blue = reader.u32().toInt()
+            val alpha = reader.u32().toInt()
+            if (red != 0 || green != 0 || blue != 0) return Masks(red, green, blue, alpha)
         }
-        return when (header.depth) {
-            16 -> Masks(0x7C00, 0x03E0, 0x001F, 0)
-            32 -> Masks(0x00FF0000, 0x0000FF00, 0x000000FF, -0x1000000)
-            else -> null
-        }
+        return fallback
     }
 
     private fun pixelOf(
@@ -162,6 +168,7 @@ internal object MetafileDib {
         if (mask == 0) return 0
         val shift = Integer.numberOfTrailingZeros(mask)
         val maximum = mask ushr shift
+        if (maximum == 0) return 0
         return ((value and mask) ushr shift) * 255 / maximum
     }
 
@@ -182,4 +189,5 @@ internal object MetafileDib {
     private const val BI_RGB = 0
     private const val BI_BITFIELDS = 3
     private val SUPPORTED_DEPTHS = setOf(1, 4, 8, 16, 24, 32)
+    private val HIGH_COLOUR_DEPTHS = setOf(16, 32)
 }

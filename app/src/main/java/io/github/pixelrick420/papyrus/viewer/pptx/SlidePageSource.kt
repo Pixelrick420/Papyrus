@@ -18,6 +18,8 @@ import io.github.pixelrick420.papyrus.viewer.pptx.render.SlidePictureResolver
 import io.github.pixelrick420.papyrus.viewer.pptx.render.SlideRenderer
 import io.github.pixelrick420.papyrus.viewer.pptx.render.SlideTextPainter
 import io.github.pixelrick420.papyrus.viewer.pptx.render.SoftwareCanvas
+import io.github.pixelrick420.papyrus.viewer.pptx.meta.AndroidMetafileDecoder
+import io.github.pixelrick420.papyrus.viewer.pptx.meta.MetafileDecoder
 import io.github.pixelrick420.papyrus.viewer.pptx.text.EmbeddedFontDecoder
 import io.github.pixelrick420.papyrus.viewer.pptx.text.FontCatalog
 import io.github.pixelrick420.papyrus.viewer.pptx.text.FontSlots
@@ -48,8 +50,9 @@ import kotlin.math.roundToInt
 /** Renders slides through [SlideRenderer] into the bitmap cache the page viewer draws from. */
 @OptIn(ExperimentalCoroutinesApi::class)
 internal class SlidePageSource private constructor(
-    private val pkg: PptxPackage,
+    internal val pkg: PptxPackage,
     private val scenes: LazyDeckScenes,
+    internal val presentationInfo: PresentationInfo,
     private val mediaDir: File,
     private val limits: PptxLimits,
     private val renderer: SlideRenderer,
@@ -68,9 +71,17 @@ internal class SlidePageSource private constructor(
 
     override val maxRenderPixels: Int = cacheBudgetBytes / (BYTES_PER_PIXEL * PAGES_PER_CACHE)
 
+    /** Package drops, truncated slide lists and per-slide drops are all worth telling the reader about. */
+    fun incomplete(): Boolean =
+        pkg.mediaDropped > 0 || presentationInfo.slidesTruncated || scenes.incomplete
+
     private val images = ImageCache(maxPixels = limits.maxImagePixels, maxEdgePx = limits.maxRenderEdgePx)
 
+    private val metafiles: MetafileDecoder = AndroidMetafileDecoder(limits.maxRenderEdgePx, limits.maxImagePixels)
+
     private val lists = object : LruCache<Int, DisplayList>(MAX_CACHED_LISTS) {}
+
+    private val incompleteRenders = HashSet<Int>()
 
     private val cache = object : LruCache<CacheKey, Bitmap>(cacheBudgetBytes) {
         override fun sizeOf(key: CacheKey, value: Bitmap): Int = value.allocationByteCount.coerceAtLeast(1)
@@ -95,6 +106,7 @@ internal class SlidePageSource private constructor(
         if (evictAll) lists.evictAll() else lists.trimToSize(lists.maxSize() / 2)
         scenes.trimMemory(evictAll)
         images.trimMemory(evictAll)
+        metafiles.trimMemory(evictAll)
     }
 
     // Renders queue behind one another; a render already running cannot be interrupted and finishes into the cache.
@@ -125,8 +137,8 @@ internal class SlidePageSource private constructor(
     }
 
     override fun tileGrid(index: Int, widthPx: Int): TileGrid? {
-        val size = scenes.takeIf { index in 0 until pageCount }?.size ?: return null
-        val heightPx = slideHeightPx(widthPx, size, limits.maxRenderEdgePx)
+        if (index !in 0 until pageCount) return null
+        val heightPx = slideHeightPx(widthPx, scenes.size, limits.maxRenderEdgePx)
         return TileGrid.forPage(widthPx, heightPx, maxRenderPixels)
     }
 
@@ -161,20 +173,19 @@ internal class SlidePageSource private constructor(
     private suspend fun rasterize(index: Int, slide: SlideScene, widthPx: Int): Bitmap? {
         val size = slide.scene.size
         if (size.width <= 0.0 || size.height <= 0.0 || widthPx <= 0) return null
-        val heightPx = slideHeightPx(widthPx, size, limits.maxRenderEdgePx)
-        val scale = widthPx.toFloat() / size.width.toFloat()
-        val list = displayListOf(index, slide) ?: return null
+        val render = renderSize(size, widthPx)
+        val list = displayListOf(index, slide)
         val decoded = HashMap<String, Bitmap?>()
         return SoftwareCanvas.render(
             list = list,
-            widthPx = widthPx,
-            heightPx = heightPx,
-            scale = scale,
+            widthPx = render.widthPx,
+            heightPx = render.heightPx,
+            scale = render.scale,
             imageOf = { ref ->
                 if (decoded.containsKey(ref.key)) {
                     decoded[ref.key]
                 } else {
-                    images.load(File(ref.key), widthPx)?.bitmap.also { decoded[ref.key] = it }
+                    images.load(File(ref.key), render.widthPx)?.bitmap.also { decoded[ref.key] = it }
                 }
             },
             fonts = fonts,
@@ -193,7 +204,7 @@ internal class SlidePageSource private constructor(
             ),
             scale = widthPx.toFloat() / size.width.toFloat(),
         )
-        val list = displayListOf(index, slide) ?: return null
+        val list = displayListOf(index, slide)
         val decoded = HashMap<String, Bitmap?>()
         return SoftwareCanvas.renderRegion(
             list = list,
@@ -202,24 +213,37 @@ internal class SlidePageSource private constructor(
                 if (decoded.containsKey(ref.key)) {
                     decoded[ref.key]
                 } else {
-                    images.load(File(ref.key), region.widthPx)?.bitmap.also { decoded[ref.key] = it }
+                    images.load(File(ref.key), widthPx)?.bitmap.also { decoded[ref.key] = it }
                 }
             },
             fonts = fonts,
         )
     }
 
-    private suspend fun displayListOf(index: Int, slide: SlideScene): DisplayList? = withContext(Dispatchers.IO) {
+    /** One uniform scale that fits both edges, so a tall slide is shrunk rather than cropped. */
+    private fun renderSize(size: SceneSize, widthPx: Int): RenderSize {
+        val scale = minOf(widthPx.toDouble() / size.width, limits.maxRenderEdgePx.toDouble() / size.height)
+        return RenderSize(
+            widthPx = (size.width * scale).roundToInt().coerceAtLeast(1),
+            heightPx = (size.height * scale).roundToInt().coerceIn(1, limits.maxRenderEdgePx),
+            scale = scale.toFloat(),
+        )
+    }
+
+    private suspend fun displayListOf(index: Int, slide: SlideScene): DisplayList = withContext(Dispatchers.IO) {
         lists.get(index)?.let { return@withContext it }
-        val list = renderer.render(slide.scene, resolverOf(slide)) ?: return@withContext null
+        val list = renderer.render(slide.scene, resolverOf(slide))
+        if (!list.complete && incompleteRenders.add(index)) {
+            Log.w(TAG, "Slide $index render stopped at its time budget")
+        }
         lists.put(index, list)
         list
     }
 
     private fun resolverOf(slide: SlideScene): SlidePictureResolver {
-        val pictures = PictureImages(pkg, slide.part, images)
+        val pictures = PictureImages(pkg, slide.part, images, mediaDir, limits.maxRenderEdgePx, metafiles)
         return SlidePictureResolver { picture ->
-            pictures.raster(picture.source)?.let { SlideImage(it.file, it.bounds) }
+            pictures.raster(picture.source, picture.frame)?.let { SlideImage(it.file, it.bounds) }
         }
     }
 
@@ -241,6 +265,7 @@ internal class SlidePageSource private constructor(
                     runCatching { lists.evictAll() }
                     runCatching { scenes.clear() }
                     runCatching { images.clear() }
+                    runCatching { metafiles.trimMemory(evictAll = true) }
                     runCatching { mediaDir.deleteRecursively() }
                 }
             }
@@ -265,12 +290,20 @@ internal class SlidePageSource private constructor(
 
         private const val MAX_CACHED_LISTS = 6
 
+        private const val PPTX_DIR_PREFIX = "pptx-"
+
         private val openSources: MutableSet<SlidePageSource> =
             Collections.newSetFromMap(WeakHashMap<SlidePageSource, Boolean>())
 
         fun trimAll(evictAll: Boolean) {
             val sources = synchronized(openSources) { openSources.toList() }
             for (source in sources) source.trimMemory(evictAll)
+        }
+
+        /** Media directories are per-open UUIDs; a killed process leaves them behind for the next start. */
+        fun sweepStaleTempDirs(cacheDir: File) {
+            cacheDir.listFiles { file -> file.isDirectory && file.name.startsWith(PPTX_DIR_PREFIX) }
+                ?.forEach { runCatching { it.deleteRecursively() } }
         }
 
         suspend fun open(context: Context, uri: Uri): SlidePageSource = withContext(Dispatchers.IO) {
@@ -310,6 +343,7 @@ internal class SlidePageSource private constructor(
             newParserFactory: () -> XmlPullParser = { Xml.newPullParser() },
             assets: android.content.res.AssetManager? = null,
         ): SlidePageSource = withContext(Dispatchers.IO) {
+            mediaDir.mkdirs()
             val pkg = PptxPackage.read(open, mediaDir, limits, newParserFactory)
             val main = pkg.mainPart
             val bytes = pkg.part(main) ?: throw PptxFormatException("$main is missing")
@@ -329,8 +363,7 @@ internal class SlidePageSource private constructor(
                 )
             }
             val textIndex = if (engine != null) {
-                val resolved = List(scenes.count) { index -> scenes.scene(index)!! }
-                SlideTextIndex.fromDeck(pkg, presentation, resolved, resolver, engine)
+                SlideTextIndex.fromDeck(pkg, presentation, scenes.count, { index -> scenes.scene(index) }, resolver, engine)
             } else {
                 SlideTextIndex(emptyList())
             }
@@ -338,6 +371,7 @@ internal class SlidePageSource private constructor(
             SlidePageSource(
                 pkg = pkg,
                 scenes = scenes,
+                presentationInfo = presentation,
                 mediaDir = mediaDir,
                 limits = limits,
                 renderer = SlideRenderer(presets, limits, text = engine?.let { SlideTextPainter(resolver, it) }),
@@ -348,12 +382,14 @@ internal class SlidePageSource private constructor(
         }
 
         private fun mediaDir(context: Context): File =
-            File(context.cacheDir, "pptx-${UUID.randomUUID()}")
+            File(context.cacheDir, "$PPTX_DIR_PREFIX${UUID.randomUUID()}")
 
         private fun presets(context: Context): PresetGeometry =
             PresetGeometry(open = { context.assets.open("ooxml/presetShapeDefinitions.xml") })
     }
 }
+
+private data class RenderSize(val widthPx: Int, val heightPx: Int, val scale: Float)
 
 internal fun slideAspectRatio(size: SceneSize): Float =
     if (size.width > 0.0) (size.height / size.width).toFloat() else 0f
