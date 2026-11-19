@@ -100,10 +100,10 @@ internal class SlideTextIndex(
             val main = pkg.mainPart
             val bytes = pkg.part(main) ?: throw PptxFormatException("$main is missing")
             val presentation = PresentationParser(newParserFactory, limits).parse(bytes, main)
-            val scenes = StyleResolver(newParserFactory, limits).resolveAll(pkg, presentation)
+            val scenes = StyleResolver(newParserFactory, limits).lazyScenes(pkg, presentation)
             val resolver = TextStyleResolver(limits)
             val engine = TextLayoutEngine(measurer)
-            return fromDeck(pkg, presentation, scenes.slides.size, scenes.slides::get, resolver, engine).pages.map { it.text }
+            return fromDeck(pkg, presentation, scenes.count, scenes::scene, resolver, engine).pages.map { it.text }
         }
 
         internal fun semanticTextOf(scene: Scene): String {

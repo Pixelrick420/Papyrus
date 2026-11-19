@@ -233,9 +233,13 @@ internal class OoxmlCursor internal constructor(
     }
 
     private fun skipParserSubtree() {
-        val target = parser.depth - 1
-        while (parser.depth > target) {
-            if (advance() == XmlPullParser.END_DOCUMENT) return
+        var open = 1
+        while (open > 0) {
+            when (advance()) {
+                XmlPullParser.START_TAG -> open++
+                XmlPullParser.END_TAG -> open--
+                XmlPullParser.END_DOCUMENT -> return
+            }
         }
     }
 

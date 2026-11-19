@@ -15,8 +15,10 @@ import org.xmlpull.v1.XmlPullParser
 import org.xmlpull.v1.XmlPullParserException
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.FileOutputStream
 import java.io.IOException
 import java.io.InputStream
+import java.util.UUID
 import java.util.zip.ZipInputStream
 
 class PptxFormatException(message: String, cause: Throwable? = null) : IOException(message, cause)
@@ -125,6 +127,20 @@ internal class PptxPackage(
 
     val fontNames: Set<String> get() = fonts.keys
 
+    /** Typefaces named by the package's XML, read without a second XML parse. */
+    fun requestedTypefaces(): Set<String> {
+        val found = LinkedHashSet<String>()
+        for ((name, bytes) in parts) {
+            if (!name.endsWith(".xml", ignoreCase = true)) continue
+            val xml = String(bytes, Charsets.UTF_8)
+            for (match in TYPEFACE_PATTERN.findAll(xml)) {
+                val value = match.groupValues[1].trim()
+                if (value.isNotEmpty() && !value.startsWith('+')) found += value
+            }
+        }
+        return found
+    }
+
     fun font(name: String): ByteArray? = findFont(name)?.let { fonts[it] }
 
     private fun findFont(name: String): String? = if (name in fonts) name else foldedFonts[name.lowercase()]
@@ -174,15 +190,32 @@ private class PptxReader(
     )
 
     fun read(openStream: () -> InputStream): PptxPackage {
-        val scan = scanParts(openStream)
-        val types = parseContentTypes(
-            scan.contentTypes ?: throw PptxFormatException("no [Content_Types].xml: not a presentation"),
-        )
-        val rels = parseRelationships(scan.parts)
-        val main = actualPart(mainPart(types, rels[""].orEmpty()), scan.parts)
-            ?: throw PptxFormatException("main part ${types.mainPart()} is missing")
-        val (media, dropped) = readMedia(openStream, wantedMedia(rels))
-        return PptxPackage(main, types, scan.parts, rels, media, dropped, scan.fonts)
+        val cached = mediaDir?.let { File(it, "source-${UUID.randomUUID()}.pptx") }
+        if (cached != null) {
+            mediaDir?.mkdirs()
+            try {
+                openStream().use { input ->
+                    FileOutputStream(cached).use { output -> input.copyTo(output, MEDIA_COPY_BUFFER) }
+                }
+            } catch (error: IOException) {
+                cached.delete()
+                throw error
+            }
+        }
+        val stream: () -> InputStream = cached?.let { file -> { file.inputStream() } } ?: openStream
+        try {
+            val scan = scanParts(stream)
+            val types = parseContentTypes(
+                scan.contentTypes ?: throw PptxFormatException("no [Content_Types].xml: not a presentation"),
+            )
+            val rels = parseRelationships(scan.parts)
+            val main = actualPart(mainPart(types, rels[""].orEmpty()), scan.parts)
+                ?: throw PptxFormatException("main part ${types.mainPart()} is missing")
+            val (media, dropped) = readMedia(stream, wantedMedia(rels))
+            return PptxPackage(main, types, scan.parts, rels, media, dropped, scan.fonts)
+        } finally {
+            cached?.delete()
+        }
     }
 
     // One walk: XML and relationships in, everything else skipped, since which media a deck needs is only known
@@ -425,5 +458,7 @@ private class PptxReader(
         val IMAGE_EXTENSIONS = setOf("png", "jpg", "jpeg", "gif", "bmp", "webp", "svg", "tif", "tiff", "emf", "wmf")
     }
 }
+
+private val TYPEFACE_PATTERN = Regex("""typeface\s*=\s*["']([^"']+)["']""")
 
 private const val CONTENT_TYPES_PART = "[Content_Types].xml"

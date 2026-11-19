@@ -1,6 +1,8 @@
 package io.github.pixelrick420.papyrus.viewer.pptx.meta
 
+import io.github.pixelrick420.papyrus.viewer.pptx.Rgba
 import io.github.pixelrick420.papyrus.viewer.pptx.render.DrawOp
+import io.github.pixelrick420.papyrus.viewer.pptx.render.PaintSpec
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
@@ -34,8 +36,8 @@ class MetafileCorpusTest {
             listOf(
                 MetafileFixtures.wmfRecord(0x02FA, byteArrayOf(0, 0, 20, 0, 0, 0, 255.toByte(), 0, 0, 0)),
                 MetafileFixtures.wmfRecord(0x02FC, byteArrayOf(0, 0, 0, 255.toByte(), 0, 0, 0, 0)),
+                MetafileFixtures.wmfRecord(0x012D, MetafileFixtures.words(0)),
                 MetafileFixtures.wmfRecord(0x012D, MetafileFixtures.words(1)),
-                MetafileFixtures.wmfRecord(0x012D, MetafileFixtures.words(2)),
                 MetafileFixtures.wmfRecord(0x041B, MetafileFixtures.words(80, 120, 20, 10)),
                 MetafileFixtures.wmfRecord(0x0418, MetafileFixtures.words(200, 300, 120, 180)),
                 MetafileFixtures.wmfRecord(0x0214, MetafileFixtures.words(80, 10)),
@@ -57,7 +59,7 @@ class MetafileCorpusTest {
             listOf(
                 MetafileFixtures.wmfRecord(0x020C, MetafileFixtures.words(800, 1_000)),
                 MetafileFixtures.wmfRecord(0x02FB, fontParameters()),
-                MetafileFixtures.wmfRecord(0x012D, MetafileFixtures.words(1)),
+                MetafileFixtures.wmfRecord(0x012D, MetafileFixtures.words(0)),
                 MetafileFixtures.wmfRecord(
                     0x0521,
                     MetafileFixtures.words(3) + text + MetafileFixtures.words(100, 20),
@@ -73,6 +75,26 @@ class MetafileCorpusTest {
         assertEquals(2, runs.size)
         assertTrue(runs.all { it.text.startsWith("WMF") })
         assertTrue(runs.all { it.size > 0f })
+    }
+
+    @Test
+    fun aRealEmfUsesTheHandleFirstRecordFields() {
+        val image = Metafiles.parse(resource("wrench.emf"), "emf", MAX_EDGE, MAX_PIXELS)
+        assertNotNull(image)
+        val fills = image!!.displayList.ops.filterIsInstance<DrawOp.FillPath>()
+        assertTrue(fills.isNotEmpty())
+        assertTrue(image.displayList.ops.any { it is DrawOp.StrokePath })
+        assertTrue(fills.any { (it.paint as? PaintSpec.Solid)?.color == Rgba(191, 191, 191) })
+    }
+
+    @Test
+    fun realWmfsResolveTheirZeroBasedObjectTable() {
+        for (name in listOf("santa.wmf", "60677.wmf")) {
+            val image = Metafiles.parse(resource(name), "wmf", MAX_EDGE, MAX_PIXELS)
+            assertNotNull(image)
+            assertTrue(image!!.bounds.width > 0 && image.bounds.height > 0)
+            assertTrue(image.displayList.ops.isNotEmpty())
+        }
     }
 
     @Test
@@ -101,6 +123,10 @@ class MetafileCorpusTest {
             assertTrue(image.bounds.pixels <= 400)
         }
     }
+
+    private fun resource(name: String): ByteArray = checkNotNull(
+        javaClass.getResourceAsStream("/io/github/pixelrick420/papyrus/viewer/$name"),
+    ) { "missing test resource $name" }.use { it.readBytes() }
 
     private fun fontParameters(): ByteArray {
         val buffer = java.nio.ByteBuffer.allocate(50).order(java.nio.ByteOrder.LITTLE_ENDIAN)

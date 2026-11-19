@@ -55,11 +55,11 @@ internal class WmfRenderer(
         val drawing = WmfDrawing(page)
 
         val reader = GdiReader(bytes, recordsStart)
-        while (reader.remaining >= WORD * 2) {
-            val sizeWords = reader.u16()
+        while (reader.remaining >= WORD * 3) {
+            val sizeWords = reader.u32().toInt()
             val function = reader.u16()
-            if (sizeWords < 2 || (sizeWords - 2) * WORD > reader.remaining) break
-            val parameters = reader.sub((sizeWords - 2) * WORD)
+            if (sizeWords < RECORD_HEADER_WORDS || (sizeWords - RECORD_HEADER_WORDS) * WORD > reader.remaining) break
+            val parameters = reader.sub((sizeWords - RECORD_HEADER_WORDS) * WORD)
             try {
                 drawing.record(function, parameters)
             } catch (_: GdiFormatException) {
@@ -75,11 +75,11 @@ internal class WmfRenderer(
         var width = fromPlaceable?.first ?: DEFAULT_EXTENT
         var height = fromPlaceable?.second ?: DEFAULT_EXTENT
         val reader = GdiReader(bytes, recordsStart)
-        while (reader.remaining >= WORD * 2) {
-            val sizeWords = reader.u16()
+        while (reader.remaining >= WORD * 3) {
+            val sizeWords = reader.u32().toInt()
             val function = reader.u16()
-            if (sizeWords < 2 || (sizeWords - 2) * WORD > reader.remaining) break
-            val parameters = reader.sub((sizeWords - 2) * WORD)
+            if (sizeWords < RECORD_HEADER_WORDS || (sizeWords - RECORD_HEADER_WORDS) * WORD > reader.remaining) break
+            val parameters = reader.sub((sizeWords - RECORD_HEADER_WORDS) * WORD)
             if (function == SET_WINDOW_EXT && parameters.remaining >= 4) {
                 val cy = parameters.i16()
                 val cx = parameters.i16()
@@ -98,6 +98,7 @@ internal class WmfRenderer(
         const val PLACEABLE_KEY = 0x9AC6CDD7L
         const val PLACEABLE_BYTES = 22
         const val META_HEADER_WORDS = 9
+        const val RECORD_HEADER_WORDS = 3
         const val WORD = 2
         const val DEFAULT_EXTENT = 1_000
         const val SET_WINDOW_EXT = 0x020C

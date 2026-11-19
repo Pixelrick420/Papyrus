@@ -205,6 +205,26 @@ class OoxmlReaderTest {
     }
 
     @Test
+    fun `ignorable subtrees are skipped in compact xml`() {
+        val xml =
+            """<p:presentation xmlns:p="${OoxmlNamespace.P}" xmlns:mc="${OoxmlNamespace.MC}" xmlns:p14="http://schemas.microsoft.com/office/powerpoint/2010/main" mc:Ignorable="p14"><p:sldIdLst/><p14:creationId><p14:deep/></p14:creationId><p:notes/><p:extra/></p:presentation>"""
+
+        assertEquals(
+            listOf(
+                "start ${OoxmlNamespace.P}|presentation ${OoxmlNamespace.MC}|Ignorable=p14",
+                "start ${OoxmlNamespace.P}|sldIdLst ",
+                "end ${OoxmlNamespace.P}|sldIdLst",
+                "start ${OoxmlNamespace.P}|notes ",
+                "end ${OoxmlNamespace.P}|notes",
+                "start ${OoxmlNamespace.P}|extra ",
+                "end ${OoxmlNamespace.P}|extra",
+                "end ${OoxmlNamespace.P}|presentation",
+            ),
+            structure(xml),
+        )
+    }
+
+    @Test
     fun `the element budget fails the part at its boundary`() {
         val xml = """
             <p:presentation xmlns:p="${OoxmlNamespace.P}">

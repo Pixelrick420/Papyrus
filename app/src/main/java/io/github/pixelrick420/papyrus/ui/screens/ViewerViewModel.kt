@@ -168,13 +168,17 @@ sealed interface ViewerContent {
         val hidden: Set<Int>,
         val incomplete: Boolean,
         val titles: List<String> = emptyList(),
-        val slideTexts: List<String> = emptyList(),
         val slideSize: String? = null,
         val fontSubstitutions: List<String> = emptyList(),
         val slidePages: List<io.github.pixelrick420.papyrus.viewer.PdfPageText> = emptyList(),
         val links: List<List<io.github.pixelrick420.papyrus.viewer.PdfPageLink>> = emptyList(),
         val semanticTexts: List<String> = emptyList(),
-    ) : ViewerContent
+    ) : ViewerContent {
+
+        private val texts by lazy { slidePages.map { it.text } }
+
+        val slideTexts: List<String> get() = texts
+    }
     data class NeedsPassword(val incorrect: Boolean = false, val checking: Boolean = false) : ViewerContent
     data class Failed(val message: UiText) : ViewerContent
 }
@@ -460,9 +464,9 @@ class ViewerViewModel(
             )
             repository.markOpened(doc.id)
             val content = loadContentSafely(doc)
-            // Keep the old page until the new one exists, so a failed load never leaves a blank viewer.
-            closePrevious()
+            // The old page source stays open until the new content is in state, so no frame sees a closed source.
             _state.update { it.copy(content = content) }
+            closePrevious()
             loadSpeakableText(content, doc)
             loadPdfOutline()
             loadPdfForm()
@@ -954,7 +958,6 @@ class ViewerViewModel(
                         hidden = deck.hidden,
                         incomplete = deck.incomplete,
                         titles = deck.titles,
-                        slideTexts = deck.slideTexts,
                         slideSize = deck.slideSize,
                         fontSubstitutions = deck.fontSubstitutions,
                         slidePages = deck.textIndex.pages,
@@ -1049,7 +1052,6 @@ class ViewerViewModel(
                 hidden = deck.hidden,
                 incomplete = deck.incomplete,
                 titles = deck.titles,
-                slideTexts = deck.slideTexts,
                 slideSize = deck.slideSize,
                 fontSubstitutions = deck.fontSubstitutions,
                 slidePages = deck.textIndex.pages,

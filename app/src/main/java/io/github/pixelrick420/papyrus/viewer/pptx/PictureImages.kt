@@ -34,9 +34,8 @@ internal class PictureImages(
     private val mediaDir: File,
     private val maxEdgePx: Int = PptxLimits().maxRenderEdgePx,
     private val metafiles: MetafileDecoder = AndroidMetafileDecoder(maxEdgePx),
+    private val generated: MutableMap<String, RasterPicture> = HashMap(),
 ) {
-
-    private val generated = HashMap<String, RasterPicture>()
 
     fun bounds(source: PictureSource?): ImageBounds? = when (val resolved = resolve(source)) {
         is Resolved.Raster -> cache.bounds(resolved.file)
@@ -47,7 +46,7 @@ internal class PictureImages(
     fun raster(source: PictureSource?, frame: SceneRect? = null): RasterPicture? = when (val resolved = resolve(source)) {
         is Resolved.Raster -> cache.bounds(resolved.file)?.let { RasterPicture(resolved.file, it) }
         is Resolved.Metafile -> {
-            val width = metafiles.bounds(resolved.file)?.width ?: maxEdgePx
+            val width = metafiles.bounds(resolved.file)?.width?.coerceAtMost(RASTER_EDGE) ?: RASTER_EDGE
             metafiles.load(resolved.file, width)?.let { generated("metafile:${resolved.file.path}:${it.bounds.width}", it) }
         }
         is Resolved.Fixed -> generated("placeholder:${resolved.label}:${frame?.width}:${frame?.height}", placeholder(resolved.label, frame))
@@ -89,7 +88,7 @@ internal class PictureImages(
                     }
                 }
             }
-            "svg" -> siblingRaster(resolvePart, target)?.let { Resolved.Raster(it) } ?: Resolved.Missing
+            "svg" -> siblingRaster(resolvePart, target)?.let { Resolved.Raster(it) } ?: Resolved.Fixed("SVG image")
             in NOT_DECODABLE -> Resolved.Fixed("${extension.uppercase()} image")
             else -> Resolved.Fixed(UNSUPPORTED)
         }
@@ -183,6 +182,7 @@ internal class PictureImages(
         const val UNSUPPORTED = "Unsupported image"
 
         const val PNG_QUALITY = 100
+        const val RASTER_EDGE = 2_048
         const val PLACEHOLDER_EDGE = 512
         const val MIN_ASPECT = 0.05
         const val MAX_ASPECT = 20.0

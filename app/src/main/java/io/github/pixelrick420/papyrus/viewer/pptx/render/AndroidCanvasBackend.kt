@@ -51,6 +51,10 @@ internal class AndroidCanvasBackend(
 
     private var transform = Affine.scale(initialScale.toDouble(), initialScale.toDouble())
 
+    private val recoloured = HashMap<Pair<String, PictureEffects>, Bitmap>()
+
+    private val typefaces = HashMap<Pair<String?, Int>, Typeface>()
+
     override fun fillPath(path: PathData, paint: PaintSpec) {
         val fill = paintOf(paint)
         fill.style = Paint.Style.FILL
@@ -70,7 +74,7 @@ internal class AndroidCanvasBackend(
 
     override fun drawImage(image: ImageRef, src: RectF, dst: RectF, effects: ImageEffects) {
         val bitmap = imageOf(image) ?: return
-        val drawn = if (effects.recolor.hasPixelWork) recolour(bitmap, effects.recolor) else bitmap
+        val drawn = if (effects.recolor.hasPixelWork) recolour(image, bitmap, effects.recolor) else bitmap
         val paint = paintOf(PaintSpec.Solid(Rgba.WHITE))
         paint.alpha = (effects.alpha.coerceIn(0f, 1f) * OPAQUE).roundToInt()
         effects.recolor.matrix?.let { paint.colorFilter = ColorMatrixColorFilter(it.toFloatArray()) }
@@ -92,15 +96,22 @@ internal class AndroidCanvasBackend(
         }
     }
 
-    private fun recolour(bitmap: Bitmap, effects: PictureEffects): Bitmap {
+    private fun recolour(image: ImageRef, bitmap: Bitmap, effects: PictureEffects): Bitmap {
+        val key = "${image.key}:${bitmap.width}x${bitmap.height}" to effects
+        recoloured[key]?.let { return it }
+        // The matrix is applied by the draw paint; doing it here too would colour every pixel twice.
+        val pixelEffects = effects.copy(matrix = null)
         val pixels = IntArray(bitmap.width * bitmap.height)
         bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
         for (index in pixels.indices) {
             val packed = pixels[index]
             val color = Rgba((packed shr 16) and 0xFF, (packed shr 8) and 0xFF, packed and 0xFF, (packed shr 24) and 0xFF)
-            pixels[index] = effects.applyTo(color).argb
+            pixels[index] = pixelEffects.applyTo(color).argb
         }
-        return Bitmap.createBitmap(pixels, bitmap.width, bitmap.height, Bitmap.Config.ARGB_8888)
+        val result = Bitmap.createBitmap(pixels, bitmap.width, bitmap.height, Bitmap.Config.ARGB_8888)
+        if (recoloured.size >= MAX_RECOLOURED) recoloured.clear()
+        recoloured[key] = result
+        return result
     }
 
     override fun drawGlyphRun(run: GlyphRun) {
@@ -117,9 +128,12 @@ internal class AndroidCanvasBackend(
             }
             run.shadow?.let { fill.setShadowLayer(it.blur * sy, it.dx * sx, it.dy * sy, it.color.argb) }
             canvas.save()
-            canvas.scale(1f / sx, 1f / sy)
-            canvas.drawText(run.text, run.x * sx, run.y * sy, fill)
-            canvas.restore()
+            try {
+                canvas.scale(1f / sx, 1f / sy)
+                canvas.drawText(run.text, run.x * sx, run.y * sy, fill)
+            } finally {
+                canvas.restore()
+            }
         }
         val paint = textPaint(run.paint, run)
         run.outline?.let { outline ->
@@ -136,9 +150,15 @@ internal class AndroidCanvasBackend(
 
     private fun textPaint(spec: PaintSpec, run: GlyphRun): Paint = paintOf(spec).apply {
         textSize = run.size
-        typeface = run.font?.let { fonts?.typeface(it) } ?: Typeface.create(run.family, run.typefaceStyle())
+        typeface = typefaceOf(run)
         letterSpacing = run.letterSpacing
         fontFeatureSettings = featureSettings(run)
+    }
+
+    private fun typefaceOf(run: GlyphRun): Typeface? {
+        run.font?.let { font -> fonts?.typeface(font)?.let { return it } }
+        val style = run.typefaceStyle()
+        return typefaces.getOrPut(run.family to style) { Typeface.create(run.family, style) }
     }
 
     private fun drawTextRule(rule: TextRule, run: GlyphRun) {
@@ -463,6 +483,7 @@ internal class AndroidCanvasBackend(
         const val DASH_GAP = 3f
         const val WAVE_STEPS = 16
         const val WAVE_PERIOD = 4f
+        const val MAX_RECOLOURED = 16
     }
 }
 

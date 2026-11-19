@@ -58,6 +58,7 @@ internal class SlidePageSource private constructor(
     private val renderer: SlideRenderer,
     private val fonts: FontCatalog? = null,
     val textIndex: SlideTextIndex,
+    val fontSubstitution: FontSubstitution,
     val hidden: Set<Int> = emptySet(),
 ) : PageBitmapSource {
 
@@ -195,14 +196,22 @@ internal class SlidePageSource private constructor(
     private suspend fun rasterizeTile(index: Int, slide: SlideScene, widthPx: Int, rect: NormRect): Bitmap? {
         val size = slide.scene.size
         if (size.width <= 0.0 || size.height <= 0.0 || widthPx <= 0) return null
+        val left = rect.left.coerceIn(0f, 1f)
+        val top = rect.top.coerceIn(0f, 1f)
+        val right = rect.right.coerceIn(left, 1f)
+        val bottom = rect.bottom.coerceIn(top, 1f)
+        if (right <= left || bottom <= top) return null
         val region = RenderRegion(
             source = RectF(
-                rect.left * size.width.toFloat(),
-                rect.top * size.height.toFloat(),
-                rect.right * size.width.toFloat(),
-                rect.bottom * size.height.toFloat(),
+                left * size.width.toFloat(),
+                top * size.height.toFloat(),
+                right * size.width.toFloat(),
+                bottom * size.height.toFloat(),
             ),
-            scale = widthPx.toFloat() / size.width.toFloat(),
+            scale = minOf(
+                widthPx.toFloat() / ((right - left) * size.width.toFloat()),
+                limits.maxRenderEdgePx.toFloat() / ((bottom - top) * size.height.toFloat()),
+            ),
         )
         val list = displayListOf(index, slide)
         val decoded = HashMap<String, Bitmap?>()
@@ -213,7 +222,7 @@ internal class SlidePageSource private constructor(
                 if (decoded.containsKey(ref.key)) {
                     decoded[ref.key]
                 } else {
-                    images.load(File(ref.key), widthPx)?.bitmap.also { decoded[ref.key] = it }
+                    images.load(File(ref.key), region.widthPx)?.bitmap.also { decoded[ref.key] = it }
                 }
             },
             fonts = fonts,
@@ -355,10 +364,11 @@ internal class SlidePageSource private constructor(
             val warpSource = warps ?: assets?.let {
                 PresetGeometry(open = { it.open("ooxml/presetTextWarpDefinitions.xml") })
             }
+            val substitution = FontSubstitution(embedded = embedded)
             val engine = fonts?.let { fontCatalog ->
                 TextLayoutEngine(
                     measurer = PaintTextMeasurer(fontCatalog),
-                    shaper = TextShaper(FontSlots(FontSubstitution(embedded = embedded))),
+                    shaper = TextShaper(FontSlots(substitution)),
                     warps = warpSource?.let(::TextWarpRenderer),
                 )
             }
@@ -377,6 +387,7 @@ internal class SlidePageSource private constructor(
                 renderer = SlideRenderer(presets, limits, text = engine?.let { SlideTextPainter(resolver, it) }),
                 fonts = fonts,
                 textIndex = textIndex,
+                fontSubstitution = substitution,
                 hidden = scenes.hidden,
             ).also { synchronized(openSources) { openSources.add(it) } }
         }

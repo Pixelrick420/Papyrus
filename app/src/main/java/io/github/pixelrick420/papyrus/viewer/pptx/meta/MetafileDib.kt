@@ -47,12 +47,13 @@ internal object MetafileDib {
         val palette = paletteOf(bytes, infoOffset, header, headerSize)
         val masks = masksOf(bytes, infoOffset, headerSize, header)
         if (header.depth in HIGH_COLOUR_DEPTHS && masks == null) return null
+        val budget = minOf(maxPixels, MAX_DIB_PIXELS.toLong()).coerceAtLeast(1L)
         var outWidth = minOf(width, maxOf(1, maxEdgePx))
         var outHeight = minOf(height, maxOf(1, maxEdgePx))
-        val scale = minOf(1.0, kotlin.math.sqrt(maxPixels.toDouble() / (outWidth.toLong() * outHeight)))
+        val scale = minOf(1.0, kotlin.math.sqrt(budget.toDouble() / (outWidth.toLong() * outHeight)))
         outWidth = max(1, minOf(outWidth, (outWidth * scale).toInt()))
         outHeight = max(1, minOf(outHeight, (outHeight * scale).toInt()))
-        while (outWidth.toLong() * outHeight > maxPixels && outHeight > 1) outHeight--
+        while (outWidth.toLong() * outHeight > budget && outHeight > 1) outHeight--
         val argb = IntArray(outWidth * outHeight)
         for (y in 0 until outHeight) {
             val sourceY = ((y.toLong() * height + outHeight / 2) / outHeight).toInt().coerceIn(0, height - 1)
@@ -99,7 +100,7 @@ internal object MetafileDib {
         if (header.depth !in HIGH_COLOUR_DEPTHS) return null
         val fallback = when (header.depth) {
             16 -> Masks(0x7C00, 0x03E0, 0x001F, 0)
-            32 -> Masks(0x00FF0000, 0x0000FF00, 0x000000FF, -0x1000000)
+            32 -> Masks(0x00FF0000, 0x0000FF00, 0x000000FF, 0)
             else -> return null
         }
         if (header.compression == BI_BITFIELDS && headerSize < V4_HEADER_BYTES) {
@@ -188,6 +189,7 @@ internal object MetafileDib {
     private const val V4_HEADER_BYTES = 52
     private const val BI_RGB = 0
     private const val BI_BITFIELDS = 3
+    private const val MAX_DIB_PIXELS = 4_000_000
     private val SUPPORTED_DEPTHS = setOf(1, 4, 8, 16, 24, 32)
     private val HIGH_COLOUR_DEPTHS = setOf(16, 32)
 }

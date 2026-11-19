@@ -112,6 +112,21 @@ class ZipGuardTest {
     }
 
     @Test
+    fun `a skipped entry is charged for the bytes it inflates`() {
+        val loose = small.copy(maxEntryBytes = 1_000_000, maxTotalBytes = 1_000_000)
+        val bytes = zip("bomb" to ByteArray(50_000), "after" to noise(10))
+
+        val thrown = runCatching {
+            BoundedZipInputStream(ByteArrayInputStream(bytes), loose).use { zip ->
+                zip.nextEntry
+                zip.skip(Long.MAX_VALUE)
+            }
+        }.exceptionOrNull()
+
+        assertEquals("implausible compression", thrown?.message)
+    }
+
+    @Test
     fun `the size and ratio of one entry do not count against the next`() {
         val loose = small.copy(maxEntryBytes = 600, maxTotalBytes = 1_000_000)
         val bytes = zip("1" to noise(500), "2" to noise(500), "3" to noise(500))

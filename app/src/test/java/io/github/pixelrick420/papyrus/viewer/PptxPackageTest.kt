@@ -11,6 +11,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
+import java.io.ByteArrayInputStream
 import java.io.File
 
 class PptxPackageTest {
@@ -315,6 +316,44 @@ class PptxPackageTest {
 
         assertEquals(1, pkg.fontNames.size)
         assertNotNull(pkg.font("ppt/fonts/font1.fntdata"))
+    }
+
+    @Test
+    fun `typefaces are collected from every xml part without a second parse`() {
+        val deck = pptx {
+            layout("Blank")
+            slide { title("hello") }
+            part(
+                "ppt/fonts.xml",
+                """<fonts><a:latin typeface="Alpha"/><a:ea typeface='Beta'/><a:cs typeface="+mj-lt"/><a:buFont typeface=" Gamma "/></fonts>""".toByteArray(Charsets.UTF_8),
+            )
+        }
+
+        val pkg = read(deck)
+
+        val found = pkg.requestedTypefaces()
+        assertTrue(found.containsAll(setOf("Alpha", "Beta", "Gamma")))
+        assertFalse("theme placeholders stay out", found.any { it.startsWith('+') })
+    }
+
+    @Test
+    fun `a package with a media directory opens its source only once and leaves no cache file`() {
+        val dir = temp.newFolder("media")
+        val bytes = sample().toBytes()
+        var opens = 0
+
+        val pkg = PptxPackage.read(
+            {
+                opens++
+                ByteArrayInputStream(bytes)
+            },
+            dir,
+            newParserFactory = OfficeFixtures::parser,
+        )
+
+        assertEquals(1, opens)
+        assertTrue(pkg.hasPart("ppt/slides/slide1.xml"))
+        assertEquals(emptyList<String>(), dir.list()?.toList().orEmpty())
     }
 
     private companion object {

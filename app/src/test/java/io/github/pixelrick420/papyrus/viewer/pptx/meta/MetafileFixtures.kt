@@ -104,10 +104,10 @@ internal object MetafileFixtures {
     }
 
     fun emfFont(handle: Int = 3, height: Int = 120, name: String = "Arial", underline: Boolean = false): ByteArray {
-        val buffer = ByteBuffer.allocate(8 + 4 + 92 + 4).order(ByteOrder.LITTLE_ENDIAN)
+        val buffer = ByteBuffer.allocate(8 + 4 + 92).order(ByteOrder.LITTLE_ENDIAN)
         buffer.putInt(0x52)
         buffer.putInt(buffer.capacity())
-        buffer.putInt(12)
+        buffer.putInt(handle)
         buffer.putInt(height)
         repeat(3) { buffer.putInt(0) }
         buffer.putInt(400)
@@ -115,7 +115,6 @@ internal object MetafileFixtures {
         buffer.put(if (underline) 1.toByte() else 0.toByte())
         repeat(6) { buffer.put(0.toByte()) }
         repeat(32) { index -> buffer.putShort(if (index < name.length) name[index].code.toShort() else 0) }
-        buffer.putInt(handle)
         return buffer.array()
     }
 
@@ -136,8 +135,8 @@ internal object MetafileFixtures {
     }
 
     fun wmfRecord(type: Int, parameters: ByteArray): ByteArray {
-        val buffer = ByteBuffer.allocate(4 + parameters.size).order(ByteOrder.LITTLE_ENDIAN)
-        buffer.putShort(((4 + parameters.size) / 2).toShort())
+        val buffer = ByteBuffer.allocate(6 + parameters.size).order(ByteOrder.LITTLE_ENDIAN)
+        buffer.putInt((6 + parameters.size) / 2)
         buffer.putShort(type.toShort())
         buffer.put(parameters)
         return buffer.array()

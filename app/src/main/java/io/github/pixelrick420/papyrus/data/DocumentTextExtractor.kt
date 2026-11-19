@@ -42,6 +42,8 @@ class DocumentTextExtractor(
         it.text.length * 2L + CACHED_OVERHEAD_BYTES
     }
 
+    private val fonts by lazy { FontCatalog(context.assets) }
+
     suspend fun extract(document: DocumentEntity): ExtractedText = withContext(dispatcher) {
         // Checked before any open: a 2 GB scan should not be read just to be told it is too large.
         if (document.sizeBytes > MAX_SOURCE_BYTES) {
@@ -55,8 +57,10 @@ class DocumentTextExtractor(
             throw cancellation
         } catch (expectedDrm: EpubProtectedException) {
             ExtractedText("", TextIndexState.SKIPPED)
+        } catch (oom: OutOfMemoryError) {
+            ExtractedText("", TextIndexState.FAILED)
         } catch (ignored: Exception) {
-            // Catches document parsing failures; JVM Errors (like OOM) are uncaught to avoid corrupted state.
+            // A bad document must not stall the index queue, so every parse failure ends as FAILED.
             ExtractedText("", TextIndexState.FAILED)
         }
         if (key != null && result.state == TextIndexState.INDEXED) extracted.put(key, result)
@@ -107,7 +111,7 @@ class DocumentTextExtractor(
         // mediaDir = null: a deck's words are indexed, not its pictures.
         val pages = SlideTextIndex.indexPages(
             open = { openStream(uri) },
-            measurer = PaintTextMeasurer(FontCatalog(context.assets)),
+            measurer = PaintTextMeasurer(fonts),
             newParserFactory = { Xml.newPullParser() },
         )
         return indexable(pages.joinToString("\n"))

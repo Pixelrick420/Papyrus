@@ -2,9 +2,7 @@ package io.github.pixelrick420.papyrus.viewer.pptx
 
 import android.content.Context
 import android.net.Uri
-import android.util.Xml
 import io.github.pixelrick420.papyrus.viewer.OutlineEntry
-import io.github.pixelrick420.papyrus.viewer.pptx.text.EmbeddedFontDecoder
 import io.github.pixelrick420.papyrus.viewer.pptx.text.FontChoice
 import io.github.pixelrick420.papyrus.viewer.pptx.text.FontSubstitution
 import java.io.File
@@ -21,7 +19,6 @@ internal class SlideDeck(
     val hidden: Set<Int>,
     val incomplete: Boolean,
     val titles: List<String>,
-    val slideTexts: List<String>,
     val slideSize: String?,
     val fontSubstitutions: List<String>,
     val textIndex: SlideTextIndex = SlideTextIndex(emptyList()),
@@ -68,7 +65,7 @@ internal object SlideDeckLoader {
         }
         val titles = texts.map { text -> text.lineSequence().firstOrNull { it.isNotBlank() }?.trim().orEmpty() }
         val info = source.presentationInfo
-        val substitutions = fontSubstitutions(source.pkg)
+        val substitutions = fontSubstitutions(source.pkg, source.fontSubstitution)
         val size = String.format(Locale.US, "%.2f × %.2f in", info.size.widthInches, info.size.heightInches)
         return SlideDeck(
             source = source,
@@ -77,7 +74,6 @@ internal object SlideDeckLoader {
             hidden = source.hidden,
             incomplete = source.incomplete(),
             titles = titles,
-            slideTexts = texts,
             slideSize = size,
             fontSubstitutions = substitutions,
             textIndex = textIndex,
@@ -86,29 +82,13 @@ internal object SlideDeckLoader {
         )
     }
 
-    private fun fontSubstitutions(pkg: PptxPackage): List<String> = runCatching {
-        val reader = OoxmlReader({ Xml.newPullParser() }, OoxmlNamespace.CORE, PptxLimits())
-        val requested = linkedSetOf<String>()
-        for (name in pkg.partNames) {
-            if (!name.endsWith(".xml", ignoreCase = true)) continue
-            val bytes = pkg.part(name) ?: continue
-            val root = runCatching { reader.readTree(bytes.inputStream(), name) }.getOrNull() ?: continue
-            collectTypefaces(root, requested)
-        }
-        val embedded = pkg.fontNames.mapNotNull { name -> pkg.font(name)?.let { EmbeddedFontDecoder.decode(name, it) } }
-        val substitution = FontSubstitution(embedded = embedded)
-        requested.mapNotNull { name ->
-            val choice = substitution.substitute(name)
-            if (choice.substituted && !choice.compatible) "$name → ${labelOf(choice)}" else null
-        }.distinct()
-    }.getOrDefault(emptyList())
-
-    private fun collectTypefaces(node: XNode, out: MutableSet<String>) {
-        if (node.name.localName in TYPEFACE_TAGS) {
-            node.attribute("typeface")?.trim()?.takeIf { it.isNotEmpty() && !it.startsWith('+') }?.let(out::add)
-        }
-        for (child in node.children) collectTypefaces(child, out)
-    }
+    private fun fontSubstitutions(pkg: PptxPackage, substitution: FontSubstitution): List<String> =
+        runCatching {
+            pkg.requestedTypefaces().mapNotNull { name ->
+                val choice = substitution.substitute(name)
+                if (choice.substituted && !choice.compatible) "$name → ${labelOf(choice)}" else null
+            }.distinct()
+        }.getOrDefault(emptyList())
 
     private fun labelOf(choice: FontChoice): String = when (choice) {
         is FontChoice.Bundled -> choice.font.family
@@ -116,6 +96,4 @@ internal object SlideDeckLoader {
         is FontChoice.System -> choice.family
         is FontChoice.Platform -> "System fallback"
     }
-
-    private val TYPEFACE_TAGS = setOf("latin", "ea", "cs", "sym", "buFont")
 }

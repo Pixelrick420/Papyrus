@@ -51,6 +51,19 @@ internal class BoundedZipInputStream private constructor(
         return n
     }
 
+    /** Skipping must inflate through [read] too, or a skipped bomb escapes every charge. */
+    override fun skip(n: Long): Long {
+        if (n <= 0) return 0L
+        val buffer = ByteArray(minOf(n, SKIP_BUFFER_BYTES.toLong()).toInt())
+        var skipped = 0L
+        while (skipped < n) {
+            val got = read(buffer, 0, minOf(buffer.size.toLong(), n - skipped).toInt())
+            if (got < 0) break
+            skipped += got
+        }
+        return skipped
+    }
+
     private fun charge(n: Int) {
         entryBytes += n
         totalBytes += n
@@ -59,6 +72,10 @@ internal class BoundedZipInputStream private constructor(
             val compressed = (counting.count - entryFrom).coerceAtLeast(1L)
             if (entryBytes / compressed > limits.maxRatio) throw fail("implausible compression")
         }
+    }
+
+    private companion object {
+        const val SKIP_BUFFER_BYTES = 8 * 1024
     }
 }
 

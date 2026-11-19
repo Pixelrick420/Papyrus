@@ -195,48 +195,45 @@ private class EmfDrawing(
     }
 
     private fun createPen(reader: GdiReader) {
+        val handle = reader.i32()
         val style = reader.i32()
         val width = reader.i32()
         reader.i32()
         val color = colorRef(reader.i32())
-        addObject(reader.i32(), GdiObject.Pen(GdiPen(style, width.toFloat(), color)))
+        addObject(handle, GdiObject.Pen(GdiPen(style, width.toFloat(), color)))
     }
 
     private fun createBrush(reader: GdiReader) {
+        val handle = reader.i32()
         val style = reader.i32()
         val color = colorRef(reader.i32())
         val hatch = reader.i32()
         val brush = if (style == BS_NULL) null else GdiBrush(style, color, hatch)
-        addObject(reader.i32(), GdiObject.Brush(brush))
+        addObject(handle, GdiObject.Brush(brush))
     }
 
     private fun createExtendedPen(reader: GdiReader) {
-        val offset = reader.i32()
-        val penStart = reader.start - RECORD_HEADER_BYTES + offset
-        if (penStart < reader.start || penStart + 16 > reader.end) throw GdiFormatException()
-        val pen = GdiReader(reader.bytes, penStart)
-        val style = pen.u32().toInt()
-        val width = pen.i32()
-        pen.u32()
-        val color = colorRef(pen.i32())
-        val handle = GdiReader(reader.bytes, reader.end - 4).i32()
+        val handle = reader.i32()
+        reader.i32()
+        if (reader.remaining < LOGPEN_BYTES) throw GdiFormatException()
+        val style = reader.i32()
+        val width = reader.i32()
+        reader.i32()
+        val color = colorRef(reader.i32())
         addObject(handle, GdiObject.Pen(GdiPen(style, width.toFloat(), color)))
     }
 
     private fun createFont(reader: GdiReader) {
-        val offset = reader.i32()
-        val fontStart = reader.start - RECORD_HEADER_BYTES + offset
-        if (fontStart < reader.start || fontStart + LOGFONT_BYTES > reader.end) throw GdiFormatException()
-        val font = GdiReader(reader.bytes, fontStart)
-        val height = font.i32()
-        repeat(3) { font.i32() }
-        val weight = font.i32()
-        val italic = font.u8() != 0
-        val underline = font.u8() != 0
-        val strikeOut = font.u8() != 0
-        repeat(5) { font.u8() }
-        val name = font.utf16le(FACE_NAME_CHARS).trim('\u0000')
-        val handle = GdiReader(reader.bytes, reader.end - 4).i32()
+        val handle = reader.i32()
+        if (reader.remaining < LOGFONT_BYTES) throw GdiFormatException()
+        val height = reader.i32()
+        repeat(3) { reader.i32() }
+        val weight = reader.i32()
+        val italic = reader.u8() != 0
+        val underline = reader.u8() != 0
+        val strikeOut = reader.u8() != 0
+        repeat(5) { reader.u8() }
+        val name = reader.utf16le(FACE_NAME_CHARS).trim('\u0000')
         addObject(handle, GdiObject.Font(GdiFont(height, name, weight, italic, underline, strikeOut)))
     }
 
@@ -325,7 +322,7 @@ private class EmfDrawing(
         repeat(4) { reader.i32() }
         val count = reader.i32()
         if (count <= 0 || count > MAX_POINTS) throw GdiFormatException()
-        val hasRange = reader.remaining >= count * pointBytes + 8
+        val hasRange = reader.remaining == count * pointBytes + 8
         val first = if (hasRange) reader.i32() else 0
         val last = if (hasRange) reader.i32() else count
         val points = (0 until count).map {
@@ -340,7 +337,7 @@ private class EmfDrawing(
         val count = reader.i32()
         if (count <= 0 || count > MAX_POLYGONS) throw GdiFormatException()
         val lengths = (0 until count).map { reader.u32().toInt() }
-        if (lengths.any { it <= 0 } || lengths.sum() > MAX_POINTS) throw GdiFormatException()
+        if (lengths.any { it <= 0 } || lengths.sumOf { it.toLong() } > MAX_POINTS) throw GdiFormatException()
         lengths.forEach { length ->
             val points = (0 until length).map {
                 if (pointBytes == POINT_BYTES) point(reader.i32(), reader.i32()) else point(reader.i16(), reader.i16())
@@ -435,6 +432,7 @@ private class EmfDrawing(
         const val MAX_POINTS = 65_536
         const val MAX_POLYGONS = 4_096
         const val MAX_TEXT_CHARS = 16_384
+        const val LOGPEN_BYTES = 16
         const val LOGFONT_BYTES = 92
         const val FACE_NAME_CHARS = 32
     }

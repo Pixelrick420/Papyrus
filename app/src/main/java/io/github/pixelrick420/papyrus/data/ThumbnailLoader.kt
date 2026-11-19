@@ -161,6 +161,8 @@ class ThumbnailLoader(private val context: Context) {
                 page.scale(THUMBNAIL_WIDTH_PX, THUMBNAIL_HEIGHT_PX, true)
             }
         }
+    } catch (e: CancellationException) {
+        throw e
     } catch (_: Exception) {
         null
     }

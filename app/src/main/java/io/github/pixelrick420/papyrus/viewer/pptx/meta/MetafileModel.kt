@@ -211,14 +211,13 @@ internal abstract class GdiRenderer(
 
     protected val objects = mutableMapOf<Int, GdiObject>()
 
-    private var nextHandle = 1
-
     protected fun addObject(handle: Int, value: GdiObject) {
         objects[handle] = value
     }
 
     protected fun createObject(value: GdiObject): Int {
-        val handle = nextHandle++
+        var handle = 0
+        while (objects.containsKey(handle)) handle++
         objects[handle] = value
         return handle
     }
@@ -502,7 +501,12 @@ internal class AndroidMetafileDecoder(
     private val maxPixels: Long = PptxLimits().maxImagePixels,
 ) : MetafileDecoder {
 
-    private val parsed = LruCache<String, MetafileImage>(MAX_CACHED)
+    private val parsed = object : LruCache<String, MetafileImage>(MAX_PARSED_BYTES) {
+        override fun sizeOf(key: String, value: MetafileImage): Int =
+            value.dibs.values.sumOf { it.argb.size.toLong() * Int.SIZE_BYTES }
+                .plus(PARSED_OVERHEAD_BYTES)
+                .coerceIn(1L, Int.MAX_VALUE.toLong()).toInt()
+    }
 
     private val rasters = object : LruCache<RasterKey, PictureImage>(MAX_RASTER_BYTES) {
         override fun sizeOf(key: RasterKey, value: PictureImage): Int =
@@ -514,11 +518,13 @@ internal class AndroidMetafileDecoder(
     override fun placeholder(file: File): String? = image(file)?.placeholderLabel
 
     override fun load(file: File, targetWidthPx: Int): PictureImage? {
-        val width = targetWidthPx.coerceIn(1, maxEdgePx)
+        val image = image(file) ?: return null
+        val aspect = image.bounds.height.toDouble() / image.bounds.width.coerceAtLeast(1)
+        val byPixels = kotlin.math.sqrt(MAX_RASTER_PIXELS.toDouble() / aspect).toInt()
+        val width = minOf(targetWidthPx, maxEdgePx, image.bounds.width, byPixels).coerceAtLeast(1)
         val key = RasterKey(file.path, width)
         rasters.get(key)?.let { return it }
-        val image = image(file) ?: return null
-        val raster = MetafileBitmaps.rasterize(image, minOf(width, image.bounds.width)) ?: return null
+        val raster = MetafileBitmaps.rasterize(image, width) ?: return null
         val result = PictureImage(raster, ImageBounds(raster.width, raster.height))
         rasters.put(key, result)
         return result
@@ -549,7 +555,9 @@ internal class AndroidMetafileDecoder(
     private data class RasterKey(val path: String, val width: Int)
 
     private companion object {
-        const val MAX_CACHED = 64
+        const val PARSED_OVERHEAD_BYTES = 4L * 1024
+        const val MAX_PARSED_BYTES = 16 * 1024 * 1024
+        const val MAX_RASTER_PIXELS = 4_000_000
         const val MAX_RASTER_BYTES = 24 * 1024 * 1024
         const val MAX_FILE_BYTES = 32L * 1024 * 1024
     }

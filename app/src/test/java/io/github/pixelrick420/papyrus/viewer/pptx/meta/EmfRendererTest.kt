@@ -63,8 +63,8 @@ class EmfRendererTest {
     fun pensBrushesAndShapesProduceFillsAndStrokes() {
         val file = MetafileFixtures.emf(
             records = listOf(
-                MetafileFixtures.record(0x26, 0, 2, 0, 0x0000FF, 1),
-                MetafileFixtures.record(0x27, 0, 0x00FF00, 0, 2),
+                MetafileFixtures.record(0x26, 1, 0, 2, 0, 0x0000FF),
+                MetafileFixtures.record(0x27, 2, 0, 0x00FF00, 0),
                 MetafileFixtures.record(0x25, 1),
                 MetafileFixtures.record(0x25, 2),
                 MetafileFixtures.record(0x2B, 10, 10, 20, 20),
@@ -159,6 +159,22 @@ class EmfRendererTest {
         assertNotNull(pixels)
         assertEquals(2, pixels!!.width)
         assertEquals(-16_776_961, pixels.argb[0])
+    }
+
+    @Test
+    fun dibWithoutAnAlphaMaskIsOpaque() {
+        val info = MetafileFixtures.dibInfo(1, 1, depth = 32)
+        val bits = byteArrayOf(0x11, 0x22, 0x33, 0x00)
+        val file = MetafileFixtures.emf(
+            records = listOf(
+                MetafileFixtures.setDibits(intArrayOf(0, 0, 10, 10), info, bits),
+                MetafileFixtures.record(0x0E),
+            ),
+        )
+        val image = Metafiles.parse(file, "emf", MAX_EDGE, MAX_PIXELS)
+        assertNotNull(image)
+        val pixels = image!!.dibs.values.single()
+        assertEquals((0xFF shl 24) or (0x33 shl 16) or (0x22 shl 8) or 0x11, pixels.argb[0])
     }
 
     private companion object {
