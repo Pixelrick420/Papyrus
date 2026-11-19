@@ -5,8 +5,10 @@ import io.github.pixelrick420.papyrus.viewer.pptx.SceneGraphicFrame
 import io.github.pixelrick420.papyrus.viewer.pptx.SceneGroup
 import io.github.pixelrick420.papyrus.viewer.pptx.SceneNode
 import io.github.pixelrick420.papyrus.viewer.pptx.ScenePaint
+import io.github.pixelrick420.papyrus.viewer.pptx.ScenePoint
 import io.github.pixelrick420.papyrus.viewer.pptx.SceneRect
 import io.github.pixelrick420.papyrus.viewer.pptx.text.TextBody
+import io.github.pixelrick420.papyrus.viewer.pptx.text.TextFrameLayout
 import io.github.pixelrick420.papyrus.viewer.pptx.text.TextLayoutEngine
 import io.github.pixelrick420.papyrus.viewer.pptx.text.TextStyleResolver
 import kotlin.math.max
@@ -88,6 +90,22 @@ internal object TableLayout {
             totalHeightEmu = rowOffsets.last(),
             cellFrames = cellFrames,
             resolvedBorders = resolveBorders(table, owners, colOffsets, rowOffsets),
+        )
+    }
+
+    /** Where a cell's glyph coords start inside its frame; shared by painting and selection. */
+    fun cellTextOrigin(cell: TableCell, body: TextBody, rect: SceneRect, layout: TextFrameLayout): ScenePoint {
+        val margins = cell.properties.margins
+        val available = rect.height - margins.top - margins.bottom
+        val content = layout.heightPt * EMU_PER_POINT
+        val anchorY = when (cell.properties.anchor) {
+            TableCellAnchor.TOP -> 0.0
+            TableCellAnchor.MIDDLE -> (available - content) / 2.0
+            TableCellAnchor.BOTTOM -> available - content
+        }
+        return ScenePoint(
+            margins.left + body.properties.insets.left,
+            margins.top + body.properties.insets.top + anchorY,
         )
     }
 

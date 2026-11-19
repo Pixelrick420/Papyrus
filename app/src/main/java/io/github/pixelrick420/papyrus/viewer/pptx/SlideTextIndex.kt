@@ -12,6 +12,7 @@ import io.github.pixelrick420.papyrus.viewer.pptx.text.TextMeasurer
 import io.github.pixelrick420.papyrus.viewer.pptx.text.TextRun
 import io.github.pixelrick420.papyrus.viewer.pptx.text.TextShapeTransform
 import io.github.pixelrick420.papyrus.viewer.pptx.text.TextStyleResolver
+import io.github.pixelrick420.papyrus.viewer.pptx.text.TextStyleSources
 import org.xmlpull.v1.XmlPullParser
 import java.io.InputStream
 import java.util.BitSet
@@ -226,13 +227,24 @@ internal class SlideTextIndex(
         ): PlacedLayout? {
             val frame = shape.frame ?: return null
             if (frame.width <= 0.0 || frame.height <= 0.0) return null
-            val body = shape.textBody?.let { runCatching { resolver.resolve(it) }.getOrNull() } ?: return null
+            val body = shape.textBody?.let { node ->
+                runCatching { resolver.resolve(node, shape.text?.textSources ?: TextStyleSources()) }.getOrNull()
+            } ?: return null
             if (!body.hasText()) return null
             val layout = runCatching {
                 engine.layout(body, frame.width, frame.height, TextShapeTransform.of(shape.transform))
             }.getOrNull() ?: return null
             if (layout.lines.isEmpty()) return null
-            return PlacedLayout(layout, offset(frame, dx, dy), paragraphTexts(body), shape.sourcePart ?: slidePart)
+            val placed = offset(frame, dx, dy)
+            val insets = body.properties.insets
+            return PlacedLayout(
+                layout,
+                placed,
+                placed.x + insets.left,
+                placed.y + insets.top,
+                paragraphTexts(body),
+                shape.sourcePart ?: slidePart,
+            )
         }
 
         private fun placedPicture(
@@ -259,9 +271,18 @@ internal class SlideTextIndex(
             for ((key, rect) in result.cellFrames.entries.sortedWith(compareBy({ it.key.first }, { it.key.second }))) {
                 val cell = table.rows.getOrNull(key.first)?.cells?.getOrNull(key.second) ?: continue
                 val layout = cell.textLayout ?: continue
-                val texts = paragraphTexts(cell.resolvedText ?: TextBody())
+                val body = cell.resolvedText ?: TextBody()
+                val texts = paragraphTexts(body)
                 val placed = SceneRect(origin.x + rect.x, origin.y + rect.y, rect.width, rect.height)
-                out += PlacedLayout(layout, placed, texts, node.sourcePart ?: slidePart)
+                val cellOrigin = TableLayout.cellTextOrigin(cell, body, rect, layout)
+                out += PlacedLayout(
+                    layout,
+                    placed,
+                    placed.x + cellOrigin.x,
+                    placed.y + cellOrigin.y,
+                    texts,
+                    node.sourcePart ?: slidePart,
+                )
             }
         }
 
@@ -277,15 +298,14 @@ internal class SlideTextIndex(
         ) {
             val sw = slide.width.takeIf { it > 0.0 } ?: return
             val sh = slide.height.takeIf { it > 0.0 } ?: return
-            val frame = placed.frame
             for ((lineIndex, line) in placed.layout.lines.withIndex()) {
                 for (run in line.runs) {
                     val hyperlink = run.properties.hyperlink ?: continue
                     val target = linkOf(slideIndex, placed.sourcePart, hyperlink.relationshipId, hyperlink.action) ?: continue
-                    val left = normX(frame.x + run.leftPt * EMU_PER_POINT, sw)
-                    val right = normX(frame.x + run.rightPt * EMU_PER_POINT, sw)
-                    val top = normY(frame.y + line.topPt * EMU_PER_POINT, sh)
-                    val bottom = normY(frame.y + (line.topPt + line.heightPt) * EMU_PER_POINT, sh)
+                    val left = normX(placed.originX + run.leftPt * EMU_PER_POINT, sw)
+                    val right = normX(placed.originX + run.rightPt * EMU_PER_POINT, sw)
+                    val top = normY(placed.originY + line.topPt * EMU_PER_POINT, sh)
+                    val bottom = normY(placed.originY + (line.topPt + line.heightPt) * EMU_PER_POINT, sh)
                     if (right > left && bottom > top) {
                         links += PdfPageLink(NormRect(left, top, right, bottom), target)
                     }
@@ -298,10 +318,10 @@ internal class SlideTextIndex(
                 for (charBox in line.characters) {
                     val s = charBox.start.coerceIn(0, paraText.length)
                     val e = charBox.end.coerceIn(s, paraText.length)
-                    val left = normX(frame.x + charBox.leftPt * EMU_PER_POINT, sw)
-                    val right = normX(frame.x + charBox.rightPt * EMU_PER_POINT, sw)
-                    val top = normY(frame.y + charBox.topPt * EMU_PER_POINT, sh)
-                    val bottom = normY(frame.y + charBox.bottomPt * EMU_PER_POINT, sh)
+                    val left = normX(placed.originX + charBox.leftPt * EMU_PER_POINT, sw)
+                    val right = normX(placed.originX + charBox.rightPt * EMU_PER_POINT, sw)
+                    val top = normY(placed.originY + charBox.topPt * EMU_PER_POINT, sh)
+                    val bottom = normY(placed.originY + charBox.bottomPt * EMU_PER_POINT, sh)
                     if (e > s) {
                         for (i in s until e) {
                             appendChar(text, boxes, paraText[i], left, top, right, bottom)
@@ -376,6 +396,8 @@ internal class SlideTextIndex(
     private data class PlacedLayout(
         val layout: TextFrameLayout,
         val frame: SceneRect,
+        val originX: Double,
+        val originY: Double,
         val paragraphTexts: List<String>,
         val sourcePart: String,
     ) {

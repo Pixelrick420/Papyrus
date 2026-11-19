@@ -12,7 +12,6 @@ import io.github.pixelrick420.papyrus.viewer.pptx.XNode
 import io.github.pixelrick420.papyrus.viewer.pptx.chart.ChartDrawing
 import io.github.pixelrick420.papyrus.viewer.pptx.diagram.SmartArtDrawing
 import io.github.pixelrick420.papyrus.viewer.pptx.table.TableCell
-import io.github.pixelrick420.papyrus.viewer.pptx.table.TableCellAnchor
 import io.github.pixelrick420.papyrus.viewer.pptx.table.TableLayout
 import io.github.pixelrick420.papyrus.viewer.pptx.text.BulletMarker
 import io.github.pixelrick420.papyrus.viewer.pptx.text.GlyphRun as LayoutGlyphRun
@@ -69,12 +68,12 @@ internal class SlideTextPainter(
             val cellLayout = cell.textLayout ?: continue
             val body = cell.resolvedText ?: continue
             if (cellLayout.lines.isEmpty()) continue
-            val margins = cell.properties.margins
+            val cellOrigin = TableLayout.cellTextOrigin(cell, body, rect, cellLayout)
             emit(
                 layout = cellLayout,
                 transform = Affine.translate(origin.x + rect.x, origin.y + rect.y),
-                originX = margins.left + body.properties.insets.left,
-                originY = margins.top + body.properties.insets.top + anchorOffset(cell, rect, cellLayout),
+                originX = cellOrigin.x,
+                originY = cellOrigin.y,
                 box = SceneRect(0.0, 0.0, rect.width, rect.height),
                 out = out,
             )
@@ -265,17 +264,6 @@ internal class SlideTextPainter(
                 family = (marker as? BulletMarker.Symbol)?.font,
             ),
         )
-    }
-
-    private fun anchorOffset(cell: TableCell, rect: SceneRect, layout: TextFrameLayout): Double {
-        val margins = cell.properties.margins
-        val available = rect.height - margins.top - margins.bottom
-        val content = layout.heightPt * EMU_PER_POINT
-        return when (cell.properties.anchor) {
-            TableCellAnchor.TOP -> 0.0
-            TableCellAnchor.MIDDLE -> (available - content) / 2.0
-            TableCellAnchor.BOTTOM -> available - content
-        }
     }
 
     private fun bodyOf(textBody: XNode?, sources: TextStyleSources? = null): TextBody? {
