@@ -592,7 +592,7 @@ private fun PdfPage(
                 if (mark.kind == HighlightKind.NOTE) NoteStop(mark, pageSize, onMark)
             }
         }
-        if (linkRects.isNotEmpty()) {
+        if (linkRects.isNotEmpty() && !isSlide) {
             // Under the matches and the selection, so a link never hides a find highlight.
             val linkColor = MaterialTheme.colorScheme.primary
             Canvas(Modifier.fillMaxSize()) { drawLinks(linkRects, linkColor) }

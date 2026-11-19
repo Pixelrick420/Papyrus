@@ -83,7 +83,8 @@ internal class TextStyleResolver(private val limits: PptxLimits = PptxLimits()) 
         } ?: return TextAutofit.None
         return when (element.name.localName) {
             "normAutofit" -> TextAutofit.Normal(
-                fontScale = (element.attribute("fontScale")?.toDoubleOrNull() ?: FULL_SCALE) / FULL_SCALE,
+                // fontScale is thousandths of a percent; absent means 100%, not 1%.
+                fontScale = (element.attribute("fontScale")?.toDoubleOrNull() ?: (100.0 * FULL_SCALE)) / FULL_SCALE,
                 lineSpacingReduction = (element.attribute("lnSpcReduction")?.toDoubleOrNull() ?: 0.0) / FULL_SCALE,
             )
             "spAutoFit" -> TextAutofit.Shape

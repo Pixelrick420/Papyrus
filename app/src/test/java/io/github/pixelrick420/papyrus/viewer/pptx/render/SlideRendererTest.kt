@@ -1,9 +1,12 @@
 package io.github.pixelrick420.papyrus.viewer.pptx.render
 
 import io.github.pixelrick420.papyrus.viewer.OfficeFixtures
+import io.github.pixelrick420.papyrus.viewer.pptx.ArrowEnd
+import io.github.pixelrick420.papyrus.viewer.pptx.ArrowType
 import io.github.pixelrick420.papyrus.viewer.pptx.GradientFlip
 import io.github.pixelrick420.papyrus.viewer.pptx.GradientStop
 import io.github.pixelrick420.papyrus.viewer.pptx.GradientTile
+import io.github.pixelrick420.papyrus.viewer.pptx.GraphicKind
 import io.github.pixelrick420.papyrus.viewer.pptx.ImageBounds
 import io.github.pixelrick420.papyrus.viewer.pptx.LinearGradient
 import io.github.pixelrick420.papyrus.viewer.pptx.OoxmlAttribute
@@ -12,6 +15,7 @@ import io.github.pixelrick420.papyrus.viewer.pptx.OoxmlNamespace
 import io.github.pixelrick420.papyrus.viewer.pptx.OoxmlReader
 import io.github.pixelrick420.papyrus.viewer.pptx.PictureCrop
 import io.github.pixelrick420.papyrus.viewer.pptx.PictureFill
+import io.github.pixelrick420.papyrus.viewer.pptx.PictureInsets
 import io.github.pixelrick420.papyrus.viewer.pptx.PictureSource
 import io.github.pixelrick420.papyrus.viewer.pptx.PatternFills
 import io.github.pixelrick420.papyrus.viewer.pptx.PictureTile
@@ -24,6 +28,7 @@ import io.github.pixelrick420.papyrus.viewer.pptx.SceneConnector
 import io.github.pixelrick420.papyrus.viewer.pptx.SceneEffect
 import io.github.pixelrick420.papyrus.viewer.pptx.SceneEffects
 import io.github.pixelrick420.papyrus.viewer.pptx.SceneFormat
+import io.github.pixelrick420.papyrus.viewer.pptx.SceneGraphicFrame
 import io.github.pixelrick420.papyrus.viewer.pptx.SceneGroup
 import io.github.pixelrick420.papyrus.viewer.pptx.SceneLine
 import io.github.pixelrick420.papyrus.viewer.pptx.SceneNode
@@ -33,11 +38,19 @@ import io.github.pixelrick420.papyrus.viewer.pptx.ScenePreset
 import io.github.pixelrick420.papyrus.viewer.pptx.SceneRect
 import io.github.pixelrick420.papyrus.viewer.pptx.SceneShape
 import io.github.pixelrick420.papyrus.viewer.pptx.SceneSize
+import io.github.pixelrick420.papyrus.viewer.pptx.SceneTextFrame
+import io.github.pixelrick420.papyrus.viewer.pptx.StrokeCompound
 import io.github.pixelrick420.papyrus.viewer.pptx.XNode
+import io.github.pixelrick420.papyrus.viewer.pptx.table.PptxTable
+import io.github.pixelrick420.papyrus.viewer.pptx.table.TableCell
+import io.github.pixelrick420.papyrus.viewer.pptx.table.TableCellProperties
+import io.github.pixelrick420.papyrus.viewer.pptx.table.TableGrid
+import io.github.pixelrick420.papyrus.viewer.pptx.table.TableRow
 import io.github.pixelrick420.papyrus.viewer.pptx.text.AwtTextMeasurer
 import io.github.pixelrick420.papyrus.viewer.pptx.text.LineBreaker
 import io.github.pixelrick420.papyrus.viewer.pptx.text.TextLayoutEngine
 import io.github.pixelrick420.papyrus.viewer.pptx.text.TextStyleResolver
+import io.github.pixelrick420.papyrus.viewer.pptx.text.TextStyleSources
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -243,6 +256,32 @@ class SlideRendererTest {
     }
 
     @Test
+    fun `a negative crop pads the frame instead of dropping the picture`() = runBlocking {
+        val picture = picture(source = PictureSource(crop = PictureCrop(left = -0.25, right = 0.25)))
+        val resolver = SlidePictureResolver { SlideImage(File("image1.png"), ImageBounds(100, 50)) }
+
+        val image = renderer.render(scene(picture), resolver)!!.ops
+            .filterIsInstance<DrawOp.DrawImage>()
+            .single()
+
+        assertEquals(RectF(0f, 0f, 75f, 50f), image.src)
+        assertEquals(RectF(50f, 0f, 200f, 100f), image.dst)
+    }
+
+    @Test
+    fun `a negative fill rect inset draws the picture into an inset destination`() = runBlocking {
+        val picture = picture(source = PictureSource(fill = PictureFill.Stretch(PictureInsets(left = -0.25))))
+        val resolver = SlidePictureResolver { SlideImage(File("image1.png"), ImageBounds(100, 50)) }
+
+        val image = renderer.render(scene(picture), resolver)!!.ops
+            .filterIsInstance<DrawOp.DrawImage>()
+            .single()
+
+        assertEquals(RectF(20f, 0f, 100f, 50f), image.src)
+        assertEquals(RectF(0f, 0f, 200f, 100f), image.dst)
+    }
+
+    @Test
     fun `a non-rectangular picture mask becomes the clip outline`() = runBlocking {
         val picture = picture(mask = ScenePreset("ellipse"))
         val resolver = SlidePictureResolver { SlideImage(File("image1.png"), ImageBounds(10, 10)) }
@@ -373,8 +412,12 @@ class SlideRendererTest {
                 preset = ScenePreset("line"),
                 format = SceneFormat(
                     ScenePaint.None,
-                    SceneLine(widthEmu = 12_700.0, paint = ScenePaint.Solid(black), dash = null)
-                        .withArrow(),
+                    SceneLine(
+                        widthEmu = 12_700.0,
+                        paint = ScenePaint.Solid(black),
+                        dash = null,
+                        compound = StrokeCompound.DOUBLE,
+                    ),
                     null,
                 ),
             ),
@@ -387,6 +430,32 @@ class SlideRendererTest {
         val ops = list!!.ops
         assertTrue(ops.any { it is DrawOp.ShapeShadow })
         assertEquals(1, ops.count { it is DrawOp.FillPath })
+    }
+
+    @Test
+    fun `an arrowed connector draws a trimmed shaft and a filled head`() = runBlocking {
+        val line = SceneLine(
+            widthEmu = 12_700.0,
+            paint = ScenePaint.Solid(black),
+            dash = null,
+            tailEnd = ArrowEnd(ArrowType.TRIANGLE),
+        )
+        val ops = renderer.render(
+            scene(
+                SceneConnector(
+                    id = 1,
+                    name = null,
+                    frame = SceneRect(0.0, 0.0, 1_000_000.0, 500_000.0),
+                    preset = ScenePreset("line"),
+                    format = SceneFormat(ScenePaint.None, line, null),
+                ),
+            ),
+        )!!.ops
+
+        assertEquals(1, ops.count { it is DrawOp.StrokePath })
+        val head = ops.filterIsInstance<DrawOp.FillPath>().single()
+        assertEquals(4, head.path.segments.size)
+        assertEquals(PathSegment.Close, head.path.segments.last())
     }
 
     @Test
@@ -445,6 +514,66 @@ class SlideRendererTest {
         assertEquals(1, ops.filterIsInstance<DrawOp.DrawGlyphRun>().size)
     }
 
+    @Test
+    fun `painting recovers inherited alignment and colour from the shape's text sources`() = runBlocking {
+        val lstStyleXml = """<a:lstStyle $NAMESPACES><a:lvl1pPr algn="r"><a:defRPr sz="1800">""" +
+            """<a:solidFill><a:srgbClr val="065A82"/></a:solidFill></a:defRPr></a:lvl1pPr></a:lstStyle>"""
+        val lstStyle = OoxmlReader(OfficeFixtures::parser).readTree(
+            lstStyleXml.toByteArray().inputStream(),
+            "test.xml",
+        )!!
+        val inheritedBody = OoxmlReader(OfficeFixtures::parser).readTree(
+            """<a:txBody $NAMESPACES><a:bodyPr/><a:p><a:r><a:t>Hello</a:t></a:r></a:p></a:txBody>"""
+                .toByteArray().inputStream(),
+            "test.xml",
+        )!!
+        val shape = SceneShape(
+            id = 1,
+            name = null,
+            frame = TEXT_FRAME,
+            text = SceneTextFrame(
+                paragraphs = emptyList(),
+                textSources = TextStyleSources(listStyles = listOf(lstStyle)),
+            ),
+            textBody = inheritedBody,
+            format = null,
+        )
+
+        val run = textRenderer.render(scene(shape))!!.ops
+            .filterIsInstance<DrawOp.DrawGlyphRun>().single().run
+        val plainRun = textRenderer.render(scene(textShape()))!!.ops
+            .filterIsInstance<DrawOp.DrawGlyphRun>().single().run
+
+        assertEquals(PaintSpec.Solid(Rgba(0x06, 0x5A, 0x82)), run.paint)
+        assertTrue("inherited right alignment should move the run right", run.x > plainRun.x + 12_700f)
+    }
+
+    @Test
+    fun `table layout is computed on the scene being rendered`() = runBlocking {
+        val table = PptxTable(
+            grid = TableGrid(listOf(100_000.0)),
+            rows = listOf(
+                TableRow(
+                    50_000.0,
+                    listOf(TableCell(textBody = null, properties = TableCellProperties(fill = ScenePaint.Solid(red)))),
+                ),
+            ),
+        )
+        val frame = SceneGraphicFrame(
+            id = 2,
+            name = "table",
+            frame = SceneRect(0.0, 0.0, 100_000.0, 50_000.0),
+            kind = GraphicKind.TABLE,
+            table = table,
+        )
+        assertNull(table.layout)
+
+        val ops = textRenderer.render(scene(frame))!!.ops
+
+        assertNotNull(table.layout)
+        assertTrue(ops.any { it is DrawOp.FillPath && it.paint == PaintSpec.Solid(red) })
+    }
+
     private fun textBody(text: String): XNode = OoxmlReader(OfficeFixtures::parser).readTree(
         """<a:txBody $NAMESPACES><a:bodyPr/><a:p><a:r><a:rPr sz="1800"/><a:t>$text</a:t></a:r></a:p></a:txBody>"""
             .toByteArray().inputStream(),
@@ -497,19 +626,6 @@ class SlideRendererTest {
     private fun xfrm(vararg attributes: Pair<String, String>) = XNode(
         OoxmlName("", "xfrm"),
         attributes.map { (name, value) -> OoxmlAttribute("", name, value) },
-    )
-
-    private fun SceneLine.withArrow() = SceneLine(
-        widthEmu = widthEmu,
-        paint = paint,
-        dash = dash,
-        cap = cap,
-        join = join,
-        miterLimit = miterLimit,
-        compound = compound,
-        customDash = customDash,
-        headEnd = io.github.pixelrick420.papyrus.viewer.pptx.ArrowEnd(io.github.pixelrick420.papyrus.viewer.pptx.ArrowType.TRIANGLE),
-        tailEnd = tailEnd,
     )
 
     private companion object {

@@ -186,7 +186,7 @@ class AutoNumbersTest {
         assertEquals(red, first.color)
         assertEquals("2.", (layouts[1].marker as BulletMarker.Number).text)
         assertEquals("first", (paragraph.runs.single() as TextRun.Text).text)
-        assertTrue(layouts[0].metrics.textLeftEmu == 0.0)
+        assertEquals(layouts[0].metrics.markerRightEmu, layouts[0].metrics.textLeftEmu, 0.0)
     }
 
     private fun paragraph(level: Int = 0, startAt: Int? = null, scheme: String = "arabicPeriod"): TextParagraph =

@@ -13,6 +13,7 @@ import io.github.pixelrick420.papyrus.viewer.pptx.chart.ChartDrawing
 import io.github.pixelrick420.papyrus.viewer.pptx.diagram.SmartArtDrawing
 import io.github.pixelrick420.papyrus.viewer.pptx.table.TableCell
 import io.github.pixelrick420.papyrus.viewer.pptx.table.TableCellAnchor
+import io.github.pixelrick420.papyrus.viewer.pptx.table.TableLayout
 import io.github.pixelrick420.papyrus.viewer.pptx.text.BulletMarker
 import io.github.pixelrick420.papyrus.viewer.pptx.text.GlyphRun as LayoutGlyphRun
 import io.github.pixelrick420.papyrus.viewer.pptx.text.TextBody
@@ -26,6 +27,7 @@ import io.github.pixelrick420.papyrus.viewer.pptx.text.TextRunProperties
 import io.github.pixelrick420.papyrus.viewer.pptx.text.TextShadow
 import io.github.pixelrick420.papyrus.viewer.pptx.text.TextShapeTransform
 import io.github.pixelrick420.papyrus.viewer.pptx.text.TextStyleResolver
+import io.github.pixelrick420.papyrus.viewer.pptx.text.TextStyleSources
 import kotlin.math.cos
 import kotlin.math.sin
 
@@ -38,9 +40,13 @@ internal class SlideTextPainter(
     private val engine: TextLayoutEngine,
 ) {
 
+    fun layoutTables(scene: Scene) {
+        TableLayout.layout(scene, resolver, engine)
+    }
+
     fun paintShape(scene: Scene, shape: SceneShape, out: MutableList<DrawOp>) {
         val frame = shape.frame?.takeIf { it.width > 0.0 && it.height > 0.0 } ?: return
-        val body = bodyOf(shape.textBody) ?: return
+        val body = bodyOf(shape.textBody, shape.text?.textSources) ?: return
         if (body.paragraphs.isEmpty()) return
         val layout = layoutOf(scene, shape.text, body, frame, TextShapeTransform.of(shape.transform)) ?: return
         emit(
@@ -272,9 +278,9 @@ internal class SlideTextPainter(
         }
     }
 
-    private fun bodyOf(textBody: XNode?): TextBody? {
+    private fun bodyOf(textBody: XNode?, sources: TextStyleSources? = null): TextBody? {
         textBody ?: return null
-        return runCatching { resolver.resolve(textBody) }.getOrNull()
+        return runCatching { resolver.resolve(textBody, sources ?: TextStyleSources()) }.getOrNull()
     }
 
     private fun layoutOf(

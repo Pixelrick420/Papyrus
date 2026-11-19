@@ -7,6 +7,7 @@ import io.github.pixelrick420.papyrus.viewer.pptx.chart.ChartParser
 import io.github.pixelrick420.papyrus.viewer.pptx.chart.ChartStyle
 import io.github.pixelrick420.papyrus.viewer.pptx.diagram.SmartArtDrawing
 import io.github.pixelrick420.papyrus.viewer.pptx.diagram.SmartArtStyle
+import io.github.pixelrick420.papyrus.viewer.pptx.text.TextStyleSources
 import org.xmlpull.v1.XmlPullParser
 
 /**
@@ -542,6 +543,13 @@ internal class StyleResolver(
             autofit = body.autofit,
             vertical = body.vertical,
             columns = body.columns,
+            textSources = TextStyleSources(
+                listStyles = listStyles,
+                masterStyle = masterStyle,
+                defaultTextStyle = context.defaultTextStyle,
+                theme = context.theme,
+                colors = context.colors,
+            ),
         )
     }
 

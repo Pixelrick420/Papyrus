@@ -28,6 +28,7 @@ import io.github.pixelrick420.papyrus.viewer.pptx.ScenePreset
 import io.github.pixelrick420.papyrus.viewer.pptx.SceneRect
 import io.github.pixelrick420.papyrus.viewer.pptx.SceneShape
 import io.github.pixelrick420.papyrus.viewer.pptx.ShapeGeometry
+import io.github.pixelrick420.papyrus.viewer.pptx.stretchRect
 import io.github.pixelrick420.papyrus.viewer.pptx.StrokeCompound
 import io.github.pixelrick420.papyrus.viewer.pptx.Strokes
 import io.github.pixelrick420.papyrus.viewer.pptx.XNode
@@ -74,6 +75,7 @@ internal class SlideRenderer(
         pictures: SlidePictureResolver = SlidePictureResolver.NONE,
     ): DisplayList? {
         val ops = mutableListOf<DrawOp>()
+        text?.layoutTables(scene)
         background(scene, ops)
         val deadline = nowNanos() + limits.maxSlideRenderMillis * NANOS_PER_MILLI
         if (!walk(scene, scene.nodes, ops, pictures, deadline)) return null
@@ -181,18 +183,67 @@ internal class SlideRenderer(
     private fun connector(connector: SceneConnector, out: MutableList<DrawOp>) {
         val frame = connector.frame?.takeIf(::isDrawable) ?: return
         val format = connector.format ?: return
-        if (format.isUnsupported() || format.line.hasArrows()) return
+        if (format.isUnsupported()) return
         val outline = geometry.outline(connector) ?: return
         val (flipH, flipV) = flipsOf(connector.preset)
         val rotation = rotationOf(connector.transform)
+        val transform = Affine.forShape(frame, rotation = rotation, flipH = flipH, flipV = flipV)
+        val line = format.line
+        if (line != null && line.hasArrows()) {
+            arrowedConnector(outline, line, transform, out)
+            return
+        }
         outline(
             outline,
             format,
-            Affine.forShape(frame, rotation = rotation, flipH = flipH, flipV = flipV),
+            transform,
             Affine.forShape(frame, rotation = 0.0, flipH = flipH, flipV = flipV),
             rotation / ROTATION_UNIT,
             out,
         )
+    }
+
+    private fun arrowedConnector(
+        outline: PresetOutline,
+        line: SceneLine,
+        transform: Affine,
+        out: MutableList<DrawOp>,
+    ) {
+        val box = SceneRect(0.0, 0.0, outline.textRect.width, outline.textRect.height)
+        val stroke = strokeOf(line, box) ?: return
+        val body = mutableListOf<DrawOp>()
+        for (contour in outline.paths) {
+            val points = pointsOf(contour)
+            pathOf(Strokes.shaft(line, points, DEFAULT_LINE_EMU), closed = false)?.let {
+                body += DrawOp.StrokePath(it, stroke)
+            }
+            for (atStart in booleanArrayOf(true, false)) {
+                val arrow = Strokes.arrowGeometry(line, atStart, points, DEFAULT_LINE_EMU) ?: continue
+                val path = pathOf(arrow.points, arrow.closed) ?: continue
+                if (arrow.filled) {
+                    body += DrawOp.FillPath(path, stroke.paint)
+                } else {
+                    body += DrawOp.StrokePath(path, stroke)
+                }
+            }
+        }
+        if (body.isEmpty()) return
+        out += DrawOp.Save
+        out += DrawOp.Concat(transform)
+        out += body
+        out += DrawOp.Restore
+    }
+
+    private fun pointsOf(contour: PresetOutlinePath): List<ScenePoint> = buildList {
+        for (segment in contour.segments) {
+            when (segment) {
+                is PresetSegment.MoveTo -> add(ScenePoint(segment.x, segment.y))
+                is PresetSegment.LineTo -> add(ScenePoint(segment.x, segment.y))
+                is PresetSegment.QuadTo -> add(ScenePoint(segment.x, segment.y))
+                is PresetSegment.CubicTo -> add(ScenePoint(segment.x, segment.y))
+                PresetSegment.Close -> Unit
+            }
+        }
     }
 
     private fun picture(picture: ScenePicture, out: MutableList<DrawOp>, pictures: SlidePictureResolver) {
@@ -200,12 +251,10 @@ internal class SlideRenderer(
         if (picture.format.isUnsupported()) return
         val source = picture.source ?: return
         val fill = source.fill
-        if (fill !is PictureFill.Stretch || fill.insets != PictureInsets.NONE) return
-        val crop = source.crop
-        if (!crop.isVisible || crop.isNegative()) return
+        if (fill !is PictureFill.Stretch) return
         val raster = pictures.imageOf(picture) ?: return
-        val widthPx = raster.bounds.width.toDouble()
-        val heightPx = raster.bounds.height.toDouble()
+        val local = SceneRect(0.0, 0.0, frame.width, frame.height)
+        val regions = pictureRegions(source.crop, fill.insets, local, raster.bounds) ?: return
         out += DrawOp.Save
         out += DrawOp.Concat(
             Affine.forShape(
@@ -217,16 +266,43 @@ internal class SlideRenderer(
         )
         out += DrawOp.DrawImage(
             image = ImageRef(raster.key, raster.bounds.width, raster.bounds.height),
-            src = RectF(
-                (crop.left * widthPx).toFloat(),
-                (crop.top * heightPx).toFloat(),
-                ((1.0 - crop.right) * widthPx).toFloat(),
-                ((1.0 - crop.bottom) * heightPx).toFloat(),
-            ),
-            dst = RectF(0f, 0f, frame.width.toFloat(), frame.height.toFloat()),
+            src = regions.first,
+            dst = regions.second,
             effects = ImageEffects(alpha = source.alpha.toFloat(), clip = maskOf(picture), recolor = source.effects),
         )
         out += DrawOp.Restore
+    }
+
+    /** Maps the source crop through a stretch inset, clipped to the frame; negative sides stay transparent. */
+    private fun pictureRegions(
+        crop: PictureCrop,
+        insets: PictureInsets,
+        frame: SceneRect,
+        bounds: ImageBounds,
+    ): Pair<RectF, RectF>? {
+        if (!crop.isVisible) return null
+        val stretch = stretchRect(frame, insets)
+        if (stretch.width <= 0.0 || stretch.height <= 0.0) return null
+        val scaleX = stretch.width / crop.width
+        val scaleY = stretch.height / crop.height
+        val firstX = maxOf(0.0, crop.left - stretch.x / scaleX)
+        val lastX = minOf(1.0, crop.left + (frame.width - stretch.x) / scaleX)
+        val firstY = maxOf(0.0, crop.top - stretch.y / scaleY)
+        val lastY = minOf(1.0, crop.top + (frame.height - stretch.y) / scaleY)
+        if (lastX <= firstX || lastY <= firstY) return null
+        val src = RectF(
+            (firstX * bounds.width).toFloat(),
+            (firstY * bounds.height).toFloat(),
+            (lastX * bounds.width).toFloat(),
+            (lastY * bounds.height).toFloat(),
+        )
+        val dst = RectF(
+            (stretch.x + (firstX - crop.left) * scaleX).toFloat(),
+            (stretch.y + (firstY - crop.top) * scaleY).toFloat(),
+            (stretch.x + (lastX - crop.left) * scaleX).toFloat(),
+            (stretch.y + (lastY - crop.top) * scaleY).toFloat(),
+        )
+        return src to dst
     }
 
     private fun graphicFrame(frame: SceneGraphicFrame, out: MutableList<DrawOp>, pictures: SlidePictureResolver) {
@@ -468,8 +544,6 @@ internal class SlideRenderer(
         frame.width.isFinite() && frame.height.isFinite() &&
             frame.width >= 0.0 && frame.height >= 0.0 &&
             (frame.width > 0.0 || frame.height > 0.0)
-
-    private fun PictureCrop.isNegative(): Boolean = left < 0.0 || top < 0.0 || right < 0.0 || bottom < 0.0
 
     private fun SceneLine?.hasArrows(): Boolean =
         this != null && (headEnd.type != ArrowType.NONE || tailEnd.type != ArrowType.NONE)

@@ -168,7 +168,10 @@ private class SlideReading(
             return null
         }
         return when (tree.name) {
-            OoxmlName(OoxmlNamespace.P, "sp") -> shapeNode(tree)
+            OoxmlName(OoxmlNamespace.P, "sp") -> {
+                val blipFill = tree.child(OoxmlNamespace.P, "spPr")?.child(OoxmlNamespace.A, "blipFill")
+                if (blipFill != null) pictureNode(tree, blipFill, fromShape = true) else shapeNode(tree)
+            }
             OoxmlName(OoxmlNamespace.P, "pic") -> pictureNode(tree)
             OoxmlName(OoxmlNamespace.P, "grpSp") -> groupNode(tree, depth)
             OoxmlName(OoxmlNamespace.P, "cxnSp") -> connectorNode(tree)
@@ -202,11 +205,14 @@ private class SlideReading(
         )
     }
 
-    private fun pictureNode(tree: XNode): ScenePicture? {
+    private fun pictureNode(
+        tree: XNode,
+        blipFill: XNode? = tree.child(OoxmlNamespace.P, "blipFill"),
+        fromShape: Boolean = false,
+    ): ScenePicture? {
         val properties = tree.child(OoxmlNamespace.P, "spPr")
         val transform = properties?.child(OoxmlNamespace.A, "xfrm")
-        val props = propsOf(tree, "nvPicPr")
-        val blipFill = tree.child(OoxmlNamespace.P, "blipFill")
+        val props = propsOf(tree, "nvPicPr") ?: propsOf(tree, "nvSpPr")
         val custom = CustomGeometry.read(properties, limits)
         if (custom == CustomGeometry.Invalid) return null
         val source = PictureFills.read(blipFill, part)
@@ -222,7 +228,7 @@ private class SlideReading(
             hyperlink = hyperlinkOf(props),
             placeholder = placeholderOf(tree),
             transform = transform,
-            properties = properties,
+            properties = if (fromShape) null else properties,
             source = source,
             mask = presetOf(properties, transform),
             customGeometry = (custom as? CustomGeometry.Shape)?.shape,

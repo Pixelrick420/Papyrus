@@ -1,5 +1,7 @@
 package io.github.pixelrick420.papyrus.viewer.pptx
 
+import io.github.pixelrick420.papyrus.viewer.pptx.text.TextStyleSources
+
 /** A point in EMU. */
 internal data class ScenePoint(val x: Double, val y: Double)
 
@@ -259,6 +261,7 @@ internal class SceneTextFrame(
     val autofit: XNode? = null,
     val vertical: String? = null,
     val columns: Int = 1,
+    val textSources: TextStyleSources? = null,
 )
 
 internal class SceneParagraph(

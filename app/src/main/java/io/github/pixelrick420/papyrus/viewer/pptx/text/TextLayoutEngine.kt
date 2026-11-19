@@ -354,13 +354,18 @@ internal class TextLayoutEngine(
             breaker.breakBefore(text.text, paragraph.properties, localeOf(paragraph)),
             FillMetrics(
                 widthPt = paragraphWidthPt,
-                firstLineIndentPt = (paragraph.properties.indentEmu ?: 0.0) / EMU_PER_POINT,
+                firstLineIndentPt = if (bullet.marker == BulletMarker.None) {
+                    (paragraph.properties.indentEmu ?: 0.0) / EMU_PER_POINT
+                } else {
+                    0.0
+                },
                 rtl = paragraph.properties.rightToLeft,
                 wrap = body.wrap,
                 tabs = tabs,
             ),
         )
         val alignment = alignmentOf(paragraph.properties)
+        val firstContentLine = filled.indexOfFirst { it.end > it.start }
         var top = topPt
         filled.forEachIndexed { lineIndex, line ->
             val capacityPt = (paragraphWidthPt - line.startPt).coerceAtLeast(0.0)
@@ -402,7 +407,7 @@ internal class TextLayoutEngine(
                 baselinePt = top + box.baselinePt,
                 paddingPt = paddingPt,
                 tabs = tabs,
-                bullet = if (lineIndex == 0) bullet.marker else BulletMarker.None,
+                bullet = if (lineIndex == firstContentLine) bullet.marker else BulletMarker.None,
                 markerLeftPt = metrics.markerLeftEmu / EMU_PER_POINT,
                 markerRightPt = metrics.markerRightEmu / EMU_PER_POINT,
             )

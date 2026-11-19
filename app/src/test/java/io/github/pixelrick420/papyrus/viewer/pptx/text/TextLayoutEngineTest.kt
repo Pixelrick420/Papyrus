@@ -77,7 +77,7 @@ class TextLayoutEngineTest {
     }
 
     @Test
-    fun `a hanging indent puts the first line left of the rest`() {
+    fun `a hanging indent keeps bullet text beside the marker`() {
         val bullet = TextParagraph(
             properties = TextParagraphProperties(
                 marginLeftEmu = 457_200.0,
@@ -90,12 +90,49 @@ class TextLayoutEngineTest {
 
         val lines = laidOut(engine(), body(bullet), WIDTHS_PT.first()).lines
 
-        assertEquals(18.0, lines.first().leftPt, EPSILON)
+        assertEquals(36.0, lines.first().leftPt, EPSILON)
         assertEquals(36.0, lines[1].leftPt, EPSILON)
         assertEquals(18.0, lines.first().markerLeftPt, EPSILON)
         assertEquals(36.0, lines.first().markerRightPt, EPSILON)
         assertTrue(lines.first().bullet != BulletMarker.None)
         assertEquals(BulletMarker.None, lines[1].bullet)
+    }
+
+    @Test
+    fun `a bullet without inherited indents still leaves room for the marker`() {
+        val bullet = TextParagraph(
+            properties = TextParagraphProperties(
+                bullet = TextBullet.Character("q", "Wingdings", null, TextBulletSize.Inherit),
+            ),
+            runs = listOf(TextRun.Text(TEXT, STYLE)),
+            endProperties = STYLE,
+        )
+
+        val lines = laidOut(engine(), body(bullet), WIDTHS_PT.first()).lines
+
+        assertEquals(0.0, lines.first().markerLeftPt, EPSILON)
+        assertEquals(18.0, lines.first().markerRightPt, EPSILON)
+        assertEquals(18.0, lines.first().leftPt, EPSILON)
+        assertTrue(lines.first().leftPt >= lines.first().markerRightPt)
+    }
+
+    @Test
+    fun `a trailing empty paragraph does not inherit the bullet`() {
+        val properties = TextParagraphProperties(bullet = TextBullet.Character("•", null, null, TextBulletSize.Inherit))
+        val body = TextBody(
+            properties = TextBodyProperties(insets = NO_INSETS),
+            paragraphs = listOf(
+                TextParagraph(properties = properties, runs = listOf(TextRun.Text(TEXT, STYLE)), endProperties = STYLE),
+                TextParagraph(properties = properties, endProperties = STYLE),
+            ),
+        )
+
+        val lines = laidOut(engine(), body, WIDTHS_PT.first()).lines
+
+        assertTrue(lines.first().bullet != BulletMarker.None)
+        assertTrue(lines.drop(1).none { it.bullet != BulletMarker.None })
+        assertEquals(lines.first().paragraph, 0)
+        assertEquals(lines.last().paragraph, 1)
     }
 
     private fun laidOut(engine: TextLayoutEngine, body: TextBody, widthPt: Double): TextFrameLayout =

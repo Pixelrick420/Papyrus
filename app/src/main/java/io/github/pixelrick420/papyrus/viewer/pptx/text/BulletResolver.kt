@@ -76,10 +76,13 @@ internal class BulletResolver(
     }
 
     fun metrics(level: Int, properties: TextParagraphProperties): BulletMetrics {
+        val hasBullet = properties.bullet != TextBullet.None
         val textLeft = properties.marginLeftEmu ?: level.coerceIn(0, MAX_LEVEL - 1) * LEVEL_INDENT_EMU
         val indent = properties.indentEmu ?: 0.0
-        val markerLeft = textLeft + minOf(0.0, indent)
-        return BulletMetrics(textLeft, markerLeft, markerLeft - minOf(0.0, indent))
+        if (!hasBullet) return BulletMetrics(textLeft, textLeft + minOf(0.0, indent), textLeft)
+        val markerLeft = (textLeft + minOf(0.0, indent)).coerceAtLeast(0.0)
+        val markerRight = markerLeft + maxOf(-indent, DEFAULT_HANGING_EMU)
+        return BulletMetrics(maxOf(textLeft, markerRight), markerLeft, markerRight)
     }
 
     private fun numberMarker(
@@ -123,6 +126,7 @@ internal class BulletResolver(
 
     private companion object {
         const val LEVEL_INDENT_EMU = 457_200.0
+        const val DEFAULT_HANGING_EMU = 228_600.0
 
         const val MAX_LEVEL = 9
     }

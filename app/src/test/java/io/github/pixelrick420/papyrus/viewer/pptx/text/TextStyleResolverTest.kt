@@ -430,6 +430,16 @@ class TextStyleResolverTest {
     }
 
     @Test
+    fun `a bare normAutofit keeps the full font scale`() {
+        val autofit = resolver.resolve(
+            body("""<a:bodyPr><a:normAutofit/></a:bodyPr><a:p/>"""),
+        ).properties.autofit as TextAutofit.Normal
+
+        assertEquals(100.0, autofit.fontScale, 0.0)
+        assertEquals(0.0, autofit.lineSpacingReduction, 0.0)
+    }
+
+    @Test
     fun `every bodyPr property comes through`() {
         val textProperties = resolver.resolve(
             body(

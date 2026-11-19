@@ -135,6 +135,30 @@ class ShapeTreeParserTest {
     }
 
     @Test
+    fun `a fallback shape carrying a blip fill parses as a picture`() {
+        val shape = SlideXml.shape(
+            7,
+            "Equation",
+            x = "100",
+            y = "200",
+            width = "3000",
+            height = "4000",
+            spPrExtra = """<a:blipFill><a:blip r:embed="rId2"/><a:stretch><a:fillRect l="-959"/></a:stretch></a:blipFill>""",
+        )
+        val alternate = """<mc:AlternateContent """ +
+            """xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" """ +
+            """xmlns:a14="http://schemas.microsoft.com/office/drawing/2010/main">""" +
+            """<mc:Choice Requires="a14">$shape</mc:Choice><mc:Fallback>$shape</mc:Fallback>""" +
+            """</mc:AlternateContent>"""
+
+        val node = parseRaw(alternate).scene.nodes.single() as ScenePicture
+
+        assertEquals("rId2", node.source?.relationshipId)
+        assertEquals(SceneRect(100.0, 200.0, 3_000.0, 4_000.0), node.frame)
+        assertNull(node.properties)
+    }
+
+    @Test
     fun `a group keeps both its own frame and the space its children are laid out in`() {
         val child = SlideXml.shape(11, "Child", x = "150", y = "250", width = "500", height = "500")
         val group = SlideXml.group(

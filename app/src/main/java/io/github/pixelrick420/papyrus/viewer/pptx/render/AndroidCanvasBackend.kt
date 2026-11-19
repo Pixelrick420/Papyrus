@@ -15,6 +15,7 @@ import android.graphics.PorterDuff
 import android.graphics.PorterDuffXfermode
 import android.graphics.RadialGradient
 import android.graphics.Rect
+import android.graphics.Region
 import android.graphics.RectF as AndroidRectF
 import android.graphics.Shader
 import android.graphics.Typeface
@@ -253,6 +254,7 @@ internal class AndroidCanvasBackend(
         this.shadow = shadow
     }
 
+    @Suppress("DEPRECATION")
     override fun shapeShadow(path: PathData, shadow: ShapeShadowSpec) {
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = shadow.color.argb
@@ -262,7 +264,11 @@ internal class AndroidCanvasBackend(
         }
         val androidPath = pathOf(path)
         val saved = canvas.save()
-        if (shadow.inner) canvas.clipPath(androidPath)
+        if (shadow.inner) {
+            canvas.clipPath(androidPath)
+        } else {
+            canvas.clipPath(androidPath, Region.Op.DIFFERENCE)
+        }
         canvas.concat(matrixOf(shadow.transform))
         canvas.drawPath(androidPath, paint)
         canvas.restoreToCount(saved)
