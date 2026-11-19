@@ -237,8 +237,7 @@ def build_report(
         "",
         "| Passed | Failed | Not run | Skipped | Declared | Pass rate | Required |",
         "| ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
-        f"| {tally.passed} | {tally.failed} | {tally.missing} | {tally.skipped} | {tally.declared} ",
-        f"| {tally.pass_percent():.1f}% | {required:g}% |",
+        f"| {tally.passed} | {tally.failed} | {tally.missing} | {tally.skipped} | {tally.declared} | {tally.pass_percent():.1f}% | {required:g}% |",
         "",
     ]
     if failures:

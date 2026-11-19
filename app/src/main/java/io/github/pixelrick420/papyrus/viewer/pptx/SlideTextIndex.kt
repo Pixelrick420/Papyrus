@@ -294,7 +294,6 @@ internal class SlideTextIndex(
                         transform.then(groupTransform(node)),
                     )
                     is SceneShape -> placedShape(node, resolver, engine, transform, slidePart)?.let(out::add)
-                    is ScenePicture -> placedPicture(node)?.let(out::add)
                     is SceneGraphicFrame -> placedTable(node, transform, out, slidePart)
                     else -> Unit
                 }
@@ -338,17 +337,6 @@ internal class SlideTextIndex(
                 paragraphTexts(body),
                 shape.sourcePart ?: slidePart,
             )
-        }
-
-        private fun placedPicture(
-            picture: ScenePicture,
-        ): PlacedLayout? {
-            val frame = picture.frame ?: return null
-            val sceneText = picture.text ?: return null
-            if (frame.width <= 0.0 || frame.height <= 0.0) return null
-            val texts = sceneText.paragraphs.map { p -> p.runs.joinToString("") { it.text } }
-            if (texts.all { it.isBlank() }) return null
-            return null
         }
 
         private fun placedTable(

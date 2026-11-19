@@ -15,20 +15,30 @@ internal class FontSlots(private val substitution: FontSubstitution = FontSubsti
         resolve(properties, slotOf(codePoint))
 
     fun resolve(properties: TextRunProperties, slot: FontSlot): ResolvedFont {
-        val requested = when (slot) {
-            FontSlot.LATIN -> properties.latinTypeface
-            FontSlot.EAST_ASIAN -> properties.eastAsianTypeface ?: properties.latinTypeface
-            FontSlot.COMPLEX_SCRIPT -> properties.complexScriptTypeface ?: properties.latinTypeface
-            FontSlot.SYMBOL -> properties.symbolTypeface ?: properties.latinTypeface
+        val (requested, hint) = faceOf(properties, slot)
+        return resolved.getOrPut(Key(slot, requested, hint, properties.bold, properties.italic)) {
+            ResolvedFont(
+                substitution.substitute(requested, hint?.panose, hint?.pitchFamily),
+                properties.bold,
+                properties.italic,
+            )
         }
-        return resolved.getOrPut(Key(slot, requested, properties.bold, properties.italic)) {
-            ResolvedFont(substitution.substitute(requested), properties.bold, properties.italic)
-        }
+    }
+
+    private fun faceOf(properties: TextRunProperties, slot: FontSlot): Pair<String?, FontHint?> = when (slot) {
+        FontSlot.LATIN -> properties.latinTypeface to properties.latinHint
+        FontSlot.EAST_ASIAN -> properties.eastAsianTypeface?.let { it to properties.eastAsianHint }
+            ?: (properties.latinTypeface to properties.latinHint)
+        FontSlot.COMPLEX_SCRIPT -> properties.complexScriptTypeface?.let { it to properties.complexScriptHint }
+            ?: (properties.latinTypeface to properties.latinHint)
+        FontSlot.SYMBOL -> properties.symbolTypeface?.let { it to properties.symbolHint }
+            ?: (properties.latinTypeface to properties.latinHint)
     }
 
     private data class Key(
         val slot: FontSlot,
         val requested: String?,
+        val hint: FontHint?,
         val bold: Boolean,
         val italic: Boolean,
     )

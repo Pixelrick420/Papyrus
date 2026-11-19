@@ -80,9 +80,10 @@ jobs:
       - name: Install SDK packages
         if: matrix.language == 'java-kotlin'
         run: |
-          # android-37 lives in Google's newer index; it is preinstalled, so its install failure is harmless.
-          android sdk install platform-tools platforms/android-37 build-tools/36.0.0
+          android sdk install platform-tools build-tools/36.0.0
           android sdk install "ndk/${{ steps.ndk.outputs.version }}"
+          # android-37 lives in Google's newer index; it is preinstalled, so its install failure is harmless.
+          android sdk install platforms/android-37 || echo "optional android-37 install failed" >&2
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v4

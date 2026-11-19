@@ -1021,6 +1021,7 @@ class ViewerViewModel(
         }
 
     private suspend fun unlockPdf(uri: Uri, password: String): ViewerContent {
+        app.awaitUnlockedSweep()
         val dir = File(app.cacheDir, PDF_UNLOCK_DIR).apply { mkdirs() }
         val target = File.createTempFile("unlock-", ".pdf", dir)
         try {
@@ -1041,6 +1042,7 @@ class ViewerViewModel(
 
     /** Office decryption writes a plaintext copy, so it is only kept once extraction/loading has succeeded. */
     private suspend fun unlockOffice(uri: Uri, format: DocumentFormat, password: String): ViewerContent {
+        app.awaitUnlockedSweep()
         val dir = File(app.cacheDir, OFFICE_UNLOCK_DIR).apply { mkdirs() }
         val target = File.createTempFile("unlock-", ".${format.name.lowercase()}", dir)
         if (format == DocumentFormat.PPTX) {
@@ -1240,7 +1242,9 @@ class ViewerViewModel(
                 failureFor(e)
             }
             _state.update { it.copy(content = content) }
+            loadSpeakableText(content, doc)
             loadPdfOutline()
+            loadPdfForm()
             autosaveIfEnabled()
         }
     }

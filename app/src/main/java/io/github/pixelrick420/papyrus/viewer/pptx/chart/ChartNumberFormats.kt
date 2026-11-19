@@ -101,7 +101,10 @@ internal object ChartNumberFormats {
         val decimals = if (code.contains(".00")) 2 else 0
         val grouping = code.contains("#,##") || code.contains("0,0")
         val number = formatDecimal(value, decimals, grouping)
-        return if (code.trimStart().startsWith(symbol) || code.contains("[$$symbol")) "$symbol$number" else "$symbol$number"
+        // A symbol after the last digit placeholder is a suffix, as in `#,##0.00 €`.
+        val lastPlaceholder = code.indexOfLast { it in "0#?.," }
+        val suffix = lastPlaceholder >= 0 && code.lastIndexOf(symbol) > lastPlaceholder
+        return if (suffix) "$number$symbol" else "$symbol$number"
     }
 
     private fun isSimpleDate(code: String): Boolean {

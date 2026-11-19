@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Generate the calibration control decks and their case manifest (needs python-pptx).
 
-usage: make_control_decks.py OUT_DIR [--fonts DIR]
+usage: make_control_decks.py OUT_DIR
 
 Writes OUT_DIR/C-LNSP.pptx + C-LNSP.cases.json and the same pair for C-PARA. Every case is one
 slide holding one top-anchored, zero-inset shape, so a person with PowerPoint can export the deck

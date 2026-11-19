@@ -282,6 +282,9 @@ internal class TextShadow(
     val color: Rgba,
 )
 
+/** The `panose` and `pitchFamily` a font element records, used only when substitution falls back by class. */
+internal data class FontHint(val panose: String? = null, val pitchFamily: String? = null)
+
 /** An `a:hlinkClick` on a run, with the theme's link colours resolved. */
 internal class TextHyperlink(
     val relationshipId: String? = null,
@@ -301,7 +304,7 @@ internal class TextRunProperties(
     val baseline: Double = 0.0,
     /** Character spacing in points; negative is tighter. */
     val spacingPt: Double = 0.0,
-    /** Text at or below this size in points is kerned; 0 disables kerning. */
+    /** Kerning applies at or above this size in points; 0 kerns at every size. */
     val kerningPt: Double = 0.0,
     val fill: ScenePaint? = null,
     /** The `a:ln` glyph outline, already resolved to a width and paint. */
@@ -313,14 +316,18 @@ internal class TextRunProperties(
     val eastAsianTypeface: String? = null,
     val complexScriptTypeface: String? = null,
     val symbolTypeface: String? = null,
+    val latinHint: FontHint? = null,
+    val eastAsianHint: FontHint? = null,
+    val complexScriptHint: FontHint? = null,
+    val symbolHint: FontHint? = null,
     val hyperlink: TextHyperlink? = null,
     val language: String? = null,
     val alternativeLanguage: String? = null,
 ) {
 
-    /** PowerPoint kerns only at or below `kern`, and DrawingML exposes no ligature control. */
+    /** PowerPoint kerns at or above `kern`, and DrawingML exposes no ligature control. */
     fun features(sizePt: Double): FontFeatures = FontFeatures(
-        kerning = kerningPt > 0.0 && sizePt <= kerningPt,
+        kerning = sizePt >= kerningPt,
         ligatures = false,
     )
 

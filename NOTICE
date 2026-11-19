@@ -112,17 +112,5 @@ govern the component itself.
     The Ecma notice is kept beside the file in ECMA-NOTICE.txt.
 
 ----------------------------------------------------------------------
-Licensing rules for the PPTX feature
-----------------------------------------------------------------------
-
-Permissive code and data may be vendored with a NOTICE entry; copyleft code may not be copied;
-behaviour may be studied from anywhere.
-
-- Apache POI code is a reference oracle only. Do not copy it; if any derived code is ever merged,
-  add headers and a NOTICE entry.
-- LibreOffice and OnlyOffice code (MPL-2.0 + LGPL / AGPL) is never copied or translated.
-  Observing their output as a cross-check is fine.
-
-----------------------------------------------------------------------
 End of third-party notices
 ----------------------------------------------------------------------

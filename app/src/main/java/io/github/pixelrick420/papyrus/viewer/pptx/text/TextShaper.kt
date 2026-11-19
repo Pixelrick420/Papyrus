@@ -8,6 +8,8 @@ internal class ParagraphText(
     val breaks: List<Int>,
     /** The paragraph mark's style, which sizes a paragraph with no runs. */
     val endStyle: TextRunProperties,
+    /** True for characters synthesised from a lowercase small-caps letter, which draw at the reduced size. */
+    val smallCaps: List<Boolean> = List(text.length) { false },
 )
 
 /** A stretch of text one [ResolvedFont] shapes without a font or direction change. */
@@ -37,14 +39,15 @@ internal class TextShaper(private val slots: FontSlots = FontSlots()) {
         val text = StringBuilder()
         val styles = ArrayList<TextRunProperties>()
         val breaks = ArrayList<Int>()
+        val smallCaps = ArrayList<Boolean>()
         for (run in paragraph.runs) {
             when (run) {
-                is TextRun.Text -> append(text, styles, cased(run.text, run.properties.caps), run.properties)
-                is TextRun.Field -> append(text, styles, cased(run.text, run.properties.caps), run.properties)
+                is TextRun.Text -> append(text, styles, smallCaps, run.text, run.properties)
+                is TextRun.Field -> append(text, styles, smallCaps, run.text, run.properties)
                 is TextRun.Break -> breaks += text.length
             }
         }
-        return ParagraphText(text.toString(), styles, breaks, paragraph.endProperties)
+        return ParagraphText(text.toString(), styles, breaks, paragraph.endProperties, smallCaps)
     }
 
     fun shape(
@@ -70,19 +73,17 @@ internal class TextShaper(private val slots: FontSlots = FontSlots()) {
     private fun append(
         text: StringBuilder,
         styles: ArrayList<TextRunProperties>,
+        smallCaps: ArrayList<Boolean>,
         value: String,
         properties: TextRunProperties,
     ) {
-        text.append(value)
-        repeat(value.length) { styles += properties }
-    }
-
-    /** Small caps are synthesised as uppercase at a reduced size, since DrawingML has no such feature. */
-    private fun cased(value: String, caps: TextCaps): String {
-        if (caps == TextCaps.NONE) return value
-        val out = StringBuilder(value.length)
-        for (char in value) out.append(Character.toUpperCase(char))
-        return out.toString()
+        for (char in value) {
+            val synthesised = properties.caps == TextCaps.SMALL && char.isLowerCase()
+            val drawn = if (properties.caps == TextCaps.ALL || synthesised) Character.toUpperCase(char) else char
+            text.append(drawn)
+            styles += properties
+            smallCaps += synthesised
+        }
     }
 
     private fun facesOf(
@@ -98,7 +99,7 @@ internal class TextShaper(private val slots: FontSlots = FontSlots()) {
             val codePoint = Character.codePointAt(text.text, index)
             val length = Character.charCount(codePoint)
             val font = slots.resolve(properties, codePoint)
-            val sizePt = (scale.size(properties.sizePt) * capsScale(properties.caps)).toFloat()
+            val sizePt = (scale.size(properties.sizePt) * capsScale(text.smallCaps, index)).toFloat()
             val missing = !hasGlyph(font, codePoint)
             val last = faces.lastOrNull()
             if (last == null || last.properties !== properties || last.font !== font ||
@@ -114,8 +115,9 @@ internal class TextShaper(private val slots: FontSlots = FontSlots()) {
         return faces
     }
 
-    private fun capsScale(caps: TextCaps): Double =
-        if (caps == TextCaps.SMALL) SMALL_CAPS_SCALE else 1.0
+    /** Small caps are synthesised as uppercase at a reduced size, since DrawingML has no such feature. */
+    private fun capsScale(smallCaps: List<Boolean>, index: Int): Double =
+        if (smallCaps.getOrElse(index) { false }) SMALL_CAPS_SCALE else 1.0
 
     private class Face(
         val start: Int,

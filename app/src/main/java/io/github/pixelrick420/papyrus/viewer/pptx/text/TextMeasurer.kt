@@ -1,6 +1,6 @@
 package io.github.pixelrick420.papyrus.viewer.pptx.text
 
-/** Shaping features a run turns on; PowerPoint kerns only below the run's `kern` size. */
+/** Shaping features a run turns on; PowerPoint kerns at or above the run's `kern` size. */
 internal data class FontFeatures(val kerning: Boolean = false, val ligatures: Boolean = false)
 
 /** A font's ascent and descent in points at one size; [descentPt] is positive. */

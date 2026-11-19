@@ -47,9 +47,10 @@ jobs:
 
       - name: Install SDK packages
         run: |
-          # android-37 lives in Google's newer index; it is preinstalled, so its install failure is harmless.
-          android sdk install platform-tools platforms/android-37 build-tools/36.0.0
+          android sdk install platform-tools build-tools/36.0.0
           android sdk install "ndk/${{ steps.ndk.outputs.version }}"
+          # android-37 lives in Google's newer index; it is preinstalled, so its install failure is harmless.
+          android sdk install platforms/android-37 || echo "optional android-37 install failed" >&2
 
       - name: Check
         run: ./gradlew --no-daemon check
@@ -125,10 +126,12 @@ jobs:
 
       - name: Install SDK packages
         run: |
-          android sdk install platform-tools platforms/android-37 build-tools/36.0.0
+          android sdk install platform-tools build-tools/36.0.0
           android sdk install "ndk/${{ steps.ndk.outputs.version }}"
           android sdk install "system-images;android-34;google_apis;x86_64"
           android sdk install emulator
+          # android-37 lives in Google's newer index; it is preinstalled, so its install failure is harmless.
+          android sdk install platforms/android-37 || echo "optional android-37 install failed" >&2
 
       - name: Enable KVM
         # Runner exposes /dev/kvm without group permissions; otherwise the emulator falls back to software.
@@ -231,9 +234,10 @@ jobs:
 
       - name: Install SDK packages
         run: |
-          # android-37 lives in Google's newer index; it is preinstalled, so its install failure is harmless.
-          android sdk install platform-tools platforms/android-37 build-tools/36.0.0
+          android sdk install platform-tools build-tools/36.0.0
           android sdk install "ndk/${{ steps.ndk.outputs.version }}"
+          # android-37 lives in Google's newer index; it is preinstalled, so its install failure is harmless.
+          android sdk install platforms/android-37 || echo "optional android-37 install failed" >&2
 
       - name: Unit tests
         run: ./gradlew --no-daemon testDebugUnitTest

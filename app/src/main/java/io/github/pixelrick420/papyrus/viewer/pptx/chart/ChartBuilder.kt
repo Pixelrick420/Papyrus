@@ -5,6 +5,7 @@ import io.github.pixelrick420.papyrus.viewer.pptx.SceneLine
 import io.github.pixelrick420.papyrus.viewer.pptx.ScenePaint
 import io.github.pixelrick420.papyrus.viewer.pptx.ScenePoint
 import io.github.pixelrick420.papyrus.viewer.pptx.SceneRect
+import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.cos
@@ -858,7 +859,7 @@ internal object ChartBuilder {
         return round((1.0 - residual / total).coerceIn(0.0, 1.0))
     }
 
-    private fun round(value: Double): String = String.format("%.2f", value)
+    private fun round(value: Double): String = String.format(Locale.US, "%.2f", value)
 
     private fun pie(
         chart: PptxChart,

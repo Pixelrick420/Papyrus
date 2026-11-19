@@ -246,6 +246,10 @@ internal class TextStyleResolver(private val limits: PptxLimits = PptxLimits()) 
         val fill = sources.firstNotNullOfOrNull { properties ->
             properties.children.firstOrNull { it.name.namespace == OoxmlNamespace.A && it.name.localName in FILL_TAGS }
         }
+        val latin = faceOf(sources, "latin", context.theme, defaultToTheme = true)
+        val eastAsian = faceOf(sources, "ea", context.theme)
+        val complexScript = faceOf(sources, "cs", context.theme)
+        val symbol = faceOf(sources, "sym", context.theme)
         return TextRunProperties(
             sizePt = attribute("sz")?.toDoubleOrNull()?.div(POINTS_PER_UNIT) ?: TextRunProperties.DEFAULT_SIZE_PT,
             bold = isSwitch(attribute("b")),
@@ -263,10 +267,14 @@ internal class TextStyleResolver(private val limits: PptxLimits = PptxLimits()) 
             highlight = child("highlight")?.let { highlight ->
                 highlight.children.firstNotNullOfOrNull(ColorModel::valueOf)?.let(context.colors::resolve)
             },
-            latinTypeface = typefaceOf(declaredFace(sources, "latin"), context.theme),
-            eastAsianTypeface = themedFace(declaredFace(sources, "ea"), context.theme),
-            complexScriptTypeface = themedFace(declaredFace(sources, "cs"), context.theme),
-            symbolTypeface = themedFace(declaredFace(sources, "sym"), context.theme),
+            latinTypeface = latin.typeface,
+            latinHint = latin.hint,
+            eastAsianTypeface = eastAsian.typeface,
+            eastAsianHint = eastAsian.hint,
+            complexScriptTypeface = complexScript.typeface,
+            complexScriptHint = complexScript.hint,
+            symbolTypeface = symbol.typeface,
+            symbolHint = symbol.hint,
             hyperlink = child("hlinkClick")?.let { hyperlinkOf(it, context) },
             language = attribute("lang"),
             alternativeLanguage = attribute("altLang"),
@@ -316,21 +324,28 @@ internal class TextStyleResolver(private val limits: PptxLimits = PptxLimits()) 
         visitedColor = context.colors.resolve(ColorValue(ColorSource.Scheme("folHlink"))),
     )
 
-    private fun declaredFace(sources: List<XNode>, tag: String): String? =
-        sources.firstNotNullOfOrNull { it.child(OoxmlNamespace.A, tag)?.attribute("typeface") }
-            ?.takeIf { it.isNotBlank() }
-
-    private fun typefaceOf(declared: String?, theme: Theme?): String? = when {
-        declared == null -> theme?.fonts?.minor?.latin
-        declared.startsWith("+") -> theme?.fonts?.resolve(declared)
-        else -> declared
+    private fun faceOf(
+        sources: List<XNode>,
+        tag: String,
+        theme: Theme?,
+        defaultToTheme: Boolean = false,
+    ): ResolvedFace {
+        val node = sources.firstNotNullOfOrNull { it.child(OoxmlNamespace.A, tag) }
+        val declared = node?.attribute("typeface")?.takeIf { it.isNotBlank() }
+        val typeface = when {
+            declared == null -> if (defaultToTheme) theme?.fonts?.minor?.latin else null
+            declared.startsWith("+") -> theme?.fonts?.resolve(declared)
+            else -> declared
+        }
+        val themeHint = theme?.fonts?.hintOfFace(typeface)
+        val hint = FontHint(
+            panose = node?.attribute("panose") ?: themeHint?.panose,
+            pitchFamily = node?.attribute("pitchFamily") ?: themeHint?.pitchFamily,
+        )
+        return ResolvedFace(typeface, hint.takeIf { it.panose != null || it.pitchFamily != null })
     }
 
-    private fun themedFace(declared: String?, theme: Theme?): String? = when {
-        declared == null -> null
-        declared.startsWith("+") -> theme?.fonts?.resolve(declared)
-        else -> declared
-    }
+    private class ResolvedFace(val typeface: String?, val hint: FontHint?)
 
     private companion object {
         const val MAX_LEVEL = 9

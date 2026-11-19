@@ -234,7 +234,6 @@ class ChunkProviderTest {
         val other = indexed(bytes, layout(lines = 1), src = src).chunks
         val opened = opens.get()
 
-        assertEquals(one, one)
         assertNotEquals(one, other)
         assertNotEquals(one.hashCode(), other.hashCode())
         assertEquals("IndexedChunks(4 chunks)", one.toString())

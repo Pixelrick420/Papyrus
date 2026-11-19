@@ -1,6 +1,7 @@
 package io.github.pixelrick420.papyrus.viewer.pptx
 
 import android.util.Xml
+import io.github.pixelrick420.papyrus.viewer.pptx.text.FontHint
 import org.xmlpull.v1.XmlPullParser
 
 internal class ThemeFonts(
@@ -9,6 +10,8 @@ internal class ThemeFonts(
     val complexScript: String?,
     /** Per-script overrides, keyed by the `script` attribute, for example `Jpan`. */
     val scripts: Map<String, String>,
+    /** The `panose`/`pitchFamily` each named face records, keyed by its lowercased typeface. */
+    val hints: Map<String, FontHint> = emptyMap(),
 )
 
 internal class ThemeFontScheme(val major: ThemeFonts, val minor: ThemeFonts) {
@@ -30,6 +33,12 @@ internal class ThemeFontScheme(val major: ThemeFonts, val minor: ThemeFonts) {
             "cs" -> fonts.complexScript
             else -> fonts.scripts[script]
         }
+    }
+
+    /** The class hints the theme records for [typeface], if any. */
+    fun hintOfFace(typeface: String?): FontHint? {
+        val key = typeface?.trim()?.lowercase()?.takeIf { it.isNotEmpty() } ?: return null
+        return minor.hints[key] ?: major.hints[key]
     }
 }
 
@@ -101,18 +110,27 @@ internal class ThemeParser(
     private fun fontsIn(node: XNode?): ThemeFonts {
         if (node == null) return ThemeFonts(null, null, null, emptyMap())
         val scripts = LinkedHashMap<String, String>()
+        val hints = LinkedHashMap<String, FontHint>()
         for (child in node.children) {
-            if (!child.name.matches(OoxmlNamespace.A, "font")) continue
+            if (child.name.namespace != OoxmlNamespace.A) continue
+            val face = child.attribute("typeface")?.takeIf { it.isNotBlank() }
+            if (face != null) hintOf(child)?.let { hints[face.trim().lowercase()] = it }
+            if (child.name.localName != "font") continue
             val script = child.attribute("script") ?: continue
-            val face = child.attribute("typeface")?.takeIf { it.isNotBlank() } ?: continue
-            scripts[script] = face
+            if (face != null) scripts[script] = face
         }
         return ThemeFonts(
             latin = typeface(node.child(OoxmlNamespace.A, "latin")),
             eastAsian = typeface(node.child(OoxmlNamespace.A, "ea")),
             complexScript = typeface(node.child(OoxmlNamespace.A, "cs")),
             scripts = scripts,
+            hints = hints,
         )
+    }
+
+    private fun hintOf(node: XNode): FontHint? {
+        val hint = FontHint(node.attribute("panose"), node.attribute("pitchFamily"))
+        return hint.takeIf { it.panose != null || it.pitchFamily != null }
     }
 
     private fun typeface(node: XNode?): String? = node?.attribute("typeface")?.takeIf { it.isNotBlank() }

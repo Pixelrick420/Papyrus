@@ -5,8 +5,8 @@ data class ParsedSearch(
     val terms: List<String>,
 )
 
-// Every word is quoted: inside a quoted phrase FTS4 treats AND, OR, NOT, NEAR, -, ^, : and * as literal text,
-// so nothing the reader types reaches the query parser as an operator.
+// The split keeps only letters and digits, so a typed operator never reaches the parser; each word is
+// quoted, and one long enough for a prefix match gets a trailing *.
 object SearchQuery {
 
     /** Shortest word that earns a prefix match; the length the index's prefix tables start at. */

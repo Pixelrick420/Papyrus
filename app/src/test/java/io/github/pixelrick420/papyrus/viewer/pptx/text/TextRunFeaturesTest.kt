@@ -16,7 +16,7 @@ class TextRunFeaturesTest {
 
     @Test
     fun `kern at or above the run size kerns the run`() {
-        val layout = layout("AV", TextRunProperties(sizePt = 10.0, kerningPt = 12.0))
+        val layout = layout("AV", TextRunProperties(sizePt = 14.0, kerningPt = 12.0))
 
         assertEquals(KERNED_PT + KERNED_PT, layout.lines.single().widthPt, EPSILON)
         assertTrue(measurer.calls.all { it.features.kerning })
@@ -24,23 +24,32 @@ class TextRunFeaturesTest {
 
     @Test
     fun `kern below the run size leaves the run unkerned`() {
-        val layout = layout("AV", TextRunProperties(sizePt = 14.0, kerningPt = 12.0))
+        val layout = layout("AV", TextRunProperties(sizePt = 10.0, kerningPt = 12.0))
 
         assertEquals(PLAIN_PT + PLAIN_PT, layout.lines.single().widthPt, EPSILON)
         assertTrue(measurer.calls.none { it.features.kerning })
     }
 
     @Test
-    fun `kern zero never kerns`() {
+    fun `kern zero kerns at every size`() {
         val layout = layout("AV", TextRunProperties(sizePt = 6.0, kerningPt = 0.0))
 
-        assertEquals(PLAIN_PT + PLAIN_PT, layout.lines.single().widthPt, EPSILON)
-        assertTrue(measurer.calls.none { it.features.kerning })
+        assertEquals(KERNED_PT + KERNED_PT, layout.lines.single().widthPt, EPSILON)
+        assertTrue(measurer.calls.all { it.features.kerning })
+    }
+
+    @Test
+    fun `an absent kern kerns at every size`() {
+        val layout = layout("AV", TextRunProperties(sizePt = 6.0))
+
+        assertEquals(KERNED_PT + KERNED_PT, layout.lines.single().widthPt, EPSILON)
+        assertTrue(measurer.calls.all { it.features.kerning })
     }
 
     @Test
     fun `ligature probes stay unligated`() {
-        val layout = layout("ffi", TextRunProperties(sizePt = 10.0))
+        // A threshold above the run size keeps kerning out of the probe.
+        val layout = layout("ffi", TextRunProperties(sizePt = 10.0, kerningPt = 100.0))
 
         assertEquals(PLAIN_PT * 3, layout.lines.single().widthPt, EPSILON)
         assertTrue(measurer.calls.none { it.features.ligatures })
@@ -48,7 +57,7 @@ class TextRunFeaturesTest {
 
     @Test
     fun `spc widens every character by its stored points`() {
-        val layout = layout("AV", TextRunProperties(sizePt = 10.0, spacingPt = 1.5))
+        val layout = layout("AV", TextRunProperties(sizePt = 10.0, kerningPt = 100.0, spacingPt = 1.5))
 
         assertEquals((PLAIN_PT + 1.5) * 2, layout.lines.single().widthPt, EPSILON)
         assertTrue(measurer.calls.all { it.letterSpacingEm == 0.15f })
@@ -56,7 +65,7 @@ class TextRunFeaturesTest {
 
     @Test
     fun `negative spc tightens the run by the same measure`() {
-        val layout = layout("AV", TextRunProperties(sizePt = 10.0, spacingPt = -2.0))
+        val layout = layout("AV", TextRunProperties(sizePt = 10.0, kerningPt = 100.0, spacingPt = -2.0))
 
         assertEquals((PLAIN_PT - 2.0) * 2, layout.lines.single().widthPt, EPSILON)
         assertTrue(measurer.calls.all { it.letterSpacingEm == -0.2f })
@@ -66,7 +75,7 @@ class TextRunFeaturesTest {
     fun `filling and placing measure with one set of features`() {
         val layout = layout(
             "aaaa bbbb cccc",
-            TextRunProperties(sizePt = 10.0, kerningPt = 12.0, spacingPt = 0.5),
+            TextRunProperties(sizePt = 10.0, kerningPt = 8.0, spacingPt = 0.5),
             widthPt = 40.0,
         )
 
