@@ -18,7 +18,9 @@ import io.github.pixelrick420.papyrus.tts.TtsSession
 import io.github.pixelrick420.papyrus.viewer.OFFICE_UNLOCK_DIR
 import io.github.pixelrick420.papyrus.viewer.PDF_UNLOCK_DIR
 import io.github.pixelrick420.papyrus.viewer.PdfPageSource
+import io.github.pixelrick420.papyrus.viewer.pptx.SlidePageSource
 import io.github.pixelrick420.papyrus.viewer.textCacheKey
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -91,6 +93,11 @@ class MainApplication : Application() {
         runCatching { ACRA.errorReporter.handleSilentException(failure) }
     }
 
+    private val unlockedSweep = CompletableDeferred<Unit>()
+
+    /** Unlocks wait for the sweep, which would otherwise delete the copy they just wrote. */
+    suspend fun awaitUnlockedSweep() = unlockedSweep.await()
+
     val thumbnailLoader: ThumbnailLoader by lazy { ThumbnailLoader(this) }
 
     val ttsSession: TtsSession by lazy { TtsSession() }
@@ -121,7 +128,14 @@ class MainApplication : Application() {
         if (ACRA.isACRASenderServiceProcess()) return
         // Taken before anything can save a copy, so only files from an earlier run count as old.
         val startedAt = System.currentTimeMillis()
-        sweepUnlocked()
+        // Off the main thread: deleting a large cache would otherwise stall startup.
+        applicationScope.launch {
+            try {
+                sweepUnlocked()
+            } finally {
+                unlockedSweep.complete(Unit)
+            }
+        }
         // Off the main thread: the first thing indexing does is open the database, and a kill
         // between the two is harmless because the queue lives in that database.
         applicationScope.launch { searchIndexer.start(this) }
@@ -142,6 +156,7 @@ class MainApplication : Application() {
 
     private fun trimCaches(evictAll: Boolean) {
         PdfPageSource.trimAll(evictAll)
+        SlidePageSource.trimAll(evictAll)
         thumbnailLoader.trimMemory(evictAll)
     }
 
@@ -149,6 +164,7 @@ class MainApplication : Application() {
     private fun sweepUnlocked() {
         runCatching { File(cacheDir, PDF_UNLOCK_DIR).deleteRecursively() }
         runCatching { File(cacheDir, OFFICE_UNLOCK_DIR).deleteRecursively() }
+        SlidePageSource.sweepStaleTempDirs(cacheDir)
     }
 
     private companion object {

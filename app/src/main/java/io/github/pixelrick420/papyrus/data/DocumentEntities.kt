@@ -55,6 +55,22 @@ enum class DocumentFormat(
         // filter admits anyway.
         emptySet(),
     ),
+
+    PPTX(
+        "PPTX",
+        setOf("pptx", "pptm", "potx", "potm", "ppsx", "ppsm"),
+        setOf(
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            "application/vnd.openxmlformats-officedocument.presentationml.template",
+            "application/vnd.openxmlformats-officedocument.presentationml.slideshow",
+            "application/vnd.ms-powerpoint.presentation.macroEnabled.12",
+            "application/vnd.ms-powerpoint.presentation.macroenabled.12",
+            "application/vnd.ms-powerpoint.template.macroEnabled.12",
+            "application/vnd.ms-powerpoint.template.macroenabled.12",
+            "application/vnd.ms-powerpoint.slideshow.macroEnabled.12",
+            "application/vnd.ms-powerpoint.slideshow.macroenabled.12",
+        ),
+    ),
     UNKNOWN("?", emptySet(), emptySet());
 
     companion object {

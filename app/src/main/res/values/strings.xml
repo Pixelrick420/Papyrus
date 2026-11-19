@@ -38,6 +38,9 @@
     >That file has been moved or deleted.</string>
     <string name="cd_pdf_page">Page %1$d</string>
     <string name="cd_pdf_page_with_text">Page %1$d. %2$s</string>
+    <string name="cd_slide_page">Slide %1$d</string>
+    <string name="cd_slide_page_with_text">Slide %1$d. %2$s</string>
+    <string name="cd_slide_semantics">Slide %1$d of %2$d</string>
 
     <string name="home_empty_title">No documents yet</string>
     <string name="home_empty_hint">Files you open will appear here.</string>
@@ -70,6 +73,7 @@ access</string>
     <string name="home_filter_csv">CSV</string>
     <string name="home_filter_tsv">TSV</string>
     <string name="home_filter_code">Code</string>
+    <string name="home_filter_powerpoint">PowerPoint</string>
     <string name="home_filter_starred">Starred</string>
     <string name="home_filter_section">Filter</string>
     <string name="home_filter_none">No files match these filters</string>
@@ -146,6 +150,9 @@ access</string>
     <string name="viewer_encoding_title">Text encoding</string>
     <string name="viewer_encoding_auto_plain">Auto-detect</string>
     <string name="viewer_page_indicator">%1$d / %2$d</string>
+    <string name="viewer_slide_indicator">Slide %1$d / %2$d</string>
+    <string name="viewer_slide_hidden">Hidden</string>
+    <string name="viewer_slide_heading_label">(heading)</string>
     <string name="viewer_office_image_loading">Loading image…</string>
     <string
         name="viewer_office_image_failed"
@@ -254,6 +261,18 @@ access</string>
     <string name="viewer_info_format">Format</string>
     <string name="viewer_info_pages">Pages</string>
     <string name="viewer_info_pages_value">%1$d</string>
+    <string name="viewer_info_slides">Slides</string>
+    <string name="viewer_info_slides_value">%1$d</string>
+    <string name="viewer_info_slide_size">Slide size</string>
+    <string name="viewer_info_slide_size_value">%1$.2f × %2$.2f in</string>
+    <string name="viewer_info_font_system_fallback">System fallback</string>
+    <string name="viewer_info_fonts">Fonts</string>
+    <string name="viewer_outline_slide">Slide %1$d</string>
+    <string name="viewer_picture_unavailable">Image unavailable</string>
+    <string name="viewer_picture_unsupported">Unsupported image</string>
+    <string name="viewer_picture_extension">%1$s image</string>
+    <string name="viewer_picture_svg">SVG image</string>
+    <string name="viewer_info_fonts_none">None</string>
     <string name="viewer_info_uri">URI</string>
     <string name="viewer_info_size">Size</string>
     <string name="viewer_info_opened">Last opened</string>
@@ -278,7 +297,7 @@ access</string>
     <string name="settings_night_mode">Night mode</string>
     <string
         name="settings_night_mode_desc"
-    >Invert the colours of PDF pages, so white paper reads black.</string>
+    >Invert the colours of PDF pages and slides, so white paper reads black.</string>
     <string name="settings_line_numbers">Line numbers</string>
     <string
         name="settings_line_numbers_desc"

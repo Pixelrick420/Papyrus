@@ -217,11 +217,20 @@ fun ViewerScreen(
 
     // A PDF's bookmarks are read off the main thread, so they arrive after the first page.
     val office = state.content as? ViewerContent.Office
+    val slides = state.content as? ViewerContent.Slides
     // A document's own table of contents (an EPUB's) wins; otherwise the outline is its headings.
     val officeEntries = remember(office) { office?.let { it.outline ?: officeOutline(it.blocks) }.orEmpty() }
     val isPdf = state.content is ViewerContent.Pdf
-    val outline = if (isPdf) state.pdfOutline else officeEntries
-    val pageCount = (state.content as? ViewerContent.Pdf)?.source?.pageCount ?: 0
+    val outline = when {
+        isPdf -> state.pdfOutline
+        slides != null -> slides.outline
+        else -> officeEntries
+    }
+    val pageCount = when (val c = state.content) {
+        is ViewerContent.Pdf -> c.source.pageCount
+        is ViewerContent.Slides -> c.source.pageCount
+        else -> 0
+    }
     val plain = state.content as? ViewerContent.PlainText
     val lineCount = remember(plain) {
         plain?.let { numberedLines(it.lineCount, it.chunks.lastOrNull()?.endsWith('\n') == true) } ?: 0
@@ -230,7 +239,8 @@ fun ViewerScreen(
     val goToAvailable = pageCount >= MIN_GO_TO_PAGES || goToLines
 
     // Held here (not in [PdfViewer]) so the header's Copy can reach it; keyed on the source.
-    val selectionState = remember((state.content as? ViewerContent.Pdf)?.source) {
+    val selectionSource = (state.content as? ViewerContent.Pdf)?.source ?: (state.content as? ViewerContent.Slides)?.source
+    val selectionState = remember(selectionSource) {
         PdfSelectionState(
             scope = selectionScope,
             loadText = viewModel::pageText,
@@ -268,7 +278,7 @@ fun ViewerScreen(
         arrival?.offset?.let { jump = ViewerJump(ReadingLocation(LocationKind.CHAR, it)) }
     }
     val findAvailable = when (state.content) {
-        is ViewerContent.Pdf, is ViewerContent.PlainText, is ViewerContent.Office, is ViewerContent.Markdown -> true
+        is ViewerContent.Pdf, is ViewerContent.PlainText, is ViewerContent.Office, is ViewerContent.Markdown, is ViewerContent.Slides -> true
         else -> false
     }
     // A bookmark needs a place on screen (the same surfaces as find) and a library row to hang from, which a
@@ -594,6 +604,31 @@ fun ViewerScreen(
                             direction = content.direction,
                             pageStarts = content.pageStarts,
                         )
+                        is ViewerContent.Slides -> PdfViewer(
+                            source = content.source,
+                            aspectRatios = content.aspectRatios,
+                            zoom = zoom,
+                            selectionState = selectionState,
+                            nightMode = settings.nightMode,
+                            pageHits = find.hits,
+                            pageMatches = find.pageMatches,
+                            activePage = find.activeIndex,
+                            activeOccurrence = find.activeOccurrence,
+                            loadLinks = { index -> content.links.getOrNull(index).orEmpty() },
+                            onLinkTarget = followPdfLink,
+                            position = position,
+                            speaking = spoken,
+                            ttsLocked = voiceLocksScroll,
+                            highlightAlpha = highlightAlpha,
+                            onlyActive = arrival != null,
+                            pageIndicatorRes = R.string.viewer_slide_indicator,
+                            pageDescriptionRes = R.string.cd_slide_page,
+                            pageWithTextDescriptionRes = R.string.cd_slide_page_with_text,
+                            pageTitles = content.titles,
+                            hiddenPages = content.hidden,
+                            pageSemanticBodies = content.semanticTexts,
+                            slideSemantics = true,
+                        )
                         // The dialog covers the page; only an in-flight retry is worth showing behind it.
                         is ViewerContent.NeedsPassword ->
                             if (content.checking) CircularProgressIndicator(Modifier.align(Alignment.Center))
@@ -654,10 +689,14 @@ fun ViewerScreen(
         val mimeType by produceState<String?>(null, infoDocument) {
             value = viewModel.mimeType(infoDocument)
         }
+        val slideContent = state.content as? ViewerContent.Slides
         FileInfoSheet(
             document = infoDocument,
             pageCount = (state.content as? ViewerContent.Pdf)?.source?.pageCount,
             mimeType = mimeType,
+            slideCount = slideContent?.source?.pageCount,
+            slideSize = slideContent?.slideSize,
+            fontSubstitutions = slideContent?.fontSubstitutions.orEmpty(),
             onDismiss = { infoOpen = false },
         )
     }
@@ -665,11 +704,11 @@ fun ViewerScreen(
     if (outlineOpen && outline.isNotEmpty()) {
         OutlineSheet(
             entries = outline,
-            collapsible = isPdf,
+            collapsible = isPdf || slides != null,
             onSelect = { entry ->
-                // An outline entry is a page of a PDF and a block of an Office document: the same jump, in the
-                // location kind of the format.
-                val kind = if (isPdf) LocationKind.PAGE else LocationKind.BLOCK
+                // An outline entry is a page of a PDF or slides, and a block of an Office document: the
+                // same jump, in the location kind of the format.
+                val kind = if (isPdf || slides != null) LocationKind.PAGE else LocationKind.BLOCK
                 viewModel.ttsReleaseScroll()
                 jump = ViewerJump(ReadingLocation(kind, entry.index))
                 outlineOpen = false

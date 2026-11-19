@@ -137,7 +137,6 @@ class ChunkTtsUnitsTest {
         val other = ChunkTtsUnits.of(watched)
         watched.read.clear()
 
-        assertEquals(one, one)
         assertNotEquals(one, other)
         assertEquals("ChunkTtsUnits(6 units)", one.toString())
         assertTrue(watched.read.isEmpty())

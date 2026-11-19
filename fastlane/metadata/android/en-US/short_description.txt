@@ -1,1 +1,1 @@
-Offline document viewer; PDF, Word, EPUB, Markdown, text and code
+Offline viewer; PDF, Word, ODT, EPUB, PowerPoint, Markdown, text and code

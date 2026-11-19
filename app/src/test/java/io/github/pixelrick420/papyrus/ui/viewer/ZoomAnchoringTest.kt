@@ -46,7 +46,7 @@ class ZoomAnchoringTest {
         val scale = commit(1f to 2.5f)
         val target = anchoredScroll(800f, focal.y, scale)
 
-        assertEquals(target, target, 0.0f)
+        assertEquals(target, anchoredScroll(target, focal.y, commit(2.5f to 2.5f)), 0.01f)
         assertTrue(target > 800f)
     }
 

@@ -66,6 +66,8 @@ import io.github.pixelrick420.papyrus.viewer.PdfEncryption
 import io.github.pixelrick420.papyrus.viewer.PdfFormEdit
 import io.github.pixelrick420.papyrus.viewer.PdfFormField
 import io.github.pixelrick420.papyrus.viewer.PdfPageSource
+import io.github.pixelrick420.papyrus.viewer.pptx.SlideDeck
+import io.github.pixelrick420.papyrus.viewer.pptx.SlideDeckLoader
 import io.github.pixelrick420.papyrus.viewer.PdfPageText
 import io.github.pixelrick420.papyrus.viewer.PdfPageLink
 import io.github.pixelrick420.papyrus.viewer.LatexSpanFactory
@@ -160,6 +162,24 @@ sealed interface ViewerContent {
         val direction: BlockDirection = BlockDirection.LTR,
         val pageStarts: Set<Int> = emptySet(),
     ) : ViewerContent
+    data class Slides(
+        val source: io.github.pixelrick420.papyrus.viewer.PageBitmapSource,
+        val aspectRatios: List<Float>,
+        val outline: List<OutlineEntry>,
+        val hidden: Set<Int>,
+        val incomplete: Boolean,
+        val titles: List<String> = emptyList(),
+        val slideSize: String? = null,
+        val fontSubstitutions: List<String> = emptyList(),
+        val slidePages: List<PdfPageText> = emptyList(),
+        val links: List<List<PdfPageLink>> = emptyList(),
+        val semanticTexts: List<String> = emptyList(),
+    ) : ViewerContent {
+
+        private val texts by lazy { slidePages.map { it.text } }
+
+        val slideTexts: List<String> get() = texts
+    }
     data class NeedsPassword(val incorrect: Boolean = false, val checking: Boolean = false) : ViewerContent
     data class Failed(val message: UiText) : ViewerContent
 }
@@ -254,7 +274,8 @@ data class ViewerUiState(
     // Bookmarks hang from a library row, so a transient document has none until it is saved.
     val bookmarksAvailable: Boolean get() = !isCrashReport && ((document?.id ?: 0L) > 0L || savedToLibrary)
 
-    val highlightsAvailable: Boolean get() = bookmarksAvailable
+    // Highlights are PDF annotations; slides and other formats are not markable.
+    val highlightsAvailable: Boolean get() = bookmarksAvailable && content is ViewerContent.Pdf
 }
 
 sealed interface BookmarkEvent {
@@ -268,6 +289,7 @@ internal fun ViewerContent.unitCount(): Int = when (this) {
     is ViewerContent.Markdown -> text.length
     is ViewerContent.PlainText -> chunks.size
     is ViewerContent.Office -> blocks.size
+    is ViewerContent.Slides -> source.pageCount
     else -> 0
 }
 
@@ -277,8 +299,32 @@ internal fun ViewerContent.hasSpeakableText(): Boolean? = when (this) {
     is ViewerContent.Markdown -> text.isNotBlank()
     // The same units the voice is made of, so a document of images with no alt text says no.
     is ViewerContent.Office -> TtsDocumentSource.unitsFromOffice(blocks).isNotEmpty()
+    is ViewerContent.Slides -> slideTexts.withIndex().any { (i, text) -> i !in hidden && text.isNotBlank() }
     else -> null
 }
+
+
+private fun ViewerContent.closePageSource() {
+    when (this) {
+        is ViewerContent.Pdf -> source.close()
+        is ViewerContent.Slides -> source.close()
+        else -> Unit
+    }
+}
+
+private fun SlideDeck.toContent(): ViewerContent.Slides = ViewerContent.Slides(
+    source = source,
+    aspectRatios = aspectRatios,
+    outline = outline,
+    hidden = hidden,
+    incomplete = incomplete,
+    titles = titles,
+    slideSize = slideSize,
+    fontSubstitutions = fontSubstitutions,
+    slidePages = textIndex.pages,
+    links = links,
+    semanticTexts = semanticTexts,
+)
 
 class ViewerViewModel(
     private val app: MainApplication,
@@ -402,45 +448,65 @@ class ViewerViewModel(
         // previous load is stale: drop the extracted find text and the decrypted copy.
         pdfPageText = null
         findBudgetWarned = false
+        val previous = _state.value.content
+        var previousClosed = false
+        fun closePrevious() {
+            if (!previousClosed) {
+                previousClosed = true
+                previous.closePageSource()
+            }
+        }
+        // The reader must stop seeing a source before it is closed, or a frame can draw into a closed bitmap cache.
+        fun replaceContent(next: ViewerUiState) {
+            _state.value = next
+            closePrevious()
+        }
         pageTextSource?.close()
         pageTextSource = null
         pageTextSourceUri = null
         unlocked.discard()
-        val doc = repository.getById(documentId)?.let { withCurrentFormat(it) }
-        if (doc == null) {
-            _state.value = ViewerUiState(content = ViewerContent.Failed(UiText(R.string.viewer_error_not_found)))
-            return
-        }
-        val restore = restoreFor(doc)
-        restoreGate = if (restore == null) null else CompletableDeferred()
-        viewport = null
-        tracker.beginLoad(restorePending = restore != null)
-        _state.value = ViewerUiState(
-            document = doc,
-            canSaveToLibrary = if (isCrashReport) false else doc.id < 0,
-            encodingOverride = encodingName,
-            restore = restore,
-            isCrashReport = isCrashReport,
-        )
-        repository.markOpened(doc.id)
-        val content = loadContentSafely(doc)
-        _state.update { it.copy(content = content) }
-        loadSpeakableText(content, doc)
-        loadPdfOutline()
-        loadPdfForm()
-        autosaveIfEnabled()
-        val term = pendingArrivalTerm
-        pendingArrivalTerm = null
-        if (term != null) {
-            if (restore != null) withTimeoutOrNull(ARRIVAL_RESTORE_TIMEOUT_MILLIS) { restoreGate?.await() }
-            applyArrival(term, content)
+        try {
+            val doc = repository.getById(documentId)?.let { withCurrentFormat(it) }
+            if (doc == null) {
+                replaceContent(ViewerUiState(content = ViewerContent.Failed(UiText(R.string.viewer_error_not_found))))
+                return
+            }
+            val restore = restoreFor(doc)
+            restoreGate = if (restore == null) null else CompletableDeferred()
+            viewport = null
+            tracker.beginLoad(restorePending = restore != null)
+            replaceContent(
+                ViewerUiState(
+                    document = doc,
+                    canSaveToLibrary = if (isCrashReport) false else doc.id < 0,
+                    encodingOverride = encodingName,
+                    restore = restore,
+                    isCrashReport = isCrashReport,
+                )
+            )
+            repository.markOpened(doc.id)
+            val content = loadContentSafely(doc)
+            _state.update { it.copy(content = content) }
+            loadSpeakableText(content, doc)
+            loadPdfOutline()
+            loadPdfForm()
+            autosaveIfEnabled()
+            val term = pendingArrivalTerm
+            pendingArrivalTerm = null
+            if (term != null) {
+                if (restore != null) withTimeoutOrNull(ARRIVAL_RESTORE_TIMEOUT_MILLIS) { restoreGate?.await() }
+                applyArrival(term, content)
+            }
+        } finally {
+            // A cancelled load that never swapped state must leave the still-visible source open.
+            if (_state.value.content !== previous) closePrevious()
         }
     }
 
     // A format find cannot search (a scanned PDF, one past the budget) stays at the restored position and says nothing: the reader asked to open a document, not to search it.
     private fun applyArrival(term: String, content: ViewerContent) {
         when (content) {
-            is ViewerContent.Pdf, is ViewerContent.PlainText, is ViewerContent.Office, is ViewerContent.Markdown -> Unit
+            is ViewerContent.Pdf, is ViewerContent.PlainText, is ViewerContent.Office, is ViewerContent.Markdown, is ViewerContent.Slides -> Unit
             else -> return
         }
         arrivalJob?.cancel()
@@ -644,6 +710,9 @@ class ViewerViewModel(
                 }
                 is ViewerContent.Markdown -> TtsDocumentSource.unitsFromMarkdown(content.text.toString())
                 is ViewerContent.Office -> TtsDocumentSource.units(document.format, officeBlocks = content.blocks)
+                is ViewerContent.Slides -> TtsDocumentSource.unitsFromSlides(
+                    content.slideTexts.mapIndexed { index, text -> if (index in content.hidden) "" else text }
+                )
                 else -> emptyList()
             }
             if (units.isEmpty()) {
@@ -788,7 +857,7 @@ class ViewerViewModel(
         val current = _state.value
         if (!current.canSaveToLibrary || current.savingToLibrary || current.savedToLibrary) return
         val opened = when (current.content) {
-            is ViewerContent.Pdf, is ViewerContent.Markdown, is ViewerContent.PlainText, is ViewerContent.Office -> true
+            is ViewerContent.Pdf, is ViewerContent.Markdown, is ViewerContent.PlainText, is ViewerContent.Office, is ViewerContent.Slides -> true
             else -> false
         }
         if (!opened) return
@@ -902,6 +971,13 @@ class ViewerViewModel(
                 }
                 else -> ViewerContent.Failed(UiText(R.string.viewer_error_password))
             }
+            DocumentFormat.PPTX -> when (OfficeEncryption.status({ openStream(uri) })) {
+                OfficeEncryption.Party.NOT_ENCRYPTED -> {
+                    SlideDeckLoader.load(app, uri).toContent()
+                }
+                OfficeEncryption.Party.PASSWORD -> ViewerContent.NeedsPassword()
+                OfficeEncryption.Party.UNSUPPORTED -> ViewerContent.Failed(UiText(R.string.viewer_error_password))
+            }
             DocumentFormat.UNKNOWN -> ViewerContent.Failed(UiText(R.string.viewer_error_unsupported))
         }
     }
@@ -926,7 +1002,8 @@ class ViewerViewModel(
 
     private suspend fun unlock(doc: DocumentEntity, password: String): ViewerContent =
         when (doc.format) {
-            DocumentFormat.DOCX, DocumentFormat.ODT, DocumentFormat.DOC -> unlockOffice(doc.uri.toUri(), doc.format, password)
+            DocumentFormat.DOCX, DocumentFormat.ODT, DocumentFormat.DOC, DocumentFormat.PPTX ->
+                unlockOffice(doc.uri.toUri(), doc.format, password)
             else -> unlockPdf(doc.uri.toUri(), password)
         }
 
@@ -944,6 +1021,7 @@ class ViewerViewModel(
         }
 
     private suspend fun unlockPdf(uri: Uri, password: String): ViewerContent {
+        app.awaitUnlockedSweep()
         val dir = File(app.cacheDir, PDF_UNLOCK_DIR).apply { mkdirs() }
         val target = File.createTempFile("unlock-", ".pdf", dir)
         try {
@@ -962,10 +1040,25 @@ class ViewerViewModel(
         }
     }
 
-    /** Office decryption writes a plaintext copy, so it is only kept once extraction has succeeded. */
+    /** Office decryption writes a plaintext copy, so it is only kept once extraction/loading has succeeded. */
     private suspend fun unlockOffice(uri: Uri, format: DocumentFormat, password: String): ViewerContent {
+        app.awaitUnlockedSweep()
         val dir = File(app.cacheDir, OFFICE_UNLOCK_DIR).apply { mkdirs() }
         val target = File.createTempFile("unlock-", ".${format.name.lowercase()}", dir)
+        if (format == DocumentFormat.PPTX) {
+            val deck = try {
+                OfficeEncryption.decrypt({ openStream(uri) }, password, target)
+                SlideDeckLoader.loadFile(app, target)
+            } catch (expected: DocumentPasswordException) {
+                target.delete()
+                return ViewerContent.NeedsPassword(incorrect = true)
+            } catch (e: Exception) {
+                target.delete()
+                throw e
+            }
+            unlocked.keep(target, target.toUri().toString())
+            return deck.toContent()
+        }
         val blocks = try {
             OfficeEncryption.decrypt({ openStream(uri) }, password, target)
             extractOffice(target.toUri(), format)
@@ -1108,6 +1201,7 @@ class ViewerViewModel(
     }
 
     fun addHighlights(boxesByPage: Map<Int, List<NormRect>>) {
+        if (_state.value.content !is ViewerContent.Pdf) return
         val id = persistedId
         if (id <= 0) return
         app.applicationScope.launch { runQuietly { repository.addHighlights(id, boxesByPage) } }
@@ -1148,7 +1242,9 @@ class ViewerViewModel(
                 failureFor(e)
             }
             _state.update { it.copy(content = content) }
+            loadSpeakableText(content, doc)
             loadPdfOutline()
+            loadPdfForm()
             autosaveIfEnabled()
         }
     }
@@ -1180,8 +1276,10 @@ class ViewerViewModel(
         val doc = _state.value.document ?: return
         reloadJob?.cancel()
         reloadJob = viewModelScope.launch {
+            val previous = _state.value.content
             val reloaded = loadContentSafely(doc)
             _state.update { it.copy(content = reloaded, speakableText = reloaded.hasSpeakableText() ?: it.speakableText) }
+            if (reloaded !== previous) previous.closePageSource()
             val query = _state.value.find.query
             if (query.isNotBlank()) updateFindQuery(query)
         }
@@ -1243,8 +1341,22 @@ class ViewerViewModel(
             is ViewerContent.Markdown ->
                 FindResult(occurrences = countOccurrences(content.text, query))
             is ViewerContent.Pdf -> findPdfPages(query, warnOverBudget)
+            is ViewerContent.Slides -> findSlidePages(content.slidePages, query, content.hidden)
             else -> FindResult()
         }
+    }
+
+    private fun findSlidePages(pages: List<PdfPageText>, query: String, hidden: Set<Int> = emptySet()): FindResult {
+        val hits = ArrayList<Int>()
+        val pageMatches = HashMap<Int, List<List<NormRect>>>()
+        for ((index, page) in pages.withIndex()) {
+            if (index in hidden) continue
+            val match = page.matches(query)
+            if (match.count == 0) continue
+            repeat(match.count) { hits += index }
+            if (match.groups.any { it.isNotEmpty() }) pageMatches[index] = match.groups
+        }
+        return FindResult(hits = hits, pageMatches = pageMatches)
     }
 
     // The platform engine's own search answers first: it reads the page it already renders, so even a file too large to parse again stays searchable.
@@ -1298,6 +1410,8 @@ class ViewerViewModel(
 
     // The open platform engine is asked first (it is what TalkBack, selection and read-aloud see), then PDFBox; either reading is kept under the document's bytes, so a page is read once until the file changes.
     suspend fun pageText(index: Int): PdfPageText? {
+        val content = _state.value.content
+        if (content is ViewerContent.Slides) return content.slidePages.getOrNull(index)
         pdfPageText?.getOrNull(index)?.takeIf { it.hasBoxes || it.text.isBlank() }?.let { return it }
         val texts = pageSource()
         texts?.cached(index, fromPlatform = true)?.let { return it }
@@ -1392,7 +1506,7 @@ class ViewerViewModel(
         // viewModelScope is already cancelled here; the outbox writer is not, and drains this last position.
         commitPosition(force = true)
         outbox.close()
-        (_state.value.content as? ViewerContent.Pdf)?.source?.close()
+        _state.value.content.closePageSource()
         pageTextSource?.close()
         unlocked.discard()
         // Unconditional: own dir per document, and any format may have written images.

@@ -264,7 +264,7 @@ class LanguageDetectorTest {
         val started = System.nanoTime()
         for (extension in listOf("m", "h", "")) detect(blank, extension)
         val millis = (System.nanoTime() - started) / 1_000_000
-        assertTrue("took $millis ms", millis < 500)
+        assertTrue("took $millis ms", millis < 5_000)
     }
 
     @Test

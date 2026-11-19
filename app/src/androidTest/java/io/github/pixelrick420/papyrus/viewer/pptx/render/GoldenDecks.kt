@@ -1,0 +1,589 @@
+package io.github.pixelrick420.papyrus.viewer.pptx.render
+
+import android.graphics.Bitmap
+import android.graphics.Color
+import io.github.pixelrick420.papyrus.viewer.Crop
+import io.github.pixelrick420.papyrus.viewer.Preset
+import io.github.pixelrick420.papyrus.viewer.Type
+import io.github.pixelrick420.papyrus.viewer.pptx
+import java.io.ByteArrayOutputStream
+
+internal class GoldenDeck(val name: String, val bytes: ByteArray)
+
+/**
+ * The decks the raster goldens compare against. Every construct here is one M2 paints; text is present only
+ * so its shapes and reading direction are exercised, because the text pass arrives in 024.
+ */
+internal object GoldenDecks {
+
+    private const val W = 12_192_000L
+    private const val H = 6_858_000L
+    private const val M = 457_200L
+
+    val all: List<GoldenDeck> = listOf(
+        GoldenDeck("shape-zoo", shapeZoo()),
+        GoldenDeck("gradients-linear", linearGradients()),
+        GoldenDeck("gradients-radial", radialGradients()),
+        GoldenDeck("pictures-crop", pictures()),
+        GoldenDeck("groups-rotate-flip", groups()),
+        GoldenDeck("master-layout", masterLayout()),
+        GoldenDeck("dark-theme", darkTheme()),
+        GoldenDeck("theme-colours", themeColours()),
+        GoldenDeck("strokes-dashes", strokes()),
+        GoldenDeck("backgrounds", backgrounds()),
+        GoldenDeck("preset-adjusts", presetAdjusts()),
+        GoldenDeck("text-frames", textFrames()),
+        GoldenDeck("chart-zoo", chartZoo()),
+        GoldenDeck("effects", effects()),
+    )
+
+    private fun effects(): ByteArray = pptx {
+        slide {
+            background(rgb = "FFFFFF")
+            val cellW = 2_700_000L
+            val cellH = 2_500_000L
+            val entries = listOf(
+                """<a:effectLst><a:outerShdw blurRad="127000" dist="127000" dir="2700000">""" +
+                    """<a:srgbClr val="000000"><a:alpha val="50000"/></a:srgbClr></a:outerShdw></a:effectLst>""" to "4472C4",
+                """<a:effectLst><a:innerShdw blurRad="63500" dist="63500" dir="5400000">""" +
+                    """<a:srgbClr val="FFFFFF"/></a:innerShdw></a:effectLst>""" to "ED7D31",
+                """<a:effectLst><a:prstShdw prst="shdw5">""" +
+                    """<a:schemeClr val="accent1"/></a:prstShdw></a:effectLst>""" to "70AD47",
+                """<a:effectLst><a:glow rad="127000">""" +
+                    """<a:srgbClr val="FFC000"/></a:glow></a:effectLst>""" to "1F4E79",
+                """<a:effectLst><a:softEdge rad="127000"/></a:effectLst>""" to "A5A5A5",
+                """<a:effectLst><a:blur/></a:effectLst>""" to "C00000",
+                """<a:effectLst><a:reflection blurRad="12700" dist="127000" dir="5400000" """ +
+                    """stA="60000" endA="0" stPos="0" endPos="100000"/></a:effectLst>""" to "5B9BD5",
+                """<a:effectLst><a:outerShdw blurRad="63500" dist="63500" dir="2700000"/></a:effectLst>""" +
+                    """<a:scene3d><a:camera prst="orthographicFront"/>""" +
+                    """<a:lightRig rig="threePt" dir="t"/></a:scene3d>""" +
+                    """<a:sp3d><a:bevelT w="63500" h="63500" prst="circle"/></a:sp3d>""" to "7030A0",
+            )
+            entries.forEachIndexed { index, (effect, colour) ->
+                val x = M + (index % 4) * cellW
+                val y = 700_000L + (index / 4) * cellH
+                shape(Preset.RECT, x, y, cellW - 200_000, cellH - 300_000) {
+                    fillRgb(colour)
+                    noLine()
+                    effectRaw(effect)
+                }
+            }
+        }
+    }.toBytes()
+
+    private fun shapeZoo(): ByteArray = pptx {
+        slide {
+            background(rgb = "FFFFFF")
+            val presets = listOf(
+                "rect" to "4472C4",
+                "roundRect" to "ED7D31",
+                "ellipse" to "A5A5A5",
+                "triangle" to "FFC000",
+                "rightArrow" to "5B9BD5",
+                "upArrow" to "70AD47",
+                "chevron" to "264478",
+                "star5" to "9E480E",
+                "hexagon" to "636363",
+                "diamond" to "997300",
+                "pentagon" to "255E91",
+                "plus" to "43682B",
+            )
+            val columns = 4
+            val cellW = 2_700_000L
+            val cellH = 1_900_000L
+            presets.forEachIndexed { index, (preset, colour) ->
+                val x = M + (index % columns) * cellW
+                val y = 600_000L + (index / columns) * cellH
+                shape(preset, x, y, cellW - 200_000, cellH - 200_000) {
+                    fillRgb(colour)
+                    line(rgb = "404040", widthEmu = 12_700)
+                }
+            }
+        }
+    }.toBytes()
+
+    private fun linearGradients(): ByteArray = pptx {
+        slide {
+            background(rgb = "FFFFFF")
+            shape(Preset.RECT, M, 700_000, 5_600_000, 2_300_000) {
+                fillRaw(linear(0, "FF0000", "0000FF"))
+            }
+            shape(Preset.RECT, 6_300_000, 700_000, 5_400_000, 2_300_000) {
+                fillRaw(linear(45 * 60_000, "00B050", "FFFF00"))
+            }
+            shape(Preset.RECT, M, 3_600_000, 5_600_000, 2_300_000) {
+                fillRaw(linear(90 * 60_000, "7030A0", "FFC000", "00B0F0"))
+            }
+            shape(Preset.ROUND_RECT, 6_300_000, 3_600_000, 5_400_000, 2_300_000) {
+                fillRaw(linear(180 * 60_000, "C00000", "FFFFFF"))
+                line(rgb = "7F7F7F", widthEmu = 25_400)
+            }
+        }
+    }.toBytes()
+
+    private fun radialGradients(): ByteArray = pptx {
+        slide {
+            background(rgb = "F7F7F7")
+            shape(Preset.ELLIPSE, M, 700_000, 3_000_000, 3_000_000) {
+                fillRaw(radial("FFD966", "7F6000", l = 50_000, t = 50_000, r = 50_000, b = 50_000))
+            }
+            shape(Preset.ELLIPSE, 4_100_000, 700_000, 3_000_000, 3_000_000) {
+                fillRaw(radial("FFFFFF", "1F4E79", l = 25_000, t = 75_000, r = 75_000, b = 25_000))
+                line(rgb = "1F4E79", widthEmu = 19_050)
+            }
+            shape(Preset.RECT, 7_200_000, 700_000, 3_500_000, 3_000_000) {
+                fillRaw(radial("7030A0", "00B0F0", l = 0, t = 0, r = 100_000, b = 100_000))
+            }
+            shape(Preset.RECT, M, 4_300_000, 5_400_000, 1_800_000) { fillRgb("1F4E79") }
+            shape(Preset.RECT, 6_300_000, 4_300_000, 4_400_000, 1_800_000) { fillRgb("FFC000") }
+        }
+    }.toBytes()
+
+    private fun pictures(): ByteArray {
+        val png = quadrants()
+        return pptx {
+            slide {
+                background(rgb = "FFFFFF")
+                picture(png, M, 600_000, 4_200_000, 2_800_000)
+                picture(png, 4_900_000, 600_000, 2_800_000, 2_800_000, crop = Crop(left = 25_000))
+                picture(png, 8_000_000, 600_000, 2_800_000, 2_800_000, crop = Crop(top = 25_000, bottom = 25_000))
+                picture(png, M, 3_800_000, 3_500_000, 1_800_000, crop = Crop(left = 10_000, right = 20_000))
+                picture(
+                    png,
+                    5_500_000,
+                    3_800_000,
+                    5_400_000,
+                    1_800_000,
+                    crop = Crop(left = 5_000, top = 5_000, right = 5_000, bottom = 5_000),
+                )
+            }
+        }.toBytes()
+    }
+
+    private fun groups(): ByteArray = pptx {
+        slide {
+            background(rgb = "FFFFFF")
+            group(M, 700_000, 4_000_000, 3_000_000, name = "rotated") {
+                rotate(30 * 60_000)
+                shape(Preset.RECT, 0, 0, 2_000_000, 1_200_000) { fillRgb("4472C4") }
+                shape(Preset.ELLIPSE, 2_200_000, 1_300_000, 1_600_000, 1_600_000) { fillRgb("ED7D31") }
+            }
+            group(5_500_000, 700_000, 4_000_000, 3_000_000, name = "flipped") {
+                flip(horizontal = true)
+                shape(Preset.RECT, 0, 0, 2_000_000, 1_200_000) { fillRgb("70AD47") }
+                shape(Preset.TRIANGLE, 2_200_000, 1_300_000, 1_600_000, 1_600_000) { fillRgb("FFC000") }
+            }
+            group(2_300_000, 4_000_000, 7_600_000, 1_800_000, name = "flipped-vertically") {
+                flip(vertical = true)
+                shape(Preset.CHEVRON, 0, 0, 2_400_000, 1_200_000) { fillRgb("C00000") }
+                shape(Preset.STAR5, 3_000_000, 200_000, 1_600_000, 1_600_000) { fillRgb("5B9BD5") }
+                shape(Preset.RIGHT_ARROW, 5_200_000, 300_000, 2_200_000, 1_200_000) { fillRgb("A5A5A5") }
+            }
+        }
+    }.toBytes()
+
+    private fun masterLayout(): ByteArray = pptx {
+        theme { accent1("1F4E79") }
+        master {
+            background(rgb = "EAEFF5")
+            shape(Preset.RECT, 0, 0, W, 500_000) { fillRgb("1F4E79") }
+            placeholder(
+                Type.TITLE,
+                idx = 0,
+                x = M,
+                y = 700_000,
+                w = W - 2 * M,
+                h = 900_000,
+                decoration = { fillRgb("FFD966") },
+            )
+        }
+        layout("Golden") {
+            shape(Preset.RECT, M, 1_900_000, W - 2 * M, 2_600_000) { fillRgb("D9E2F3") }
+            placeholder(
+                Type.BODY,
+                idx = 1,
+                x = M,
+                y = 2_000_000,
+                w = W - 2 * M,
+                h = 2_000_000,
+                decoration = { fillRgb("B4C6E7") },
+            )
+        }
+        slide {
+            shape(Preset.ELLIPSE, M, 4_900_000, 2_400_000, 1_400_000) { fillRgb("ED7D31") }
+            shape(Preset.ROUND_RECT, 3_400_000, 4_900_000, W - 3_400_000 - M, 1_400_000) {
+                fillRgb("70AD47")
+                line(rgb = "375623", widthEmu = 19_050)
+            }
+        }
+    }.toBytes()
+
+    private fun darkTheme(): ByteArray = pptx {
+        theme {
+            dk1("0B0F14")
+            lt1("F5F7FA")
+        }
+        master {
+            clrMap("bg1" to "dk1", "tx1" to "lt1")
+            backgroundRef()
+            shape(Preset.RECT, 0, 0, W, 400_000) { fillRgb("17212B") }
+        }
+        slide {
+            shape(Preset.RECT, M, 800_000, 5_200_000, 2_300_000) { fill("lt1") }
+            shape(Preset.RECT, 6_100_000, 800_000, 5_600_000, 2_300_000) { fillRgb("1F6FEB") }
+            shape(Preset.ELLIPSE, M, 3_700_000, 3_600_000, 2_300_000) { fillRgb("F85149") }
+            shape(Preset.CHEVRON, 5_000_000, 3_700_000, 6_700_000, 2_300_000) { fillRgb("3FB950") }
+        }
+    }.toBytes()
+
+    private fun themeColours(): ByteArray = pptx {
+        theme {
+            accent1("003F5C")
+            accent2("58508D")
+            accent3("BC5090")
+            accent4("FF6361")
+            accent5("FFA600")
+            accent6("2F9E44")
+        }
+        slide {
+            background(rgb = "FFFFFF")
+            val accents = listOf("accent1", "accent2", "accent3", "accent4", "accent5", "accent6")
+            accents.forEachIndexed { index, accent ->
+                val x = M + (index % 3) * 3_900_000
+                val y = 900_000L + (index / 3) * 2_300_000
+                shape(Preset.RECT, x, y, 3_300_000, 1_800_000) { fill(accent) }
+            }
+            shape(Preset.RECT, M, 5_500_000, 3_600_000, 900_000) {
+                fillRaw("""<a:solidFill><a:schemeClr val="accent1"><a:tint val="60000"/></a:schemeClr></a:solidFill>""")
+            }
+            shape(Preset.RECT, 4_300_000, 5_500_000, 3_600_000, 900_000) {
+                fillRaw("""<a:solidFill><a:schemeClr val="accent4"><a:shade val="75000"/></a:schemeClr></a:solidFill>""")
+            }
+            shape(Preset.RECT, 8_200_000, 5_500_000, 3_500_000, 900_000) {
+                style(fillRef = 2, lineRef = 2, scheme = "accent5")
+            }
+        }
+    }.toBytes()
+
+    private fun strokes(): ByteArray = pptx {
+        slide {
+            background(rgb = "FFFFFF")
+            val dashes = listOf("solid", "dash", "lgDash", "dot", "sysDot", "dashDot")
+            dashes.forEachIndexed { index, dash ->
+                val y = 700_000L + index * 900_000
+                shape("line", M, y, 8_500_000, 0) {
+                    line(rgb = "1F4E79", widthEmu = 12_700 + index * 12_700, dash = dash)
+                }
+            }
+            shape(Preset.ROUND_RECT, 9_200_000, 700_000, 2_300_000, 2_300_000) {
+                noFill()
+                line(rgb = "C00000", widthEmu = 63_500, attributes = """ cap="rnd" cmpd="dbl"""")
+            }
+            shape(Preset.ELLIPSE, 9_200_000, 3_400_000, 2_300_000, 2_300_000) {
+                noFill()
+                line(rgb = "70AD47", widthEmu = 0)
+            }
+        }
+    }.toBytes()
+
+    private fun backgrounds(): ByteArray = pptx {
+        master {
+            backgroundRef(idx = 1002, scheme = "bg2")
+        }
+        slide {
+            shape(Preset.RECT, M, 700_000, 5_600_000, 5_200_000) { fillRgb("FFFFFF") }
+            shape(Preset.RECT, 6_300_000, 700_000, 5_400_000, 5_200_000) {
+                fillRaw(linear(90 * 60_000, "FFFFFF", "4472C4"))
+            }
+        }
+    }.toBytes()
+
+    private fun presetAdjusts(): ByteArray = pptx {
+        slide {
+            background(rgb = "FFFFFF")
+            shape(Preset.ROUND_RECT, M, 700_000, 3_600_000, 2_200_000) {
+                adjust("adj", 0)
+                fillRgb("4472C4")
+            }
+            shape(Preset.ROUND_RECT, 4_300_000, 700_000, 3_600_000, 2_200_000) {
+                adjust("adj", 50_000)
+                fillRgb("ED7D31")
+            }
+            shape(Preset.STAR5, 8_200_000, 700_000, 3_500_000, 2_200_000) {
+                adjust("adj", 30_000)
+                fillRgb("FFC000")
+            }
+            shape(Preset.CHEVRON, M, 3_600_000, 3_600_000, 2_200_000) {
+                adjust("adj", 25_000)
+                fillRgb("70AD47")
+            }
+            shape(Preset.RIGHT_ARROW, 4_300_000, 3_600_000, 3_600_000, 2_200_000) {
+                adjust("adj1", 25_000)
+                adjust("adj2", 60_000)
+                fillRgb("5B9BD5")
+            }
+            shape("trapezoid", 8_200_000, 3_600_000, 3_500_000, 2_200_000) {
+                adjust("adj", 40_000)
+                fillRgb("C00000")
+            }
+        }
+    }.toBytes()
+
+    private fun textFrames(): ByteArray = pptx {
+        slide {
+            background(rgb = "FFFFFF")
+            shape(Preset.RECT, M, M, W - 2 * M, 1_800_000) { fillRgb("1F4E79") }
+            textBox(M, M, W - 2 * M, 1_800_000) {
+                anchor("ctr")
+                rtl()
+                para("مرحبا بالعالم", 0) { sz(3200); color(rgb = "FFFFFF") }
+            }
+            textBox(M, 2_700_000, 4_500_000, 3_000_000) {
+                vertical("vert270")
+                para("Vertical", 0) { sz(2800); color(rgb = "1F4E79") }
+            }
+            shape(Preset.ELLIPSE, 5_400_000, 2_700_000, 3_000_000, 3_000_000) { fillRgb("FFC000") }
+            shape(Preset.ROUND_RECT, 9_000_000, 2_700_000, 2_700_000, 3_000_000) {
+                fillRgb("70AD47")
+                line(rgb = "375623", widthEmu = 25_400)
+            }
+        }
+    }.toBytes()
+
+    private fun linear(angleSixtyThousandths: Int, vararg colours: String): String =
+        """<a:gradFill rotWithShape="1"><a:gsLst>${
+            stops(colours)
+        }</a:gsLst><a:lin ang="$angleSixtyThousandths" scaled="0"/></a:gradFill>"""
+
+    private fun radial(vararg colours: String, l: Int, t: Int, r: Int, b: Int): String =
+        """<a:gradFill><a:gsLst>${stops(colours)}</a:gsLst>""" +
+            """<a:path path="circle"><a:fillToRect l="$l" t="$t" r="$r" b="$b"/></a:path></a:gradFill>"""
+
+    private fun stops(colours: Array<out String>): String = colours.mapIndexed { index, colour ->
+        val position = if (colours.size == 1) 0 else index * 100_000 / (colours.size - 1)
+        """<a:gs pos="$position"><a:srgbClr val="$colour"/></a:gs>"""
+    }.joinToString("")
+
+    // Four quadrants plus a grid, so a crop's edge is visible in the reference.
+    private fun quadrants(): ByteArray {
+        val bitmap = Bitmap.createBitmap(96, 64, Bitmap.Config.ARGB_8888)
+        for (y in 0 until 64) {
+            for (x in 0 until 96) {
+                val colour = when {
+                    x % 16 == 0 || y % 16 == 0 -> Color.WHITE
+                    x < 48 && y < 32 -> Color.RED
+                    x >= 48 && y < 32 -> Color.GREEN
+                    x < 48 -> Color.BLUE
+                    else -> Color.YELLOW
+                }
+                bitmap.setPixel(x, y, colour)
+            }
+        }
+        return ByteArrayOutputStream().use { output ->
+            bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)
+            output.toByteArray()
+        }
+    }
+
+    private fun chartZoo(): ByteArray = pptx {
+        val frames = listOf(
+            "columns", "bars", "line", "area", "scatter", "bubble", "pie",
+            "doughnut", "radar", "combo", "stock", "refined", "cx",
+        )
+        theme {
+            accent1("C00000")
+            accent2("00B050")
+        }
+        layout("Blank")
+        slide {
+            background(rgb = "FFFFFF")
+            frames.forEachIndexed { index, name ->
+                val rel = "rId${index + 2}"
+                graphicFrame(
+                    uri = CHART_URI,
+                    content = """<c:chart xmlns:c="$CHART_NS" xmlns:r="$R_NS" r:id="$rel"/>""",
+                    x = M + (index % 4) * 2_950_000L,
+                    y = 250_000L + (index / 4) * 1_600_000L,
+                    w = 2_800_000L,
+                    h = 1_400_000L,
+                    name = name,
+                )
+                rel(rel, CHART_RELATIONSHIP, "../charts/$name.xml")
+            }
+            rel("rId20", "$R_NS/image", "../media/fallback.png")
+        }
+        part("ppt/media/fallback.png", quadrants())
+        frames.forEach { name ->
+            part("ppt/charts/$name.xml", chartBody(name).toByteArray())
+        }
+    }.toBytes()
+
+    private fun chartBody(name: String): String = when (name) {
+        "columns" -> chartXml("Columns", bar("col", "clustered"))
+        "bars" -> chartXml("Bars", bar("bar", "stacked"))
+        "line" -> chartXml(
+            "Line",
+            """<c:lineChart><c:grouping val="standard"/>${series(0, "Alpha", listOf(10.0, 20.0, 30.0), "<c:marker><c:symbol val=\"circle\"/></c:marker>")}${series(1, "Beta", listOf(20.0, 10.0, 5.0), "<c:marker><c:symbol val=\"square\"/></c:marker>")}<c:axId val="1"/><c:axId val="2"/></c:lineChart>$chartAxes""",
+        )
+        "area" -> chartXml("Area", """<c:areaChart><c:grouping val="stacked"/>${series(0, "Alpha", listOf(10.0, 20.0, 30.0))}${series(1, "Beta", listOf(20.0, 10.0, 5.0))}<c:axId val="1"/><c:axId val="2"/></c:areaChart>$chartAxes""")
+        "scatter" -> chartXml("Scatter", scatterChart())
+        "bubble" -> chartXml("Bubble", bubbleChart())
+        "pie" -> chartXml("Pie", """<c:pieChart><c:varyColors val="1"/>${series(0, "Share", listOf(1.0, 2.0, 3.0))}</c:pieChart>""")
+        "doughnut" -> chartXml("Doughnut", """<c:doughnutChart><c:varyColors val="1"/><c:holeSize val="70"/>${series(0, "Share", listOf(1.0, 2.0, 3.0))}</c:doughnutChart>""")
+        "radar" -> chartXml(
+            "Radar",
+            """<c:radarChart><c:radarStyle val="filled"/>${series(0, "Alpha", listOf(10.0, 20.0, 30.0, 15.0))}${series(1, "Beta", listOf(20.0, 5.0, 10.0, 25.0))}<c:axId val="1"/><c:axId val="2"/></c:radarChart>$chartAxes""",
+        )
+        "combo" -> chartXml("Combo", comboChart())
+        "stock" -> chartXml("Stock", stockChart())
+        "refined" -> refinedChart()
+        else -> """<mc:AlternateContent xmlns:mc="$MC_NS" xmlns:cx="$CX_NS" xmlns:c="$CHART_NS" xmlns:a="$A_NS" xmlns:r="$R_NS">
+            <mc:Choice Requires="cx"><c:chart r:id="rId21"/></mc:Choice>
+            <mc:Fallback><p:pic xmlns:p="$P_NS">
+              <p:nvPicPr><p:cNvPr id="40" name="fallback"/><p:cNvPicPr/><p:nvPr/></p:nvPicPr>
+              <p:blipFill><a:blip r:embed="rId20"/><a:stretch><a:fillRect/></a:stretch></p:blipFill>
+              <p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="100" cy="100"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr>
+            </p:pic></mc:Fallback>
+        </mc:AlternateContent>"""
+    }
+
+    private fun bar(direction: String, grouping: String): String =
+        """<c:barChart><c:barDir val="$direction"/><c:grouping val="$grouping"/>""" +
+            """${series(0, "Alpha", listOf(10.0, 20.0, 30.0))}${series(1, "Beta", listOf(20.0, 10.0, 5.0))}""" +
+            """<c:axId val="1"/><c:axId val="2"/></c:barChart>$chartAxes"""
+
+    private fun chartXml(title: String, body: String): String = """
+        <c:chartSpace xmlns:c="$CHART_NS" xmlns:a="$A_NS" xmlns:r="$R_NS">
+          <c:chart>
+            <c:title><c:tx><c:rich><a:bodyPr/><a:p><a:r><a:t>$title</a:t></a:r></a:p></c:rich></c:tx></c:title>
+            <c:plotArea>$body</c:plotArea>
+          </c:chart>
+        </c:chartSpace>
+    """.trimIndent()
+
+    private fun series(index: Int, name: String, values: List<Double>, extra: String = ""): String {
+        val points = values.mapIndexed { i, value -> """<c:pt idx="$i"><c:v>$value</c:v></c:pt>""" }.joinToString("")
+        val categories = values.indices.map { i -> """<c:pt idx="$i"><c:v>${('A' + i)}</c:v></c:pt>""" }.joinToString("")
+        return """
+            <c:ser>
+              <c:idx val="$index"/><c:order val="$index"/>
+              <c:tx><c:strRef><c:strCache><c:ptCount val="1"/><c:pt idx="0"><c:v>$name</c:v></c:pt></c:strCache></c:strRef></c:tx>
+              $extra
+              <c:cat><c:strRef><c:strCache><c:ptCount val="${values.size}"/>$categories</c:strCache></c:strRef></c:cat>
+              <c:val><c:numRef><c:numCache><c:formatCode>General</c:formatCode><c:ptCount val="${values.size}"/>$points</c:numCache></c:numRef></c:val>
+            </c:ser>
+        """.trimIndent()
+    }
+
+    private fun scatterChart(): String {
+        fun cache(tag: String, values: List<Double>): String {
+            val points = values.mapIndexed { i, value -> """<c:pt idx="$i"><c:v>$value</c:v></c:pt>""" }.joinToString("")
+            return """<c:$tag><c:numRef><c:numCache><c:formatCode>General</c:formatCode>""" +
+                """<c:ptCount val="${values.size}"/>$points</c:numCache></c:numRef></c:$tag>"""
+        }
+        return """
+            <c:scatterChart>
+              <c:scatterStyle val="lineMarker"/>
+              <c:ser><c:idx val="0"/><c:order val="0"/>
+                <c:tx><c:strRef><c:strCache><c:ptCount val="1"/><c:pt idx="0"><c:v>Points</c:v></c:pt></c:strCache></c:strRef></c:tx>
+                ${cache("xVal", listOf(0.0, 10.0, 20.0))}${cache("yVal", listOf(5.0, 15.0, 10.0))}
+              </c:ser>
+              <c:axId val="1"/><c:axId val="2"/>
+            </c:scatterChart>
+            <c:valAx><c:axId val="1"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:axPos val="b"/><c:numFmt formatCode="General" sourceLinked="1"/><c:crossAx val="2"/></c:valAx>
+            <c:valAx><c:axId val="2"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:axPos val="l"/><c:majorGridlines/><c:numFmt formatCode="General" sourceLinked="1"/><c:crossAx val="1"/></c:valAx>
+        """.trimIndent()
+    }
+
+    private fun comboChart(): String = """
+        <c:barChart><c:barDir val="col"/><c:grouping val="clustered"/>
+          ${series(0, "Sales", listOf(10.0, 20.0, 30.0))}<c:axId val="1"/><c:axId val="2"/>
+        </c:barChart>
+        <c:lineChart><c:grouping val="standard"/>
+          ${series(1, "Margin", listOf(200.0, 400.0, 300.0))}<c:axId val="3"/><c:axId val="4"/>
+        </c:lineChart>
+        <c:catAx><c:axId val="1"/><c:axPos val="b"/><c:crossAx val="2"/></c:catAx>
+        <c:valAx><c:axId val="2"/><c:axPos val="l"/><c:crossAx val="1"/></c:valAx>
+        <c:catAx><c:axId val="3"/><c:axPos val="b"/><c:crossAx val="4"/><c:delete val="1"/></c:catAx>
+        <c:valAx><c:axId val="4"/><c:axPos val="r"/><c:crossAx val="3"/></c:valAx>
+    """.trimIndent()
+
+    private fun stockChart(): String {
+        fun values(tag: String, numbers: List<Double>): String {
+            val points = numbers.mapIndexed { i, value -> """<c:pt idx="$i"><c:v>$value</c:v></c:pt>""" }.joinToString("")
+            return """<c:$tag><c:numRef><c:numCache><c:ptCount val="${numbers.size}"/>$points</c:numCache></c:numRef></c:$tag>"""
+        }
+        return """
+            <c:stockChart>
+              <c:ser><c:idx val="0"/><c:order val="0"/><c:tx><c:v>Price</c:v></c:tx>
+                ${values("open", listOf(10.0, 20.0, 15.0))}${values("high", listOf(15.0, 25.0, 18.0))}
+                ${values("low", listOf(8.0, 18.0, 12.0))}${values("close", listOf(14.0, 19.0, 13.0))}
+              </c:ser>
+              <c:upDownBars><c:gapWidth val="100"/>
+                <c:upBars><c:spPr><a:solidFill><a:srgbClr val="00B050"/></a:solidFill></c:spPr></c:upBars>
+                <c:downBars><c:spPr><a:solidFill><a:srgbClr val="C00000"/></a:solidFill></c:spPr></c:downBars>
+              </c:upDownBars>
+              <c:axId val="1"/><c:axId val="2"/>
+            </c:stockChart>
+            $chartAxes
+        """.trimIndent()
+    }
+
+    private fun refinedChart(): String {
+        val refinements = """
+            <c:trendline><c:trendlineType val="linear"/><c:dispEq val="1"/><c:dispRSqr val="1"/></c:trendline>
+            <c:errBars><c:errDir val="y"/><c:errBarType val="both"/><c:errValType val="fixedVal"/><c:val val="4"/></c:errBars>
+        """.trimIndent()
+        return """
+            <c:chartSpace xmlns:c="$CHART_NS" xmlns:a="$A_NS" xmlns:r="$R_NS">
+              <c:style val="2"/>
+              <c:chart>
+                <c:title><c:tx><c:rich><a:bodyPr/><a:p><a:r><a:t>Refined</a:t></a:r></a:p></c:rich></c:tx></c:title>
+                <c:plotArea>
+                  <c:barChart><c:barDir val="col"/><c:grouping val="clustered"/>
+                    <c:gapWidth val="80"/><c:overlap val="-20"/>
+                    ${series(0, "Alpha", listOf(10.0, 20.0, 30.0), refinements)}
+                    ${series(1, "Beta", listOf(20.0, 10.0, 5.0))}
+                    <c:axId val="1"/><c:axId val="2"/>
+                  </c:barChart>
+                  $chartAxes
+                </c:plotArea>
+              </c:chart>
+            </c:chartSpace>
+        """.trimIndent()
+    }
+
+    private fun bubbleChart(): String {
+        fun cache(tag: String, values: List<Double>): String {
+            val points = values.mapIndexed { i, value -> """<c:pt idx="$i"><c:v>$value</c:v></c:pt>""" }.joinToString("")
+            return """<c:$tag><c:numRef><c:numCache><c:formatCode>General</c:formatCode>""" +
+                """<c:ptCount val="${values.size}"/>$points</c:numCache></c:numRef></c:$tag>"""
+        }
+        return """
+            <c:bubbleChart>
+              <c:ser><c:idx val="0"/><c:order val="0"/>
+                <c:tx><c:strRef><c:strCache><c:ptCount val="1"/><c:pt idx="0"><c:v>Bubbles</c:v></c:pt></c:strCache></c:strRef></c:tx>
+                ${cache("xVal", listOf(0.0, 10.0, 20.0))}${cache("yVal", listOf(5.0, 15.0, 10.0))}${cache("bubbleSize", listOf(5.0, 20.0, 10.0))}
+              </c:ser>
+              <c:axId val="1"/><c:axId val="2"/>
+            </c:bubbleChart>
+            <c:valAx><c:axId val="1"/><c:axPos val="b"/><c:crossAx val="2"/></c:valAx>
+            <c:valAx><c:axId val="2"/><c:axPos val="l"/><c:majorGridlines/><c:crossAx val="1"/></c:valAx>
+        """.trimIndent()
+    }
+
+    private const val chartAxes = """
+        <c:catAx><c:axId val="1"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:axPos val="b"/><c:crossAx val="2"/></c:catAx>
+        <c:valAx><c:axId val="2"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:axPos val="l"/><c:majorGridlines/><c:numFmt formatCode="General" sourceLinked="1"/><c:crossAx val="1"/></c:valAx>
+    """
+
+    private const val CHART_NS = "http://schemas.openxmlformats.org/drawingml/2006/chart"
+    private const val A_NS = "http://schemas.openxmlformats.org/drawingml/2006/main"
+    private const val R_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+    private const val P_NS = "http://schemas.openxmlformats.org/presentationml/2006/main"
+    private const val MC_NS = "http://schemas.openxmlformats.org/markup-compatibility/2006"
+    private const val CX_NS = "http://schemas.microsoft.com/office/drawing/2014/chart"
+    private const val CHART_URI = "http://schemas.openxmlformats.org/drawingml/2006/chart"
+    private const val CHART_RELATIONSHIP = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart"
+}

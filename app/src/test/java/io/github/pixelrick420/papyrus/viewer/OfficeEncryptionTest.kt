@@ -118,6 +118,29 @@ class OfficeEncryptionTest {
     }
 
     @Test
+    fun `a plain pptx is not encrypted`() {
+        val bytes = OfficeFixtures.zipOf(
+            mapOf(
+                "[Content_Types].xml" to "<Types/>".toByteArray(),
+                "ppt/presentation.xml" to "<p:presentation xmlns:p='http://schemas.openxmlformats.org/presentationml/2006/main'/>".toByteArray(),
+            ),
+        )
+        assertEquals(
+            OfficeEncryption.Party.NOT_ENCRYPTED,
+            OfficeEncryption.status(OfficeFixtures.streamFactory(bytes), OfficeFixtures::parser),
+        )
+    }
+
+    @Test
+    fun `an agile pptx is reported as password protected`() {
+        val bytes = resource("pptx-agile-encrypted.b64")
+        assertEquals(
+            OfficeEncryption.Party.PASSWORD,
+            OfficeEncryption.status(OfficeFixtures.streamFactory(bytes), OfficeFixtures::parser),
+        )
+    }
+
+    @Test
     fun `an agile docx is reported as password protected`() {
         val bytes = resource("agile-encrypted.b64")
         assertEquals(OfficeEncryption.Party.PASSWORD, OfficeEncryption.status(OfficeFixtures.streamFactory(bytes), OfficeFixtures::parser))

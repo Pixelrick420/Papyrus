@@ -56,8 +56,8 @@ android {
         applicationId = "io.github.pixelrick420.papyrus"
         minSdk = 26
         targetSdk = 36
-        versionCode = 18
-        versionName = "2.0"
+        versionCode = 19
+        versionName = "2.1"
         testInstrumentationRunner = "io.github.pixelrick420.papyrus.e2e.PapyrusTestRunner"
     }
 
@@ -115,6 +115,10 @@ android {
 
     // The migration test opens each exported schema; MigrationTestHelper reads them as assets.
     sourceSets.getByName("androidTest").assets.directories.add("$projectDir/schemas")
+
+    // Deck builders are shared by JVM parser tests and the instrumented raster goldens.
+    sourceSets.getByName("test").kotlin.srcDir("src/sharedTest/java")
+    sourceSets.getByName("androidTest").kotlin.srcDir("src/sharedTest/java")
 
     packaging {
         resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"

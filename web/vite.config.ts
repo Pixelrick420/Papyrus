@@ -26,11 +26,6 @@ export default defineConfig({
   build: {
     minify: 'esbuild',
     cssMinify: true,
-    rollupOptions: {
-      output: {
-        manualChunks: undefined,
-      },
-    },
   },
   optimizeDeps: {
     include: ['@lucide/svelte'],

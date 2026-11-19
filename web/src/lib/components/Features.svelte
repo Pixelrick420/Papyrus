@@ -6,7 +6,7 @@
     {
       icon: 'FileText',
       title: 'Every format',
-      description: 'PDF, Word, ODT, EPUB, Markdown, text, CSV/TSV and code',
+      description: 'PDF, Word, ODT, EPUB, PowerPoint, Markdown, text, CSV/TSV and code',
     },
     {
       icon: 'Volume2',

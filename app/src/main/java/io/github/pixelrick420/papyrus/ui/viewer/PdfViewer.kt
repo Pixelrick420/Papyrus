@@ -26,10 +26,13 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.derivedStateOf
@@ -48,6 +51,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
@@ -55,6 +59,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.annotation.StringRes
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -66,10 +71,10 @@ import io.github.pixelrick420.papyrus.data.Highlight
 import io.github.pixelrick420.papyrus.data.HighlightKind
 import io.github.pixelrick420.papyrus.data.LocationKind
 import io.github.pixelrick420.papyrus.viewer.NormRect
+import io.github.pixelrick420.papyrus.viewer.PageBitmapSource
 import io.github.pixelrick420.papyrus.viewer.PdfLinkTarget
 import io.github.pixelrick420.papyrus.viewer.PdfPageGeometry
 import io.github.pixelrick420.papyrus.viewer.PdfPageLink
-import io.github.pixelrick420.papyrus.viewer.PdfPageSource
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.first
@@ -85,6 +90,30 @@ internal fun renderWidthFor(displayWidthPx: Int, aspect: Float, maxPixels: Int, 
     return minOf(displayWidthPx, maxOf(budgetWidth, floorWidthPx)).coerceAtLeast(1)
 }
 
+/** One focus stop per slide: its number, the title as a heading, then the reading-order text and alt text. */
+internal fun slideSemanticDescription(
+    prefix: String,
+    title: String,
+    text: String?,
+    altText: String?,
+    hidden: Boolean,
+    hiddenLabel: String,
+    headingLabel: String = "(heading)",
+): String {
+    val sentences = mutableListOf<String>()
+    if (title.isNotBlank()) sentences += "${title.trim()} $headingLabel"
+    text?.trim()?.takeIf { it.isNotEmpty() }?.let(sentences::add)
+    altText?.trim()?.takeIf { it.isNotEmpty() }?.let(sentences::add)
+    if (hidden) sentences += hiddenLabel
+    if (sentences.isEmpty()) return prefix
+    return "$prefix. ${sentences.joinToString(" ", transform = ::asSentence)}"
+}
+
+private const val SENTENCE_ENDS = ".!?:;"
+
+private fun asSentence(value: String): String =
+    if (value.last() in SENTENCE_ENDS) value else "$value."
+
 private const val CACHED_PAGES_AROUND_VIEW = 3
 
 private val PAGE_HIT_BORDER = 3.dp
@@ -99,7 +128,7 @@ private const val VIEWPORT_SETTLE_MILLIS = 150L
 
 @Composable
 internal fun PdfViewer(
-    source: PdfPageSource,
+    source: PageBitmapSource,
     aspectRatios: List<Float>,
     zoom: ZoomState,
     selectionState: PdfSelectionState,
@@ -118,7 +147,15 @@ internal fun PdfViewer(
     ttsLocked: Boolean = false,
     highlightAlpha: Float = 1f,
     onlyActive: Boolean = false,
+    @StringRes pageIndicatorRes: Int = R.string.viewer_page_indicator,
+    @StringRes pageDescriptionRes: Int = R.string.cd_pdf_page,
+    @StringRes pageWithTextDescriptionRes: Int = R.string.cd_pdf_page_with_text,
+    pageTitles: List<String> = emptyList(),
+    hiddenPages: Set<Int> = emptySet(),
+    pageSemanticBodies: List<String> = emptyList(),
+    slideSemantics: Boolean = false,
 ) {
+    val renderIncomplete by source.incomplete.collectAsState(false)
     val restoreTarget = rememberRestoredTarget(LocationKind.PAGE, source.pageCount, position)
     val listState = rememberLazyListState(initialFirstVisibleItemIndex = restoreTarget?.unit ?: 0)
     val geometry = rememberLazyScrollGeometry(listState)
@@ -259,6 +296,39 @@ internal fun PdfViewer(
                             speaking = speaking?.takeIf { it.anchor == index },
                             followVoice = ttsLocked,
                             viewportHeight = viewportHeight,
+                            pageDescriptionRes = pageDescriptionRes,
+                            pageWithTextDescriptionRes = pageWithTextDescriptionRes,
+                            pageTitle = pageTitles.getOrNull(index).orEmpty(),
+                            isHidden = index in hiddenPages,
+                            semanticBody = pageSemanticBodies.getOrNull(index).orEmpty(),
+                            isSlide = slideSemantics,
+                            pageCount = source.pageCount,
+                            visibleRect = {
+                                val info = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == index }
+                                if (info == null) null else {
+                                    val pageWidth = renderWidthPx.toFloat().coerceAtLeast(1f)
+                                    val pageHeight = pageGeometry.value.heightOf(index)
+                                    val left = hScroll.value.toFloat().coerceIn(0f, pageWidth)
+                                    val right = (left + listState.layoutInfo.viewportSize.width).coerceAtMost(pageWidth)
+                                    val top = (-info.offset.toFloat()).coerceIn(0f, pageHeight)
+                                    val bottom = (listState.layoutInfo.viewportSize.height - info.offset).toFloat().coerceIn(top, pageHeight)
+                                    if (right > left && bottom > top) {
+                                        NormRect(left / pageWidth, top / pageHeight, right / pageWidth, bottom / pageHeight)
+                                    } else {
+                                        null
+                                    }
+                                }
+                            },
+                        )
+                    }
+                }
+                if (renderIncomplete) {
+                    item(key = "incomplete") {
+                        Text(
+                            text = stringResource(R.string.viewer_incomplete),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 12.dp),
                         )
                     }
                 }
@@ -280,7 +350,7 @@ internal fun PdfViewer(
             )
 
             ReadoutBadge(
-                text = stringResource(R.string.viewer_page_indicator, centeredPage + 1, source.pageCount),
+                text = stringResource(pageIndicatorRes, centeredPage + 1, source.pageCount),
                 visible = pageIndicatorVisible,
                 transformOrigin = TransformOrigin(1f, 1f),
                 textStyle = MaterialTheme.typography.labelMedium,
@@ -291,6 +361,8 @@ internal fun PdfViewer(
     }
 }
 
+private data class TileImage(val rect: NormRect, val bitmap: ImageBitmap)
+
 private const val DEFAULT_ASPECT = 1.414f
 
 private val PAGE_INDICATOR_CLEARANCE = 56.dp
@@ -298,7 +370,7 @@ private val PAGE_INDICATOR_CLEARANCE = 56.dp
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun PdfPage(
-    source: PdfPageSource,
+    source: PageBitmapSource,
     index: Int,
     widthPx: Int,
     baseWidthPx: Int,
@@ -321,6 +393,14 @@ private fun PdfPage(
     speaking: TtsHighlight?,
     followVoice: Boolean,
     viewportHeight: () -> Int,
+    @StringRes pageDescriptionRes: Int,
+    @StringRes pageWithTextDescriptionRes: Int,
+    pageTitle: String,
+    isHidden: Boolean,
+    semanticBody: String = "",
+    isSlide: Boolean = false,
+    pageCount: Int = 0,
+    visibleRect: () -> NormRect? = { null },
 ) {
     // What is shown at the committed zoom, within the pixel budget: the box below keeps the shown width,
     // and the bitmap is scaled to it, so a capped page is softer rather than missing.
@@ -355,6 +435,27 @@ private fun PdfPage(
         }
     }
 
+    val grid = remember(source, index, widthPx) {
+        if (widthPx > rasterWidthPx) source.tileGrid(index, widthPx) else null
+    }
+    var tiles by remember(source, index) { mutableStateOf<List<TileImage>>(emptyList()) }
+    val visible = visibleRect()
+    // Key the effect on the *set* of covering tiles, which is unchanged across most scroll frames.
+    // Keying on the raw rect restarted a render on every frame even when the same tiles still covered it.
+    val covering = remember(grid, visible) {
+        if (grid == null || visible == null) emptyList() else grid.covering(visible)
+    }
+    LaunchedEffect(source, index, widthPx, covering) {
+        if (covering.isEmpty()) {
+            tiles = emptyList()
+            return@LaunchedEffect
+        }
+        tiles = covering.mapNotNull { tile ->
+            val bitmap = source.cachedTile(index, widthPx, tile.rect) ?: source.renderTile(index, widthPx, tile.rect)
+            bitmap?.let { TileImage(tile.rect, it.asImageBitmap()) }
+        }
+    }
+
     // Measured, not derived from widthPx and aspect: the box is what a rectangle is relative to.
     var pageSize by remember { mutableStateOf(IntSize.Zero) }
     val requester = remember { BringIntoViewRequester() }
@@ -380,8 +481,9 @@ private fun PdfPage(
     LaunchedEffect(selectionState, index, span != null) {
         if (span != null) selectionState.ensureText(index)
     }
-    LaunchedEffect(selectionState, index, readsPages) {
-        if (readsPages) selectionState.ensureText(index)
+    // A slide's text is already in memory, so it is read for semantics even without a screen reader.
+    LaunchedEffect(selectionState, index, readsPages, isSlide) {
+        if (readsPages || isSlide) selectionState.ensureText(index)
     }
     val selectionRects = remember(span, pageText) {
         if (span != null && pageText != null) pageText.selectionRects(span.from, span.to) else emptyList()
@@ -453,18 +555,54 @@ private fun PdfPage(
             ),
     ) {
         bitmap?.let { bmp ->
-            val spoken = pageText?.text?.takeIf { readsPages && it.isNotBlank() }
+            val spoken = pageText?.text?.takeIf { it.isNotBlank() }?.trim()
+            val description = if (isSlide) {
+                slideSemanticDescription(
+                    prefix = stringResource(R.string.cd_slide_semantics, index + 1, pageCount),
+                    title = pageTitle,
+                    text = spoken,
+                    altText = semanticBody,
+                    hidden = isHidden,
+                    hiddenLabel = stringResource(R.string.viewer_slide_hidden),
+                    headingLabel = stringResource(R.string.viewer_slide_heading_label),
+                )
+            } else {
+                val label = pageTitle.takeIf { it.isNotBlank() }?.trim()
+                val spokenText = spoken?.takeIf { readsPages }
+                when {
+                    label != null && spokenText != null -> stringResource(pageWithTextDescriptionRes, index + 1, "$label. $spokenText")
+                    label != null -> stringResource(pageDescriptionRes, index + 1) + ", " + label
+                    spokenText != null -> stringResource(pageWithTextDescriptionRes, index + 1, spokenText)
+                    else -> stringResource(pageDescriptionRes, index + 1)
+                }
+            }
             Image(
                 bitmap = remember(bmp) { bmp.asImageBitmap() },
-                contentDescription = if (spoken == null) {
-                    stringResource(R.string.cd_pdf_page, index + 1)
-                } else {
-                    stringResource(R.string.cd_pdf_page_with_text, index + 1, spoken)
-                },
+                contentDescription = description,
                 contentScale = ContentScale.FillBounds,
                 colorFilter = if (nightMode) PdfNightMode.Invert else null,
                 modifier = Modifier.fillMaxSize(),
             )
+        }
+        if (tiles.isNotEmpty()) {
+            Canvas(Modifier.fillMaxSize()) {
+                for (tile in tiles) {
+                    drawImage(
+                        image = tile.bitmap,
+                        srcOffset = IntOffset.Zero,
+                        srcSize = IntSize(tile.bitmap.width, tile.bitmap.height),
+                        dstOffset = IntOffset(
+                            (tile.rect.left * size.width).roundToInt(),
+                            (tile.rect.top * size.height).roundToInt(),
+                        ),
+                        dstSize = IntSize(
+                            ((tile.rect.right - tile.rect.left) * size.width).roundToInt(),
+                            ((tile.rect.bottom - tile.rect.top) * size.height).roundToInt(),
+                        ),
+                        colorFilter = if (nightMode) PdfNightMode.Invert else null,
+                    )
+                }
+            }
         }
         if (highlights.isNotEmpty()) {
             Canvas(Modifier.fillMaxSize()) { drawHighlights(highlights) }
@@ -473,7 +611,7 @@ private fun PdfPage(
                 if (mark.kind == HighlightKind.NOTE) NoteStop(mark, pageSize, onMark)
             }
         }
-        if (linkRects.isNotEmpty()) {
+        if (linkRects.isNotEmpty() && !isSlide) {
             // Under the matches and the selection, so a link never hides a find highlight.
             val linkColor = MaterialTheme.colorScheme.primary
             Canvas(Modifier.fillMaxSize()) { drawLinks(linkRects, linkColor) }
@@ -511,6 +649,20 @@ private fun PdfPage(
             val selectionColor = MaterialTheme.colorScheme.primary
             Canvas(Modifier.fillMaxSize()) {
                 drawSelection(selectionRects, handles.value, selectionColor, handleRadius)
+            }
+        }
+        if (isHidden) {
+            Surface(
+                modifier = Modifier.padding(8.dp),
+                shape = RoundedCornerShape(4.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            ) {
+                Text(
+                    text = stringResource(R.string.viewer_slide_hidden),
+                    style = MaterialTheme.typography.labelSmall,
+                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                )
             }
         }
         // No rectangles to show (past the extractor's budget), so a border is the only signal. That

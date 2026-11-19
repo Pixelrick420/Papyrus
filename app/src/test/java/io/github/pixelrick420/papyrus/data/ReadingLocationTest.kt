@@ -24,6 +24,7 @@ class ReadingLocationTest {
     @Test
     fun `formats map to the anchor that survives zoom and re-wrap`() {
         assertEquals(LocationKind.PAGE, LocationKind.forFormat(DocumentFormat.PDF))
+        assertEquals(LocationKind.PAGE, LocationKind.forFormat(DocumentFormat.PPTX))
         assertEquals(LocationKind.CHAR, LocationKind.forFormat(DocumentFormat.MARKDOWN))
         assertEquals(LocationKind.CHUNK, LocationKind.forFormat(DocumentFormat.TEXT))
         assertEquals(LocationKind.CHUNK, LocationKind.forFormat(DocumentFormat.CODE))

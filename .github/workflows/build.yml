@@ -47,9 +47,10 @@ jobs:
 
       - name: Install SDK packages
         run: |
-          # android-37 lives in Google's newer index; it is preinstalled, so its install failure is harmless.
-          android sdk install platform-tools platforms/android-37 build-tools/36.0.0
+          android sdk install platform-tools build-tools/36.0.0
           android sdk install "ndk/${{ steps.ndk.outputs.version }}"
+          # android-37 lives in Google's newer index; it is preinstalled, so its install failure is harmless.
+          android sdk install platforms/android-37 || echo "optional android-37 install failed" >&2
 
       - name: Check
         run: ./gradlew --no-daemon check
@@ -125,10 +126,12 @@ jobs:
 
       - name: Install SDK packages
         run: |
-          android sdk install platform-tools platforms/android-37 build-tools/36.0.0
+          android sdk install platform-tools build-tools/36.0.0
           android sdk install "ndk/${{ steps.ndk.outputs.version }}"
           android sdk install "system-images;android-34;google_apis;x86_64"
           android sdk install emulator
+          # android-37 lives in Google's newer index; it is preinstalled, so its install failure is harmless.
+          android sdk install platforms/android-37 || echo "optional android-37 install failed" >&2
 
       - name: Enable KVM
         # Runner exposes /dev/kvm without group permissions; otherwise the emulator falls back to software.
@@ -159,6 +162,14 @@ jobs:
       - name: Check emulator test results
         if: ${{ !cancelled() }}
         run: python3 .github/scripts/evaluate-emulator-tests.py --min-pass-percent "$EMULATOR_MIN_PASS_PERCENT"
+
+      # The soft gate would tolerate a failing golden; this class must be green in full.
+      - name: Grade raster goldens strictly
+        if: ${{ !cancelled() }}
+        run: |
+          python3 .github/scripts/evaluate-emulator-tests.py \
+            --min-pass-percent 0 \
+            --require-class io.github.pixelrick420.papyrus.viewer.pptx.render.GoldenImageTest
 
       - name: Upload emulator test results
         if: always()
@@ -223,9 +234,10 @@ jobs:
 
       - name: Install SDK packages
         run: |
-          # android-37 lives in Google's newer index; it is preinstalled, so its install failure is harmless.
-          android sdk install platform-tools platforms/android-37 build-tools/36.0.0
+          android sdk install platform-tools build-tools/36.0.0
           android sdk install "ndk/${{ steps.ndk.outputs.version }}"
+          # android-37 lives in Google's newer index; it is preinstalled, so its install failure is harmless.
+          android sdk install platforms/android-37 || echo "optional android-37 install failed" >&2
 
       - name: Unit tests
         run: ./gradlew --no-daemon testDebugUnitTest

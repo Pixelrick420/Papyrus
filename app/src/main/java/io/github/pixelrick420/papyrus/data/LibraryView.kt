@@ -25,6 +25,7 @@ enum class FormatGroup {
 
     TSV,
     CODE,
+    POWERPOINT,
     ;
 
     companion object {
@@ -38,6 +39,7 @@ enum class FormatGroup {
             // One format covers both extensions, so only the name can tell a tab-separated file apart.
             DocumentFormat.CSV -> if (extensionOf(document.title) == "tsv") TSV else CSV
             DocumentFormat.CODE -> CODE
+            DocumentFormat.PPTX -> POWERPOINT
             DocumentFormat.UNKNOWN -> null
         }
     }

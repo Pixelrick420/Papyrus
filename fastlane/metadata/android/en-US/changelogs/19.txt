@@ -1,0 +1,6 @@
+Papyrus 2.1 completes PowerPoint support.
+
+- Slides draw charts, SmartArt as node text, WordArt, vertical text, EMF/WMF pictures, gradient and pattern fills, glow, soft edge, reflection and colour effects
+- Find in file, an outline from slide titles, bookmarks, links and read-along highlighting work over slides
+- Embedded fonts in a presentation are used where available
+- Speaker notes in a deck are not shown, and EMF+ only pictures get a labelled placeholder

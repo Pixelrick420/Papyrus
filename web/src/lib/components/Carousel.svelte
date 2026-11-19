@@ -241,12 +241,13 @@
   }
 </script>
 
-<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+<!-- svelte-ignore a11y_no_noninteractive_element_interactions, a11y_no_noninteractive_tabindex -->
 <div
   class={cn('relative', classProp)}
   onkeydown={handleKeyDown}
   role="region"
   aria-label="Screenshots carousel"
+  tabindex="0"
 >
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div
@@ -298,7 +299,7 @@
   {/if}
 
   {#if showDots && pageCount > 1}
-    <div class="mt-6 flex justify-center gap-2" role="tablist" aria-label="Screenshot pages">
+    <div class="mt-6 flex justify-center gap-2" role="group" aria-label="Screenshot pages">
       {#each Array(pageCount) as _, page (page)}
         <button
           class={cn(
@@ -308,8 +309,7 @@
               : 'bg-neutral-300 hover:bg-neutral-400 dark:bg-neutral-600 dark:hover:bg-neutral-500'
           )}
           onclick={() => goToPage(page)}
-          role="tab"
-          aria-selected={page === currentPage}
+          aria-current={page === currentPage ? 'true' : undefined}
           aria-label={`Go to screenshot ${page * effectivePerPage + 1}${effectivePerPage > 1 ? ` to ${Math.min((page + 1) * effectivePerPage, items.length)}` : ''}`}
         ></button>
       {/each}

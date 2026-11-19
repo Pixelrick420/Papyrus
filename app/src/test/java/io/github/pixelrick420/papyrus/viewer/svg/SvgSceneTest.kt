@@ -207,13 +207,6 @@ class SvgSceneTest {
     }
 
     @Test
-    fun `text is ignored`() {
-        val builder = SvgSceneBuilder()
-        builder.text("anything")
-        assertNull(builder.scene())
-    }
-
-    @Test
     fun `a file that is not well formed throws for the caller to drop`() {
         try {
             parseSvg("<svg><g></svg>".toByteArray(), { stream -> OfficeFixtures.parser().apply { setInput(stream, null) } }, SvgLimits())

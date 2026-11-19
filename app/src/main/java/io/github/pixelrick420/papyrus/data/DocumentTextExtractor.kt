@@ -2,6 +2,7 @@ package io.github.pixelrick420.papyrus.data
 
 import android.content.Context
 import android.net.Uri
+import android.util.Xml
 import androidx.core.net.toUri
 import io.github.pixelrick420.papyrus.viewer.BoundedCache
 import io.github.pixelrick420.papyrus.viewer.DocTextExtractor
@@ -12,6 +13,8 @@ import io.github.pixelrick420.papyrus.viewer.OfficeTextExtractor
 import io.github.pixelrick420.papyrus.viewer.PdfEncryption
 import io.github.pixelrick420.papyrus.viewer.PdfPageTextSource
 import io.github.pixelrick420.papyrus.viewer.TextCacheKey
+import io.github.pixelrick420.papyrus.viewer.pptx.SlideTextIndex
+import io.github.pixelrick420.papyrus.viewer.pptx.text.FontCatalog
 import io.github.pixelrick420.papyrus.viewer.readTextString
 import io.github.pixelrick420.papyrus.viewer.textCacheKey
 import kotlinx.coroutines.CancellationException
@@ -38,6 +41,8 @@ class DocumentTextExtractor(
         it.text.length * 2L + CACHED_OVERHEAD_BYTES
     }
 
+    private val fonts by lazy { FontCatalog(context.assets) }
+
     suspend fun extract(document: DocumentEntity): ExtractedText = withContext(dispatcher) {
         // Checked before any open: a 2 GB scan should not be read just to be told it is too large.
         if (document.sizeBytes > MAX_SOURCE_BYTES) {
@@ -51,8 +56,11 @@ class DocumentTextExtractor(
             throw cancellation
         } catch (expectedDrm: EpubProtectedException) {
             ExtractedText("", TextIndexState.SKIPPED)
+        } catch (ignoredOom: OutOfMemoryError) {
+            // Deliberate: a single huge document must not kill the background indexer or stall its queue.
+            ExtractedText("", TextIndexState.FAILED)
         } catch (ignored: Exception) {
-            // Catches document parsing failures; JVM Errors (like OOM) are uncaught to avoid corrupted state.
+            // A bad document must not stall the index queue, so every parse failure ends as FAILED.
             ExtractedText("", TextIndexState.FAILED)
         }
         if (key != null && result.state == TextIndexState.INDEXED) extracted.put(key, result)
@@ -64,6 +72,7 @@ class DocumentTextExtractor(
         DocumentFormat.DOCX, DocumentFormat.ODT -> readOffice(document)
         DocumentFormat.DOC -> readDoc(document.uri.toUri())
         DocumentFormat.EPUB -> readEpub(document.uri.toUri())
+        DocumentFormat.PPTX -> readPptx(document.uri.toUri())
         DocumentFormat.TEXT, DocumentFormat.CODE, DocumentFormat.MARKDOWN, DocumentFormat.CSV ->
             readPlainText(document.uri.toUri())
         DocumentFormat.UNKNOWN -> null
@@ -93,6 +102,19 @@ class DocumentTextExtractor(
             return ExtractedText("", TextIndexState.SKIPPED)
         }
         return indexable(officeBlocksToText(DocTextExtractor.extract({ openStream(uri) }), MAX_INDEX_CHARS))
+    }
+
+    private fun readPptx(uri: Uri): ExtractedText {
+        if (OfficeEncryption.isEncrypted({ openStream(uri) })) {
+            return ExtractedText("", TextIndexState.SKIPPED)
+        }
+        // mediaDir = null: a deck's words are indexed, not its pictures.
+        val pages = SlideTextIndex.indexPages(
+            open = { openStream(uri) },
+            fonts = fonts,
+            newParserFactory = { Xml.newPullParser() },
+        )
+        return indexable(pages.joinToString("\n"))
     }
 
     private fun readEpub(uri: Uri): ExtractedText {

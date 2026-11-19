@@ -18,6 +18,7 @@ import io.github.pixelrick420.papyrus.viewer.EpubExtractor
 import io.github.pixelrick420.papyrus.viewer.OfficeBlock
 import io.github.pixelrick420.papyrus.viewer.OfficeTextExtractor
 import io.github.pixelrick420.papyrus.viewer.PdfPageSource
+import io.github.pixelrick420.papyrus.viewer.pptx.SlidePageSource
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
@@ -25,6 +26,7 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.io.ByteArrayOutputStream
 import java.io.FileNotFoundException
 import java.io.InputStream
@@ -102,6 +104,7 @@ class ThumbnailLoader(private val context: Context) {
         DocumentFormat.MARKDOWN, DocumentFormat.TEXT, DocumentFormat.CODE, DocumentFormat.CSV -> renderText(document.uri.toUri())
         DocumentFormat.DOCX, DocumentFormat.ODT, DocumentFormat.DOC -> renderOffice(document)
         DocumentFormat.EPUB -> renderEpub(document.uri.toUri())
+        DocumentFormat.PPTX -> renderPptx(document.uri.toUri())
         DocumentFormat.UNKNOWN -> null
     }
 
@@ -151,6 +154,23 @@ class ThumbnailLoader(private val context: Context) {
         val extractor = EpubExtractor(mediaDir = null, blockBudget = THUMBNAIL_BLOCK_BUDGET)
         extractor.readCover(open)?.let { bytes -> decodeCover(bytes)?.let { return it } }
         return drawTextTile(previewLines(extractor.extract(open, previewChapters = EPUB_PREVIEW_CHAPTERS).blocks))
+    }
+
+    private suspend fun renderPptx(uri: Uri): Bitmap? = try {
+        withTimeoutOrNull(PPTX_THUMBNAIL_BUDGET_MS) {
+            // No text index for a thumbnail, and skip hidden leading slides so the tile shows a real page.
+            SlidePageSource.open(context, uri, buildTextIndex = false).use { source ->
+                val first = (0 until source.pageCount).firstOrNull { it !in source.hidden } ?: 0
+                val page = source.render(first, THUMBNAIL_PDF_WIDTH_PX) ?: return@withTimeoutOrNull null
+                page.scale(THUMBNAIL_WIDTH_PX, THUMBNAIL_HEIGHT_PX, true)
+            }
+        }
+    } catch (e: CancellationException) {
+        throw e
+    } catch (_: OutOfMemoryError) {
+        null
+    } catch (_: Exception) {
+        null
     }
 
     // Never holds the cover at full size: refuses a picture claiming more than [MAX_COVER_PIXELS], subsamples, then fills the tile anchored at the top so a tall cover keeps its title.
@@ -232,6 +252,7 @@ class ThumbnailLoader(private val context: Context) {
         private const val MAX_THUMBNAIL_SOURCE_BYTES = 16 * 1024
         private const val EPUB_PREVIEW_CHAPTERS = 3
         private const val MAX_CONCURRENT_RENDERS = 2
+        private const val PPTX_THUMBNAIL_BUDGET_MS = 5_000L
 
         /** Pixels a cover may claim before it is not worth decoding for a 132 by 176 tile. */
         private const val MAX_COVER_PIXELS = 40L * 1000 * 1000

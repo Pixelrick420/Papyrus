@@ -63,14 +63,18 @@ object SafStorage {
         val resolver = context.contentResolver
         var name: String? = null
         var size = 0L
-        resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE), null, null, null)
-            ?.use { c ->
-                if (c.moveToFirst()) {
-                    name = c.getString(0)
-                    if (!c.isNull(1)) size = c.getLong(1)
+        try {
+            resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE), null, null, null)
+                ?.use { c ->
+                    if (c.moveToFirst()) {
+                        name = c.getString(0)
+                        if (!c.isNull(1)) size = c.getLong(1)
+                    }
                 }
-            }
-        return Metadata(name ?: uri.lastPathSegment ?: "document", size, resolver.getType(uri))
+        } catch (_: SecurityException) {
+        } catch (_: IllegalArgumentException) {
+        }
+        return Metadata(name ?: uri.lastPathSegment ?: "document", size, queryMimeType(resolver, uri))
     }
 
     fun queryMimeType(resolver: ContentResolver, uri: Uri): String? = try {

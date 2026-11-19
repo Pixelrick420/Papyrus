@@ -60,9 +60,17 @@ import io.github.pixelrick420.papyrus.ui.viewer.OfficeBlockView
 import io.github.pixelrick420.papyrus.ui.viewer.OutlineSheet
 import io.github.pixelrick420.papyrus.ui.viewer.TtsControls
 import io.github.pixelrick420.papyrus.ui.viewer.exposeMarkdownSemantics
+import io.github.pixelrick420.papyrus.ui.viewer.slideSemanticDescription
 import io.github.pixelrick420.papyrus.viewer.OfficeBlock
 import io.github.pixelrick420.papyrus.viewer.MarkdownRenderer
 import io.github.pixelrick420.papyrus.viewer.OutlineEntry
+import io.github.pixelrick420.papyrus.viewer.pptx.GraphicKind
+import io.github.pixelrick420.papyrus.viewer.pptx.Scene
+import io.github.pixelrick420.papyrus.viewer.pptx.SceneGraphicFrame
+import io.github.pixelrick420.papyrus.viewer.pptx.SceneGroup
+import io.github.pixelrick420.papyrus.viewer.pptx.ScenePicture
+import io.github.pixelrick420.papyrus.viewer.pptx.SceneSize
+import io.github.pixelrick420.papyrus.viewer.pptx.SlideTextIndex
 import io.noties.markwon.core.MarkwonTheme
 import io.noties.markwon.core.spans.HeadingSpan
 import java.io.File
@@ -291,6 +299,76 @@ class AccessibilitySemanticsTest {
         assertEquals("Sales by quarter", image?.contentDescription?.toString())
         assertEquals(ImageView::class.java.name, image?.className?.toString())
         assertTrue(image?.isHeading != true)
+    }
+
+    @Test
+    fun slideDescriptionReadsNumberTitleTextAltTextAndHiddenBadgeInOrder() {
+        val description = slideSemanticDescription(
+            prefix = string(R.string.cd_slide_semantics, 3, 24),
+            title = "Quarterly results",
+            text = "Revenue rose 12 percent.",
+            altText = "Bar chart of quarterly revenue",
+            hidden = false,
+            hiddenLabel = string(R.string.viewer_slide_hidden),
+        )
+
+        assertEquals(
+            "Slide 3 of 24. Quarterly results (heading). Revenue rose 12 percent. Bar chart of quarterly revenue.",
+            description,
+        )
+    }
+
+    @Test
+    fun hiddenSlideAnnouncesTheBadgeAfterItsContent() {
+        val description = slideSemanticDescription(
+            prefix = string(R.string.cd_slide_semantics, 2, 5),
+            title = "",
+            text = "",
+            altText = null,
+            hidden = true,
+            hiddenLabel = string(R.string.viewer_slide_hidden),
+        )
+
+        assertEquals("Slide 2 of 5. Hidden.", description)
+    }
+
+    @Test
+    fun slideWithoutTextOrAltTextIsOnlyItsNumber() {
+        val description = slideSemanticDescription(
+            prefix = string(R.string.cd_slide_semantics, 1, 1),
+            title = "",
+            text = null,
+            altText = " ",
+            hidden = false,
+            hiddenLabel = string(R.string.viewer_slide_hidden),
+        )
+
+        assertEquals("Slide 1 of 1", description)
+    }
+
+    @Test
+    fun slideAltTextComesFromPicturesAndChartsButNotDecorativeOrHiddenOnes() {
+        val scene = Scene(
+            SceneSize(1.0, 1.0),
+            listOf(
+                ScenePicture(id = 1, name = "picture", frame = null, description = "Sales by quarter"),
+                ScenePicture(id = 2, name = "decorative", frame = null, description = "Divider", decorative = true),
+                ScenePicture(id = 3, name = "hidden", frame = null, description = "Old chart", hidden = true),
+                SceneGraphicFrame(id = 4, name = "chart", frame = null, description = "Revenue trend", kind = GraphicKind.CHART),
+                SceneGraphicFrame(id = 5, name = "table", frame = null, description = "Ignored table", kind = GraphicKind.TABLE),
+                SceneGroup(
+                    id = 6,
+                    name = "group",
+                    frame = null,
+                    children = listOf(
+                        ScenePicture(id = 7, name = "nested", frame = null, description = "Nested image"),
+                        ScenePicture(id = 8, name = "nested-deco", frame = null, description = "Nested rule", decorative = true),
+                    ),
+                ),
+            ),
+        )
+
+        assertEquals("Sales by quarter. Revenue trend. Nested image", SlideTextIndex.semanticTextOf(scene))
     }
 
     private fun string(@StringRes id: Int, vararg args: Any): String =

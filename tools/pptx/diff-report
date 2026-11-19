@@ -1,0 +1,281 @@
+#!/usr/bin/env python3
+"""Side-by-side review page for raster goldens, with no third-party dependencies.
+
+Pairs every PNG under two directories by its relative path, decodes both, and writes one self-contained HTML
+file: expected, actual and a mismatch mask per pair, plus the share of pixels that differ. Run it after pulling
+`goldens/` off a device, next to `app/src/androidTest/assets/goldens/`.
+"""
+
+from __future__ import annotations
+
+import argparse
+import base64
+import struct
+import sys
+import zlib
+from pathlib import Path
+
+PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+CHANNELS = {0: 1, 2: 3, 3: 1, 4: 2, 6: 4}
+
+
+class PngError(Exception):
+    pass
+
+
+def _paeth(left: int, above: int, upper_left: int) -> int:
+    estimate = left + above - upper_left
+    distance_left = abs(estimate - left)
+    distance_above = abs(estimate - above)
+    distance_upper_left = abs(estimate - upper_left)
+    if distance_left <= distance_above and distance_left <= distance_upper_left:
+        return left
+    if distance_above <= distance_upper_left:
+        return above
+    return upper_left
+
+
+def decode_png(path: Path) -> tuple[int, int, bytes]:
+    """Returns (width, height, RGBA bytes) for an 8-bit, non-interlaced PNG."""
+    data = path.read_bytes()
+    if not data.startswith(PNG_SIGNATURE):
+        raise PngError(f"{path}: not a PNG")
+    offset = len(PNG_SIGNATURE)
+    header = None
+    palette = None
+    transparency = b""
+    idat = bytearray()
+    while offset < len(data):
+        length = struct.unpack(">I", data[offset : offset + 4])[0]
+        kind = data[offset + 4 : offset + 8]
+        body = data[offset + 8 : offset + 8 + length]
+        offset += 12 + length
+        if kind == b"IHDR":
+            header = struct.unpack(">IIBBBBB", body)
+        elif kind == b"PLTE":
+            palette = body
+        elif kind == b"tRNS":
+            transparency = body
+        elif kind == b"IDAT":
+            idat += body
+        elif kind == b"IEND":
+            break
+    if header is None:
+        raise PngError(f"{path}: no IHDR")
+    width, height, depth, colour, compression, filtering, interlace = header
+    if depth != 8 or interlace != 0 or colour not in CHANNELS:
+        raise PngError(
+            f"{path}: unsupported PNG (depth {depth}, colour {colour}, interlace {interlace})"
+        )
+    channels = CHANNELS[colour]
+    raw = zlib.decompress(bytes(idat))
+    stride = width * channels
+    if len(raw) < height * (stride + 1):
+        raise PngError(f"{path}: truncated pixel data")
+    rows: list[bytes] = []
+    previous = bytearray(stride)
+    position = 0
+    for _ in range(height):
+        filter_type = raw[position]
+        position += 1
+        line = bytearray(raw[position : position + stride])
+        position += stride
+        for i in range(stride):
+            left = line[i - channels] if i >= channels else 0
+            above = previous[i]
+            upper_left = previous[i - channels] if i >= channels else 0
+            if filter_type == 1:
+                line[i] = (line[i] + left) & 0xFF
+            elif filter_type == 2:
+                line[i] = (line[i] + above) & 0xFF
+            elif filter_type == 3:
+                line[i] = (line[i] + (left + above) // 2) & 0xFF
+            elif filter_type == 4:
+                line[i] = (line[i] + _paeth(left, above, upper_left)) & 0xFF
+            elif filter_type != 0:
+                raise PngError(f"{path}: unknown filter {filter_type}")
+        rows.append(bytes(line))
+        previous = line
+    pixels = b"".join(rows)
+    if colour == 6:
+        return width, height, pixels
+    packed = bytearray(width * height * 4)
+    for index in range(width * height):
+        if colour == 2:
+            red, green, blue = pixels[index * 3 : index * 3 + 3]
+            alpha = 255
+        elif colour == 0:
+            red = green = blue = pixels[index]
+            alpha = 255
+        elif colour == 4:
+            red = green = blue = pixels[index * 2]
+            alpha = pixels[index * 2 + 1]
+        else:
+            entry = pixels[index] * 3
+            red, green, blue = palette[entry : entry + 3]
+            alpha = transparency[pixels[index]] if pixels[index] < len(transparency) else 255
+        packed[index * 4 : index * 4 + 4] = bytes((red, green, blue, alpha))
+    return width, height, bytes(packed)
+
+
+def _chunk(kind: bytes, body: bytes) -> bytes:
+    return (
+        struct.pack(">I", len(body))
+        + kind
+        + body
+        + struct.pack(">I", zlib.crc32(kind + body) & 0xFFFFFFFF)
+    )
+
+
+def encode_png(width: int, height: int, rgba: bytes) -> bytes:
+    stride = width * 4
+    raw = bytearray()
+    for y in range(height):
+        raw.append(0)
+        raw += rgba[y * stride : (y + 1) * stride]
+    header = struct.pack(">IIBBBBB", width, height, 8, 6, 0, 0, 0)
+    return (
+        PNG_SIGNATURE
+        + _chunk(b"IHDR", header)
+        + _chunk(b"IDAT", zlib.compress(bytes(raw), 9))
+        + _chunk(b"IEND", b"")
+    )
+
+
+def difference(expected: bytes, actual: bytes, tolerance: int) -> tuple[bytes, int]:
+    """Returns (RGBA mask, differing pixel count); equal pixels are dimmed, differing ones are red."""
+    mask = bytearray(len(expected))
+    differing = 0
+    for index in range(0, len(expected), 4):
+        distance = max(
+            abs(expected[index] - actual[index]),
+            abs(expected[index + 1] - actual[index + 1]),
+            abs(expected[index + 2] - actual[index + 2]),
+            abs(expected[index + 3] - actual[index + 3]),
+        )
+        if distance > tolerance:
+            differing += 1
+            mask[index : index + 4] = b"\xff\x20\x20\xff"
+        else:
+            grey = (expected[index] + expected[index + 1] + expected[index + 2]) // 3 // 3
+            mask[index : index + 4] = bytes((grey, grey, grey, 255))
+    return bytes(mask), differing
+
+
+def data_uri(png: bytes) -> str:
+    return "data:image/png;base64," + base64.b64encode(png).decode("ascii")
+
+
+def png_files(root: Path) -> dict[str, Path]:
+    if not root.is_dir():
+        return {}
+    return {
+        str(path.relative_to(root)): path
+        for path in sorted(root.rglob("*.png"))
+        if path.is_file()
+    }
+
+
+def build_report(
+    expected_root: Path, actual_root: Path, tolerance: int, title: str
+) -> tuple[str, int]:
+    expected_files = png_files(expected_root)
+    actual_files = png_files(actual_root)
+    names = sorted(set(expected_files) | set(actual_files))
+    rows: list[str] = []
+    sections: list[str] = []
+    worst = 0
+    for name in names:
+        expected_path = expected_files.get(name)
+        actual_path = actual_files.get(name)
+        if expected_path is None or actual_path is None:
+            missing = "expected" if expected_path is None else "actual"
+            rows.append(
+                f"<tr class=missing><td>{name}</td><td colspan=3>missing in {missing}</td></tr>"
+            )
+            sections.append(f"<h2>{name}</h2><p class=missing>missing in {missing}</p>")
+            continue
+        try:
+            expected_width, expected_height, expected = decode_png(expected_path)
+            actual_width, actual_height, actual = decode_png(actual_path)
+        except (PngError, zlib.error) as error:
+            rows.append(f"<tr class=missing><td>{name}</td><td colspan=3>{error}</td></tr>")
+            continue
+        if (expected_width, expected_height) != (actual_width, actual_height):
+            rows.append(
+                f"<tr class=missing><td>{name}</td><td colspan=3>size "
+                f"{expected_width}x{expected_height} vs {actual_width}x{actual_height}</td></tr>"
+            )
+            sections.append(
+                f"<h2>{name}</h2><p class=missing>size "
+                f"{expected_width}x{expected_height} vs {actual_width}x{actual_height}</p>"
+            )
+            continue
+        mask, differing = difference(expected, actual, tolerance)
+        share = differing / (expected_width * expected_height)
+        worst = max(worst, share)
+        severity = "bad" if share > 0.03 else ("warn" if differing else "good")
+        rows.append(
+            f"<tr class={severity}><td>{name}</td><td>{expected_width}x{expected_height}</td>"
+            f"<td>{differing}</td><td>{share * 100:.2f}%</td></tr>"
+        )
+        sections.append(
+            f"<h2>{name}</h2>"
+            f"<p class={severity}>{differing} pixels ({share * 100:.2f}%) differ by more than "
+            f"{tolerance} in a channel.</p>"
+            '<div class=side>'
+            f'<figure><figcaption>expected</figcaption><img src="{data_uri(expected_path.read_bytes())}"></figure>'
+            f'<figure><figcaption>actual</figcaption><img src="{data_uri(actual_path.read_bytes())}"></figure>'
+            f'<figure><figcaption>difference</figcaption><img src="{data_uri(encode_png(expected_width, expected_height, mask))}"></figure>'
+            "</div>"
+        )
+    html = f"""<!doctype html>
+<meta charset="utf-8">
+<title>{title}</title>
+<style>
+  body {{ font: 14px/1.4 system-ui, sans-serif; margin: 24px; background: #14171c; color: #e6e6e6; }}
+  a, h1, h2 {{ color: inherit; }}
+  table {{ border-collapse: collapse; margin-bottom: 32px; }}
+  th, td {{ padding: 4px 10px; border-bottom: 1px solid #2c313a; text-align: left; }}
+  tr.good td {{ color: #7bd88f; }}
+  tr.warn td {{ color: #f0c674; }}
+  tr.bad td, .bad {{ color: #ff7b72; }}
+  .missing {{ color: #ff7b72; }}
+  .side {{ display: flex; gap: 12px; align-items: flex-start; overflow-x: auto; }}
+  figure {{ margin: 0; flex: 1 1 0; min-width: 320px; }}
+  figcaption {{ color: #9aa4b2; margin-bottom: 4px; }}
+  img {{ width: 100%; height: auto; image-rendering: auto; background: #000; border: 1px solid #2c313a; }}
+</style>
+<h1>{title}</h1>
+<p>Expected: <code>{expected_root}</code> &middot; actual: <code>{actual_root}</code> &middot;
+tolerance: {tolerance} per channel &middot; worst mismatch: {worst * 100:.2f}%.</p>
+<table>
+<tr><th>golden</th><th>size</th><th>differing pixels</th><th>share</th></tr>
+{''.join(rows)}
+</table>
+{''.join(sections)}
+"""
+    return html, int(worst * 10000)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("expected", type=Path, help="directory holding the committed references")
+    parser.add_argument("actual", type=Path, help="directory holding the freshly rendered PNGs")
+    parser.add_argument("--out", type=Path, default=Path("diff-report.html"))
+    parser.add_argument("--title", default="Raster golden review")
+    parser.add_argument(
+        "--tolerance", type=int, default=12, help="per-channel allowance (default: 12)"
+    )
+    args = parser.parse_args()
+    if not args.expected.is_dir() or not args.actual.is_dir():
+        parser.error("both directories must exist")
+    html, worst = build_report(args.expected, args.actual, args.tolerance, args.title)
+    args.out.parent.mkdir(parents=True, exist_ok=True)
+    args.out.write_text(html, encoding="utf-8")
+    print(f"{args.out} ({worst / 100:.2f}% worst mismatch)")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
