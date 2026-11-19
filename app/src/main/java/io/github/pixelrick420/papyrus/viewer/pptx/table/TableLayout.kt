@@ -49,14 +49,14 @@ internal object TableLayout {
             for (c in 0 until minOf(row.cells.size, colCount)) {
                 val cell = row.cells[c]
                 if (cell.horizontalMerge || cell.verticalMerge) continue
-                val body = cell.textBody?.let { resolver.resolve(it) } ?: cell.resolvedText ?: TextBody()
+                val body = (cell.textBody?.let { resolver.resolve(it) } ?: cell.resolvedText ?: TextBody()).withoutInsets()
                 cell.resolvedText = body
                 val spanCols = cell.gridSpan.coerceIn(1, colCount - c)
                 val spanRows = cell.rowSpan.coerceIn(1, rowCount - r)
                 val cellWidth = colOffsets[c + spanCols] - colOffsets[c]
                 val insets = cell.properties.margins
                 val contentWidth = (cellWidth - insets.left - insets.right).coerceAtLeast(0.0)
-                val layout = engine.layout(body, contentWidth)
+                val layout = engine.layout(body, contentWidth, ignoreFirstSpaceBefore = true)
                 cell.textLayout = layout
                 val contentHeight = layout.heightPt * EMU_PER_POINT + insets.top + insets.bottom
                 if (spanRows == 1) {

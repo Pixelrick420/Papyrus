@@ -24,6 +24,7 @@ internal class TextLayoutEngine(
         frameWidthEmu: Double,
         frameHeightEmu: Double? = null,
         shape: TextShapeTransform = TextShapeTransform.NONE,
+        ignoreFirstSpaceBefore: Boolean = false,
     ): TextFrameLayout {
         val properties = body.properties
         val vertical = properties.vertical.isVertical
@@ -61,6 +62,7 @@ internal class TextLayoutEngine(
                 autofit = autofit,
                 topPt = heightPt,
                 lines = lines,
+                ignoreFirstSpaceBefore = ignoreFirstSpaceBefore,
             )
         }
         val layoutHeightPt = layoutHeightEmu?.let {
@@ -339,6 +341,7 @@ internal class TextLayoutEngine(
         autofit: AutofitScale,
         topPt: Double,
         lines: MutableList<TextLine>,
+        ignoreFirstSpaceBefore: Boolean,
     ): Double {
         val text = shaper.flatten(paragraph)
         val runs = shaper.shape(text, paragraph.properties.rightToLeft, autofit, measurer::hasGlyph)
@@ -391,7 +394,7 @@ internal class TextLayoutEngine(
                 font = font?.let { measurer.metrics(it, sizePt.toFloat()).emBox(sizePt) }
                     ?: FontEmBox.FALLBACK,
             )
-            if (lineIndex == 0) {
+            if (lineIndex == 0 && !(index == 0 && ignoreFirstSpaceBefore)) {
                 top += lineMetrics.spaceBefore(sizePt, paragraph.properties.spaceBefore)
             }
             lines += positioned(

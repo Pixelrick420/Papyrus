@@ -17,15 +17,11 @@ internal class TabStops(
         .map { ResolvedTab(it.positionEmu / TextLayoutEngine.EMU_PER_POINT, it.alignment) }
         .sortedBy { it.positionPt }
 
-    /** The next stop after [xPt]: a custom stop when it comes first, else the next default pitch. */
+    /** The next stop after [xPt]: the next custom stop if one remains, else the next default pitch. */
     fun stopAt(xPt: Double): ResolvedTab {
-        val nextPitch = (floor(xPt / pitchPt) + 1.0) * pitchPt
         val nextCustom = custom.firstOrNull { it.positionPt > xPt }
-        return if (nextCustom != null && nextCustom.positionPt <= nextPitch) {
-            nextCustom
-        } else {
-            ResolvedTab(nextPitch, TextTabAlignment.LEFT)
-        }
+        if (nextCustom != null) return nextCustom
+        return ResolvedTab((floor(xPt / pitchPt) + 1.0) * pitchPt, TextTabAlignment.LEFT)
     }
 
     companion object {

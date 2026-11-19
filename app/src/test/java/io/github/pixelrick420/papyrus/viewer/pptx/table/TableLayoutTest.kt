@@ -4,10 +4,13 @@ import io.github.pixelrick420.papyrus.viewer.pptx.ScenePaint
 import io.github.pixelrick420.papyrus.viewer.pptx.text.BlockMeasurer
 import io.github.pixelrick420.papyrus.viewer.pptx.text.LineBreaker
 import io.github.pixelrick420.papyrus.viewer.pptx.text.TextBody
+import io.github.pixelrick420.papyrus.viewer.pptx.text.TextInsets
 import io.github.pixelrick420.papyrus.viewer.pptx.text.TextLayoutEngine
 import io.github.pixelrick420.papyrus.viewer.pptx.text.TextParagraph
+import io.github.pixelrick420.papyrus.viewer.pptx.text.TextParagraphProperties
 import io.github.pixelrick420.papyrus.viewer.pptx.text.TextRun
 import io.github.pixelrick420.papyrus.viewer.pptx.text.TextRunProperties
+import io.github.pixelrick420.papyrus.viewer.pptx.text.TextSpacing
 import io.github.pixelrick420.papyrus.viewer.pptx.text.TextStyleResolver
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -54,6 +57,58 @@ class TableLayoutTest {
         val middle = verticals.filter { kotlin.math.abs(it.x1 - 1000.0) < 0.001 }
         assertEquals(1, middle.size)
         assertEquals(12700.0, middle.single().border.widthEmu, 0.001)
+    }
+
+    @Test
+    fun `cell text keeps only one set of insets`() {
+        val cell = TableCell(textBody = null).apply {
+            resolvedText = TextBody(paragraphs = listOf(TextParagraph()))
+        }
+        val table = PptxTable(
+            grid = TableGrid(listOf(500_000.0)),
+            rows = listOf(TableRow(100_000.0, listOf(cell))),
+        )
+        val engine = TextLayoutEngine(BlockMeasurer(), breaker = simpleBreaker())
+        layoutDirect(table, engine)
+
+        assertEquals(TextInsets.ZERO, cell.resolvedText!!.properties.insets)
+        val origin = TableLayout.cellTextOrigin(
+            cell,
+            cell.resolvedText!!,
+            table.layout!!.cellFrames.values.single(),
+            cell.textLayout!!,
+        )
+        assertEquals(TableInsets().left, origin.x, 0.001)
+        assertEquals(TableInsets().top, origin.y, 0.001)
+    }
+
+    @Test
+    fun `first paragraph space before is ignored in a cell`() {
+        fun layoutWith(spaceBefore: TextSpacing?): Double {
+            val body = TextBody(
+                paragraphs = listOf(
+                    TextParagraph(
+                        runs = listOf(TextRun.Text("x", TextRunProperties(sizePt = 12.0))),
+                        endProperties = TextRunProperties(sizePt = 12.0),
+                        properties = TextParagraphProperties(
+                            spaceBefore = spaceBefore,
+                        ),
+                    ),
+                ),
+            )
+            val table = PptxTable(
+                grid = TableGrid(listOf(500_000.0)),
+                rows = listOf(TableRow(100_000.0, listOf(TableCell(textBody = null).apply { resolvedText = body }))),
+            )
+            layoutDirect(table, TextLayoutEngine(BlockMeasurer(), breaker = simpleBreaker()))
+            return table.rows.single().cells.single().textLayout!!.heightPt
+        }
+
+        assertEquals(
+            layoutWith(null),
+            layoutWith(TextSpacing(points = 12.0)),
+            0.001,
+        )
     }
 
     private fun layoutDirect(table: PptxTable, engine: TextLayoutEngine) {

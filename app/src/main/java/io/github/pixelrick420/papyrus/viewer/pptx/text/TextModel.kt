@@ -10,7 +10,15 @@ internal class TextBody(
     val paragraphs: List<TextParagraph> = emptyList(),
     /** True when the paragraph or character limits cut stored text out of the body. */
     val truncated: Boolean = false,
-)
+) {
+
+    /** Table cells own their insets through `a:tcMar`, so `bodyPr` insets must not apply a second time. */
+    fun withoutInsets(): TextBody = TextBody(
+        properties = properties.copy(insets = TextInsets.ZERO),
+        paragraphs = paragraphs,
+        truncated = truncated,
+    )
+}
 
 /** The `bodyPr` insets in EMU. */
 internal data class TextInsets(val left: Double, val top: Double, val right: Double, val bottom: Double) {
@@ -18,6 +26,8 @@ internal data class TextInsets(val left: Double, val top: Double, val right: Dou
     companion object {
         /** PowerPoint's own `bodyPr` defaults: 0.1 in horizontally, 0.05 in vertically. */
         val DEFAULT = TextInsets(91_440.0, 45_720.0, 91_440.0, 45_720.0)
+
+        val ZERO = TextInsets(0.0, 0.0, 0.0, 0.0)
     }
 }
 
@@ -67,7 +77,7 @@ internal sealed interface TextAutofit {
     object Shape : TextAutofit
 }
 
-internal class TextBodyProperties(
+internal data class TextBodyProperties(
     val insets: TextInsets = TextInsets.DEFAULT,
     val anchor: TextAnchor = TextAnchor.TOP,
     val anchorCenter: Boolean = false,
