@@ -17,10 +17,6 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Pixelrick420/Papyrus/releases/latest"><b>Download the latest APK</b></a>
-</p>
-
-<p align="center">
   <a href="#screenshots">Screenshots</a> ·
   <a href="#formats">Formats</a> ·
   <a href="#features">Features</a> ·
@@ -56,7 +52,7 @@
 | **PowerPoint**    | Slides from PPTX, PPTM, POTX, POTM, PPSX and PPSM                                                             |
 | **Markdown**      | Tables, task lists, maths, footnotes, autolinks, coloured code fences, `data:` URI images                     |
 | **Text / Logs**   | Fixed-size chunks, selectable text, optional line numbers, no-wrap mode, hyphenated prose                     |
-| **Code / Config** | The same text pipeline, with syntax colour for many languages, found by name or by content                    |
+| **Code / Conf**   | The same text pipeline, with syntax colour for many languages, found by name or by content                    |
 | **CSV / TSV**     | A header row in bold, wrapping cells, sideways scroll for wide tables                                         |
 
 The format comes from the file extension first, then the MIME type, then a short content sniff. Text encodings are
