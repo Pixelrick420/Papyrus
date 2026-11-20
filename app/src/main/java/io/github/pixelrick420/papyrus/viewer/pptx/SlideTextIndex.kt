@@ -112,6 +112,12 @@ internal class SlideTextIndex(
             return SlideTextIndex(pages, links, semantics, titles)
         }
 
+        /** Legacy extractor output, promoted to the same index shape when no layout engine is available. */
+        fun fromTexts(texts: List<String>): SlideTextIndex = SlideTextIndex(
+            pages = texts.map { PdfPageText(it, FloatArray(0)) },
+            titles = texts.map { text -> text.lineSequence().firstOrNull { it.isNotBlank() }?.trim().orEmpty() },
+        )
+
         /** The text find-in-file sees, page by page, so the search index and the screen never disagree. */
         fun indexPages(
             open: () -> InputStream,

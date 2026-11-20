@@ -8,8 +8,6 @@ import io.github.pixelrick420.papyrus.viewer.PdfPageLink
 import io.github.pixelrick420.papyrus.viewer.pptx.text.FontChoice
 import io.github.pixelrick420.papyrus.viewer.pptx.text.FontSubstitution
 import java.io.File
-import java.io.FileNotFoundException
-import java.io.InputStream
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -33,9 +31,7 @@ internal object SlideDeckLoader {
     suspend fun load(context: Context, uri: Uri): SlideDeck = withContext(Dispatchers.IO) {
         val source = SlidePageSource.open(context, uri, buildTextIndex = false, labels = pictureLabels(context))
         try {
-            build(context, source) {
-                context.contentResolver.openInputStream(uri) ?: throw FileNotFoundException(uri.toString())
-            }
+            build(context, source)
         } catch (e: Exception) {
             source.close()
             throw e
@@ -46,26 +42,17 @@ internal object SlideDeckLoader {
     suspend fun loadFile(context: Context, file: File): SlideDeck = withContext(Dispatchers.IO) {
         val source = SlidePageSource.openFile(context, file, buildTextIndex = false, labels = pictureLabels(context))
         try {
-            build(context, source) { file.inputStream() }
+            build(context, source)
         } catch (e: Exception) {
             source.close()
             throw e
         }
     }
 
-    private suspend fun build(
-        context: Context,
-        source: SlidePageSource,
-        openStream: () -> InputStream,
-    ): SlideDeck {
+    private suspend fun build(context: Context, source: SlidePageSource): SlideDeck {
         val aspectRatios = recoverSuspend(emptyList<Float>()) { source.loadAspectRatios() }
-        source.ensureHidden()
         val textIndex = source.textIndex
-        val texts = if (textIndex.pages.isNotEmpty()) {
-            textIndex.pages.map { it.text }
-        } else {
-            recover(emptyList()) { SlideTextExtractor().extract(openStream) }
-        }
+        val texts = textIndex.pages.map { it.text }
         val titles = textIndex.titles.takeIf { it.size == texts.size && it.any { name -> name.isNotBlank() } }
             ?: texts.map { text -> text.lineSequence().firstOrNull { it.isNotBlank() }?.trim().orEmpty() }
         val info = source.presentationInfo

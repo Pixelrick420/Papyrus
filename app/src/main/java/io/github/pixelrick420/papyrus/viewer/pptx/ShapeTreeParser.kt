@@ -62,6 +62,22 @@ internal class ShapeTreeParser(
         return (related + declared).distinctBy { it.lowercase() }
     }
 
+    /** Reads only each slide's root tag, so hidden badges do not wait for the full text index. */
+    fun hiddenSlides(pkg: PptxPackage, parts: List<String>): Set<Int> = buildSet {
+        parts.forEachIndexed { index, part ->
+            val bytes = pkg.part(part) ?: return@forEachIndexed
+            if (recover(false) {
+                    val cursor = reader.open(bytes.inputStream(), part)
+                    while (cursor.next() != XmlPullParser.END_DOCUMENT) {
+                        if (cursor.eventType == XmlPullParser.START_TAG) {
+                            return@recover cursor.name.matches(OoxmlNamespace.P, "sld") && isOff(cursor.attribute("show"))
+                        }
+                    }
+                    false
+                }) add(index)
+        }
+    }
+
     private companion object {
         const val SLIDE_TYPE = "application/vnd.openxmlformats-officedocument.presentationml.slide+xml"
     }

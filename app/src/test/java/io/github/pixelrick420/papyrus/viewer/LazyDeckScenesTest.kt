@@ -26,6 +26,15 @@ class LazyDeckScenesTest {
     }
 
     @Test
+    fun `hidden slides are known before resolving and survive a clear`() {
+        val scenes = provider(deck())
+
+        assertEquals(setOf(1), scenes.hiddenSnapshot)
+        scenes.clear()
+        assertEquals(setOf(1), scenes.hiddenSnapshot)
+    }
+
+    @Test
     fun `trimming evicts cached scenes without changing the deck`() {
         val scenes = provider(deck())
 

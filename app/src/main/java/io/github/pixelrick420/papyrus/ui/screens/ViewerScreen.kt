@@ -14,6 +14,7 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -66,6 +67,7 @@ import androidx.compose.ui.input.key.isCtrlPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -240,7 +242,8 @@ fun ViewerScreen(
 
     // Held here (not in [PdfViewer]) so the header's Copy can reach it; keyed on the source.
     val selectionSource = (state.content as? ViewerContent.Pdf)?.source ?: (state.content as? ViewerContent.Slides)?.source
-    val selectionState = remember(selectionSource) {
+    val slidePages = (state.content as? ViewerContent.Slides)?.slidePages
+    val selectionState = remember(selectionSource, slidePages) {
         PdfSelectionState(
             scope = selectionScope,
             loadText = viewModel::pageText,
@@ -522,7 +525,19 @@ fun ViewerScreen(
             ) {
                 CompositionLocalProvider(LocalLinkOpener provides followLink, LocalBookLinkOpener provides followBookLink) {
                     when (val content = state.content) {
-                        ViewerContent.Loading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
+                        ViewerContent.Loading -> {
+                            val thumbnail = state.loadingThumbnail
+                            if (thumbnail != null) {
+                                Image(
+                                    bitmap = thumbnail,
+                                    contentDescription = null,
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentScale = ContentScale.Fit,
+                                )
+                            } else {
+                                CircularProgressIndicator(Modifier.align(Alignment.Center))
+                            }
+                        }
                         is ViewerContent.Pdf -> PdfViewer(
                             source = content.source,
                             aspectRatios = content.aspectRatios,

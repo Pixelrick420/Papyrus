@@ -12,6 +12,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import io.github.pixelrick420.papyrus.MainApplication
 import io.github.pixelrick420.papyrus.R
 import io.github.pixelrick420.papyrus.data.AppSettings
@@ -68,6 +70,8 @@ import io.github.pixelrick420.papyrus.viewer.PdfFormField
 import io.github.pixelrick420.papyrus.viewer.PdfPageSource
 import io.github.pixelrick420.papyrus.viewer.pptx.SlideDeck
 import io.github.pixelrick420.papyrus.viewer.pptx.SlideDeckLoader
+import io.github.pixelrick420.papyrus.viewer.pptx.SlidePageSource
+import io.github.pixelrick420.papyrus.viewer.pptx.slideOutline
 import io.github.pixelrick420.papyrus.viewer.PdfPageText
 import io.github.pixelrick420.papyrus.viewer.PdfPageLink
 import io.github.pixelrick420.papyrus.viewer.LatexSpanFactory
@@ -252,6 +256,7 @@ private fun List<Int>.firstIndexOf(value: Int): Int {
 data class ViewerUiState(
     val document: DocumentEntity? = null,
     val content: ViewerContent = ViewerContent.Loading,
+    val loadingThumbnail: ImageBitmap? = null,
     val find: FindState = FindState(),
     val arrival: ArrivalHighlight? = null,
     /** Raised instead of an error, so the content on screen survives the lost grant. */
@@ -418,6 +423,8 @@ class ViewerViewModel(
 
     private var saveJob: Job? = null
 
+    private var slideIndexJob: Job? = null
+
     /** One writer, in order, that outlives this ViewModel: the last position is still written after
      * the viewer closes. Conflated, because only the newest position matters. */
     private val outbox = Channel<Pair<Long, PositionSample>>(Channel.CONFLATED)
@@ -449,6 +456,7 @@ class ViewerViewModel(
         // previous load is stale: drop the extracted find text and the decrypted copy.
         pdfPageText = null
         findBudgetWarned = false
+        slideIndexJob?.cancel()
         val previous = _state.value.content
         var previousClosed = false
         fun closePrevious() {
@@ -479,6 +487,7 @@ class ViewerViewModel(
             replaceContent(
                 ViewerUiState(
                     document = doc,
+                    loadingThumbnail = app.thumbnailLoader.cached(doc)?.asImageBitmap(),
                     canSaveToLibrary = if (isCrashReport) false else doc.id < 0,
                     encodingOverride = encodingName,
                     restore = restore,
@@ -487,7 +496,8 @@ class ViewerViewModel(
             )
             repository.markOpened(doc.id)
             val content = loadContentSafely(doc)
-            _state.update { it.copy(content = content) }
+            _state.update { it.copy(content = content, loadingThumbnail = null) }
+            if (content is ViewerContent.Slides) collectSlideIndex(content)
             loadSpeakableText(content, doc)
             loadPdfOutline()
             loadPdfForm()
@@ -589,6 +599,38 @@ class ViewerViewModel(
                     ?.takeIf { it.state == TextIndexState.INDEXED }
                     ?.let { it.charCount > 0 }
                 _state.update { if (it.document?.id == document.id) it.copy(speakableText = speakable) else it }
+            }
+        }
+    }
+
+    private fun collectSlideIndex(slides: ViewerContent.Slides) {
+        val source = slides.source as SlidePageSource
+        val initial = source.textIndex
+        slideIndexJob?.cancel()
+        slideIndexJob = viewModelScope.launch {
+            source.textIndexFlow.collect { index ->
+                if (index === initial || index.pages.isEmpty()) return@collect
+                _state.update { current ->
+                    val shown = current.content as? ViewerContent.Slides ?: return@update current
+                    if (shown.source !== source) return@update current
+                    val updated = shown.copy(
+                        slidePages = index.pages,
+                        links = index.links,
+                        semanticTexts = index.semanticTexts,
+                        titles = index.titles,
+                        hidden = source.hidden,
+                        incomplete = source.isIncomplete(),
+                        outline = slideOutline(source.presentationInfo, index.titles) { i ->
+                            app.getString(R.string.viewer_outline_slide, i + 1)
+                        },
+                    )
+                    val query = current.find.query.takeIf { it.isNotBlank() }
+                    val find = if (query == null) current.find else {
+                        val result = findSlidePages(updated.slidePages, query, updated.hidden)
+                        current.find.withSearched(query, result.hits, result.occurrences, result.pageMatches)
+                    }
+                    current.copy(content = updated, find = find, speakableText = updated.hasSpeakableText())
+                }
             }
         }
     }
@@ -1248,7 +1290,8 @@ class ViewerViewModel(
             } catch (e: Exception) {
                 failureFor(e)
             }
-            _state.update { it.copy(content = content) }
+            _state.update { it.copy(content = content, loadingThumbnail = null) }
+            if (content is ViewerContent.Slides) collectSlideIndex(content)
             loadSpeakableText(content, doc)
             loadPdfOutline()
             loadPdfForm()
@@ -1286,6 +1329,7 @@ class ViewerViewModel(
             val previous = _state.value.content
             val reloaded = loadContentSafely(doc)
             _state.update { it.copy(content = reloaded, speakableText = reloaded.hasSpeakableText() ?: it.speakableText) }
+            if (reloaded is ViewerContent.Slides) collectSlideIndex(reloaded)
             if (reloaded !== previous) previous.closePageSource()
             val query = _state.value.find.query
             if (query.isNotBlank()) updateFindQuery(query)

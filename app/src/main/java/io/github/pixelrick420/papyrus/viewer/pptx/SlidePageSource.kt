@@ -69,11 +69,13 @@ internal class SlidePageSource private constructor(
     private val placeholderLabels: PictureLabels = PictureLabels.Default,
 ) : PageBitmapSource {
 
-    private val textIndexFlow = MutableStateFlow(SlideTextIndex(emptyList()))
+    private val _textIndexFlow = MutableStateFlow(SlideTextIndex(emptyList()))
 
-    val textIndex: SlideTextIndex get() = textIndexFlow.value
+    val textIndexFlow: StateFlow<SlideTextIndex> = _textIndexFlow.asStateFlow()
 
-    /** Grows as the deferred index parses slides; complete after [awaitTextIndex]. */
+    val textIndex: SlideTextIndex get() = _textIndexFlow.value
+
+    /** Seeded from each slide's root tag, so hidden badges do not wait for the full index. */
     val hidden: Set<Int> get() = scenes.hiddenSnapshot
 
     private val textIndexScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -81,21 +83,11 @@ internal class SlidePageSource private constructor(
     private var textIndexJob: Job? = null
 
     fun setTextIndex(index: SlideTextIndex) {
-        textIndexFlow.value = index
+        _textIndexFlow.value = index
     }
 
     fun startTextIndexBuild(build: (check: () -> Unit) -> SlideTextIndex) {
-        textIndexJob = textIndexScope.launchTextIndexBuild(build) { textIndexFlow.value = it }
-    }
-
-    suspend fun awaitTextIndex() {
-        textIndexJob?.join()
-        textIndexJob = null
-    }
-
-    suspend fun ensureHidden() {
-        awaitTextIndex()
-        if (textIndex.pages.isEmpty()) kotlinx.coroutines.withContext(Dispatchers.IO) { scenes.ensureAllParsed() }
+        textIndexJob = textIndexScope.launchTextIndexBuild(build) { _textIndexFlow.value = it }
     }
 
     override val pageCount: Int = scenes.count
@@ -467,9 +459,9 @@ internal class SlidePageSource private constructor(
                 fontSubstitution = substitution,
                 placeholderLabels = labels,
             )
-            if (engine != null) {
-                val build: (check: () -> Unit) -> SlideTextIndex = { check ->
-                    recover(SlideTextIndex(emptyList())) {
+            val build: (check: () -> Unit) -> SlideTextIndex = { check ->
+                recover(SlideTextIndex(emptyList())) {
+                    val built = if (engine != null) {
                         SlideTextIndex.fromDeck(
                             pkg,
                             presentation,
@@ -480,10 +472,14 @@ internal class SlidePageSource private constructor(
                             check,
                             limits,
                         )
-                    }
+                    } else SlideTextIndex(emptyList())
+                    if (built.pages.isEmpty() && scenes.count > 0) {
+                        check()
+                        SlideTextIndex.fromTexts(SlideTextExtractor(newParserFactory, limits).extract(open))
+                    } else built
                 }
-                if (buildTextIndex) source.setTextIndex(build { ensureActive() }) else source.startTextIndexBuild(build)
             }
+            if (buildTextIndex) source.setTextIndex(build { ensureActive() }) else source.startTextIndexBuild(build)
             source.also { synchronized(openSources) { openSources.add(it) } }
         }
 

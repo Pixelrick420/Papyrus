@@ -45,6 +45,7 @@ internal class StyleResolver(
         return LazyDeckScenes(
             count = parts.size,
             size = size,
+            initialHidden = shapes.hiddenSlides(pkg, parts),
             factory = { index ->
                 val part = parts[index]
                 val scene = slide(pkg, part, size, presentation.firstSlideNumber + index, templates)
@@ -940,6 +941,7 @@ internal class LazyDeckScenes internal constructor(
     val size: SceneSize,
     private val factory: (Int) -> SlideScene,
     private val capacity: Int = DEFAULT_CAPACITY,
+    private val initialHidden: Set<Int> = emptySet(),
 ) {
 
     private val cache = object : LinkedHashMap<Int, SlideScene>(capacity, LOAD_FACTOR, true) {
@@ -948,7 +950,7 @@ internal class LazyDeckScenes internal constructor(
 
     private val sawIncomplete = java.util.concurrent.atomic.AtomicBoolean(false)
 
-    private val hiddenSet = java.util.concurrent.ConcurrentHashMap.newKeySet<Int>()
+    private val hiddenSet = java.util.concurrent.ConcurrentHashMap.newKeySet<Int>().apply { addAll(initialHidden) }
 
     private val parsed = java.util.concurrent.ConcurrentHashMap.newKeySet<Int>()
 
@@ -996,6 +998,7 @@ internal class LazyDeckScenes internal constructor(
         cache.clear()
         parsed.clear()
         hiddenSet.clear()
+        hiddenSet.addAll(initialHidden)
     }
 
     private companion object {

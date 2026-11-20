@@ -294,6 +294,19 @@ class ShapeTreeParserTest {
     }
 
     @Test
+    fun `hidden slides are found from root tags without resolving scenes`() {
+        val pkg = read(pptx {
+            slide { shape(Preset.RECT, 0, 0, 1, 1) }
+            slide(hidden = true) { shape(Preset.RECT, 0, 0, 1, 1) }
+        })
+        val presentation = PresentationParser(OfficeFixtures::parser).parse(pkg.part(pkg.mainPart)!!)
+        val parser = ShapeTreeParser(OfficeFixtures::parser)
+        val parts = parser.parts(pkg, presentation)
+
+        assertEquals(setOf(1), parser.hiddenSlides(pkg, parts))
+    }
+
+    @Test
     fun `transitions and timing add no nodes`() {
         val tail = """<p:transition><p:fade/></p:transition>""" +
             """<p:timing><p:tnLst><p:par><p:cTn id="1"/></p:par></p:tnLst></p:timing>"""
