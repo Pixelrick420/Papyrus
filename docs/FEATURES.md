@@ -59,7 +59,8 @@ describe at length than in a landing page.
   headphones are unplugged; a short interruption resumes on its own. Play/pause, skip, lock, speed and stop are on the
   bar. It is offered only when the document has selectable text; a document with nothing speakable hides it.
 - **Zoom** with a pinch or a double-tap, across a bounded range.
-- **Links** open on tap for `http`, `https`, `mailto` and `tel`. A PDF's internal link scrolls to its page.
+- **Links** open on tap for `http`, `https`, `mailto` and `tel`. A PDF's internal link scrolls to its page. Each PDF
+  link is also a labelled focus stop for TalkBack, Switch Access and a keyboard; slide links stay tap-only.
 
 ## PowerPoint
 
@@ -102,7 +103,8 @@ up hides other apps otherwise.
   its images. A zip-slip entry, an oversized archive or a decompression bomb fails the book, not the app, and DRM is
   refused. Word and OpenDocument files are ZIPs too and are read under the same limits on entries, size and
   compression ratio.
-- **Crash reports** are JSON files in app storage, written by ACRA. Nothing leaves the device.
+- **Crash reports** are JSON files in app storage, written by ACRA. Nothing leaves the device, and document paths,
+  content URIs and storage locations are redacted before a report is saved.
 - **Highlights and notes** stay in Papyrus's private database, are removed with the document, and are never written
   into your file unless you save a copy. A saved copy carries plain highlights only; notes are not exported.
 

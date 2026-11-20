@@ -87,20 +87,6 @@ jobs:
           path: web/build/
           retention-days: 7
 
-  notify:
-    name: Notify PR
-    runs-on: ubuntu-latest
-    needs: [lint-and-typecheck, build]
-    if: always() && github.event_name == 'pull_request'
-    steps:
-      - name: Check results
-        run: |
-          if [ "${{ needs.lint-and-typecheck.result }}" != "success" ] || [ "${{ needs.build.result }}" != "success" ]; then
-            echo "Some checks failed"
-            exit 1
-          fi
-          echo "All checks passed"
-
 concurrency:
   group: web-${{ github.ref }}
   cancel-in-progress: true

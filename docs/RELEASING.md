@@ -12,7 +12,8 @@ Releases are cut from `main` by the `build` workflow in `.github/workflows/build
   [Releases](https://github.com/Pixelrick420/Papyrus/releases). It does not run the emulator suite, which belongs to
   the `main` push, and it refuses a tag that is not on `main`.
 - The tag must match `versionName` in `app/build.gradle.kts`, and `versionCode` must exceed the previous release tag's,
-  since that value alone orders the upgrades.
+  since that value alone orders the upgrades. Upgrading a 2.1 install keeps its library: Room migrates the database
+  from version 1 to 2 on first open, adding the outline cache's modified-time column.
 - The job fails if any APK comes out unsigned or carries the Android debug certificate.
 - Signing uses a release keystore supplied from repository secrets, never committed to the repo. The job stops early
   if any of those secrets is missing rather than publishing an APK no one can upgrade to.

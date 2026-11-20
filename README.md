@@ -102,7 +102,8 @@ enforced by `AccessibilitySemanticsTest` are in [ACCESSIBILITY.md](ACCESSIBILITY
 ### Privacy
 
 Papyrus declares no network permission and sends nothing off the device; its index, highlights, notes and crash logs
-stay in app storage. The full policy is [PRIVACY_POLICY.md](PRIVACY_POLICY.md).
+stay in app storage, and document paths are redacted from crash reports. The full policy is
+[PRIVACY_POLICY.md](PRIVACY_POLICY.md).
 
 Detailed feature notes are in [docs/FEATURES.md](docs/FEATURES.md) and every setting in
 [docs/SETTINGS.md](docs/SETTINGS.md).

@@ -1,0 +1,61 @@
+name: Set up Android SDK and NDK
+description: Installs the pinned Android SDK platform, build tools and NDK, with an NDK cache.
+
+inputs:
+  extra-packages:
+    description: Additional SDK packages to install, one per line.
+    required: false
+    default: ''
+  align-command-line-tools:
+    description: Replace the runner's stale cmdline-tools/latest link with the copy setup-android installed.
+    required: false
+    default: 'false'
+
+runs:
+  using: composite
+  steps:
+    - name: Set up the Android SDK
+      uses: android-actions/setup-android@v4
+      with:
+        accept-android-sdk-licenses: false
+        packages: ""
+
+    - name: Resolve pinned NDK version
+      id: ndk
+      shell: bash
+      run: echo "version=$(grep -oP 'ndkVersion\s*=\s*"\K[^"]+' app/build.gradle.kts | head -1)" >> "$GITHUB_OUTPUT"
+
+    - name: Cache NDK
+      uses: actions/cache@v6
+      with:
+        path: ${{ env.ANDROID_SDK_ROOT }}/ndk/${{ steps.ndk.outputs.version }}
+        key: ndk-${{ runner.os }}-${{ steps.ndk.outputs.version }}
+
+    - name: Align preinstalled command-line tools
+      if: inputs.align-command-line-tools == 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        tools="$ANDROID_HOME/cmdline-tools"
+        active="$(dirname "$(dirname "$(command -v sdkmanager)")")"
+        if [ "$active" != "$tools/latest" ]; then
+          rm -rf "$tools/latest"
+          ln -s "$active" "$tools/latest"
+        fi
+
+    - name: Install SDK packages
+      env:
+        NDK_VERSION: ${{ steps.ndk.outputs.version }}
+        EXTRA_PACKAGES: ${{ inputs.extra-packages }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        android sdk install platform-tools build-tools/36.0.0
+        android sdk install "ndk/$NDK_VERSION"
+        android sdk install platforms/android-37
+        if [ -n "$EXTRA_PACKAGES" ]; then
+          while IFS= read -r package; do
+            [ -z "$package" ] && continue
+            android sdk install "$package"
+          done <<< "$EXTRA_PACKAGES"
+        fi

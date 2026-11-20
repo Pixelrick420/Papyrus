@@ -39,9 +39,7 @@ potential-bugs:
 
 exceptions:
   active: true
-  # Baselined (see baseline.xml) rather than switched off, so findings stay visible; all are deliberate or false positives
-  # (cleanup-and-rethrow, a generic catch after specific ones, a thumbnail that must not crash the app).
-  # Consequence: NEW occurrences do not fail the build either. Delete baseline.xml to change that.
+  # Deliberate catches carry a local @Suppress; a baseline entry would also cover new catches with the same signature.
   TooGenericExceptionCaught:
     active: true
     allowedExceptionNameRegex: '_|(ignore|expected).*'

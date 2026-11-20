@@ -29,28 +29,8 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v5
 
-      - name: Set up the Android SDK
-        uses: android-actions/setup-android@v4
-        with:
-          accept-android-sdk-licenses: false
-          packages: ""
-
-      - name: Resolve pinned NDK version
-        id: ndk
-        run: echo "version=$(grep -oP 'ndkVersion\s*=\s*"\K[^"]+' app/build.gradle.kts | head -1)" >> "$GITHUB_OUTPUT"
-
-      - name: Cache NDK
-        uses: actions/cache@v6
-        with:
-          path: ${{ env.ANDROID_SDK_ROOT }}/ndk/${{ steps.ndk.outputs.version }}
-          key: ndk-${{ runner.os }}-${{ steps.ndk.outputs.version }}
-
-      - name: Install SDK packages
-        run: |
-          android sdk install platform-tools build-tools/36.0.0
-          android sdk install "ndk/${{ steps.ndk.outputs.version }}"
-          # android-37 lives in Google's newer index; it is preinstalled, so its install failure is harmless.
-          android sdk install platforms/android-37 || echo "optional android-37 install failed" >&2
+      - name: Set up Android SDK and NDK
+        uses: ./.github/actions/setup-android
 
       - name: Check
         run: ./gradlew --no-daemon check
@@ -97,41 +77,13 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v5
 
-      - name: Set up the Android SDK
-        uses: android-actions/setup-android@v4
+      - name: Set up Android SDK and NDK
+        uses: ./.github/actions/setup-android
         with:
-          accept-android-sdk-licenses: false
-          packages: ""
-
-      - name: Resolve pinned NDK version
-        id: ndk
-        run: echo "version=$(grep -oP 'ndkVersion\s*=\s*"\K[^"]+' app/build.gradle.kts | head -1)" >> "$GITHUB_OUTPUT"
-
-      - name: Cache NDK
-        uses: actions/cache@v6
-        with:
-          path: ${{ env.ANDROID_SDK_ROOT }}/ndk/${{ steps.ndk.outputs.version }}
-          key: ndk-${{ runner.os }}-${{ steps.ndk.outputs.version }}
-
-      - name: Align preinstalled command-line tools
-        # Runner's cmdline-tools/latest predates SDK XML v4; point it at the copy setup-android installed.
-        run: |
-          set -euo pipefail
-          tools="$ANDROID_HOME/cmdline-tools"
-          active="$(dirname "$(dirname "$(command -v sdkmanager)")")"
-          if [ "$active" != "$tools/latest" ]; then
-            rm -rf "$tools/latest"
-            ln -s "$active" "$tools/latest"
-          fi
-
-      - name: Install SDK packages
-        run: |
-          android sdk install platform-tools build-tools/36.0.0
-          android sdk install "ndk/${{ steps.ndk.outputs.version }}"
-          android sdk install "system-images;android-34;google_apis;x86_64"
-          android sdk install emulator
-          # android-37 lives in Google's newer index; it is preinstalled, so its install failure is harmless.
-          android sdk install platforms/android-37 || echo "optional android-37 install failed" >&2
+          align-command-line-tools: 'true'
+          extra-packages: |
+            system-images;android-34;google_apis;x86_64
+            emulator
 
       - name: Enable KVM
         # Runner exposes /dev/kvm without group permissions; otherwise the emulator falls back to software.
@@ -216,28 +168,8 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v5
 
-      - name: Set up the Android SDK
-        uses: android-actions/setup-android@v4
-        with:
-          accept-android-sdk-licenses: false
-          packages: ""
-
-      - name: Resolve pinned NDK version
-        id: ndk
-        run: echo "version=$(grep -oP 'ndkVersion\s*=\s*"\K[^"]+' app/build.gradle.kts | head -1)" >> "$GITHUB_OUTPUT"
-
-      - name: Cache NDK
-        uses: actions/cache@v6
-        with:
-          path: ${{ env.ANDROID_SDK_ROOT }}/ndk/${{ steps.ndk.outputs.version }}
-          key: ndk-${{ runner.os }}-${{ steps.ndk.outputs.version }}
-
-      - name: Install SDK packages
-        run: |
-          android sdk install platform-tools build-tools/36.0.0
-          android sdk install "ndk/${{ steps.ndk.outputs.version }}"
-          # android-37 lives in Google's newer index; it is preinstalled, so its install failure is harmless.
-          android sdk install platforms/android-37 || echo "optional android-37 install failed" >&2
+      - name: Set up Android SDK and NDK
+        uses: ./.github/actions/setup-android
 
       - name: Unit tests
         run: ./gradlew --no-daemon testDebugUnitTest

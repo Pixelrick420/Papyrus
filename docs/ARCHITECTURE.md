@@ -38,13 +38,14 @@ and MIME type are read live, so they are not stored.
 
 Alongside `documents` sit the tables that hang off it: `reading_progress` (one position per document), `bookmarks`,
 `highlights` (a row per highlighted run, with its boxes on the page and an optional kind and note), `pdf_outlines` (a
-cache keyed by the file's size and the outline reader's cache version), and the content index: `document_text`, holding
+cache keyed by the file's size, its modified time and the outline reader's cache version), and the content index: `document_text`, holding
 each document's extracted text, its index state and the modified time the provider gave when the text was read, plus
 `document_text_fts`, an FTS4 table that stores only the inverted index so no text is kept twice. Each child references
 `documents(id)` with `ON DELETE CASCADE`, so deleting a document removes its rows. `documents` rows are never written with
 `OnConflictStrategy.REPLACE`, because that deletes and reinserts, which would cascade the children away. 1.0 starts the
 schema at version 1: a 0.x database is never migrated or downgraded, it is deleted on first launch, and its imported
-copies go with the orphan sweep. Every schema version is exported to `app/schemas/`.
+copies go with the orphan sweep. Version 2 adds `pdf_outlines.sourceModified`; a 1.x database is migrated in place the
+first time the app opens it, so an upgrade keeps every row. Every schema version is exported to `app/schemas/`.
 
 `document_text_fts` is not a child of `documents`: it follows `document_text` through triggers Room generates.
 
@@ -101,6 +102,7 @@ erDiagram
     PDF_OUTLINES {
         INTEGER documentId PK, FK
         INTEGER sourceSize
+        INTEGER sourceModified
         INTEGER cacheVersion
         TEXT entries
     }
@@ -127,10 +129,11 @@ erDiagram
 A background indexer fills `document_text` for every document that has no text yet, in small batches, and runs
 again whenever a document is added, removed or changes size. The database is its queue, so an interrupted pass simply
 resumes. Text is extracted by the same readers the viewer uses, so a search and find-in-file see the same words. Each
-document ends in one of four states: `INDEXED`, `FAILED` (the reader threw; never retried unless the file changes),
-`SKIPPED` (encrypted, DRM-protected, or no reader for the format) or `TOO_LARGE` (the file is over the size cap and is
-never opened). A long document is indexed only up to a character cap. Raising `SearchIndexer.INDEX_VERSION`
-re-indexes everything.
+document ends in one of four states: `INDEXED`, `FAILED` (the reader threw), `SKIPPED` (encrypted, DRM-protected, or
+no reader for the format) or `TOO_LARGE` (the file is over the size cap and is never opened). A failed row is tried
+again after five minutes: its `indexedAt` holds the next eligible time, so the file is retried without waiting for an
+edit, while `SKIPPED` and `TOO_LARGE` stay terminal. A long document is indexed only up to a character cap. Raising
+`SearchIndexer.INDEX_VERSION` re-indexes everything.
 
 Small files are the exception to the gate: a file at or below `SearchIndexer.EAGER_MAX_BYTES` is read as soon as it
 joins the library, without the startup delay and without waiting for the gate, so also while a document is open or

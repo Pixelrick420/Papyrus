@@ -20,6 +20,8 @@ the end-to-end suite, and both are checked by hand with the script at the end.
   announces "Hidden".
 - The find-in-file match counter is a polite live region: stepping through matches announces
   "2 of 7" without moving focus.
+- A link on a PDF page is a labelled stop over its rectangle: "Link", with the action "Open link".
+  Slide links stay tap-only.
 - A multi-file Remove or Share that runs long enough to show progress says so in one text node
   ("Removing 3 of 12") and nothing else: the bar is not exposed and no live region is involved, so the
   steps are not read out as they pass. The result is announced once, by the snackbar, when it ends.
@@ -123,12 +125,14 @@ device face down if you want to remove visual cues.
     not the dot drawn at its end, so it is a full fingertip target. The sheet offers a note field
     with a character counter, Save, and Delete highlight. Only plain highlights are written into a
     saved copy of the PDF; the note stays in Papyrus.
-11. **Headings:** in a Markdown, EPUB, DOCX or ODT document, set TalkBack's reading controls to
+11. **PDF links:** a page with links has one stop per link over its rectangle: "Link", double tap to open.
+    A keyboard reaches the same stops with Tab and presses them with Enter; a link on a slide is still tap-only.
+12. **Headings:** in a Markdown, EPUB, DOCX or ODT document, set TalkBack's reading controls to
     Headings and swipe down. Focus moves from heading to heading and each reads as "heading".
-12. **Image alt text:** in an EPUB, DOCX, ODT or Markdown document with a described image, the image is one
+13. **Image alt text:** in an EPUB, DOCX, ODT or Markdown document with a described image, the image is one
     stop that announces as an image and reads its alt text. An image with no alt text is not a stop. In Markdown
     the alt text is also part of the document's text, so it is read there too.
-13. **Open errors:** a file that cannot be opened shows its own message: unsupported type, protected
+14. **Open errors:** a file that cannot be opened shows its own message: unsupported type, protected
     in a way Papyrus cannot unlock, damaged, or moved or deleted. A password prompt says whether
     the password is required or was wrong. A file that is moved, deleted or no longer accessible
     offers "Pick file" to choose it again.
@@ -240,9 +244,10 @@ fixed or goes under Known limits.
 - Selection on Home starts with a long press, which a hardware keyboard has no key for. Switch Access and
   TalkBack start it from the row's "Select" action. A keyboard still has Share, Star and Remove for one file in
   each row's menu; only Remove and Share for several files at once need selection.
-- PDF text selection starts with a long press on the page and moves with drag handles, and a link on a PDF page
-  is followed by tapping it. Neither is a stop of its own, so a keyboard or Switch Access cannot copy, highlight
-  or add a note to PDF text, or follow a PDF's links. A note that already exists is a button and can be opened.
+- PDF text selection starts with a long press on the page and moves with drag handles, so it is not a stop of its
+  own: a keyboard or Switch Access cannot copy, highlight or add a note to PDF text. A note that already exists is a
+  button and can be opened. A PDF link is a separate labelled stop and can be followed from the keyboard or Switch
+  Access; a link on a slide remains tap-only.
 
 ## Adding a check
 

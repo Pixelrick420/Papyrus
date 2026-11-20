@@ -10,7 +10,11 @@
     if (typeof document !== 'undefined') {
       const isDark = document.documentElement.classList.toggle('dark');
       darkMode = isDark;
-      localStorage.setItem('theme', isDark ? 'dark' : 'light');
+      try {
+        localStorage.setItem('theme', isDark ? 'dark' : 'light');
+      } catch {
+        // The theme still applies for this session when storage is blocked.
+      }
     }
   }
 

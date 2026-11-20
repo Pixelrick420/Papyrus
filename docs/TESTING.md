@@ -30,10 +30,13 @@ omission. The failing tests are listed in the job summary and as warnings, and `
 
 The DOCX/ODT, EPUB and DOC extractors run against archives the tests build in memory (kxml2 stands in for the platform's
 `XmlPullParser`, and the `.doc` fixtures assemble the OLE2 container and piece table from scratch). detekt is scoped to
-dead code and correctness, with the deliberate broad catches baselined so they stay visible.
+dead code and correctness; deliberate broad catches carry a local `@Suppress` rather than a shared baseline entry, so a
+new catch with the same shape still fails the build.
 
 ## What CI runs
 
 `check` (unit tests, lint and detekt, with their reports uploaded as the `check-reports` artifact) and
 `assembleRelease` run on every pull request to `main`; those plus the emulator suite run on every push to `main`. A
-`v*` tag runs the unit tests and publishes the signed release — see [RELEASING.md](RELEASING.md).
+`v*` tag runs the unit tests and publishes the signed release — see [RELEASING.md](RELEASING.md). The Android jobs in
+`build.yml` and `codeql.yml` share the SDK/NDK setup in `.github/actions/setup-android`; the web workflow runs lint,
+check and build separately.

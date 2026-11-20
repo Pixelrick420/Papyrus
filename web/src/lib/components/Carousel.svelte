@@ -104,36 +104,14 @@
     if (!isDragging || !carouselRef) return;
     e.preventDefault();
     const x = e.pageX - carouselRef.offsetLeft;
-    const walk = (x - startX) * 2;
+    const walk = x - startX;
     carouselRef.scrollLeft = scrollLeft - walk;
   }
 
   function handleMouseUp() {
-    if (!carouselRef) return;
+    if (!isDragging || !carouselRef) return;
     isDragging = false;
     carouselRef.style.cursor = 'grab';
-    snapToNearest();
-    startAutoPlay();
-  }
-
-  function handleTouchStart(e: TouchEvent) {
-    if (!carouselRef || !e.touches[0]) return;
-    isDragging = true;
-    startX = e.touches[0].pageX - carouselRef.offsetLeft;
-    scrollLeft = carouselRef.scrollLeft;
-    stopAutoPlay();
-  }
-
-  function handleTouchMove(e: TouchEvent) {
-    if (!isDragging || !carouselRef || !e.touches[0]) return;
-    const x = e.touches[0].pageX - carouselRef.offsetLeft;
-    const walk = (x - startX) * 2;
-    carouselRef.scrollLeft = scrollLeft - walk;
-  }
-
-  function handleTouchEnd() {
-    if (!carouselRef) return;
-    isDragging = false;
     snapToNearest();
     startAutoPlay();
   }
@@ -175,6 +153,7 @@
   }
 
   function startAutoPlay() {
+    stopAutoPlay();
     if (autoPlay && items.length > 1 && !prefersReducedMotion) {
       autoPlayTimer = setInterval(nextSlide, autoPlayInterval);
     }
@@ -258,20 +237,20 @@
     onmousemove={handleMouseMove}
     onmouseup={handleMouseUp}
     onmouseleave={handleMouseUp}
-    ontouchstart={handleTouchStart}
-    ontouchmove={handleTouchMove}
-    ontouchend={handleTouchEnd}
   >
-    {#each items as item, index (item.src)}
-      <div class="carousel-item w-[calc(80%-0.5rem)] shrink-0 sm:w-[calc(50%-0.5rem)]">
+    <!-- The padded content box is 80% of the viewport, so w-full renders 80% slides. -->
+    {#each items as item (item.src)}
+      <div class="carousel-item w-full shrink-0 sm:w-[calc(50%-0.5rem)]">
         <article
           class="overflow-hidden rounded-xl border border-neutral-200 bg-neutral-100 shadow-sm transition-shadow hover:shadow-lg dark:border-neutral-800 dark:bg-neutral-900"
         >
           <img
             src={item.src}
             alt={item.alt}
+            width="716"
+            height="1600"
             class="h-auto w-full object-contain"
-            loading={index < 3 ? 'eager' : 'lazy'}
+            loading="lazy"
             decoding="async"
           />
         </article>
@@ -299,19 +278,23 @@
   {/if}
 
   {#if showDots && pageCount > 1}
-    <div class="mt-6 flex justify-center gap-2" role="group" aria-label="Screenshot pages">
+    <div class="mt-6 flex justify-center gap-1" role="group" aria-label="Screenshot pages">
       {#each Array(pageCount) as _, page (page)}
         <button
-          class={cn(
-            'focus-visible:ring-primary-500 h-2 w-2 rounded-full transition-all duration-200 focus-visible:ring-2 focus-visible:outline-none',
-            page === currentPage
-              ? 'bg-primary-600 w-6'
-              : 'bg-neutral-300 hover:bg-neutral-400 dark:bg-neutral-600 dark:hover:bg-neutral-500'
-          )}
+          class="focus-visible:ring-primary-500 group flex h-6 w-6 items-center justify-center rounded-full focus-visible:ring-2 focus-visible:outline-none"
           onclick={() => goToPage(page)}
           aria-current={page === currentPage ? 'true' : undefined}
           aria-label={`Go to screenshot ${page * effectivePerPage + 1}${effectivePerPage > 1 ? ` to ${Math.min((page + 1) * effectivePerPage, items.length)}` : ''}`}
-        ></button>
+        >
+          <span
+            class={cn(
+              'block h-2 w-2 rounded-full transition-all duration-200',
+              page === currentPage
+                ? 'bg-primary-600 w-5'
+                : 'bg-neutral-300 group-hover:bg-neutral-400 dark:bg-neutral-600 dark:group-hover:bg-neutral-500'
+            )}
+          ></span>
+        </button>
       {/each}
     </div>
   {/if}

@@ -58,32 +58,9 @@ jobs:
       - uses: gradle/actions/setup-gradle@v5
         if: matrix.language == 'java-kotlin'
 
-      - name: Set up the Android SDK
+      - name: Set up Android SDK and NDK
         if: matrix.language == 'java-kotlin'
-        uses: android-actions/setup-android@v4
-        with:
-          accept-android-sdk-licenses: false
-          packages: ""
-
-      - name: Resolve pinned NDK version
-        if: matrix.language == 'java-kotlin'
-        id: ndk
-        run: echo "version=$(grep -oP 'ndkVersion\s*=\s*"\K[^"]+' app/build.gradle.kts | head -1)" >> "$GITHUB_OUTPUT"
-
-      - name: Cache NDK
-        if: matrix.language == 'java-kotlin'
-        uses: actions/cache@v6
-        with:
-          path: ${{ env.ANDROID_SDK_ROOT }}/ndk/${{ steps.ndk.outputs.version }}
-          key: ndk-${{ runner.os }}-${{ steps.ndk.outputs.version }}
-
-      - name: Install SDK packages
-        if: matrix.language == 'java-kotlin'
-        run: |
-          android sdk install platform-tools build-tools/36.0.0
-          android sdk install "ndk/${{ steps.ndk.outputs.version }}"
-          # android-37 lives in Google's newer index; it is preinstalled, so its install failure is harmless.
-          android sdk install platforms/android-37 || echo "optional android-37 install failed" >&2
+        uses: ./.github/actions/setup-android
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v4
