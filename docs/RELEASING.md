@@ -11,6 +11,8 @@ Releases are cut from `main` by the `build` workflow in `.github/workflows/build
 - Pushing a `v*` tag runs the unit tests and publishes three signed APKs (arm64-v8a, armeabi-v7a and universal) to
   [Releases](https://github.com/Pixelrick420/Papyrus/releases). It does not run the emulator suite, which belongs to
   the `main` push, and it refuses a tag that is not on `main`.
+- Version names follow `X.Y.Z`: `X` increments on breaking changes, `Y` on new features and `Z` on bug fixes alone.
+  Release tags add a `v` prefix, so a bug-fix release is tagged `v2.1.1`.
 - The tag must match `versionName` in `app/build.gradle.kts`, and `versionCode` must exceed the previous release tag's,
   since that value alone orders the upgrades. Upgrading a 2.1 install keeps its library: Room migrates the database
   from version 1 to 2 on first open, adding the outline cache's modified-time column.

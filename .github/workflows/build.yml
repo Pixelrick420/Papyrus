@@ -239,6 +239,10 @@ jobs:
           tag="${GITHUB_REF_NAME#v}"
           actual=$(grep -oP 'versionName\s*=\s*"\K[^"]+' app/build.gradle.kts | head -1)
           echo "tag=$tag versionName=$actual"
+          if ! [[ "$actual" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::versionName $actual must have the form X.Y.Z (breaking.feature.fix)"
+            exit 1
+          fi
           if [ "$tag" != "$actual" ]; then
             echo "::error::Tag $GITHUB_REF_NAME does not match versionName $actual in app/build.gradle.kts"
             exit 1

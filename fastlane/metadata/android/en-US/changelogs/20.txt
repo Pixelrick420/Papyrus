@@ -1,0 +1,8 @@
+Papyrus 2.1.1 fixes bugs found after 2.1.
+
+- PPTX text indexing no longer delays opening a deck, and long press selects text on slides
+- Slide rendering fixes for text and embedded content
+- The "Added files" message stays visible when skipped files are reported after an import
+- PDF links are accessible, audio focus behaves correctly and crash reports redact local file paths
+- Text extraction, search cache keys and LaTeX rendering are more robust
+- Library indexing is hardened and the database migrates to schema version 2 without losing outlines
