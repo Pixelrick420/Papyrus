@@ -6,3 +6,4 @@ Papyrus 2.1.1 fixes bugs found after 2.1.
 - PDF links are accessible, audio focus behaves correctly and crash reports redact local file paths
 - Text extraction, search cache keys and LaTeX rendering are more robust
 - Library indexing is hardened and the database migrates to schema version 2 without losing outlines
+- Improved load time for pptx files
