@@ -58,6 +58,13 @@ class PdfOutlineCacheTest {
     }
 
     @Test
+    fun `an enormous title length is rejected without overflowing`() {
+        val packed = encodeOutline(listOf(OutlineEntry(1, 0, "ok"))) + "2 0 2147483647:bad"
+
+        assertEquals(1, decodeOutline(packed).size)
+    }
+
+    @Test
     fun `a damaged depth is clamped instead of indenting off the sheet`() {
         val packed = encodeOutline(listOf(OutlineEntry(1, 0, "deep"))).replace("1 0 ", "1 900 ")
 

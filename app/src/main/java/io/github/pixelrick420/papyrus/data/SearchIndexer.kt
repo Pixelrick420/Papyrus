@@ -79,11 +79,13 @@ class SearchIndexer(
 
     // Ignores the gate but not [enabled], which is re-asked before each document.
     suspend fun indexEager() = passLock.withLock {
-        drain(wanted = { enabled.first() }) { dao.pendingUpTo(INDEX_VERSION, eagerMaxBytes, BATCH_SIZE) }
+        drain(wanted = { enabled.first() }) {
+            dao.pendingUpTo(INDEX_VERSION, eagerMaxBytes, System.currentTimeMillis(), BATCH_SIZE)
+        }
     }
 
     suspend fun indexPending() = passLock.withLock {
-        drain { dao.pending(INDEX_VERSION, BATCH_SIZE) }
+        drain { dao.pending(INDEX_VERSION, System.currentTimeMillis(), BATCH_SIZE) }
     }
 
     private suspend fun drain(
@@ -120,26 +122,28 @@ class SearchIndexer(
         // Also the cancellation point: a gate that closed since the last document stops the pass here.
         yield()
         val extracted = extract(document)
-        // Checked after the extraction, not before: reading a document can take seconds and
-        // it may have been removed from the library in the meantime.
-        if (dao.existingId(document.id) == null) return
-        dao.replace(
-            DocumentTextEntity(
-                documentId = document.id,
-                text = extracted.text,
-                state = extracted.state,
-                charCount = extracted.text.length,
-                sourceSize = document.sizeBytes,
-                indexedAt = System.currentTimeMillis(),
-                indexVersion = INDEX_VERSION,
-                sourceModified = modified?.takeIf { it > 0 } ?: 0,
-            ),
+        val now = System.currentTimeMillis()
+        // A failed row is not eligible again until its indexedAt deadline passes.
+        val retryAt = if (extracted.state == TextIndexState.FAILED) now + FAILED_RETRY_MILLIS else now
+        val row = DocumentTextEntity(
+            documentId = document.id,
+            text = extracted.text,
+            state = extracted.state,
+            charCount = extracted.text.length,
+            sourceSize = document.sizeBytes,
+            indexedAt = retryAt,
+            indexVersion = INDEX_VERSION,
+            sourceModified = modified?.takeIf { it > 0 } ?: 0,
         )
+        // The document may have been removed while its text was being read, so the write rechecks the parent.
+        dao.replaceIfExists(row)
     }
 
     companion object {
-        // Bump whenever the stored text of a document would come out different; it re-indexes the library and is the only retry path for [FAILED].
+        // Bump whenever the stored text of a document would come out different; it re-indexes the library.
         const val INDEX_VERSION = 1
+
+        const val FAILED_RETRY_MILLIS = 5 * 60 * 1_000L
 
         private const val BATCH_SIZE = 16
 

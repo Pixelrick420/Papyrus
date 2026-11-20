@@ -109,14 +109,14 @@ class SearchIndexerTest {
     }
 
     @Test
-    fun `an extraction that failed is written down so the queue moves past it`() {
-        // Terminal on purpose: retrying a corrupt file on every pass would stall the whole queue.
+    fun `an extraction that failed is written down with a retry deadline`() {
         val indexer = SearchIndexer(
             dao = dao,
             extract = { ExtractedText("", TextIndexState.FAILED) },
             library = emptyFlow(),
         )
         dao.queue += document(1)
+        val before = System.currentTimeMillis()
 
         runBlocking { indexer.indexPending() }
 
@@ -124,20 +124,24 @@ class SearchIndexerTest {
         assertEquals(TextIndexState.FAILED, row.state)
         assertEquals("", row.text)
         assertEquals(0, row.charCount)
+        assertTrue(row.indexedAt >= before + SearchIndexer.FAILED_RETRY_MILLIS)
     }
 
     @Test
-    fun `an encrypted document is written down as skipped`() {
+    fun `an encrypted document is written down as skipped with no retry deadline`() {
         val indexer = SearchIndexer(
             dao = dao,
             extract = { ExtractedText("", TextIndexState.SKIPPED) },
             library = emptyFlow(),
         )
         dao.queue += document(1)
+        val before = System.currentTimeMillis()
 
         runBlocking { indexer.indexPending() }
 
-        assertEquals(TextIndexState.SKIPPED, dao.written.single().state)
+        val row = dao.written.single()
+        assertEquals(TextIndexState.SKIPPED, row.state)
+        assertTrue(row.indexedAt in before..System.currentTimeMillis())
     }
 
     @Test

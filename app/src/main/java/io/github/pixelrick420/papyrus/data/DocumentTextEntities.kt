@@ -7,8 +7,8 @@ import androidx.room.Fts4
 import androidx.room.FtsOptions
 import androidx.room.PrimaryKey
 
-// Only terminal states are stored: no row means "not indexed yet", so a crash mid-extraction requeues the document.
-// Bump the indexer's INDEX_VERSION to retry [FAILED] rows.
+// No row means "not indexed yet", so a crash requeues the document.
+// FAILED is retried after indexedAt; SKIPPED and TOO_LARGE stay terminal until the version changes.
 enum class TextIndexState {
     INDEXED,
 
@@ -40,6 +40,7 @@ data class DocumentTextEntity(
     val state: TextIndexState,
     val charCount: Int,
     val sourceSize: Long,
+    // For FAILED rows this is the next retry time, not the time the text was read.
     val indexedAt: Long,
     val indexVersion: Int,
     // 0 when the provider reported no modified time; compared to detect edits without opening the file.

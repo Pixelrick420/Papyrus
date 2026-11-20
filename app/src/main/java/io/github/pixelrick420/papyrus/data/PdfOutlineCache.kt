@@ -1,5 +1,6 @@
 package io.github.pixelrick420.papyrus.data
 
+import androidx.room.ColumnInfo
 import androidx.room.Dao
 import androidx.room.Entity
 import androidx.room.ForeignKey
@@ -10,7 +11,7 @@ import androidx.room.Query
 import io.github.pixelrick420.papyrus.viewer.OutlineEntry
 import io.github.pixelrick420.papyrus.viewer.cleanOutlineTitle
 
-// Used only while the file is the same size and [cacheVersion] matches this build; [entries] is [encodeOutline]'s packed text.
+// Reused only while size, source edit time and [cacheVersion] still match.
 @Entity(
     tableName = "pdf_outlines",
     foreignKeys = [
@@ -25,6 +26,9 @@ import io.github.pixelrick420.papyrus.viewer.cleanOutlineTitle
 data class PdfOutlineEntity(
     @PrimaryKey val documentId: Long,
     val sourceSize: Long,
+    // 0 marks a row written before this field existed, which is always a cache miss.
+    @ColumnInfo(defaultValue = "0")
+    val sourceModified: Long = 0,
     val cacheVersion: Int,
     val entries: String,
 )
@@ -65,8 +69,8 @@ internal fun decodeOutline(raw: String): List<OutlineEntry> {
         val depth = readNumber(raw, index.end, ' ') ?: break
         val length = readNumber(raw, depth.end, ':') ?: break
         val start = length.end
+        if (length.value < 0 || length.value > raw.length - start) break
         val end = start + length.value
-        if (length.value < 0 || end > raw.length) break
         val title = cleanOutlineTitle(raw.substring(start, end))
         if (title.isNotEmpty()) {
             out += OutlineEntry(index.value, depth.value.coerceIn(0, MAX_CACHED_DEPTH), title)

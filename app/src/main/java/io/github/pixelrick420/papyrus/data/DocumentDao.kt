@@ -39,6 +39,21 @@ interface DocumentDao {
     @Query("UPDATE documents SET uri = :uri WHERE id = :id")
     suspend fun updateUri(id: Long, uri: String)
 
+    /** Takes the URI only when it is free, and releases the old grant in the same transaction. */
+    @Transaction
+    suspend fun rebindUri(
+        id: Long,
+        uri: String,
+        oldUri: String?,
+        releaseGrant: (String) -> Unit,
+    ): Boolean {
+        val owner = getByUri(uri)
+        if (owner != null && owner.id != id) return false
+        updateUri(id, uri)
+        if (oldUri != null && oldUri != uri) releaseGrant(oldUri)
+        return true
+    }
+
     /** Sniffing needs the row to exist, so this runs after insert. */
     @Query("UPDATE documents SET format = :format WHERE id = :id")
     suspend fun updateFormat(id: Long, format: DocumentFormat)
@@ -48,6 +63,16 @@ interface DocumentDao {
 
     @Query("DELETE FROM documents WHERE id = :id")
     suspend fun deleteById(id: Long)
+
+    @Query("DELETE FROM document_text WHERE rowid = :id")
+    suspend fun deleteText(id: Long)
+
+    /** The FTS delete trigger needs a real DELETE of the text row before the document row goes. */
+    @Transaction
+    suspend fun deleteDocument(id: Long) {
+        deleteText(id)
+        deleteById(id)
+    }
 
     // Stamps the open time in the same write, avoiding a second write that would re-run the library query.
     @Transaction

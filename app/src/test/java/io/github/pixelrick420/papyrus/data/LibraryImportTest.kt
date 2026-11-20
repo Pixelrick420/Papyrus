@@ -176,6 +176,20 @@ class LibraryImportTest {
     }
 
     @Test
+    fun `one source fingerprint serves several candidates`() {
+        val bytes = "hello papyrus".toByteArray()
+        var opens = 0
+        val fingerprint = LibraryImport.fingerprint {
+            opens++
+            ByteArrayInputStream(bytes)
+        }!!
+
+        assertTrue(LibraryImport.sameFingerprint(candidate(bytes), fingerprint))
+        assertTrue(LibraryImport.sameFingerprint(candidate(bytes), fingerprint))
+        assertEquals(1, opens)
+    }
+
+    @Test
     fun `a sweep deletes an old file no row names and keeps one a row names`() {
         val dir = temp.newFolder("imports")
         val orphan = imported(dir, "orphan.pdf", OLD)
@@ -240,7 +254,7 @@ class LibraryImportTest {
         }
 
     private fun candidate(bytes: ByteArray): File =
-        File(temp.newFolder("imports"), "doc.pdf").apply { writeBytes(bytes) }
+        File(temp.newFolder(), "doc.pdf").apply { writeBytes(bytes) }
 
     private fun oneByteThenFails(): InputStream = object : InputStream() {
         private var reads = 0

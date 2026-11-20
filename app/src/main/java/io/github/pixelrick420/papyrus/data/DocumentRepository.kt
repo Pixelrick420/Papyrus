@@ -1,5 +1,6 @@
 package io.github.pixelrick420.papyrus.data
 
+import android.content.ContentResolver
 import android.content.Context
 import android.net.Uri
 import androidx.core.content.FileProvider
@@ -10,6 +11,7 @@ import io.github.pixelrick420.papyrus.viewer.OfficeEncryption
 import io.github.pixelrick420.papyrus.viewer.OutlineEntry
 import io.github.pixelrick420.papyrus.viewer.PdfEncryption
 import io.github.pixelrick420.papyrus.viewer.TextSniffer
+import io.github.pixelrick420.papyrus.viewer.textCacheKey
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
@@ -107,11 +109,14 @@ class DocumentRepository(
         highlightDao.setNote(id, cleaned, (if (cleaned == null) HighlightKind.HIGHLIGHT else HighlightKind.NOTE).code)
     }
 
-    // Reused only while the file is the same size and the encoding version matches.
+    // Reused only while size, edit time and version match; 0 marks a legacy row.
     suspend fun cachedOutline(document: DocumentEntity): List<OutlineEntry>? = withContext(Dispatchers.IO) {
         if (document.id <= 0) return@withContext null
         val row = pdfOutlineDao.get(document.id) ?: return@withContext null
-        if (row.sourceSize != document.sizeBytes || row.cacheVersion != PDF_OUTLINE_CACHE_VERSION) {
+        val modified = sourceModified(document)
+        if (row.sourceSize != document.sizeBytes || row.cacheVersion != PDF_OUTLINE_CACHE_VERSION ||
+            row.sourceModified == 0L || row.sourceModified != modified
+        ) {
             return@withContext null
         }
         decodeOutline(row.entries)
@@ -124,10 +129,21 @@ class DocumentRepository(
             PdfOutlineEntity(
                 documentId = document.id,
                 sourceSize = document.sizeBytes,
+                sourceModified = sourceModified(document),
                 cacheVersion = PDF_OUTLINE_CACHE_VERSION,
                 entries = encodeOutline(entries),
             ),
         )
+    }
+
+    // Content providers report the edit time; an app-owned copy uses its file stamp.
+    private fun sourceModified(document: DocumentEntity): Long {
+        val uri = document.uri.toUri()
+        if (uri.scheme == ContentResolver.SCHEME_FILE) {
+            val path = uri.path ?: return 0
+            return File(path).takeIf { it.isFile }?.lastModified()?.takeIf { it > 0 } ?: 0
+        }
+        return textCacheKey(context, uri)?.lastModified ?: 0
     }
 
     // Read aloud needs this for a PDF, whose pages are read one at a time so the viewer cannot tell if there is text.
@@ -232,10 +248,10 @@ class DocumentRepository(
 
     // A same-title row whose app-owned copy holds the same bytes; a row only on [source]'s own URI is no match, since it would not outlive the grant.
     private suspend fun findSavedDuplicate(source: DocumentEntity): DocumentEntity? {
-        val sourceUri = source.uri.toUri()
+        val fingerprint = LibraryImport.fingerprint { openStream(source.uri.toUri()) } ?: return null
         for (row in dao.getByTitle(source.title)) {
             val candidate = ownedCopy(row.uri) ?: continue
-            if (LibraryImport.sameContent(candidate, source.sizeBytes) { openStream(sourceUri) }) return row
+            if (LibraryImport.sameFingerprint(candidate, fingerprint)) return row
         }
         return null
     }
@@ -251,11 +267,9 @@ class DocumentRepository(
 
     /** Removes the index entry only, never the user's file; an app-owned copy goes with its row. */
     suspend fun remove(document: DocumentEntity) = withContext(Dispatchers.IO) {
+        // The row goes first: a revoked grant with a live row would leave the file unreadable.
+        dao.deleteDocument(document.id)
         SafStorage.releasePermission(resolver, document.uri.toUri())
-        // Explicit, so the FTS delete trigger fires; the cascade is only a backstop for rows removed
-        // by some other path.
-        searchDao.deleteText(document.id)
-        dao.deleteById(document.id)
         LibraryImport.deleteOwnedCopy(context, document.uri.toUri())
     }
 
@@ -295,20 +309,37 @@ class DocumentRepository(
 
     // A SAF grant can only come from the user picking the file again, so the re-pick must match
     // [matchesRepick]: same name and format.
+    @Suppress("TooGenericExceptionCaught")
     suspend fun regrant(expected: DocumentEntity, picked: Uri): Boolean = withContext(Dispatchers.IO) {
         val meta = SafStorage.queryMetadata(context, picked)
         val pickedFormat = resolveFormat(picked, meta.displayName, meta.mimeType)
         if (!matchesRepick(expected.title, expected.format, meta.displayName, pickedFormat)) return@withContext false
+        val pickedUri = picked.toString()
+        // Another row already owns this URI, so the grant would be taken for nothing.
+        val owner = dao.getByUri(pickedUri)
+        if (owner != null && owner.id != expected.id) return@withContext false
         if (!SafStorage.persistPermission(resolver, picked)) return@withContext false
         // A handed-over document has no row to re-point, so the in-memory entry carries the new URI.
         if (expected.id < 0) {
-            handedOver[expected.id] = expected.copy(uri = picked.toString())
+            handedOver[expected.id] = expected.copy(uri = pickedUri)
             return@withContext true
         }
-        dao.updateUri(expected.id, picked.toString())
-        // The row no longer names the old URI, so its grant would sit dead in the OS's capped pool and push
-        // live ones out at the cap. A re-pick that returns the same URI is the grant just taken: that stays.
-        if (expected.uri != picked.toString()) SafStorage.releasePermission(resolver, expected.uri.toUri())
+        // The same URI is the grant just taken, so only a different old URI is released.
+        val rebound = try {
+            dao.rebindUri(
+                id = expected.id,
+                uri = pickedUri,
+                oldUri = expected.uri.takeIf { it != pickedUri },
+                releaseGrant = { old -> SafStorage.releasePermission(resolver, old.toUri()) },
+            )
+        } catch (e: Exception) {
+            SafStorage.releasePermission(resolver, picked)
+            throw e
+        }
+        if (!rebound) {
+            SafStorage.releasePermission(resolver, picked)
+            return@withContext false
+        }
         true
     }
 

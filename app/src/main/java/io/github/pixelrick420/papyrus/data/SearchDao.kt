@@ -34,22 +34,24 @@ data class SnippetRow(
 @Dao
 interface SearchDao {
 
-    // Includes rows written by an older index version or for a file whose size changed. Bounded by [limit] so one pass never holds the whole library.
+    // Includes stale rows and FAILED rows whose indexedAt retry deadline has passed; bounded by [limit].
     @Query(
         "SELECT d.* FROM documents d LEFT JOIN document_text t ON t.rowid = d.id " +
             "WHERE t.rowid IS NULL OR t.indexVersion < :version OR t.sourceSize != d.sizeBytes " +
+            "OR (t.state = 'FAILED' AND t.indexedAt <= :now) " +
             "ORDER BY d.id LIMIT :limit",
     )
-    suspend fun pending(version: Int, limit: Int): List<DocumentEntity>
+    suspend fun pending(version: Int, now: Long, limit: Int): List<DocumentEntity>
 
     // Narrowed by size so large files cannot hide small ones.
     @Query(
         "SELECT d.* FROM documents d LEFT JOIN document_text t ON t.rowid = d.id " +
-            "WHERE (t.rowid IS NULL OR t.indexVersion < :version OR t.sourceSize != d.sizeBytes) " +
+            "WHERE (t.rowid IS NULL OR t.indexVersion < :version OR t.sourceSize != d.sizeBytes " +
+            "OR (t.state = 'FAILED' AND t.indexedAt <= :now)) " +
             "AND d.sizeBytes <= :maxBytes " +
             "ORDER BY d.id LIMIT :limit",
     )
-    suspend fun pendingUpTo(version: Int, maxBytes: Long, limit: Int): List<DocumentEntity>
+    suspend fun pendingUpTo(version: Int, maxBytes: Long, now: Long, limit: Int): List<DocumentEntity>
 
     // Paged by id rather than offset because the pass rewrites rows as it goes.
     @Query(
@@ -73,11 +75,20 @@ interface SearchDao {
     @Query("DELETE FROM document_text WHERE rowid = :id")
     suspend fun deleteText(id: Long)
 
-    // Never REPLACE: it skips the delete triggers unless recursive triggers are on, leaving the document searchable by its old text.
+    // REPLACE skips the delete triggers unless recursive triggers are on.
+    // It would leave the document searchable by its old text.
     @Transaction
     suspend fun replace(row: DocumentTextEntity) {
         deleteText(row.documentId)
         insertText(row)
+    }
+
+    // The parent can vanish between the check and the write, so recheck inside the transaction.
+    @Transaction
+    suspend fun replaceIfExists(row: DocumentTextEntity): Boolean {
+        if (existingId(row.documentId) == null) return false
+        replace(row)
+        return true
     }
 
     // Deliberately unlimited: a limit would pick candidates by rowid rather than relevance and could drop the best match before scoring.

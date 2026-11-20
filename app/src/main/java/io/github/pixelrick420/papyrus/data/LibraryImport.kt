@@ -8,6 +8,8 @@ import java.io.File
 import java.io.FileNotFoundException
 import java.io.IOException
 import java.io.InputStream
+import java.security.MessageDigest
+import java.util.UUID
 
 /** Copies a document into filesDir/imports so it outlives the intent grant that delivered it. */
 object LibraryImport {
@@ -19,11 +21,35 @@ object LibraryImport {
         val meta = SafStorage.queryMetadata(context, source)
         val dir = importsDir(context)
         if (!dir.isDirectory) dir.mkdirs()
-        val name = uniqueName(
+        val target = reserveTarget(
+            dir,
             importFileName(meta.displayName, source.lastPathSegment, meta.mimeType, System.currentTimeMillis()),
-            dir.list()?.toSet().orEmpty(),
         )
-        copyStream({ openSource(context, source) }, File(dir, name))
+        copyStream({ openSource(context, source) }, target)
+    }
+
+    // Taking the path before the copy keeps two concurrent saves from choosing the same name.
+    private fun reserveTarget(dir: File, name: String): File {
+        val taken = HashSet<String>()
+        var candidate = name
+        repeat(MAX_NAME_ATTEMPTS) {
+            val file = File(dir, candidate)
+            if (file.createNewFile()) return file
+            taken += candidate
+            candidate = uniqueName(name, taken)
+        }
+        val fallback = File(dir, withUuid(candidate))
+        if (!fallback.createNewFile()) throw IOException("Couldn't reserve an import file name")
+        return fallback
+    }
+
+    private fun withUuid(name: String): String {
+        val dot = name.lastIndexOf('.')
+        return if (dot > 0) {
+            "${name.substring(0, dot)}-${UUID.randomUUID()}${name.substring(dot)}"
+        } else {
+            "$name-${UUID.randomUUID()}"
+        }
     }
 
     fun deleteOwnedCopy(context: Context, uri: Uri): Boolean {
@@ -53,35 +79,33 @@ object LibraryImport {
         file.canonicalFile.parentFile == dir.canonicalFile
     }.getOrDefault(false)
 
+    internal data class Fingerprint(val size: Long, val hash: String)
+
+    // One pass over the source serves every same-title candidate.
+    internal fun fingerprint(openSource: () -> InputStream): Fingerprint? = runCatching {
+        val digest = MessageDigest.getInstance("SHA-256")
+        var size = 0L
+        openSource().use { input ->
+            val buffer = ByteArray(COMPARE_BUFFER_SIZE)
+            while (true) {
+                val read = input.read(buffer)
+                if (read < 0) break
+                digest.update(buffer, 0, read)
+                size += read
+            }
+        }
+        Fingerprint(size, digest.digest().joinToString("") { "%02x".format(it) })
+    }.getOrNull()
+
+    internal fun sameFingerprint(candidate: File, source: Fingerprint): Boolean = runCatching {
+        fingerprint { candidate.inputStream() } == source
+    }.getOrDefault(false)
+
     // A failed read answers false so the caller falls through to its own copy.
     internal fun sameContent(candidate: File, sourceSize: Long, openSource: () -> InputStream): Boolean {
         if (sourceSize > 0 && candidate.length() != sourceSize) return false
-        return runCatching {
-            candidate.inputStream().use { x -> openSource().use { y -> streamsEqual(x, y) } }
-        }.getOrDefault(false)
-    }
-
-    private fun streamsEqual(x: InputStream, y: InputStream): Boolean {
-        val bufferX = ByteArray(COMPARE_BUFFER_SIZE)
-        val bufferY = ByteArray(COMPARE_BUFFER_SIZE)
-        while (true) {
-            val readX = x.readFully(bufferX)
-            val readY = y.readFully(bufferY)
-            if (readX != readY) return false
-            if (readX == 0) return true
-            for (i in 0 until readX) if (bufferX[i] != bufferY[i]) return false
-        }
-    }
-
-    /** Fills [buffer] unless the stream ends first; a single `read` may legitimately return less. */
-    private fun InputStream.readFully(buffer: ByteArray): Int {
-        var total = 0
-        while (total < buffer.size) {
-            val n = read(buffer, total, buffer.size - total)
-            if (n < 0) break
-            total += n
-        }
-        return total
+        val source = fingerprint(openSource) ?: return false
+        return sameFingerprint(candidate, source)
     }
 
     private fun openSource(context: Context, source: Uri): InputStream =
@@ -95,7 +119,10 @@ object LibraryImport {
             if (!temp.renameTo(target)) throw IOException("Couldn't move the imported file into place")
             moved = true
         } finally {
-            if (!moved) temp.delete()
+            if (!moved) {
+                temp.delete()
+                target.delete()
+            }
         }
         return target
     }
@@ -147,5 +174,6 @@ object LibraryImport {
     private const val TEMP_PREFIX = "import-"
     private const val TEMP_SUFFIX = ".tmp"
     private const val MAX_STEM_LENGTH = 120
+    private const val MAX_NAME_ATTEMPTS = 64
     private const val COMPARE_BUFFER_SIZE = 64 * 1024
 }

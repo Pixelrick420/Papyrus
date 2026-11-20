@@ -29,7 +29,7 @@ data class ExtractedText(
 )
 
 // Same text find-in-file scans, so the index and the screen see the same words.
-// Failures are terminal, never thrown, so the indexer's queue drains; encryption is checked first and not retried.
+// Failures never throw, so the queue drains; SKIPPED is terminal, FAILED is retried with backoff.
 class DocumentTextExtractor(
     private val context: Context,
     private val dispatcher: CoroutineDispatcher = Dispatchers.IO,

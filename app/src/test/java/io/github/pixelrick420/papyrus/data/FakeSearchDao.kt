@@ -32,12 +32,17 @@ internal class FakeSearchDao : SearchDao {
     var snippetRows = listOf<SnippetRow>()
     val snippetQueries = mutableListOf<Pair<String, List<Long>>>()
 
-    override suspend fun pending(version: Int, limit: Int): List<DocumentEntity> {
+    override suspend fun pending(version: Int, now: Long, limit: Int): List<DocumentEntity> {
         pendingQueries += version to limit
         return take(limit) { true }
     }
 
-    override suspend fun pendingUpTo(version: Int, maxBytes: Long, limit: Int): List<DocumentEntity> {
+    override suspend fun pendingUpTo(
+        version: Int,
+        maxBytes: Long,
+        now: Long,
+        limit: Int,
+    ): List<DocumentEntity> {
         eagerPendingQueries += maxBytes to limit
         return take(limit) { it.sizeBytes <= maxBytes }
     }
@@ -58,6 +63,13 @@ internal class FakeSearchDao : SearchDao {
     }
 
     override suspend fun existingId(id: Long): Long? = if (existingIds?.contains(id) != false) id else null
+
+    override suspend fun replaceIfExists(row: DocumentTextEntity): Boolean {
+        if (existingIds?.contains(row.documentId) == false) return false
+        deleteText(row.documentId)
+        insertText(row)
+        return true
+    }
 
     override suspend fun insertText(row: DocumentTextEntity) {
         written += row
