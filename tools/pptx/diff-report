@@ -13,10 +13,15 @@ import base64
 import struct
 import sys
 import zlib
+from html import escape
 from pathlib import Path
 
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 CHANNELS = {0: 1, 2: 3, 3: 1, 4: 2, 6: 4}
+
+
+def esc(value: object) -> str:
+    return escape(str(value))
 
 
 class PngError(Exception):
@@ -191,47 +196,59 @@ def build_report(
         if expected_path is None or actual_path is None:
             missing = "expected" if expected_path is None else "actual"
             rows.append(
-                f"<tr class=missing><td>{name}</td><td colspan=3>missing in {missing}</td></tr>"
+                f"<tr class=missing><td>{esc(name)}</td><td colspan=3>missing in {esc(missing)}</td></tr>"
             )
-            sections.append(f"<h2>{name}</h2><p class=missing>missing in {missing}</p>")
+            sections.append(
+                f"<h2>{esc(name)}</h2><p class=missing>missing in {esc(missing)}</p>"
+            )
             continue
         try:
             expected_width, expected_height, expected = decode_png(expected_path)
             actual_width, actual_height, actual = decode_png(actual_path)
         except (PngError, zlib.error) as error:
-            rows.append(f"<tr class=missing><td>{name}</td><td colspan=3>{error}</td></tr>")
+            rows.append(
+                f"<tr class=missing><td>{esc(name)}</td><td colspan=3>{esc(error)}</td></tr>"
+            )
             continue
         if (expected_width, expected_height) != (actual_width, actual_height):
             rows.append(
-                f"<tr class=missing><td>{name}</td><td colspan=3>size "
-                f"{expected_width}x{expected_height} vs {actual_width}x{actual_height}</td></tr>"
+                f"<tr class=missing><td>{esc(name)}</td><td colspan=3>size "
+                f"{esc(expected_width)}x{esc(expected_height)} vs "
+                f"{esc(actual_width)}x{esc(actual_height)}</td></tr>"
             )
             sections.append(
-                f"<h2>{name}</h2><p class=missing>size "
-                f"{expected_width}x{expected_height} vs {actual_width}x{actual_height}</p>"
+                f"<h2>{esc(name)}</h2><p class=missing>size "
+                f"{esc(expected_width)}x{esc(expected_height)} vs "
+                f"{esc(actual_width)}x{esc(actual_height)}</p>"
             )
             continue
         mask, differing = difference(expected, actual, tolerance)
         share = differing / (expected_width * expected_height)
         worst = max(worst, share)
         severity = "bad" if share > 0.03 else ("warn" if differing else "good")
+        share_text = f"{share * 100:.2f}"
+        expected_uri = esc(data_uri(expected_path.read_bytes()))
+        actual_uri = esc(data_uri(actual_path.read_bytes()))
+        mask_uri = esc(data_uri(encode_png(expected_width, expected_height, mask)))
         rows.append(
-            f"<tr class={severity}><td>{name}</td><td>{expected_width}x{expected_height}</td>"
-            f"<td>{differing}</td><td>{share * 100:.2f}%</td></tr>"
+            f"<tr class={esc(severity)}><td>{esc(name)}</td>"
+            f"<td>{esc(expected_width)}x{esc(expected_height)}</td>"
+            f"<td>{esc(differing)}</td><td>{esc(share_text)}%</td></tr>"
         )
         sections.append(
-            f"<h2>{name}</h2>"
-            f"<p class={severity}>{differing} pixels ({share * 100:.2f}%) differ by more than "
-            f"{tolerance} in a channel.</p>"
+            f"<h2>{esc(name)}</h2>"
+            f"<p class={esc(severity)}>{esc(differing)} pixels ({esc(share_text)}%) differ by more than "
+            f"{esc(tolerance)} in a channel.</p>"
             '<div class=side>'
-            f'<figure><figcaption>expected</figcaption><img src="{data_uri(expected_path.read_bytes())}"></figure>'
-            f'<figure><figcaption>actual</figcaption><img src="{data_uri(actual_path.read_bytes())}"></figure>'
-            f'<figure><figcaption>difference</figcaption><img src="{data_uri(encode_png(expected_width, expected_height, mask))}"></figure>'
+            f'<figure><figcaption>expected</figcaption><img src="{expected_uri}"></figure>'
+            f'<figure><figcaption>actual</figcaption><img src="{actual_uri}"></figure>'
+            f'<figure><figcaption>difference</figcaption><img src="{mask_uri}"></figure>'
             "</div>"
         )
+    worst_text = f"{worst * 100:.2f}"
     html = f"""<!doctype html>
 <meta charset="utf-8">
-<title>{title}</title>
+<title>{esc(title)}</title>
 <style>
   body {{ font: 14px/1.4 system-ui, sans-serif; margin: 24px; background: #14171c; color: #e6e6e6; }}
   a, h1, h2 {{ color: inherit; }}
@@ -246,9 +263,9 @@ def build_report(
   figcaption {{ color: #9aa4b2; margin-bottom: 4px; }}
   img {{ width: 100%; height: auto; image-rendering: auto; background: #000; border: 1px solid #2c313a; }}
 </style>
-<h1>{title}</h1>
-<p>Expected: <code>{expected_root}</code> &middot; actual: <code>{actual_root}</code> &middot;
-tolerance: {tolerance} per channel &middot; worst mismatch: {worst * 100:.2f}%.</p>
+<h1>{esc(title)}</h1>
+<p>Expected: <code>{esc(expected_root)}</code> &middot; actual: <code>{esc(actual_root)}</code> &middot;
+tolerance: {esc(tolerance)} per channel &middot; worst mismatch: {esc(worst_text)}%.</p>
 <table>
 <tr><th>golden</th><th>size</th><th>differing pixels</th><th>share</th></tr>
 {''.join(rows)}

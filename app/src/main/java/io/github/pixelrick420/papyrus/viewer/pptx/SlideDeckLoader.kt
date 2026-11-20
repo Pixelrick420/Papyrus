@@ -31,7 +31,7 @@ internal object SlideDeckLoader {
 
     @Suppress("TooGenericExceptionCaught")
     suspend fun load(context: Context, uri: Uri): SlideDeck = withContext(Dispatchers.IO) {
-        val source = SlidePageSource.open(context, uri, labels = pictureLabels(context))
+        val source = SlidePageSource.open(context, uri, buildTextIndex = false, labels = pictureLabels(context))
         try {
             build(context, source) {
                 context.contentResolver.openInputStream(uri) ?: throw FileNotFoundException(uri.toString())
@@ -44,7 +44,7 @@ internal object SlideDeckLoader {
 
     @Suppress("TooGenericExceptionCaught")
     suspend fun loadFile(context: Context, file: File): SlideDeck = withContext(Dispatchers.IO) {
-        val source = SlidePageSource.openFile(context, file, labels = pictureLabels(context))
+        val source = SlidePageSource.openFile(context, file, buildTextIndex = false, labels = pictureLabels(context))
         try {
             build(context, source) { file.inputStream() }
         } catch (e: Exception) {
@@ -59,6 +59,7 @@ internal object SlideDeckLoader {
         openStream: () -> InputStream,
     ): SlideDeck {
         val aspectRatios = recoverSuspend(emptyList<Float>()) { source.loadAspectRatios() }
+        source.ensureHidden()
         val textIndex = source.textIndex
         val texts = if (textIndex.pages.isNotEmpty()) {
             textIndex.pages.map { it.text }

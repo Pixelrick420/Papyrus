@@ -45,7 +45,6 @@ internal class StyleResolver(
         return LazyDeckScenes(
             count = parts.size,
             size = size,
-            hidden = hiddenSlides(pkg, parts),
             factory = { index ->
                 val part = parts[index]
                 val scene = slide(pkg, part, size, presentation.firstSlideNumber + index, templates)
@@ -54,21 +53,6 @@ internal class StyleResolver(
             },
         )
     }
-
-    private fun hiddenSlides(pkg: PptxPackage, parts: List<String>): Set<Int> =
-        parts.mapIndexedNotNull { index, part ->
-            val bytes = pkg.part(part) ?: return@mapIndexedNotNull null
-            val hidden = recover(false) {
-                val parser = configureXmlParser(newParserFactory(), namespaces = false)
-                parser.setInput(bytes.inputStream(), null)
-                var event = parser.eventType
-                while (event != XmlPullParser.START_TAG && event != XmlPullParser.END_DOCUMENT) event = parser.next()
-                event == XmlPullParser.START_TAG && parser.getAttributeValue(null, "show").let { value ->
-                    value == "0" || value.equals("false", ignoreCase = true) || value.equals("off", ignoreCase = true)
-                }
-            }
-            index.takeIf { hidden }
-        }.toSet()
 
     private fun readTableStyles(pkg: PptxPackage, colors: ColorModel): TableStyleSheet {
         val part = pkg.part("ppt/tableStyles.xml")
@@ -954,7 +938,6 @@ private class Templates(
 internal class LazyDeckScenes internal constructor(
     val count: Int,
     val size: SceneSize,
-    val hidden: Set<Int>,
     private val factory: (Int) -> SlideScene,
     private val capacity: Int = DEFAULT_CAPACITY,
 ) {
@@ -965,6 +948,24 @@ internal class LazyDeckScenes internal constructor(
 
     private val sawIncomplete = java.util.concurrent.atomic.AtomicBoolean(false)
 
+    private val hiddenSet = java.util.concurrent.ConcurrentHashMap.newKeySet<Int>()
+
+    private val parsed = java.util.concurrent.ConcurrentHashMap.newKeySet<Int>()
+
+    /** Hidden slides discovered so far, without parsing; grows as slides are resolved. */
+    val hiddenSnapshot: Set<Int> get() = hiddenSet.toSet()
+
+    /** Hidden slides for callers that need the complete set; parses remaining slides once. */
+    val hidden: Set<Int> get() {
+        if (parsed.size < count) repeat(count) { scene(it) }
+        return hiddenSet.toSet()
+    }
+
+    /** Completes the parse when a caller needs the full hidden set without an index build. */
+    fun ensureAllParsed() {
+        for (index in 0 until count) if (!parsed.contains(index)) scene(index)
+    }
+
     /** True once any slide resolved so far reported a dropped shape or part. */
     val incomplete: Boolean get() = sawIncomplete.get()
 
@@ -974,6 +975,8 @@ internal class LazyDeckScenes internal constructor(
         // Resolve outside the monitor: parsing a slide can be slow, and other slides must stay readable.
         val resolved = factory(index)
         synchronized(cache) { cache.put(index, resolved) }
+        parsed.add(index)
+        if (resolved.hidden) hiddenSet.add(index)
         if (resolved.incomplete) sawIncomplete.set(true)
         return resolved
     }
@@ -989,7 +992,11 @@ internal class LazyDeckScenes internal constructor(
     }
 
     @Synchronized
-    fun clear() = cache.clear()
+    fun clear() {
+        cache.clear()
+        parsed.clear()
+        hiddenSet.clear()
+    }
 
     private companion object {
         const val DEFAULT_CAPACITY = 6

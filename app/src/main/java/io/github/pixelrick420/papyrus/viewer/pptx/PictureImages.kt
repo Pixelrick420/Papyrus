@@ -11,8 +11,12 @@ import java.security.MessageDigest
 import kotlin.math.min
 import kotlin.math.roundToInt
 
-/** The raster file a picture resolves to, with the source pixel size a display list needs to crop it. */
-internal class RasterPicture(val file: File, val bounds: ImageBounds)
+/** The raster a picture resolves to: a file path for native images, or a cached bitmap for metafiles. */
+internal class RasterPicture(
+    val file: File,
+    val bounds: ImageBounds,
+    val bitmap: Bitmap? = null,
+)
 
 /** User-visible placeholder text, resolved from resources so it can be localized. */
 internal data class PictureLabels(
@@ -36,8 +40,8 @@ internal sealed interface PictureContent {
 }
 
 /**
- * Resolves a picture's relationship to content the paint pass can draw. Metafiles and undecodable formats become
- * bounded PNGs in the media dir, so the display list keeps one image path for every picture it can show.
+ * Resolves a picture's relationship to content the paint pass can draw. Metafiles reuse their cached raster;
+ * placeholders become bounded PNGs in the media dir.
  */
 internal class PictureImages(
     private val pkg: PptxPackage,
@@ -60,7 +64,9 @@ internal class PictureImages(
         is Resolved.Raster -> cache.bounds(resolved.file)?.let { RasterPicture(resolved.file, it) }
         is Resolved.Metafile -> {
             val width = metafiles.bounds(resolved.file)?.width?.coerceAtMost(RASTER_EDGE) ?: RASTER_EDGE
-            metafiles.load(resolved.file, width)?.let { generated("metafile:${resolved.file.path}:${it.bounds.width}", it) }
+            metafiles.load(resolved.file, width)?.let {
+                RasterPicture(File("metafile:${resolved.file.path}:${it.bounds.width}"), it.bounds, it.bitmap)
+            }
         }
         is Resolved.Fixed -> generated("placeholder:${resolved.label}:${frame?.width}:${frame?.height}", placeholder(resolved.label, frame))
         Resolved.Missing -> null

@@ -1,5 +1,6 @@
 package io.github.pixelrick420.papyrus.viewer.pptx.render
 
+import android.graphics.Bitmap
 import io.github.pixelrick420.papyrus.viewer.pptx.Affine
 import io.github.pixelrick420.papyrus.viewer.pptx.PatternTile
 import io.github.pixelrick420.papyrus.viewer.pptx.PictureEffects
@@ -104,8 +105,13 @@ internal data class StrokeSpec(
     val dash: List<Float> = emptyList(),
 )
 
-/** Identifies a decoded image by [key]; the backend resolves it to pixels. */
-internal data class ImageRef(val key: String, val width: Int = 0, val height: Int = 0)
+/** Identifies a decoded image by [key] or, for metafiles, carries the cached raster directly. */
+internal data class ImageRef(
+    val key: String,
+    val width: Int = 0,
+    val height: Int = 0,
+    val bitmap: Bitmap? = null,
+)
 
 internal data class ImageEffects(
     val alpha: Float = 1f,

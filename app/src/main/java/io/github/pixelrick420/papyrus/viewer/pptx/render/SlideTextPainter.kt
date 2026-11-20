@@ -1,6 +1,7 @@
 package io.github.pixelrick420.papyrus.viewer.pptx.render
 
 import io.github.pixelrick420.papyrus.viewer.pptx.Affine
+import io.github.pixelrick420.papyrus.viewer.pptx.CachedTextLayout
 import io.github.pixelrick420.papyrus.viewer.pptx.Rgba
 import io.github.pixelrick420.papyrus.viewer.pptx.Scene
 import io.github.pixelrick420.papyrus.viewer.pptx.SceneGraphicFrame
@@ -46,9 +47,11 @@ internal class SlideTextPainter(
 
     fun paintShape(scene: Scene, shape: SceneShape, out: MutableList<DrawOp>) {
         val frame = shape.frame?.takeIf { it.width > 0.0 && it.height > 0.0 } ?: return
-        val body = bodyOf(shape.textBody, shape.text?.textSources) ?: return
+        val cached = shape.text?.let { scene.textLayouts[it] } as? CachedTextLayout
+        val body = cached?.body ?: bodyOf(shape.textBody, shape.text?.textSources) ?: return
         if (body.paragraphs.isEmpty()) return
-        val layout = layoutOf(scene, shape.text, body, frame, TextShapeTransform.of(shape.transform)) ?: return
+        val layout = cached?.layout
+            ?: layoutOf(scene, shape.text, body, frame, TextShapeTransform.of(shape.transform)) ?: return
         emit(
             layout = layout,
             transform = Affine.forShape(frame, rotation = layout.orientation.rotationDeg * SIXTIETHS_PER_DEGREE),
@@ -279,11 +282,12 @@ internal class SlideTextPainter(
         frame: SceneRect,
         transform: TextShapeTransform,
     ): TextFrameLayout? {
+        (key?.let { scene.textLayouts[it] } as? CachedTextLayout)?.let { return it.layout }
         (key?.let { scene.textLayouts[it] } as? TextFrameLayout)?.let { return it }
         val layout = recover<TextFrameLayout?>(null) {
             engine.layout(body, frame.width, frame.height, transform)
         } ?: return null
-        if (key != null) scene.textLayouts[key] = layout
+        if (key != null) scene.textLayouts[key] = CachedTextLayout(body, layout)
         return layout
     }
 

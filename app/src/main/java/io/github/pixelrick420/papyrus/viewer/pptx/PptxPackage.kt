@@ -42,6 +42,8 @@ data class PptxLimits(
     val maxShapes: Int = 10_000,
     val maxGroupDepth: Int = 32,
     val maxTextChars: Int = 500_000,
+    /** Deck-wide ceiling on indexed characters, bounding box memory across all slides. */
+    val maxIndexChars: Int = 2_000_000,
     val maxParagraphs: Int = 20_000,
     val maxGradientStops: Int = 64,
     val maxDashEntries: Int = 16,

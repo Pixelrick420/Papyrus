@@ -1,5 +1,7 @@
 package io.github.pixelrick420.papyrus.viewer.pptx
 
+import io.github.pixelrick420.papyrus.viewer.pptx.text.TextBody
+import io.github.pixelrick420.papyrus.viewer.pptx.text.TextFrameLayout
 import io.github.pixelrick420.papyrus.viewer.pptx.text.TextStyleSources
 
 /** A point in EMU. */
@@ -291,6 +293,9 @@ internal class SceneRunStyle(
 
 /** A text frame's laid-out form, supplied by the text layout pass. */
 internal interface LaidOutText
+
+/** Keeps the resolved body beside its layout so indexing and painting share one layout pass. */
+internal class CachedTextLayout(val body: TextBody, val layout: TextFrameLayout) : LaidOutText
 
 /** The immutable resolved scene a slide paints from, in EMU. */
 internal class Scene(

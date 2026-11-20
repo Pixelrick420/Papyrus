@@ -20,6 +20,7 @@ import io.github.pixelrick420.papyrus.viewer.pptx.render.SlideTextPainter
 import io.github.pixelrick420.papyrus.viewer.pptx.render.SoftwareCanvas
 import io.github.pixelrick420.papyrus.viewer.pptx.meta.AndroidMetafileDecoder
 import io.github.pixelrick420.papyrus.viewer.pptx.meta.MetafileDecoder
+import io.github.pixelrick420.papyrus.viewer.pptx.recover
 import io.github.pixelrick420.papyrus.viewer.pptx.text.EmbeddedFontDecoder
 import io.github.pixelrick420.papyrus.viewer.pptx.text.FontCatalog
 import io.github.pixelrick420.papyrus.viewer.pptx.text.FontSlots
@@ -37,6 +38,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -62,11 +64,40 @@ internal class SlidePageSource private constructor(
     private val renderer: SlideRenderer,
     private val fonts: FontCatalog? = null,
     val fontSubstitution: FontSubstitution,
-    val hidden: Set<Int> = emptySet(),
     private val generated: MutableMap<String, RasterPicture> = HashMap(),
     private val placeholderLabels: PictureLabels = PictureLabels.Default,
-    val textIndex: SlideTextIndex,
 ) : PageBitmapSource {
+
+    private val textIndexFlow = MutableStateFlow(SlideTextIndex(emptyList()))
+
+    val textIndex: SlideTextIndex get() = textIndexFlow.value
+
+    /** Grows as the deferred index parses slides; complete after [awaitTextIndex]. */
+    val hidden: Set<Int> get() = scenes.hiddenSnapshot
+
+    private val textIndexScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    private var textIndexJob: kotlinx.coroutines.Job? = null
+
+    fun setTextIndex(index: SlideTextIndex) {
+        textIndexFlow.value = index
+    }
+
+    fun startTextIndexBuild(build: () -> SlideTextIndex) {
+        textIndexJob = textIndexScope.launch {
+            textIndexFlow.value = build()
+        }
+    }
+
+    suspend fun awaitTextIndex() {
+        textIndexJob?.join()
+        textIndexJob = null
+    }
+
+    suspend fun ensureHidden() {
+        awaitTextIndex()
+        if (textIndex.pages.isEmpty()) kotlinx.coroutines.withContext(Dispatchers.IO) { scenes.ensureAllParsed() }
+    }
 
     override val pageCount: Int = scenes.count
 
@@ -194,7 +225,7 @@ internal class SlidePageSource private constructor(
             heightPx = render.heightPx,
             scale = render.scale,
             imageOf = { ref ->
-                if (decoded.containsKey(ref.key)) {
+                ref.bitmap ?: if (decoded.containsKey(ref.key)) {
                     decoded[ref.key]
                 } else {
                     images.load(File(ref.key), render.widthPx)?.bitmap.also { decoded[ref.key] = it }
@@ -230,7 +261,7 @@ internal class SlidePageSource private constructor(
             list = list,
             region = region,
             imageOf = { ref ->
-                if (decoded.containsKey(ref.key)) {
+                ref.bitmap ?: if (decoded.containsKey(ref.key)) {
                     decoded[ref.key]
                 } else {
                     images.load(File(ref.key), region.widthPx)?.bitmap.also { decoded[ref.key] = it }
@@ -273,7 +304,7 @@ internal class SlidePageSource private constructor(
             labels = placeholderLabels,
         )
         return SlidePictureResolver { picture ->
-            pictures.raster(picture.source, picture.frame)?.let { SlideImage(it.file, it.bounds) }
+            pictures.raster(picture.source, picture.frame)?.let { SlideImage(it.file, it.bounds, it.bitmap) }
         }
     }
 
@@ -291,6 +322,7 @@ internal class SlidePageSource private constructor(
                 lock.withLock {
                     if (closed) return@withLock
                     closed = true
+                    textIndexJob?.cancel()
                     runCatching { cache.evictAll() }
                     runCatching { lists.evictAll() }
                     runCatching { scenes.clear() }
@@ -425,12 +457,7 @@ internal class SlidePageSource private constructor(
             ensureActive()
             scenes.scene(0)
             ensureActive()
-            val textIndex = if (buildTextIndex && engine != null) {
-                SlideTextIndex.fromDeck(pkg, presentation, scenes.count, { index -> scenes.scene(index) }, resolver, engine)
-            } else {
-                SlideTextIndex(emptyList())
-            }
-            SlidePageSource(
+            val source = SlidePageSource(
                 pkg = pkg,
                 scenes = scenes,
                 presentationInfo = presentation,
@@ -439,10 +466,26 @@ internal class SlidePageSource private constructor(
                 renderer = SlideRenderer(presets, limits, text = engine?.let { SlideTextPainter(resolver, it) }),
                 fonts = fonts,
                 fontSubstitution = substitution,
-                hidden = scenes.hidden,
-                textIndex = textIndex,
                 placeholderLabels = labels,
-            ).also { synchronized(openSources) { openSources.add(it) } }
+            )
+            if (engine != null) {
+                val build = {
+                    recover(SlideTextIndex(emptyList())) {
+                        SlideTextIndex.fromDeck(
+                            pkg,
+                            presentation,
+                            scenes.count,
+                            { index -> scenes.scene(index) },
+                            resolver,
+                            engine,
+                            { ensureActive() },
+                            limits,
+                        )
+                    }
+                }
+                if (buildTextIndex) source.setTextIndex(build()) else source.startTextIndexBuild(build)
+            }
+            source.also { synchronized(openSources) { openSources.add(it) } }
         }
 
         private fun mediaDir(context: Context): File =

@@ -1,5 +1,6 @@
 package io.github.pixelrick420.papyrus.viewer.pptx.render
 
+import android.graphics.Bitmap
 import io.github.pixelrick420.papyrus.viewer.pptx.Affine
 import io.github.pixelrick420.papyrus.viewer.pptx.ArrowType
 import io.github.pixelrick420.papyrus.viewer.pptx.EMU_PER_PIXEL
@@ -40,8 +41,12 @@ import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.math.tan
 
-/** A picture resolved to its raster file and source size, which is all a display list needs to name it. */
-internal class SlideImage(val file: File, val bounds: ImageBounds) {
+/** A picture resolved to its raster file or direct bitmap, with the source size a display list needs to crop it. */
+internal class SlideImage(
+    val file: File,
+    val bounds: ImageBounds,
+    val bitmap: Bitmap? = null,
+) {
 
     val key: String get() = file.path
 }
@@ -278,7 +283,7 @@ internal class SlideRenderer(
             ),
         )
         out += DrawOp.DrawImage(
-            image = ImageRef(raster.key, raster.bounds.width, raster.bounds.height),
+            image = ImageRef(raster.key, raster.bounds.width, raster.bounds.height, raster.bitmap),
             src = regions.first,
             dst = regions.second,
             effects = ImageEffects(alpha = source.alpha.toFloat(), clip = maskOf(picture), recolor = source.effects),
