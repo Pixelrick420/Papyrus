@@ -19,17 +19,22 @@ import io.github.pixelrick420.papyrus.ui.navigation.PapyrusNavGraph
 import io.github.pixelrick420.papyrus.ui.theme.PapyrusTheme
 import kotlin.coroutines.cancellation.CancellationException
 
+// The sequence makes two handovers of the same URI distinct, so neither is dropped as an unchanged value.
+data class Handover(val uri: Uri, val seq: Long)
+
 class MainActivity : ComponentActivity() {
 
-    private var externalDocument by mutableStateOf<Uri?>(null)
+    private var externalDocument by mutableStateOf<Handover?>(null)
+    private var handoverSeq = 0L
 
+    @Suppress("TooGenericExceptionCaught", "SwallowedException")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val app = application as MainApplication
         val settings = app.settings
         // Styled before the first frame so a forced theme never flashes the wrong bars.
         applySystemBars(settings.current.themeMode.isDark(deviceInDarkMode()))
-        if (savedInstanceState == null) externalDocument = viewUri(intent)
+        if (savedInstanceState == null) externalDocument = viewUri(intent)?.let(::handover)
 
         val repository = app.repository
         setContent {
@@ -63,8 +68,10 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        viewUri(intent)?.let { externalDocument = it }
+        viewUri(intent)?.let { externalDocument = handover(it) }
     }
+
+    private fun handover(uri: Uri): Handover = Handover(uri, ++handoverSeq)
 
     private fun viewUri(intent: Intent?): Uri? =
         intent?.takeIf { it.action == Intent.ACTION_VIEW }?.data?.takeIf { it.scheme == "content" }

@@ -145,8 +145,11 @@ class TtsPlaybackService : Service(), TextToSpeech.OnInitListener {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        when (intent?.action) {
-            ACTION_PLAY -> session.play()
+        val action = intent?.action
+        // begin() starts playback with the new request, so a preceding play() would speak from the old position.
+        val pending = if (action == ACTION_PAUSE || action == ACTION_STOP) null else session.consumePending()
+        when (action) {
+            ACTION_PLAY -> if (pending == null) session.play()
             ACTION_PAUSE -> session.pause()
             ACTION_STOP -> {
                 stopPlayback()
@@ -157,9 +160,7 @@ class TtsPlaybackService : Service(), TextToSpeech.OnInitListener {
             started = true
             startInForeground()
         }
-        if (intent?.action != ACTION_PAUSE) {
-            session.consumePending()?.let(::begin)
-        }
+        pending?.let(::begin)
         publish(controller?.playback?.value ?: TtsPlayback())
         return START_NOT_STICKY
     }
@@ -304,6 +305,7 @@ class TtsPlaybackService : Service(), TextToSpeech.OnInitListener {
     }
 
     override fun onDestroy() {
+        if (started) stopForeground(STOP_FOREGROUND_REMOVE)
         scope.cancel()
         unregisterReceiver(noisyReceiver)
         audio.release()

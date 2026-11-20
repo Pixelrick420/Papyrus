@@ -326,6 +326,7 @@ private fun SlideDeck.toContent(): ViewerContent.Slides = ViewerContent.Slides(
     semanticTexts = semanticTexts,
 )
 
+@Suppress("TooGenericExceptionCaught", "SwallowedException")
 class ViewerViewModel(
     private val app: MainApplication,
     private val savedState: SavedStateHandle,
@@ -823,6 +824,7 @@ class ViewerViewModel(
         outbox.trySend(id to sample)
     }
 
+    @Suppress("TooGenericExceptionCaught", "SwallowedException")
     private suspend fun loadContentSafely(doc: DocumentEntity): ViewerContent = try {
         withContext(Dispatchers.IO) { loadContent(doc) }
     } catch (e: CancellationException) {
@@ -1008,6 +1010,7 @@ class ViewerViewModel(
         }
 
     // If the renderer still wants a password the byte screen was wrong, so the real parser decides the lock kind.
+    @Suppress("TooGenericExceptionCaught", "SwallowedException")
     private suspend fun openUnencryptedPdf(uri: Uri): ViewerContent =
         try {
             val source = PdfPageSource.open(app, uri)
@@ -1020,6 +1023,7 @@ class ViewerViewModel(
             }
         }
 
+    @Suppress("TooGenericExceptionCaught", "SwallowedException")
     private suspend fun unlockPdf(uri: Uri, password: String): ViewerContent {
         app.awaitUnlockedSweep()
         val dir = File(app.cacheDir, PDF_UNLOCK_DIR).apply { mkdirs() }
@@ -1041,6 +1045,7 @@ class ViewerViewModel(
     }
 
     /** Office decryption writes a plaintext copy, so it is only kept once extraction/loading has succeeded. */
+    @Suppress("TooGenericExceptionCaught", "SwallowedException")
     private suspend fun unlockOffice(uri: Uri, format: DocumentFormat, password: String): ViewerContent {
         app.awaitUnlockedSweep()
         val dir = File(app.cacheDir, OFFICE_UNLOCK_DIR).apply { mkdirs() }
@@ -1098,6 +1103,7 @@ class ViewerViewModel(
         }
     }
 
+    @Suppress("TooGenericExceptionCaught", "SwallowedException")
     fun saveToLibrary(notify: Boolean = true) {
         if (isCrashReport) return
         val doc = _state.value.document ?: return
@@ -1228,6 +1234,7 @@ class ViewerViewModel(
     }
 
     /** The password stays a local: never state, saved state, or a log, and dropped when the attempt ends. */
+    @Suppress("TooGenericExceptionCaught", "SwallowedException")
     fun submitPassword(password: String) {
         val doc = _state.value.document ?: return
         val current = _state.value.content
@@ -1447,6 +1454,7 @@ class ViewerViewModel(
     }
 
     /** [picked] is checked against the title, so a wrong pick cannot re-point the row. */
+    @Suppress("TooGenericExceptionCaught", "SwallowedException")
     fun regrant(picked: Uri) {
         val doc = _state.value.document ?: return
         viewModelScope.launch {

@@ -207,6 +207,8 @@ access</string>
     <string name="viewer_annotation_mark">Note: %1$s</string>
     <string name="viewer_annotation_edit">Open note</string>
     <string name="viewer_annotation_delete">Delete highlight</string>
+    <string name="viewer_link">Link</string>
+    <string name="viewer_link_open">Open link</string>
     <string
         name="viewer_pretty_failed"
     >Couldn\'t format this file; showing it as stored.</string>

@@ -395,6 +395,7 @@ class HomeViewModel(
     private val _messages = Channel<UiText>(Channel.BUFFERED)
     val messages = _messages.receiveAsFlow()
 
+    @Suppress("TooGenericExceptionCaught", "SwallowedException")
     fun onDocumentsPicked(uris: List<Uri>, open: (Long) -> Unit, onAdded: () -> Unit) {
         if (uris.isEmpty()) return
         viewModelScope.launch {
@@ -439,6 +440,7 @@ class HomeViewModel(
     }
 
     // Runs on [removalScope] since [PendingRemoval] holds a lock; a failed removal is the one case that takes the row back out of [hiddenIds].
+    @Suppress("TooGenericExceptionCaught", "SwallowedException")
     private fun commitRemoval(documents: List<DocumentEntity>) {
         removalScope.launch {
             for (document in documents) {
@@ -458,6 +460,7 @@ class HomeViewModel(
     }
 
     // Immediate: the confirmation dialog already asked.
+    @Suppress("TooGenericExceptionCaught", "SwallowedException")
     fun removeSelected() {
         val selected = selectedDocuments()
         if (selected.isEmpty() || bulkRunning()) return
@@ -608,8 +611,15 @@ fun HomeScreen(
 
     BackHandler(enabled = state.selection.active) { viewModel.exitSelection() }
 
+    // Each message gets its own coroutine: the indefinite Undo snackbar would otherwise hold up every later message.
+    val messageScope = rememberCoroutineScope()
     LaunchedEffect(viewModel) {
-        viewModel.messages.collect { snackbar.showSnackbar(it.asString(context)) }
+        viewModel.messages.collect { message ->
+            messageScope.launch {
+                snackbar.currentSnackbarData?.dismiss()
+                snackbar.showSnackbar(message.asString(context))
+            }
+        }
     }
 
     // The ViewModel's timer decides when the window ends, not the snackbar's own: it is indefinite and

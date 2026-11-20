@@ -615,6 +615,7 @@ private fun PdfPage(
             // Under the matches and the selection, so a link never hides a find highlight.
             val linkColor = MaterialTheme.colorScheme.primary
             Canvas(Modifier.fillMaxSize()) { drawLinks(linkRects, linkColor) }
+            for (link in links) LinkStop(link, pageSize, onLinkTarget)
         }
         if (spokenRects != null) {
             // Under the matches and the selection, so neither is hidden by the voice passing over it.
@@ -705,6 +706,30 @@ private fun NoteStop(mark: Highlight, pageSize: IntSize, onMark: (Highlight) -> 
             .offset { IntOffset(left.roundToInt(), top.roundToInt()) }
             .size(width, height)
             .clickable(onClickLabel = editLabel, onClick = { onMark(mark) })
+            .semantics { contentDescription = description },
+    )
+}
+
+// A Canvas cannot be focused or described, so each link gets a box TalkBack can reach and activate.
+@Composable
+private fun LinkStop(link: PdfPageLink, pageSize: IntSize, onLink: (PdfLinkTarget) -> Unit) {
+    if (pageSize == IntSize.Zero) return
+    val rect = link.rect
+    val left = rect.left * pageSize.width
+    val top = rect.top * pageSize.height
+    val right = rect.right * pageSize.width
+    val bottom = rect.bottom * pageSize.height
+    val density = LocalDensity.current
+    val width = with(density) { (right - left).toDp().coerceAtLeast(1.dp) }
+    val height = with(density) { (bottom - top).toDp().coerceAtLeast(1.dp) }
+    val description = stringResource(R.string.viewer_link)
+    val openLabel = stringResource(R.string.viewer_link_open)
+
+    Box(
+        Modifier
+            .offset { IntOffset(left.roundToInt(), top.roundToInt()) }
+            .size(width, height)
+            .clickable(onClickLabel = openLabel, onClick = { onLink(link.target) })
             .semantics { contentDescription = description },
     )
 }

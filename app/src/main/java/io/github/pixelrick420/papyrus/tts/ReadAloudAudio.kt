@@ -45,8 +45,8 @@ class ReadAloudAudio(
             AudioManager.AUDIOFOCUS_LOSS -> {
                 hasFocus = false
                 resumeOnGain = false
-                focus.abandon()
-                if (speaking) pause()
+                // The pause reports back as end(), which abandons; a transient loss already ended calls end() here.
+                if (speaking) pause() else end()
             }
         }
     }

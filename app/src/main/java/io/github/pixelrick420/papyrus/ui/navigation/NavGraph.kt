@@ -20,6 +20,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import io.github.pixelrick420.papyrus.Handover
 import io.github.pixelrick420.papyrus.MainApplication
 import io.github.pixelrick420.papyrus.ui.screens.CrashReportsScreen
 import io.github.pixelrick420.papyrus.ui.screens.HomeScreen
@@ -72,7 +73,7 @@ private val NavEasing = CubicBezierEasing(0.2f, 0f, 0f, 1f)
 @Composable
 fun PapyrusNavGraph(
     navController: NavHostController = rememberNavController(),
-    externalDocument: Uri? = null,
+    externalDocument: Handover? = null,
     resolveExternalDocument: suspend (Uri) -> Long? = { null },
     onExternalDocumentHandled: () -> Unit = {},
 ) {
@@ -85,8 +86,8 @@ fun PapyrusNavGraph(
     val twoPane = rememberTwoPane()
 
     LaunchedEffect(externalDocument) {
-        val uri = externalDocument ?: return@LaunchedEffect
-        val id = resolveExternalDocument(uri)
+        val handover = externalDocument ?: return@LaunchedEffect
+        val id = resolveExternalDocument(handover.uri)
         onExternalDocumentHandled()
         if (id == null) return@LaunchedEffect
         // A second handover arriving while the first is still open: that viewer was not entered

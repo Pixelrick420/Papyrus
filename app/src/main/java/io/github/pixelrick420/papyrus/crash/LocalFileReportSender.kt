@@ -17,8 +17,8 @@ class LocalFileReportSender : ReportSender {
         try {
             val dir = CrashReportStore.directory(context).apply { mkdirs() }
             val id = errorContent.getString(ReportField.REPORT_ID) ?: UUID.randomUUID().toString()
-            // Exception messages can embed document paths; redact them before persisting.
-            redactDocumentPaths(errorContent, context.filesDir)
+            // Any free-text field can carry a document path, not only the stack trace.
+            redactReport(errorContent, listOf(context.filesDir.absolutePath, context.cacheDir.absolutePath))
             File(dir, "crash-${System.currentTimeMillis()}-$id.json").writeText(errorContent.toJSON())
             CrashReportStore.prune(context)
         } catch (e: IOException) {
@@ -26,11 +26,11 @@ class LocalFileReportSender : ReportSender {
         }
     }
 
-    private fun redactDocumentPaths(errorContent: CrashReportData, filesDir: File) {
-        val stackTrace = errorContent.getString(ReportField.STACK_TRACE) ?: return
-        val sanitized = redact(stackTrace, filesDir.absolutePath)
-        if (sanitized != stackTrace) {
-            errorContent.put(ReportField.STACK_TRACE, sanitized)
+    private fun redactReport(errorContent: CrashReportData, roots: List<String>) {
+        for ((key, value) in errorContent.toMap()) {
+            if (value !is String) continue
+            val sanitized = redact(value, roots)
+            if (sanitized != value) errorContent.put(key, sanitized)
         }
     }
 
@@ -39,12 +39,18 @@ class LocalFileReportSender : ReportSender {
         // Names can hold spaces, so a file path or an imported file's path is redacted to the end of its line.
         private val FILE_URI = Regex("""file://.*""")
         private val IMPORTS = Regex("""\S*imports/.*""")
+        private val STORAGE_PATH = Regex("""(?<![\w])/(?:storage|sdcard|mnt|data|cache)/[^\r\n]*""")
 
-        internal fun redact(text: String, root: String): String =
-            text.replace(Regex(Pattern.quote(root) + """.*"""), "[redacted]")
+        internal fun redact(text: String, root: String): String = redact(text, listOf(root))
+
+        internal fun redact(text: String, roots: Collection<String>): String =
+            roots.fold(text) { acc, root ->
+                acc.replace(Regex(Pattern.quote(root) + """.*"""), "[redacted]")
+            }
                 .replace(CONTENT_URI, "[redacted]")
                 .replace(FILE_URI, "[redacted]")
                 .replace(IMPORTS, "[redacted]")
+                .replace(STORAGE_PATH, "[redacted]")
     }
 }
 
