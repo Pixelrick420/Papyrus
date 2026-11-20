@@ -2,13 +2,20 @@ package io.github.pixelrick420.papyrus.viewer
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.ByteArrayInputStream
+import java.io.IOException
 import java.io.InputStream
 import java.nio.charset.Charset
 
 class TextReadingTest {
+
+    private class Stalled : InputStream() {
+        override fun read(): Int = 0
+        override fun read(b: ByteArray, off: Int, len: Int): Int = 0
+    }
 
     private class Trickle(private val data: ByteArray) : InputStream() {
         private var at = 0
@@ -243,5 +250,10 @@ class TextReadingTest {
         assertEquals(20, result.chunks[2].lines().size)
         assertEquals(100, result.lineCount)
         assertEquals(lines(100), result.chunks.joinToString("\n"))
+    }
+
+    @Test
+    fun `a stream that reports no progress fails instead of spinning`() {
+        assertThrows(IOException::class.java) { readTextChunks(Stalled(), Int.MAX_VALUE) }
     }
 }

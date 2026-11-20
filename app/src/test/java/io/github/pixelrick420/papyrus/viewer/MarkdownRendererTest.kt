@@ -22,6 +22,7 @@ class MarkdownRendererTest {
         assertEquals(10, range.end)
         assertEquals("E=mc^2", range.latex)
         assertFalse(range.isBlock)
+        assertTrue(range.renderable)
     }
 
     @Test

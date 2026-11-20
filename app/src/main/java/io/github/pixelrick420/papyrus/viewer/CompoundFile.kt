@@ -2,6 +2,7 @@ package io.github.pixelrick420.papyrus.viewer
 
 import java.io.IOException
 import java.io.InputStream
+import java.util.BitSet
 
 // Read-only and bounds-checked: a truncated or cyclic file throws instead of looping or over-allocating.
 internal class CompoundFile(private val openStream: () -> InputStream, private val fileLength: Long) {
@@ -18,18 +19,22 @@ internal class CompoundFile(private val openStream: () -> InputStream, private v
 
     private val miniFat: IntArray? by lazy {
         if (firstMiniFat == ENDOFCHAIN) return@lazy null
-        join(rawMany(chain(firstMiniFat, fat, totalSectors, "mini FAT").map(::sectorOffset), sectorSize))
+        val per = sectorSize / 4
+        val sectors = chain(firstMiniFat, fat, totalSectors, "mini FAT", minOf(totalSectors, MAX_TABLE_ENTRIES / per))
+        readTable(sectors, "mini FAT")
     }
 
-    private val miniRoot: List<Int> by lazy {
+    private val miniRoot: IntArray by lazy {
         val r = root ?: throw IOException("missing root entry")
         if (r.start == ENDOFCHAIN || r.size == 0L) throw IOException("missing mini stream")
-        chain(r.start, fat, totalSectors, "mini stream")
+        if (r.size > fileLength) throw IOException("mini stream too large")
+        val needed = ((r.size + sectorSize - 1) / sectorSize).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+        chain(r.start, fat, totalSectors, "mini stream", minOf(needed, totalSectors))
     }
 
     init {
         if (fileLength < HEADER_SIZE) throw IOException("truncated compound file")
-        val header = raw(0, HEADER_SIZE)
+        val header = readAt(0, HEADER_SIZE)
         if (OLE_SIGNATURE.indices.any { (header[it].toInt() and 0xFF) != OLE_SIGNATURE[it] }) {
             throw IOException("not a compound file")
         }
@@ -61,21 +66,24 @@ internal class CompoundFile(private val openStream: () -> InputStream, private v
         var read = 0L
         while (read < numDifat) {
             if (next >= totalSectors) throw IOException("invalid DIFAT chain")
-            val sector = raw(sectorOffset(next.toInt()), sectorSize)
+            val sector = readAt(sectorOffset(next.toInt()), sectorSize)
             for (i in 0 until perDifat) pointers += difatPointer(sector, i * 4)
             next = u32(sector, perDifat * 4)
             read++
         }
-        val fatSectors = pointers.filter { it >= 0 }
-        if (fatSectors.size < numFat) throw IOException("FAT pointers missing")
-        fat = join(rawMany(fatSectors.take(numFat.toInt()).map(::sectorOffset), sectorSize))
+        val valid = pointers.filter { it >= 0 }
+        if (valid.size < numFat) throw IOException("FAT pointers missing")
+        val fatSectors = IntArray(numFat.toInt()) { valid[it] }
+        fat = readTable(fatSectors, "FAT")
 
         val firstDir = u32(header, FIRST_DIR_SECTOR_OFFSET)
         if (firstDir == ENDOFCHAIN.toLong()) throw IOException("compound file has no directory")
         if (firstDir >= totalSectors) throw IOException("invalid directory sector")
         val dirSectors = chain(firstDir.toInt(), fat, totalSectors, "directory")
         if (dirSectors.size > MAX_DIR_SECTORS) throw IOException("directory too large")
-        entries = rawMany(dirSectors.map(::sectorOffset), sectorSize).flatMap(::parseEntries)
+        val parsed = ArrayList<Entry>(dirSectors.size * (sectorSize / ENTRY_SIZE))
+        readSectors(dirSectors) { buffer, off -> parseEntries(buffer, off, sectorSize, parsed) }
+        entries = parsed
         root = entries.firstOrNull { it.type == ENTRY_ROOT }
         firstMiniFat = u32(header, FIRST_MINI_FAT_SECTOR_OFFSET).toInt()
     }
@@ -105,6 +113,7 @@ internal class CompoundFile(private val openStream: () -> InputStream, private v
         openStream().use { input ->
             var pos = 0L
             for (chunk in sorted) {
+                if (chunk.fileOffset < pos) throw IOException("overlapping chunks")
                 skipFully(input, chunk.fileOffset - pos)
                 readFully(input, out, chunk.dest, chunk.length)
                 pos = chunk.fileOffset + chunk.length
@@ -114,10 +123,9 @@ internal class CompoundFile(private val openStream: () -> InputStream, private v
     }
 
     private fun regularChunks(entry: Entry, offset: Long, length: Int): List<Chunk> {
-        val sectors = chain(entry.start, fat, totalSectors, "stream ${entry.name}")
-        if (offset + length > sectors.size.toLong() * sectorSize) {
-            throw IOException("stream chain too short: ${entry.name}")
-        }
+        val needed = ((offset + length + sectorSize - 1) / sectorSize).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+        val sectors = chain(entry.start, fat, totalSectors, "stream ${entry.name}", minOf(needed, totalSectors))
+        if (sectors.size < needed) throw IOException("stream chain too short: ${entry.name}")
         val chunks = ArrayList<Chunk>()
         var sectorIndex = (offset / sectorSize).toInt()
         var within = (offset % sectorSize).toInt()
@@ -135,10 +143,9 @@ internal class CompoundFile(private val openStream: () -> InputStream, private v
 
     private fun miniChunks(entry: Entry, offset: Long, length: Int): List<Chunk> {
         val table = miniFat ?: throw IOException("mini FAT missing")
-        val sectors = chain(entry.start, table, table.size, "mini stream ${entry.name}")
-        if (offset + length > sectors.size.toLong() * MINI_SECTOR_SIZE) {
-            throw IOException("mini stream chain too short: ${entry.name}")
-        }
+        val needed = ((offset + length + MINI_SECTOR_SIZE - 1) / MINI_SECTOR_SIZE).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+        val sectors = chain(entry.start, table, table.size, "mini stream ${entry.name}", minOf(needed, table.size))
+        if (sectors.size < needed) throw IOException("mini stream chain too short: ${entry.name}")
         val rootSectors = miniRoot
         val chunks = ArrayList<Chunk>()
         var miniIndex = (offset / MINI_SECTOR_SIZE).toInt()
@@ -158,18 +165,24 @@ internal class CompoundFile(private val openStream: () -> InputStream, private v
         return chunks
     }
 
-    /** Walks a FAT chain with a step guard: a cycle cannot exceed the table without repeating. */
-    private fun chain(start: Int, table: IntArray, maxSectors: Int, what: String): List<Int> {
-        if (start == ENDOFCHAIN) return emptyList()
-        val out = ArrayList<Int>()
+    // Bounded walk with a seen-set so a cyclic FAT throws instead of spinning.
+    private fun chain(start: Int, table: IntArray, maxSectors: Int, what: String, limit: Int = Int.MAX_VALUE): IntArray {
+        if (start == ENDOFCHAIN || limit == 0) return IntArray(0)
+        val cap = minOf(maxSectors, table.size, limit)
+        if (cap <= 0) return IntArray(0)
+        var out = IntArray(minOf(cap, 64))
+        val seen = BitSet(table.size)
+        var size = 0
         var s = start
-        while (s != ENDOFCHAIN) {
+        while (s != ENDOFCHAIN && size < cap) {
             if (s < 0 || s >= maxSectors || s >= table.size) throw IOException("invalid sector in $what")
-            out += s
-            if (out.size > table.size) throw IOException("sector chain cycle in $what")
+            if (seen[s]) throw IOException("sector chain cycle in $what")
+            seen[s] = true
+            if (size == out.size) out = out.copyOf(minOf(cap, size * 2))
+            out[size++] = s
             s = table[s]
         }
-        return out
+        return out.copyOf(size)
     }
 
     private fun difatPointer(b: ByteArray, off: Int): Int {
@@ -179,64 +192,83 @@ internal class CompoundFile(private val openStream: () -> InputStream, private v
         return v.toInt()
     }
 
-    private fun parseEntries(sector: ByteArray): List<Entry> {
-        val out = ArrayList<Entry>(sector.size / ENTRY_SIZE)
-        var off = 0
-        while (off + ENTRY_SIZE <= sector.size) {
-            val type = sector[off + ENTRY_TYPE_OFFSET].toInt() and 0xFF
+    private fun parseEntries(sector: ByteArray, off: Int, length: Int, out: MutableList<Entry>) {
+        var at = off
+        val end = off + length
+        while (at + ENTRY_SIZE <= end) {
+            val type = sector[at + ENTRY_TYPE_OFFSET].toInt() and 0xFF
             if (type == ENTRY_STREAM || type == ENTRY_ROOT) {
-                val nameLen = u16(sector, off + ENTRY_NAME_LENGTH_OFFSET)
+                val nameLen = u16(sector, at + ENTRY_NAME_LENGTH_OFFSET)
                 // nameLen counts the terminator; a broken length must not read past the entry.
                 val nameBytes = (nameLen - 2).coerceIn(0, 64) and 1.inv()
-                val name = if (nameBytes > 0) String(sector, off, nameBytes, Charsets.UTF_16LE) else ""
-                val start = i32(sector, off + ENTRY_START_OFFSET)
-                val size = (i32(sector, off + ENTRY_SIZE_OFFSET).toLong() and 0xFFFFFFFFL) or
-                    ((i32(sector, off + ENTRY_SIZE_OFFSET + 4).toLong() and 0xFFFFFFFFL) shl 32)
+                val name = if (nameBytes > 0) String(sector, at, nameBytes, Charsets.UTF_16LE) else ""
+                val start = i32(sector, at + ENTRY_START_OFFSET)
+                val size = (i32(sector, at + ENTRY_SIZE_OFFSET).toLong() and 0xFFFFFFFFL) or
+                    ((i32(sector, at + ENTRY_SIZE_OFFSET + 4).toLong() and 0xFFFFFFFFL) shl 32)
                 out += Entry(name, type, start, size)
             }
-            off += ENTRY_SIZE
+            at += ENTRY_SIZE
         }
-        return out
     }
 
-    private fun join(sectors: List<ByteArray>): IntArray {
+    private fun readTable(sectors: IntArray, what: String): IntArray {
         val per = sectorSize / 4
+        if (sectors.size.toLong() * per > MAX_TABLE_ENTRIES) throw IOException("$what table too large")
         val out = IntArray(sectors.size * per)
         var at = 0
-        for (s in sectors) for (i in 0 until per) out[at++] = i32(s, i * 4)
+        readSectors(sectors) { buffer, off ->
+            for (i in 0 until per) out[at++] = i32(buffer, off + i * 4)
+        }
         return out
     }
 
     private fun sectorOffset(sector: Int): Long = (sector.toLong() + 1) * sectorSize
 
-    private fun raw(offset: Long, length: Int): ByteArray = rawMany(listOf(offset), length)[0]
-
-    private fun rawMany(offsets: List<Long>, length: Int): List<ByteArray> {
-        if (offsets.isEmpty()) return emptyList()
-        val order = offsets.indices.sortedBy { offsets[it] }
-        val out = Array(offsets.size) { ByteArray(length) }
+    private fun readAt(offset: Long, length: Int): ByteArray {
+        if (offset < 0 || offset + length > fileLength) throw IOException("read past end of file")
+        val out = ByteArray(length)
         openStream().use { input ->
-            var pos = 0L
-            for (idx in order) {
-                val off = offsets[idx]
-                if (off < 0 || off + length > fileLength) throw IOException("read past end of file")
-                skipFully(input, off - pos)
-                readFully(input, out[idx], 0, length)
-                pos = off + length
-            }
+            skipFully(input, offset)
+            readFully(input, out, 0, length)
         }
-        return out.toList()
+        return out
+    }
+
+    // Bounded batches keep allocation flat; visit consumes each buffer before the next batch.
+    private fun readSectors(sectors: IntArray, visit: (ByteArray, Int) -> Unit) {
+        var cursor = 0
+        while (cursor < sectors.size) {
+            val end = minOf(cursor + MAX_SECTOR_BATCH, sectors.size)
+            val order = (cursor until end).sortedBy { sectorOffset(sectors[it]) }
+            val buffer = ByteArray((end - cursor) * sectorSize)
+            openStream().use { input ->
+                var pos = 0L
+                for (i in order) {
+                    val off = sectorOffset(sectors[i])
+                    if (off < 0 || off + sectorSize > fileLength) throw IOException("read past end of file")
+                    if (off < pos) throw IOException("overlapping sectors")
+                    skipFully(input, off - pos)
+                    readFully(input, buffer, (i - cursor) * sectorSize, sectorSize)
+                    pos = off + sectorSize
+                }
+            }
+            for (i in cursor until end) visit(buffer, (i - cursor) * sectorSize)
+            cursor = end
+        }
     }
 }
 
-/** Sequential byte count of the whole file: the only length a generic [InputStream] reports exactly. */
+// Sequential byte count: the only length a generic InputStream reports exactly.
 internal fun probeLength(openStream: () -> InputStream): Long {
     openStream().use { input ->
         val buffer = ByteArray(16 * 1024)
         var total = 0L
+        var stalled = 0
         while (true) {
             val n = input.read(buffer)
             if (n < 0) break
+            if (n == 0 && ++stalled >= MAX_STALLED_READS) throw IOException("stream made no progress")
+            if (n > 0) stalled = 0
             total += n
             if (total > MAX_FILE_BYTES) throw IOException("document is too large")
         }
@@ -260,9 +292,12 @@ internal fun skipFully(input: InputStream, n: Long) {
 
 internal fun readFully(input: InputStream, dest: ByteArray, off: Int, len: Int) {
     var read = 0
+    var stalled = 0
     while (read < len) {
         val n = input.read(dest, off + read, len - read)
         if (n == -1) throw IOException("truncated file")
+        if (n == 0 && ++stalled >= MAX_STALLED_READS) throw IOException("stream made no progress")
+        if (n > 0) stalled = 0
         read += n
     }
 }
@@ -282,8 +317,12 @@ internal fun i32(b: ByteArray, off: Int): Int =
         ((b[off + 2].toInt() and 0xFF) shl 16) or
         (b[off + 3].toInt() shl 24)
 
+internal const val MAX_STALLED_READS = 16
+
 private const val MAX_FILE_BYTES = 4L * 1024 * 1024 * 1024
 private const val MAX_DIR_SECTORS = 1024
+private const val MAX_TABLE_ENTRIES = 16 * 1024 * 1024
+private const val MAX_SECTOR_BATCH = 64
 
 private const val HEADER_SIZE = 512
 private const val ENTRY_SIZE = 128

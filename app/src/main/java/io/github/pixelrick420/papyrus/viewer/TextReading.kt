@@ -1,6 +1,7 @@
 package io.github.pixelrick420.papyrus.viewer
 
 import java.io.ByteArrayInputStream
+import java.io.IOException
 import java.io.InputStream
 import java.io.InputStreamReader
 import java.io.Reader
@@ -180,9 +181,12 @@ private const val TAB_COLUMNS = 4
 
 private fun InputStream.readUpTo(buffer: ByteArray): Int {
     var total = 0
+    var stalled = 0
     while (total < buffer.size) {
         val n = read(buffer, total, buffer.size - total)
         if (n < 0) break
+        if (n == 0 && ++stalled >= MAX_STALLED_READS) throw IOException("stream made no progress")
+        if (n > 0) stalled = 0
         total += n
     }
     return total

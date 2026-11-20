@@ -98,20 +98,20 @@ class MarkdownLongLineTest {
     }
 
     @Test
-    fun `a few thousand inline formulas on one line are all found, and none is a block`() {
+    fun `a few thousand inline formulas on one line are capped`() {
         val line = "x ${FENCE}a$FENCE y ".repeat(2_000)
 
         timed("inline formulas") {
             val ranges = LatexSpanFactory(null, line).ranges
 
-            assertEquals(2_000, ranges.size)
+            assertEquals(LATEX_MAX_RANGES, ranges.size)
             assertTrue(ranges.none { it.isBlock })
-            assertTrue(ranges.all { it.latex == "a" })
+            assertTrue(ranges.all { it.latex == "a" && it.renderable })
         }
     }
 
     @Test
-    fun `a formula that is the whole of a very long line is inline`() {
+    fun `a formula that is the whole of a very long line is inline but not rendered`() {
         val line = FENCE + "x+".repeat(500_000) + "x" + FENCE
 
         timed("one huge formula") {
@@ -120,6 +120,7 @@ class MarkdownLongLineTest {
             assertEquals(0, range.start)
             assertEquals(line.length, range.end)
             assertFalse(range.isBlock)
+            assertFalse(range.renderable)
         }
     }
 

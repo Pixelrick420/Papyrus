@@ -4,6 +4,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.ByteArrayInputStream
+import java.io.InputStream
 
 class TextSnifferTest {
 
@@ -144,5 +145,15 @@ class TextSnifferTest {
         // The same NUL inside the window does disqualify the file.
         val headBinary = "a".repeat(TextSniffer.MAX_SNIFF_BYTES - 1).toByteArray() + byteArrayOf(0x00)
         assertFalse(TextSniffer.looksLikeText(ByteArrayInputStream(headBinary)))
+    }
+
+    @Test
+    fun `a stream that never advances is not text`() {
+        val stalled = object : InputStream() {
+            override fun read(): Int = 0
+            override fun read(b: ByteArray, off: Int, len: Int): Int = 0
+        }
+
+        assertFalse(TextSniffer.looksLikeText(stalled))
     }
 }

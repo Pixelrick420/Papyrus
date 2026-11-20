@@ -4,11 +4,20 @@ import android.content.ContentResolver
 import android.content.Context
 import android.database.Cursor
 import android.net.Uri
+import android.os.Build
 import android.provider.DocumentsContract
 import android.provider.OpenableColumns
+import android.system.Os
+import java.util.concurrent.atomic.AtomicLong
 
-// A file that was edited (new modified time or size) is never answered from what it used to say.
-data class TextCacheKey(val uri: String, val lastModified: Long, val sizeBytes: Long)
+// A file that was edited is never answered from what it used to say: the provider's timestamps can be coarse, so the descriptor's nanosecond stat and identity are folded in too.
+data class TextCacheKey(
+    val uri: String,
+    val lastModified: Long,
+    val sizeBytes: Long,
+    // A provider without a statable descriptor gets a fresh value, which gives up reuse rather than risk stale text.
+    val contentRevision: Long = 0L,
+)
 
 // [fromPlatform] keeps the platform engine's reading and PDFBox's apart: they differ in spacing and boxes.
 data class PageTextKey(val document: TextCacheKey, val page: Int, val fromPlatform: Boolean)
@@ -30,8 +39,32 @@ fun textCacheKey(context: Context, uri: Uri): TextCacheKey? {
     }
     // A zero modified time is a provider that does not know, not a file from 1970.
     if (stat == null || stat.first <= 0L) return null
-    return TextCacheKey(uri.toString(), stat.first, stat.second)
+    val revision = descriptorRevision(context, uri) ?: unreusableRevision()
+    return TextCacheKey(uri.toString(), stat.first, stat.second, revision)
 }
+
+private fun descriptorRevision(context: Context, uri: Uri): Long? = try {
+    context.contentResolver.openFileDescriptor(uri, "r")?.use { descriptor ->
+        val st = Os.fstat(descriptor.fileDescriptor)
+        var value = 0x9E3779B9L
+        value = value * 31 + st.st_dev
+        value = value * 31 + st.st_ino
+        value = value * 31 + st.st_size
+        value = value * 31 + st.st_mtime
+        value = value * 31 + st.st_ctime
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+            value = value * 31 + st.st_mtim.tv_nsec
+            value = value * 31 + st.st_ctim.tv_nsec
+        }
+        value
+    }
+} catch (ignored: Exception) {
+    null
+}
+
+private val unreusableCounter = AtomicLong(System.nanoTime())
+
+private fun unreusableRevision(): Long = unreusableCounter.incrementAndGet()
 
 private fun Cursor.longOrNull(column: String): Long? {
     val index = getColumnIndex(column)

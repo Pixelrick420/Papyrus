@@ -34,9 +34,12 @@ object TextSniffer {
     fun looksLikeText(input: InputStream): Boolean {
         val head = ByteArray(MAX_SNIFF_BYTES)
         var total = 0
+        var stalled = 0
         while (total < head.size) {
             val n = input.read(head, total, head.size - total)
             if (n < 0) break
+            if (n == 0 && ++stalled >= MAX_STALLED_READS) return false
+            if (n > 0) stalled = 0
             total += n
         }
         return looksLikeText(head, total)

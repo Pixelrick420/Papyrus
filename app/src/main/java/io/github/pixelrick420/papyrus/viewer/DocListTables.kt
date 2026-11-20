@@ -61,13 +61,19 @@ internal class DocListTables private constructor(
             val ids = HashMap<Long, Int>()
             val lists = ArrayList<Array<DocListLevel?>>(count)
             var pos = 2 + count * LSTF_BYTES
+            var malformed = false
             for (i in 0 until count) {
+                if (malformed) break
                 val at = 2 + i * LSTF_BYTES
                 ids.putIfAbsent(u32(lst, at), i)
                 val simple = lst[at + LSTF_BYTES - 2].toInt() and FLAG_SIMPLE_LIST != 0
                 val levels = arrayOfNulls<DocListLevel>(if (simple) 1 else LEVELS)
                 for (l in levels.indices) {
-                    val parsed = readLevel(lst, pos) ?: break
+                    val parsed = readLevel(lst, pos)
+                    if (parsed == null) {
+                        malformed = true
+                        break
+                    }
                     levels[l] = parsed.first
                     pos = parsed.second
                 }
@@ -81,7 +87,9 @@ internal class DocListTables private constructor(
             if (4 + count * LFO_BYTES > lfo.size) return emptyList()
             val out = ArrayList<Instance>(count)
             var pos = 4 + count * LFO_BYTES
+            var malformed = false
             for (i in 0 until count) {
+                if (malformed) break
                 val at = 4 + i * LFO_BYTES
                 val overrides = lfo[at + LFO_CLFOLVL].toInt() and 0xFF
                 // Each LFO's data opens with a 4-byte `cp`, then its LFOLVLs.
@@ -96,7 +104,11 @@ internal class DocListTables private constructor(
                     pos += LFOLVL_BYTES
                     if (flags and FLAG_START_AT != 0) startAt[level] = iStart
                     if (flags and FLAG_FORMATTING != 0) {
-                        val parsed = readLevel(lfo, pos) ?: break
+                        val parsed = readLevel(lfo, pos)
+                        if (parsed == null) {
+                            malformed = true
+                            break
+                        }
                         val own = parsed.first
                         levels[level] = if (flags and FLAG_START_AT != 0) DocListLevel(own.nfc, iStart, own.text) else own
                         pos = parsed.second

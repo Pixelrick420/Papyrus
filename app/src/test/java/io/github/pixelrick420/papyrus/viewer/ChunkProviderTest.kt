@@ -14,6 +14,7 @@ import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
@@ -471,6 +472,16 @@ class ChunkProviderTest {
                 assertTrue(expected.message!!.contains("11"))
             }
         }
+    }
+
+    @Test
+    fun `readExactly refuses a stream that never advances`() {
+        val stalled = object : InputStream() {
+            override fun read(): Int = 0
+            override fun read(b: ByteArray, off: Int, len: Int): Int = 0
+        }
+
+        assertThrows(IOException::class.java) { stalled.readExactly(4L) }
     }
 
     private fun String.escaped() = replace("\r", "\\r").replace("\n", "\\n").replace("\t", "\\t")

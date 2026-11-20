@@ -10,6 +10,7 @@ import io.github.pixelrick420.papyrus.viewer.DocRichFixtures.bullets
 import io.github.pixelrick420.papyrus.viewer.DocRichFixtures.item
 import io.github.pixelrick420.papyrus.viewer.DocRichFixtures.numbered
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class DocListTest {
@@ -115,6 +116,25 @@ class DocListTest {
             ),
         )
         assertEquals(listOf("Part III:", "Part IV:"), markers(blocks))
+    }
+
+    @Test
+    fun aMalformedOverrideIsNotRereadAsTheNextOverride() {
+        val lfo = ByteArray(48)
+        fun put32(at: Int, value: Int) {
+            for (i in 0..3) lfo[at + i] = (value shr (8 * i)).toByte()
+        }
+        put32(0, 1)
+        put32(4, 10)
+        lfo[16] = 2
+        put32(24, 1)
+        put32(28, 0x20)
+        put32(32, 7)
+        put32(36, 0x11)
+
+        val tables = DocListTables.parse(byteArrayOf(0, 0), 2, lfo)
+
+        assertTrue(tables.startOverrides(1).isEmpty())
     }
 
     @Test

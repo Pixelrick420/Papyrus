@@ -174,12 +174,15 @@ internal class IndexedChunks(
 
 private fun String.withLineFeeds(): String = if (indexOf('\r') < 0) this else replace("\r\n", "\n").replace('\r', '\n')
 
-private fun InputStream.readExactly(length: Long): ByteArray {
+internal fun InputStream.readExactly(length: Long): ByteArray {
     val buffer = ByteArray(length.coerceAtMost(Int.MAX_VALUE.toLong()).toInt())
     var total = 0
+    var stalled = 0
     while (total < buffer.size) {
         val n = read(buffer, total, buffer.size - total)
         if (n < 0) break
+        if (n == 0 && ++stalled >= MAX_STALLED_READS) throw IOException("stream made no progress")
+        if (n > 0) stalled = 0
         total += n
     }
     return if (total == buffer.size) buffer else buffer.copyOf(total)
