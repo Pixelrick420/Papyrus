@@ -33,6 +33,7 @@ import io.github.pixelrick420.papyrus.viewer.pptx.text.TextWarpRenderer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -77,16 +78,14 @@ internal class SlidePageSource private constructor(
 
     private val textIndexScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    private var textIndexJob: kotlinx.coroutines.Job? = null
+    private var textIndexJob: Job? = null
 
     fun setTextIndex(index: SlideTextIndex) {
         textIndexFlow.value = index
     }
 
-    fun startTextIndexBuild(build: () -> SlideTextIndex) {
-        textIndexJob = textIndexScope.launch {
-            textIndexFlow.value = build()
-        }
+    fun startTextIndexBuild(build: (check: () -> Unit) -> SlideTextIndex) {
+        textIndexJob = textIndexScope.launchTextIndexBuild(build) { textIndexFlow.value = it }
     }
 
     suspend fun awaitTextIndex() {
@@ -469,7 +468,7 @@ internal class SlidePageSource private constructor(
                 placeholderLabels = labels,
             )
             if (engine != null) {
-                val build = {
+                val build: (check: () -> Unit) -> SlideTextIndex = { check ->
                     recover(SlideTextIndex(emptyList())) {
                         SlideTextIndex.fromDeck(
                             pkg,
@@ -478,12 +477,12 @@ internal class SlidePageSource private constructor(
                             { index -> scenes.scene(index) },
                             resolver,
                             engine,
-                            { ensureActive() },
+                            check,
                             limits,
                         )
                     }
                 }
-                if (buildTextIndex) source.setTextIndex(build()) else source.startTextIndexBuild(build)
+                if (buildTextIndex) source.setTextIndex(build { ensureActive() }) else source.startTextIndexBuild(build)
             }
             source.also { synchronized(openSources) { openSources.add(it) } }
         }
@@ -494,6 +493,14 @@ internal class SlidePageSource private constructor(
         private fun presets(context: Context): PresetGeometry =
             PresetGeometry(open = { context.assets.open("ooxml/presetShapeDefinitions.xml") })
     }
+}
+
+internal fun CoroutineScope.launchTextIndexBuild(
+    build: (check: () -> Unit) -> SlideTextIndex,
+    onBuilt: (SlideTextIndex) -> Unit,
+): Job = launch {
+    val scope = this
+    onBuilt(build { scope.ensureActive() })
 }
 
 private data class RenderSize(val widthPx: Int, val heightPx: Int, val scale: Float)

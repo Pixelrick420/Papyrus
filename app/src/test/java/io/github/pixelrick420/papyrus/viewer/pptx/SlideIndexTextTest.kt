@@ -7,8 +7,15 @@ import io.github.pixelrick420.papyrus.viewer.pptx.text.AwtTextMeasurer
 import io.github.pixelrick420.papyrus.viewer.pptx.text.TextLayoutEngine
 import io.github.pixelrick420.papyrus.viewer.pptx.text.TextStyleResolver
 import io.github.pixelrick420.papyrus.viewer.pptx
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SlideIndexTextTest {
@@ -24,6 +31,48 @@ class SlideIndexTextTest {
         val pages = indexPages(deck().toBytes())
         assertFalse(pages.any { "Quarterly revenue" in it })
         assertFalse(pages.any { "Jan Feb Mar" in it })
+    }
+
+    @Test
+    fun `deferred index keeps text selectable when cancellation follows the build job`() = runBlocking {
+        val bytes = deck().toBytes()
+        val published = mutableListOf<SlideTextIndex>()
+        launchTextIndexBuild(
+            build = { check -> recover(SlideTextIndex(emptyList())) { deckIndex(bytes, check) } },
+            onBuilt = { published.add(it) },
+        ).join()
+        val page = published.single().pages.first { it.text.isNotBlank() }
+        assertTrue(page.isSelectable)
+    }
+
+    @Test
+    fun `a check bound to a finished loader scope aborts the index`() {
+        runBlocking {
+            val bytes = deck().toBytes()
+            val finished = withContext(Dispatchers.IO) { this }
+            assertThrows(CancellationException::class.java) { deckIndex(bytes) { finished.ensureActive() } }
+        }
+    }
+
+    private fun deckIndex(bytes: ByteArray, check: () -> Unit): SlideTextIndex {
+        val parser = OfficeFixtures::parser
+        val pkg = PptxPackage.read({ bytes.inputStream() }, mediaDir = null, newParserFactory = parser)
+        val main = pkg.mainPart
+        val presentation = PresentationParser(parser, PptxLimits()).parse(pkg.part(main)!!, main)
+        val scenes = StyleResolver(parser, PptxLimits()).resolveAll(pkg, presentation)
+        val resolver = TextStyleResolver()
+        val engine = TextLayoutEngine(AwtTextMeasurer())
+        for (slide in scenes.slides) TableLayout.layout(slide.scene, resolver, engine)
+        return SlideTextIndex.fromDeck(
+            pkg,
+            presentation,
+            scenes.slides.size,
+            { index -> scenes.slides.getOrNull(index) },
+            resolver,
+            engine,
+            check,
+            PptxLimits(),
+        )
     }
 
     private fun indexPages(bytes: ByteArray): List<String> = SlideTextIndex.indexPages(

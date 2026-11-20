@@ -611,15 +611,8 @@ fun HomeScreen(
 
     BackHandler(enabled = state.selection.active) { viewModel.exitSelection() }
 
-    // Each message gets its own coroutine: the indefinite Undo snackbar would otherwise hold up every later message.
-    val messageScope = rememberCoroutineScope()
     LaunchedEffect(viewModel) {
-        viewModel.messages.collect { message ->
-            messageScope.launch {
-                snackbar.currentSnackbarData?.dismiss()
-                snackbar.showSnackbar(message.asString(context))
-            }
-        }
+        viewModel.messages.collect { snackbar.showSnackbar(it.asString(context)) }
     }
 
     // The ViewModel's timer decides when the window ends, not the snackbar's own: it is indefinite and
