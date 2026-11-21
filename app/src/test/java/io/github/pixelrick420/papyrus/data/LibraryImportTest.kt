@@ -3,6 +3,7 @@ package io.github.pixelrick420.papyrus.data
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -139,40 +140,33 @@ class LibraryImportTest {
     }
 
     @Test
-    fun `a candidate with the source's bytes answers true`() {
-        val candidate = candidate("hello papyrus".toByteArray())
+    fun `a candidate with the source's bytes has the same fingerprint`() {
         val bytes = "hello papyrus".toByteArray()
+        val fingerprint = LibraryImport.fingerprint { ByteArrayInputStream(bytes) }!!
 
-        assertTrue(LibraryImport.sameContent(candidate, bytes.size.toLong()) { ByteArrayInputStream(bytes) })
+        assertTrue(LibraryImport.sameFingerprint(candidate(bytes), fingerprint))
     }
 
     @Test
-    fun `a candidate with different bytes of the same size answers false`() {
-        val candidate = candidate("hello papyrus".toByteArray())
-        val other = "hello papirus".toByteArray()
+    fun `a candidate with different bytes of the same size has a different fingerprint`() {
+        val bytes = "hello papyrus".toByteArray()
+        val fingerprint = LibraryImport.fingerprint { ByteArrayInputStream(bytes) }!!
 
-        assertFalse(LibraryImport.sameContent(candidate, other.size.toLong()) { ByteArrayInputStream(other) })
+        assertFalse(LibraryImport.sameFingerprint(candidate("hello papirus".toByteArray()), fingerprint))
     }
 
     @Test
-    fun `a size mismatch answers false without opening the source`() {
+    fun `a size mismatch rules a candidate out`() {
         val candidate = candidate(ByteArray(10))
-        var opened = false
 
-        val matches = LibraryImport.sameContent(candidate, 4L) {
-            opened = true
-            ByteArrayInputStream(ByteArray(4))
-        }
-
-        assertFalse(matches)
-        assertFalse(opened)
+        assertFalse(LibraryImport.matchesSize(candidate, 4L))
+        assertTrue(LibraryImport.matchesSize(candidate, 10L))
+        assertTrue(LibraryImport.matchesSize(candidate, 0L))
     }
 
     @Test
-    fun `an unreadable source answers false so the save falls through to the copy`() {
-        val candidate = candidate("hello papyrus".toByteArray())
-
-        assertFalse(LibraryImport.sameContent(candidate, candidate.length()) { throw IOException("boom") })
+    fun `an unreadable source has no fingerprint so the save falls through to the copy`() {
+        assertNull(LibraryImport.fingerprint { throw IOException("boom") })
     }
 
     @Test

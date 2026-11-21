@@ -37,6 +37,7 @@ import io.github.pixelrick420.papyrus.data.LocationKind
 import io.github.pixelrick420.papyrus.data.RestoreRequest
 import io.github.pixelrick420.papyrus.data.SafAccess
 import io.github.pixelrick420.papyrus.data.TextIndexState
+import io.github.pixelrick420.papyrus.data.ThumbnailResult
 import io.github.pixelrick420.papyrus.data.shareIntent
 import io.github.pixelrick420.papyrus.tts.TtsDocumentSource
 import io.github.pixelrick420.papyrus.tts.TtsPlaybackService
@@ -493,7 +494,8 @@ class ViewerViewModel(
             replaceContent(
                 ViewerUiState(
                     document = doc,
-                    loadingThumbnail = app.thumbnailLoader.cached(doc)?.asImageBitmap(),
+                    loadingThumbnail = (app.thumbnailLoader.cachedResult(doc) as? ThumbnailResult.Image)
+                        ?.bitmap?.asImageBitmap(),
                     canSaveToLibrary = if (isCrashReport) false else doc.id < 0,
                     encodingOverride = encodingName,
                     restore = restore,

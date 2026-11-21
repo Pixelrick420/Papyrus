@@ -15,6 +15,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -37,9 +38,14 @@ fun DocumentThumbnail(
     loader: ThumbnailLoader,
     modifier: Modifier = Modifier,
 ) {
-    val cached = loader.cached(document)
-    val result by produceState<ThumbnailResult?>(initialValue = cached?.let(ThumbnailResult::Image), document, cached) {
-        if (cached == null) value = loader.load(document)
+    val latestDocument by rememberUpdatedState(document)
+    val result by produceState<ThumbnailResult?>(
+        initialValue = loader.cachedResult(document),
+        document.id,
+        document.sizeBytes,
+        loader,
+    ) {
+        if (value == null) value = loader.load(latestDocument)
     }
 
     val shape = RoundedCornerShape(8.dp)

@@ -101,12 +101,9 @@ object LibraryImport {
         fingerprint { candidate.inputStream() } == source
     }.getOrDefault(false)
 
-    // A failed read answers false so the caller falls through to its own copy.
-    internal fun sameContent(candidate: File, sourceSize: Long, openSource: () -> InputStream): Boolean {
-        if (sourceSize > 0 && candidate.length() != sourceSize) return false
-        val source = fingerprint(openSource) ?: return false
-        return sameFingerprint(candidate, source)
-    }
+    // A size the provider did not report (<= 0) cannot rule a candidate out.
+    internal fun matchesSize(candidate: File, sourceSize: Long): Boolean =
+        sourceSize <= 0 || candidate.length() == sourceSize
 
     private fun openSource(context: Context, source: Uri): InputStream =
         context.contentResolver.openInputStream(source) ?: throw FileNotFoundException(source.toString())

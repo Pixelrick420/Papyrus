@@ -30,6 +30,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 import java.io.ByteArrayOutputStream
 import java.io.FileNotFoundException
 import java.io.InputStream
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.coroutines.cancellation.CancellationException
 
 sealed interface ThumbnailResult {
@@ -47,48 +48,77 @@ class ThumbnailLoader(private val context: Context) {
         override fun sizeOf(key: String, value: Bitmap): Int = value.allocationByteCount.coerceAtLeast(1)
     }
 
+    private val failures = ThumbnailFailureCache({ System.currentTimeMillis() })
+
     /** Renders are blocking and each may open a PDF, so a fast scroll must not start one per row at once. */
     private val renderSlots = Semaphore(MAX_CONCURRENT_RENDERS)
 
+    private val renderAttempts = AtomicInteger()
+
+    /** Instrumentation checks that a failed document is not parsed again on every scroll. */
+    internal val renderCount: Int get() = renderAttempts.get()
+
     fun trimMemory(evictAll: Boolean) {
-        if (evictAll) cache.evictAll() else cache.trimToSize(cache.maxSize() / 2)
+        if (evictAll) {
+            cache.evictAll()
+            failures.evictAll()
+        } else {
+            cache.trimToSize(cache.maxSize() / 2)
+        }
     }
 
     /** Keyed by id@sizeBytes: an external size change re-thumbnails, a rename does not. */
-    fun cached(document: DocumentEntity): Bitmap? = cache.get(key(document))
-
-    /** The per-key mutex collapses overlapping loads from a row re-scrolled into view. */
-    private val inFlight = mutableMapOf<String, Mutex>()
-
-    private fun gateFor(key: String): Mutex = synchronized(inFlight) { inFlight.getOrPut(key) { Mutex() } }
-
-    private fun releaseGate(key: String, gate: Mutex) = synchronized(inFlight) {
-        if (inFlight[key] === gate) inFlight.remove(key)
+    fun cachedResult(document: DocumentEntity): ThumbnailResult? {
+        val key = thumbnailCacheKey(document)
+        return cache.get(key)?.let(ThumbnailResult::Image) ?: failures.get(key)
     }
 
+    /** Ref-counted so a waiter still holding the key keeps the gate alive for a later caller. */
+    private val inFlight = mutableMapOf<String, Gate>()
+
+    private fun acquireGate(key: String): Gate = synchronized(inFlight) {
+        inFlight.getOrPut(key) { Gate(Mutex()) }.also { it.users++ }
+    }
+
+    private fun releaseGate(key: String, gate: Gate) = synchronized(inFlight) {
+        gate.users--
+        if (gate.users == 0 && inFlight[key] === gate) inFlight.remove(key)
+    }
+
+    private class Gate(val mutex: Mutex, var users: Int = 0)
+
     suspend fun load(document: DocumentEntity): ThumbnailResult = withContext(Dispatchers.IO) {
-        val cacheKey = key(document)
-        val gate = gateFor(cacheKey)
+        val cacheKey = thumbnailCacheKey(document)
+        cachedResult(document)?.let { return@withContext it }
+        val gate = acquireGate(cacheKey)
         try {
-            gate.withLock {
-                cached(document)?.let { return@withLock ThumbnailResult.Image(it) }
+            gate.mutex.withLock {
+                cachedResult(document)?.let { return@withLock it }
                 val bitmap = try {
                     renderSlots.withPermit {
                         ensureActive()
+                        renderAttempts.incrementAndGet()
                         render(document)
                     }
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: SecurityException) {
-                    return@withLock ThumbnailResult.NoAccess
+                    return@withLock remember(cacheKey, ThumbnailResult.NoAccess, ThumbnailFailureCache.SHORT_TTL)
                 } catch (e: FileNotFoundException) {
-                    return@withLock ThumbnailResult.Unavailable(e.message ?: "missing")
+                    val failure = ThumbnailResult.Unavailable(e.message ?: "missing")
+                    return@withLock remember(cacheKey, failure, ThumbnailFailureCache.SHORT_TTL)
                 } catch (e: Exception) {
                     // Broad on purpose: a thumbnail is decoration, so no parse failure should crash the app.
-                    return@withLock ThumbnailResult.Unavailable(e.javaClass.simpleName)
+                    val failure = ThumbnailResult.Unavailable(e.javaClass.simpleName)
+                    return@withLock remember(cacheKey, failure, ThumbnailFailureCache.PERMANENT_TTL)
                 }
                 if (bitmap == null) {
-                    ThumbnailResult.Unavailable("no renderer")
+                    remember(
+                        cacheKey,
+                        ThumbnailResult.Unavailable("no renderer"),
+                        if (document.format == DocumentFormat.UNKNOWN) ThumbnailFailureCache.PERMANENT_TTL
+                        else ThumbnailFailureCache.SHORT_TTL,
+                    )
                 } else {
                     cache.put(cacheKey, bitmap)
                     ThumbnailResult.Image(bitmap)
@@ -97,6 +127,11 @@ class ThumbnailLoader(private val context: Context) {
         } finally {
             releaseGate(cacheKey, gate)
         }
+    }
+
+    private fun remember(key: String, failure: ThumbnailResult, ttl: Long): ThumbnailResult {
+        failures.put(key, failure, ttl)
+        return failure
     }
 
     private suspend fun render(document: DocumentEntity): Bitmap? = when (document.format) {
@@ -131,8 +166,9 @@ class ThumbnailLoader(private val context: Context) {
             val source = { openStream(uri) ?: throw FileNotFoundException(uri.toString()) }
             DocTextExtractor.extract(source, THUMBNAIL_BLOCK_BUDGET)
         } else {
+            val source = { openStream(uri) ?: throw FileNotFoundException(uri.toString()) }
             OfficeTextExtractor(mediaDir = null)
-                .extract({ openStream(uri)!! }, document.format, THUMBNAIL_BLOCK_BUDGET)
+                .extract(source, document.format, THUMBNAIL_BLOCK_BUDGET)
         }
         return drawTextTile(previewLines(blocks))
     }
@@ -234,8 +270,6 @@ class ThumbnailLoader(private val context: Context) {
         }
         return bitmap
     }
-
-    private fun key(document: DocumentEntity) = "${document.id}@${document.sizeBytes}"
 
     companion object {
         const val THUMBNAIL_WIDTH_PX = 132

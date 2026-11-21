@@ -37,6 +37,11 @@ class DocumentRepository(
     /** In-memory only, and several at once: a second external file opens beside the first. */
     private val handedOver = HandedOverStore<DocumentEntity>()
     private val crashReports = HandedOverStore<DocumentEntity>(firstId = CRASH_REPORT_FIRST_ID)
+    private val duplicateFinder = SavedDuplicateFinder(
+        rowsByTitle = { title -> dao.getByTitle(title) },
+        ownedCopy = { uri -> ownedCopy(uri) },
+        openSource = { source -> openStream(source.uri.toUri()) },
+    )
 
     // Remembers the encryption verdict so the next viewer skips the whole-file check; read once, then forgotten.
     private val knownPdfEncryption = ConcurrentHashMap<String, PdfEncryption>()
@@ -244,14 +249,7 @@ class DocumentRepository(
     }
 
     // A same-title row whose app-owned copy holds the same bytes; a row only on [source]'s own URI is no match, since it would not outlive the grant.
-    private suspend fun findSavedDuplicate(source: DocumentEntity): DocumentEntity? {
-        val fingerprint = LibraryImport.fingerprint { openStream(source.uri.toUri()) } ?: return null
-        for (row in dao.getByTitle(source.title)) {
-            val candidate = ownedCopy(row.uri) ?: continue
-            if (LibraryImport.sameFingerprint(candidate, fingerprint)) return row
-        }
-        return null
-    }
+    private suspend fun findSavedDuplicate(source: DocumentEntity): DocumentEntity? = duplicateFinder.find(source)
 
     private fun ownedCopy(uri: String): File? {
         val parsed = uri.toUri()
