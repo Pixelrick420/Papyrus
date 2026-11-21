@@ -10,7 +10,7 @@ androidx-customview = "1.2.0"
 coroutines = "1.10.2"
 androidx-lifecycle = "2.9.0"
 compose = "2026.09.00"
-androidx-navigation = "2.9.0"
+androidx-navigation = "2.10.2"
 androidx-room = "2.8.5"
 pdfbox-android = "2.0.27.0"
 markwon = "4.6.2"
@@ -20,7 +20,7 @@ junit = "4.13.2"
 kxml2 = "2.3.0"
 androidx-test-junit = "1.2.1"
 androidx-test-runner = "1.6.2"
-uiautomator = "2.3.0"
+uiautomator = "2.4.1"
 
 [libraries]
 desugar-jdk-libs = { module = "com.android.tools:desugar_jdk_libs", version.ref = "desugar-jdk-libs" }
