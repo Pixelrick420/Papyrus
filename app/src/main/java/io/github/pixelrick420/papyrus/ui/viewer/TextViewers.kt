@@ -16,6 +16,7 @@ import io.github.pixelrick420.papyrus.viewer.LatexSpanFactory
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.ScrollState
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -23,6 +24,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -40,7 +42,9 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.snapshotFlow
@@ -83,15 +87,18 @@ import io.github.pixelrick420.papyrus.viewer.OfficeBlock
 import io.github.pixelrick420.papyrus.viewer.OfficeCell
 import io.github.pixelrick420.papyrus.viewer.SyntaxHighlighter
 import io.github.pixelrick420.papyrus.viewer.TEXT_LINES_PER_CHUNK
+import io.github.pixelrick420.papyrus.viewer.TextChunkView
 import io.github.pixelrick420.papyrus.viewer.numberedLines
 import io.github.pixelrick420.papyrus.viewer.direction
 import io.noties.markwon.Markwon
 import io.noties.markwon.core.spans.LinkSpan
 import io.noties.markwon.ext.tables.TableRowSpan
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.IOException
 import kotlin.math.roundToInt
 
 @Composable
@@ -504,11 +511,12 @@ class PlainTextOptions(
     val lineCount: Int = 0,
     val maxLineColumns: Int = 0,
     val truncated: Boolean = false,
+    val endsWithNewline: Boolean = false,
 )
 
 @Composable
 fun PlainTextViewer(
-    chunks: List<String>,
+    chunks: TextChunkView,
     findQuery: String,
     activeHit: Int?,
     activeOccurrence: Int?,
@@ -529,9 +537,9 @@ fun PlainTextViewer(
     // A large file's chunks are decoded the first time they are asked for. Asking for the ones around the
     // screen here, off the main thread, means a scroll finds them already held.
     LaunchedEffect(chunks, listState) {
-        snapshotFlow { listState.firstVisibleItemIndex }.collect { first ->
+        snapshotFlow { listState.firstVisibleItemIndex }.collectLatest { first ->
             withContext(Dispatchers.IO) {
-                for (i in (first - PREFETCH_BEHIND).coerceAtLeast(0)..(first + PREFETCH_AHEAD).coerceAtMost(chunks.lastIndex)) chunks[i]
+                for (i in (first - PREFETCH_BEHIND).coerceAtLeast(0)..(first + PREFETCH_AHEAD).coerceAtMost(chunks.size - 1)) chunks.load(i)
             }
         }
     }
@@ -547,7 +555,7 @@ fun PlainTextViewer(
     // text then scrolls to the line. Unlocked, the reader is left wherever they are.
     val spokenChunk = speaking?.anchor
     LaunchedEffect(spokenChunk, ttsLocked) {
-        if (ttsLocked && spokenChunk != null && spokenChunk in chunks.indices) {
+        if (ttsLocked && spokenChunk != null && spokenChunk in 0 until chunks.size) {
             listState.scrollToItemUnlessVisible(spokenChunk)
         }
     }
@@ -567,8 +575,8 @@ fun PlainTextViewer(
         zoom.lastCommit?.let { sidewaysAnchor.settle(zoom) }
     }
 
-    val numbered = remember(chunks, options.lineCount) {
-        numberedLines(options.lineCount, chunks.lastOrNull()?.endsWith('\n') == true)
+    val numbered = remember(options.lineCount, options.endsWithNewline) {
+        numberedLines(options.lineCount, options.endsWithNewline)
     }
     val scrubPreview: @Composable BoxScope.(Boolean) -> Unit = { scrubbing ->
         LineScrubPreview(listState, chunks, numbered, scrubbing)
@@ -597,7 +605,7 @@ fun PlainTextViewer(
 
 @Composable
 private fun PlainTextList(
-    chunks: List<String>,
+    chunks: TextChunkView,
     findQuery: String,
     activeHit: Int?,
     activeOccurrence: Int?,
@@ -623,12 +631,12 @@ private fun PlainTextList(
     // Monospace, so one measured run gives the width of every column, in the pixels of the
     // current zoom.
     val columnPx = remember(measurer, textStyle) { measurer.measure(COLUMN_PROBE, textStyle).size.width / COLUMN_PROBE.length.toFloat() }
+    val linePx = remember(measurer, bodyStyle) { measurer.measure(LINE_PROBE, bodyStyle).size.height.toFloat() }
+    val placeholderHeight = with(density) { linePx.toDp() } * TEXT_LINES_PER_CHUNK + ChunkVerticalPadding * 2
 
-    // Remembered: asking a large file for its last chunk on every pass would decode it again.
-    val endsWithNewline = remember(chunks) { chunks.lastOrNull()?.endsWith('\n') == true }
     val gutter = if (options.showLineNumbers) {
         val ruleGapPx = with(density) { GutterRuleGap.toPx() }
-        val digits = gutterDigits(options.lineCount, endsWithNewline)
+        val digits = gutterDigits(options.lineCount, options.endsWithNewline)
         val numberFieldPx = columnPx * digits
         val numberColor = colors.onSurfaceVariant.copy(alpha = GUTTER_ALPHA)
         val dividerColor = colors.outlineVariant
@@ -677,9 +685,10 @@ private fun PlainTextList(
                 // Only the active chunk knows which of its matches is current; the rest are all yellow.
                 val isActive = index == activeHit
                 TextChunk(
-                    text = chunks[index],
+                    chunks = chunks,
                     index = index,
-                    isLast = index == chunks.lastIndex,
+                    isLast = index == chunks.size - 1,
+                    placeholderHeight = placeholderHeight,
                     highlight = findHighlightFor(
                         findQuery,
                         activeOccurrence = activeOccurrence.takeIf { isActive },
@@ -714,6 +723,76 @@ private fun PlainTextList(
 
 @Composable
 private fun TextChunk(
+    chunks: TextChunkView,
+    index: Int,
+    isLast: Boolean,
+    placeholderHeight: Dp,
+    highlight: FindHighlight?,
+    reveal: RevealTicket?,
+    style: TextStyle,
+    options: PlainTextOptions,
+    syntaxPalette: SyntaxPalette,
+    gutter: Gutter?,
+    gutterWidth: Dp,
+    width: Dp?,
+    speaking: TtsHighlight?,
+    followVoice: Boolean,
+    viewportHeight: () -> Int,
+) {
+    var reload by remember { mutableIntStateOf(0) }
+    val initial = chunks.peek(index)
+    val loaded by produceState<ChunkText>(
+        initialValue = initial?.let(ChunkText::Ready) ?: ChunkText.Loading,
+        chunks,
+        index,
+        reload,
+    ) {
+        if (initial == null) {
+            value = try {
+                ChunkText.Ready(chunks.load(index))
+            } catch (_: IOException) {
+                ChunkText.Failed
+            }
+        }
+    }
+    when (val result = loaded) {
+        ChunkText.Loading -> Box(Modifier.fillMaxWidth().height(placeholderHeight))
+        ChunkText.Failed -> Text(
+            text = stringResource(R.string.viewer_chunk_error),
+            style = style.copy(color = MaterialTheme.colorScheme.error),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(placeholderHeight)
+                .clickable { reload++ }
+                .padding(start = gutterWidth, top = ChunkVerticalPadding),
+        )
+        is ChunkText.Ready -> ChunkTextContent(
+            text = result.text,
+            index = index,
+            isLast = isLast,
+            highlight = highlight,
+            reveal = reveal,
+            style = style,
+            options = options,
+            syntaxPalette = syntaxPalette,
+            gutter = gutter,
+            gutterWidth = gutterWidth,
+            width = width,
+            speaking = speaking,
+            followVoice = followVoice,
+            viewportHeight = viewportHeight,
+        )
+    }
+}
+
+private sealed interface ChunkText {
+    data object Loading : ChunkText
+    data object Failed : ChunkText
+    data class Ready(val text: String) : ChunkText
+}
+
+@Composable
+private fun ChunkTextContent(
     text: String,
     index: Int,
     isLast: Boolean,
@@ -1098,6 +1177,7 @@ private val NO_LINES = IntArray(0)
 private val GutterRuleGap = 8.dp
 private val ChunkVerticalPadding = 2.dp
 private const val COLUMN_PROBE = "0000000000"
+private const val LINE_PROBE = "Mg"
 private const val GUTTER_ALPHA = 0.7f
 private const val NUMBER_LAYOUT_CACHE = 64
 private const val PREFETCH_BEHIND = 2

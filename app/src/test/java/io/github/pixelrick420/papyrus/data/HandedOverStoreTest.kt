@@ -20,6 +20,14 @@ class HandedOverStoreTest {
     }
 
     @Test
+    fun `a custom first id keeps crash reports outside the handover range`() {
+        val store = HandedOverStore<String>(firstId = -1000000L)
+
+        assertEquals(-1000000L, store.add { "report" })
+        assertEquals(-1000001L, store.add { "another" })
+    }
+
+    @Test
     fun `an entry is built with the id it is stored under`() {
         val store = HandedOverStore<String>()
 

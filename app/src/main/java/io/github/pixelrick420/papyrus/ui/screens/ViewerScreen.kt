@@ -235,7 +235,7 @@ fun ViewerScreen(
     }
     val plain = state.content as? ViewerContent.PlainText
     val lineCount = remember(plain) {
-        plain?.let { numberedLines(it.lineCount, it.chunks.lastOrNull()?.endsWith('\n') == true) } ?: 0
+        plain?.let { numberedLines(it.lineCount, it.endsWithNewline) } ?: 0
     }
     val goToLines = lineCount >= MIN_GO_TO_LINES
     val goToAvailable = pageCount >= MIN_GO_TO_PAGES || goToLines
@@ -576,7 +576,7 @@ fun ViewerScreen(
                             // Keyed on the fields, not the content: comparing two contents would walk every chunk.
                             val options = remember(
                                 content.language, content.lexStates, content.lineCount, content.maxLineColumns, content.truncated,
-                                content.prose, settings.wrapLines, settings.hyphenation, settings.showLineNumbers,
+                                content.prose, content.endsWithNewline, settings.wrapLines, settings.hyphenation, settings.showLineNumbers,
                                 settings.syntaxHighlighting,
                             ) {
                                 PlainTextOptions(
@@ -588,10 +588,11 @@ fun ViewerScreen(
                                     lineCount = content.lineCount,
                                     maxLineColumns = content.maxLineColumns,
                                     truncated = content.truncated,
+                                    endsWithNewline = content.endsWithNewline,
                                 )
                             }
                             PlainTextViewer(
-                                chunks = content.chunks,
+                                chunks = content.view,
                                 findQuery = find.query,
                                 activeHit = find.activeIndex,
                                 activeOccurrence = find.activeOccurrence,

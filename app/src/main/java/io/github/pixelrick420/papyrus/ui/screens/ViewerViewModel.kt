@@ -5,6 +5,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import android.os.ParcelFileDescriptor
 import android.provider.DocumentsContract
 import android.text.Spanned
 import androidx.lifecycle.SavedStateHandle
@@ -64,6 +65,7 @@ import io.github.pixelrick420.papyrus.viewer.OfficeEncryption
 import io.github.pixelrick420.papyrus.viewer.OfficeTextExtractor
 import io.github.pixelrick420.papyrus.viewer.OFFICE_UNLOCK_DIR
 import io.github.pixelrick420.papyrus.viewer.PDF_UNLOCK_DIR
+import io.github.pixelrick420.papyrus.viewer.PdfCopyWriter
 import io.github.pixelrick420.papyrus.viewer.PdfEncryption
 import io.github.pixelrick420.papyrus.viewer.PdfFormEdit
 import io.github.pixelrick420.papyrus.viewer.PdfFormField
@@ -83,6 +85,8 @@ import io.github.pixelrick420.papyrus.viewer.PdfPlatformSelection
 import io.github.pixelrick420.papyrus.viewer.PlatformBoundary
 import io.github.pixelrick420.papyrus.viewer.PrettyPrint
 import io.github.pixelrick420.papyrus.viewer.SyntaxHighlighter
+import io.github.pixelrick420.papyrus.viewer.ListChunkView
+import io.github.pixelrick420.papyrus.viewer.TextChunkView
 import io.github.pixelrick420.papyrus.viewer.TextChunks
 import io.github.pixelrick420.papyrus.viewer.TextEncoding
 import io.github.pixelrick420.papyrus.viewer.TextEncodings
@@ -155,6 +159,8 @@ sealed interface ViewerContent {
         val maxLineColumns: Int = 0,
         val truncated: Boolean = false,
         val prose: Boolean = false,
+        val endsWithNewline: Boolean = false,
+        val view: TextChunkView = ListChunkView(chunks),
     ) : ViewerContent
     // [outline] is a document's own table of contents (an EPUB's), or null to derive one from the headings.
     data class Office(
@@ -689,39 +695,15 @@ class ViewerViewModel(
     ) {
         val source = (_state.value.content as? ViewerContent.Pdf)?.source ?: return
         viewModelScope.launch {
-            val written = writePdfCopy(uri, source, highlights)
+            val resolver = app.contentResolver
+            val writer = PdfCopyWriter<Uri, ParcelFileDescriptor>(
+                open = { resolver.openFileDescriptor(it, "w") },
+                writeCopy = { destination, marks -> source.writeCopy(destination, marks) },
+                delete = { runCatching { DocumentsContract.deleteDocument(resolver, it) } },
+            )
+            val written = writer.write(uri, highlights)
             _messages.value = if (written) saved else failed
         }
-    }
-
-    private suspend fun writePdfCopy(
-        uri: Uri,
-        source: PdfPageSource,
-        highlights: Map<Int, List<List<NormRect>>>,
-    ): Boolean {
-        val resolver = app.contentResolver
-        val destination = try {
-            resolver.openFileDescriptor(uri, "w")
-        } catch (e: CancellationException) {
-            throw e
-        } catch (_: Exception) {
-            null
-        } ?: return false
-        val written = try {
-            destination.use { source.writeCopy(it, highlights) }
-        } catch (e: CancellationException) {
-            discardCopy(uri)
-            throw e
-        } catch (_: Exception) {
-            false
-        }
-        if (!written) discardCopy(uri)
-        return written
-    }
-
-    /** A failed write leaves a truncated file behind; deleting the document takes the file with it. */
-    private fun discardCopy(uri: Uri) {
-        runCatching { DocumentsContract.deleteDocument(app.contentResolver, uri) }
     }
 
     // Prefers the position last shown (a re-grant reload rebuilds at the top) over the stored one.
@@ -1041,6 +1023,8 @@ class ViewerViewModel(
             maxLineColumns = read.maxLineColumns,
             truncated = read.truncated,
             prose = isProse(doc.title, isCode = codeOnly),
+            endsWithNewline = read.endsWithNewline,
+            view = read.view,
         )
     }
 

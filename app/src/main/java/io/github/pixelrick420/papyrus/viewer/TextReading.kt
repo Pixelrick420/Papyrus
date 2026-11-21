@@ -10,13 +10,29 @@ import java.nio.charset.Charset
 
 const val TEXT_LINES_PER_CHUNK = 40
 
+/** Non-blocking view for the UI: [peek] only reads the cache, [load] may read the source. */
+interface TextChunkView {
+    val size: Int
+    fun peek(index: Int): String?
+    suspend fun load(index: Int): String
+}
+
+internal class ListChunkView(private val chunks: List<String>) : TextChunkView {
+    override val size: Int get() = chunks.size
+    override fun peek(index: Int): String? = chunks.getOrNull(index)
+    override suspend fun load(index: Int): String = chunks[index]
+}
+
 class TextChunks(
     val chunks: List<String>,
     val lineCount: Int,
     val maxLineColumns: Int,
     val encoding: TextEncoding,
     val truncated: Boolean,
-)
+    val endsWithNewline: Boolean,
+) {
+    val view: TextChunkView = chunks as? TextChunkView ?: ListChunkView(chunks)
+}
 
 class DecodedString(val text: String, val encoding: TextEncoding, val truncated: Boolean)
 
@@ -70,6 +86,7 @@ internal class LineAssembler(private val linesPerChunk: Int) {
     private var column = 0
     private var maxColumns = 0
     private var afterCarriageReturn = false
+    private var lastWasLineEnd = false
 
     fun append(chars: CharArray, length: Int) {
         for (i in 0 until length) {
@@ -79,6 +96,7 @@ internal class LineAssembler(private val linesPerChunk: Int) {
                 afterCarriageReturn = false
                 continue
             }
+            lastWasLineEnd = c == '\n' || c == '\r'
             afterCarriageReturn = c == '\r'
             if (c == '\n' || c == '\r') {
                 lineCount++
@@ -103,7 +121,7 @@ internal class LineAssembler(private val linesPerChunk: Int) {
         if (truncated) chunk.dropCutCharacter()
         // Last chunk, unless the text ended on a chunk's final newline, which would add an empty one.
         if (chunk.isNotEmpty() || chunks.isEmpty()) chunks += chunk.toString()
-        return TextChunks(chunks, lineCount, maxColumns, encoding, truncated)
+        return TextChunks(chunks, lineCount, maxColumns, encoding, truncated, lastWasLineEnd)
     }
 }
 

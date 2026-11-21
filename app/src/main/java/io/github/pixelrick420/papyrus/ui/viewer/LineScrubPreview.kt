@@ -18,6 +18,7 @@ import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import io.github.pixelrick420.papyrus.R
+import io.github.pixelrick420.papyrus.viewer.TextChunkView
 import io.github.pixelrick420.papyrus.viewer.lineAt
 import io.github.pixelrick420.papyrus.viewer.lineSnippet
 import io.github.pixelrick420.papyrus.viewer.locateLine
@@ -27,7 +28,7 @@ import java.text.NumberFormat
 @Composable
 internal fun BoxScope.LineScrubPreview(
     listState: LazyListState,
-    chunks: List<String>,
+    chunks: TextChunkView,
     lines: Int,
     scrubbing: Boolean,
 ) {
@@ -39,7 +40,10 @@ internal fun BoxScope.LineScrubPreview(
         val digits = NumberFormat.getIntegerInstance()
         snapshotFlow { topLine(listState, lines) }.collect { line ->
             val target = locateLine(line, lines)
-            val snippet = target?.let { lineSnippet(chunks[it.chunk], it.lineInChunk) }.orEmpty()
+            val snippet = target?.let { spot ->
+                val text = chunks.peek(spot.chunk) ?: runCatching { chunks.load(spot.chunk) }.getOrNull()
+                text?.let { lineSnippet(it, spot.lineInChunk) }
+            }.orEmpty()
             val number = digits.format(line)
             shown = if (snippet.isEmpty()) {
                 resources.getString(R.string.viewer_scrub_line, number)

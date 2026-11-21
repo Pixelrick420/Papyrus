@@ -98,6 +98,7 @@ internal class ChunkIndex(
     val maxLineColumns: Int,
     val contentEnd: Long,
     val truncated: Boolean,
+    val endsWithNewline: Boolean,
     val linesPerChunk: Int,
     private val checkpointChunks: IntArray,
     private val checkpointOffsets: LongArray,
@@ -148,7 +149,8 @@ internal fun buildChunkIndex(
     }
     splitter.finish()
     if (column > widest) widest = column
-    return builder.build(splitter.lineCount, widest, splitter.position, stream.cut)
+    val endsWithNewline = stream.lastByte == LF.toInt() || stream.lastByte == CR.toInt()
+    return builder.build(splitter.lineCount, widest, splitter.position, stream.cut, endsWithNewline)
 }
 
 private class IndexBuilder(private val layout: ChunkLayout) : ChunkListener {
@@ -177,12 +179,19 @@ private class IndexBuilder(private val layout: ChunkLayout) : ChunkListener {
         chunkCount = index + 1
     }
 
-    fun build(lineCount: Int, maxLineColumns: Int, contentEnd: Long, truncated: Boolean) = ChunkIndex(
+    fun build(
+        lineCount: Int,
+        maxLineColumns: Int,
+        contentEnd: Long,
+        truncated: Boolean,
+        endsWithNewline: Boolean,
+    ) = ChunkIndex(
         chunkCount = chunkCount,
         lineCount = lineCount,
         maxLineColumns = maxLineColumns,
         contentEnd = contentEnd,
         truncated = truncated,
+        endsWithNewline = endsWithNewline,
         linesPerChunk = layout.linesPerChunk,
         checkpointChunks = checkpointChunks.copyOf(checkpoints),
         checkpointOffsets = checkpointOffsets.copyOf(checkpoints),
@@ -197,6 +206,9 @@ private class IndexingStream(
 ) : InputStream() {
 
     var cut = false
+        private set
+
+    var lastByte = -1
         private set
 
     private val one = ByteArray(1)
@@ -214,7 +226,10 @@ private class IndexingStream(
             return -1
         }
         val n = source.read(buffer, offset, minOf(length.toLong(), room).toInt())
-        if (n > 0) splitter.feed(buffer, offset, n)
+        if (n > 0) {
+            lastByte = buffer[offset + n - 1].toInt() and 0xFF
+            splitter.feed(buffer, offset, n)
+        }
         return n
     }
 

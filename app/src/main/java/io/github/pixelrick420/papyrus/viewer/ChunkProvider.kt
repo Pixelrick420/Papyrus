@@ -68,7 +68,7 @@ internal fun indexChunks(
 ): TextChunks {
     val index = buildChunkIndex(input, encoding.charset, encoding.bomLength.toLong(), layout, ensureActive)
     val chunks = IndexedChunks(source, index, encoding.charset, layout)
-    return TextChunks(chunks, index.lineCount, index.maxLineColumns, encoding, index.truncated)
+    return TextChunks(chunks, index.lineCount, index.maxLineColumns, encoding, index.truncated, index.endsWithNewline)
 }
 
 // A pipe cannot seek, so reading past the bytes stands in for a seek; throws [EOFException] if the stream is shorter than [offset].
@@ -109,13 +109,14 @@ private const val LINE_FEED: Byte = 0x0A
 private const val CARRIAGE_RETURN: Byte = 0x0D
 private const val LETTER_A: Byte = 0x41
 
-// Equal only to itself, because comparing two lists would decode both files. An unreadable chunk is empty rather than an exception mid-draw.
+// Equal only to itself, because comparing two lists would decode both files. The UI uses peek/load so composition never waits on a provider.
 internal class IndexedChunks(
     private val source: ByteSource,
     private val index: ChunkIndex,
     private val charset: Charset,
     layout: ChunkLayout,
-) : AbstractList<String>(), RandomAccess {
+    private val dispatcher: CoroutineDispatcher = Dispatchers.IO,
+) : AbstractList<String>(), RandomAccess, TextChunkView {
 
     private val lock = Any()
     private val cache = ChunkCache(layout.cacheChunks, layout.cacheChars)
@@ -124,17 +125,27 @@ internal class IndexedChunks(
 
     val cachedCount: Int get() = synchronized(lock) { cache.size }
 
-    override fun get(index: Int): String {
+    override fun peek(index: Int): String? =
+        if (index in 0 until size) synchronized(lock) { cache[index] } else null
+
+    override suspend fun load(index: Int): String = withContext(dispatcher) {
+        ensureActive()
+        decode(index)
+    }
+
+    override fun get(index: Int): String = try {
+        decode(index)
+    } catch (_: IOException) {
+        ""
+    }
+
+    private fun decode(index: Int): String {
         if (index !in 0 until size) throw IndexOutOfBoundsException("chunk $index of $size")
         synchronized(lock) {
             cache[index]?.let { return it }
             val span = this.index.spanOf(index)
             val first = this.index.firstChunkOf(span)
-            val decoded = try {
-                decodeSpan(span)
-            } catch (_: IOException) {
-                return ""
-            }
+            val decoded = decodeSpan(span)
             decoded.forEachIndexed { i, text -> cache.put(first + i, text) }
             return decoded.getOrElse(index - first) { "" }
         }

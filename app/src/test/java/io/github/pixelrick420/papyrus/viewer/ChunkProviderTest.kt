@@ -14,6 +14,8 @@ import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
@@ -49,6 +51,7 @@ class ChunkProviderTest {
         assertEquals("$label lines", expected.lineCount, actual.lineCount)
         assertEquals("$label columns", expected.maxLineColumns, actual.maxLineColumns)
         assertEquals("$label truncated", expected.truncated, actual.truncated)
+        assertEquals("$label trailing newline", expected.endsWithNewline, actual.endsWithNewline)
     }
 
     @Test
@@ -210,6 +213,23 @@ class ChunkProviderTest {
         for (i in chunks.indices) chunks[i]
 
         assertTrue("held ${chunks.cachedCount}", chunks.cachedCount in 1..2)
+    }
+
+    @Test
+    fun `peek reads only the cache and never opens the source`() = runBlocking {
+        val bytes = "a\nb\nc\nd".toByteArray()
+        val opens = AtomicInteger()
+        val chunks = indexed(bytes, layout(lines = 1), src = source(bytes, opens)).chunks as IndexedChunks
+        val afterIndexing = opens.get()
+
+        assertNull(chunks.peek(0))
+        assertEquals("a", chunks.load(0))
+        assertNotNull(chunks.peek(0))
+        val afterLoad = opens.get()
+        repeat(10) { chunks.peek(0) }
+
+        assertEquals(afterIndexing, afterLoad - 1)
+        assertEquals(afterLoad, opens.get())
     }
 
     @Test

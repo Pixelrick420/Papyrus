@@ -1,5 +1,6 @@
 package io.github.pixelrick420.papyrus.crash
 
+import io.github.pixelrick420.papyrus.data.DocumentRepository
 import io.github.pixelrick420.papyrus.data.DocumentEntity
 import io.github.pixelrick420.papyrus.data.DocumentFormat
 import io.github.pixelrick420.papyrus.ui.navigation.Routes
@@ -91,7 +92,7 @@ class CrashReportStoreTest {
     @Test
     fun `crash report in ViewerUiState disables bookmarks and highlights`() {
         val doc = DocumentEntity(
-            id = -1000000L,
+            id = DocumentRepository.CRASH_REPORT_FIRST_ID,
             uri = "file:///data/user/0/io.github.pixelrick420.papyrus/files/crash-reports/crash-1.json",
             title = "crash-1.json",
             format = DocumentFormat.CODE,

@@ -36,8 +36,7 @@ class DocumentRepository(
 
     /** In-memory only, and several at once: a second external file opens beside the first. */
     private val handedOver = HandedOverStore<DocumentEntity>()
-    private val crashReports = mutableMapOf<Long, DocumentEntity>()
-    private var nextCrashReportId = -1000000L
+    private val crashReports = HandedOverStore<DocumentEntity>(firstId = CRASH_REPORT_FIRST_ID)
 
     // Remembers the encryption verdict so the next viewer skips the whole-file check; read once, then forgotten.
     private val knownPdfEncryption = ConcurrentHashMap<String, PdfEncryption>()
@@ -158,9 +157,8 @@ class DocumentRepository(
     private fun handOver(entity: DocumentEntity): Long = handedOver.add { id -> entity.copy(id = id) }
 
     fun openCrashReport(file: File): Long {
-        val id = nextCrashReportId--
         val entity = DocumentEntity(
-            id = id,
+            id = 0,
             uri = Uri.fromFile(file).toString(),
             title = file.name,
             format = DocumentFormat.CODE,
@@ -168,8 +166,7 @@ class DocumentRepository(
             createdAt = file.lastModified(),
             lastOpenedAt = System.currentTimeMillis(),
         )
-        crashReports[id] = entity
-        return id
+        return crashReports.add { id -> entity.copy(id = id) }
     }
 
     suspend fun getById(id: Long): DocumentEntity? =
@@ -381,8 +378,9 @@ class DocumentRepository(
         return if (sniffed) DocumentFormat.CODE else DocumentFormat.UNKNOWN
     }
 
-    private companion object {
+    companion object {
         const val FILE_PROVIDER_SUFFIX = ".fileprovider"
+        const val CRASH_REPORT_FIRST_ID = -1000000L
         const val MAX_KNOWN_PDF_STATUS = 8
         const val MAX_IDS_PER_STATEMENT = 900
 

@@ -3,6 +3,7 @@ package io.github.pixelrick420.papyrus
 import android.app.Application
 import android.content.Context
 import android.os.Process
+import android.os.StrictMode
 import androidx.core.net.toUri
 import io.github.pixelrick420.papyrus.data.AppDatabase
 import io.github.pixelrick420.papyrus.data.DocumentRepository
@@ -126,6 +127,7 @@ class MainApplication : Application() {
         super.onCreate()
         // ACRA runs its report pipeline in a separate ":acra" process; skip app setup there.
         if (ACRA.isACRASenderServiceProcess()) return
+        installStrictMode()
         // Taken before anything can save a copy, so only files from an earlier run count as old.
         val startedAt = System.currentTimeMillis()
         // Off the main thread: deleting a large cache would otherwise stall startup.
@@ -152,6 +154,19 @@ class MainApplication : Application() {
         super.onLowMemory()
         if (ACRA.isACRASenderServiceProcess()) return
         trimCaches(evictAll = true)
+    }
+
+    private fun installStrictMode() {
+        if (!BuildConfig.DEBUG) return
+        val instrumented = runCatching { Class.forName("androidx.test.platform.app.InstrumentationRegistry") }.isSuccess
+        StrictMode.setThreadPolicy(
+            StrictMode.ThreadPolicy.Builder()
+                .detectDiskReads()
+                .detectDiskWrites()
+                .detectNetwork()
+                .apply { if (instrumented) penaltyDeath() else penaltyLog() }
+                .build(),
+        )
     }
 
     private fun trimCaches(evictAll: Boolean) {

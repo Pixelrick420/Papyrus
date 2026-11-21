@@ -2,11 +2,14 @@ package io.github.pixelrick420.papyrus.data
 
 // Several are live at once (documentLaunchMode="intoExisting"), so adding one must never drop another.
 // Every access takes the lock (opens arrive on IO threads); past [capacity] the least recently used entry goes.
-internal class HandedOverStore<T>(private val capacity: Int = DEFAULT_CAPACITY) {
+internal class HandedOverStore<T>(
+    private val capacity: Int = DEFAULT_CAPACITY,
+    firstId: Long = FIRST_ID,
+) {
 
     // Access order, so a document being read stays while ones opened and forgotten age out.
     private val entries = LinkedHashMap<Long, T>(INITIAL_SIZE, LOAD_FACTOR, true)
-    private var nextId = FIRST_ID
+    private var nextId = firstId
 
     @Synchronized
     fun add(build: (id: Long) -> T): Long {
