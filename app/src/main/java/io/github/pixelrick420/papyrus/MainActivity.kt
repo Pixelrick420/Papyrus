@@ -2,6 +2,8 @@ package io.github.pixelrick420.papyrus
 
 import android.content.Intent
 import android.content.res.Configuration
+import androidx.core.content.IntentCompat
+import androidx.core.net.toUri
 import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
@@ -73,8 +75,19 @@ class MainActivity : ComponentActivity() {
 
     private fun handover(uri: Uri): Handover = Handover(uri, ++handoverSeq)
 
-    private fun viewUri(intent: Intent?): Uri? =
-        intent?.takeIf { it.action == Intent.ACTION_VIEW }?.data?.takeIf { it.scheme == "content" }
+    private fun viewUri(intent: Intent?): Uri? {
+        if (intent == null) return null
+        val stream = if (intent.action == Intent.ACTION_SEND) {
+            IntentCompat.getParcelableExtra(intent, Intent.EXTRA_STREAM, Uri::class.java)
+        } else {
+            null
+        }
+        return intentToDocumentUri(
+            intent.action,
+            intent.data?.toString(),
+            stream?.toString(),
+        )?.toUri()
+    }
 
     private fun deviceInDarkMode(): Boolean =
         (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES

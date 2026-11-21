@@ -178,6 +178,7 @@ access</string>
     <string name="viewer_save_library">Save to library</string>
     <string name="viewer_save_done">Saved to your library</string>
     <string name="viewer_save_failed">Couldn\'t save this document.</string>
+    <string name="viewer_write_failed">Couldn\'t save your changes.</string>
     <string name="viewer_form_title">Form fields</string>
     <string
         name="viewer_form_hint"

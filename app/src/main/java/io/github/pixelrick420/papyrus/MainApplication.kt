@@ -94,7 +94,9 @@ class MainApplication : Application() {
     }
 
     // Outlives any screen (e.g. committing a removal after its undo window); never cancelled.
-    val applicationScope: CoroutineScope = backgroundScope { failure ->
+    val applicationScope: CoroutineScope = backgroundScope(::reportSilent)
+
+    fun reportSilent(failure: Throwable) {
         runCatching { ACRA.errorReporter.handleSilentException(failure) }
     }
 

@@ -84,7 +84,12 @@ Only images carried inside the document as a `data:` URI are shown, since the ap
 ## Opening documents
 
 - **Open with** shows a document from another app without adding it to the library.
+- **Share to Papyrus** opens a file sent from another app through the same path. Only files shared as a `content://`
+  stream are accepted; shared text (a selection from another app) is not turned into a document. `file://` URIs and
+  multiple-file shares are not accepted either.
 - **Save to library** keeps a copy, so it outlives the other app's grant.
+- **Failed changes** to bookmarks, highlights and notes are recorded on the device and show one short message, even
+  when several writes fail.
 - **Password-protected documents** unlock locally: Word, OpenDocument and PDF. The password is never stored or logged,
   and the temporary copy of a Word or OpenDocument file is deleted when you close it.
 - **Lost access** keeps the page on screen and offers to re-pick the file, matching on name and format. A file that

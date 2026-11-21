@@ -367,6 +367,11 @@ class ViewerViewModel(
     private val _messages = MutableStateFlow<UiText?>(null)
     val messages: StateFlow<UiText?> = _messages.asStateFlow()
 
+    private val writeFailures = WriteFailureReporter(
+        report = app::reportSilent,
+        notify = { res -> _messages.value = UiText(res) },
+    )
+
     private var pdfPageText: List<PdfPageText>? = null
 
     /** The over-budget file is mentioned once per find session, not once per keystroke. */
@@ -1233,7 +1238,9 @@ class ViewerViewModel(
     fun renameBookmark(bookmark: Bookmark, typed: String) {
         val unitCount = _state.value.content.unitCount()
         val label = cleanBookmarkLabel(typed, positionalLabel(bookmark.location, unitCount))
-        app.applicationScope.launch { runQuietly { repository.renameBookmark(bookmark.id, label) } }
+        app.applicationScope.launch {
+            writeFailures.runReporting(R.string.viewer_write_failed) { repository.renameBookmark(bookmark.id, label) }
+        }
     }
 
     fun deleteBookmark(bookmark: Bookmark) = deleteBookmarkRow(bookmark.id)
@@ -1248,37 +1255,48 @@ class ViewerViewModel(
             label = bookmark.label,
             createdAt = bookmark.createdAt,
         )
-        app.applicationScope.launch { runQuietly { repository.restoreBookmark(row) } }
+        app.applicationScope.launch {
+            writeFailures.runReporting(R.string.viewer_write_failed) { repository.restoreBookmark(row) }
+        }
     }
 
     private fun deleteBookmarkRow(id: Long) {
-        app.applicationScope.launch { runQuietly { repository.deleteBookmark(id) } }
+        app.applicationScope.launch {
+            writeFailures.runReporting(R.string.viewer_write_failed) { repository.deleteBookmark(id) }
+        }
     }
 
     fun addHighlights(boxesByPage: Map<Int, List<NormRect>>) {
         if (_state.value.content !is ViewerContent.Pdf) return
         val id = persistedId
         if (id <= 0) return
-        app.applicationScope.launch { runQuietly { repository.addHighlights(id, boxesByPage) } }
+        app.applicationScope.launch {
+            writeFailures.runReporting(R.string.viewer_write_failed) { repository.addHighlights(id, boxesByPage) }
+        }
     }
 
     fun removeHighlights(ids: List<Long>) {
         if (ids.isEmpty()) return
-        app.applicationScope.launch { runQuietly { repository.deleteHighlights(ids) } }
+        app.applicationScope.launch {
+            writeFailures.runReporting(R.string.viewer_write_failed) { repository.deleteHighlights(ids) }
+        }
     }
 
     fun setHighlightNote(id: Long, note: String) {
-        app.applicationScope.launch { runQuietly { repository.setHighlightNote(id, note) } }
+        app.applicationScope.launch {
+            writeFailures.runReporting(R.string.viewer_write_failed) { repository.setHighlightNote(id, note) }
+        }
     }
 
-    /** A bookmark write that fails leaves the list as the database has it, which the screen already shows. */
+    /** Only the outline cache stays silent: it is rebuilt from the file on the next open. */
+    @Suppress("TooGenericExceptionCaught", "SwallowedException")
     private suspend fun runQuietly(block: suspend () -> Unit) {
         try {
             block()
         } catch (e: CancellationException) {
             throw e
         } catch (_: Exception) {
-            // Nothing to roll back: the flow re-emits whatever is stored.
+            // A missing cached outline is invisible to the reader.
         }
     }
 
