@@ -19,6 +19,7 @@ import java.io.FileOutputStream
 import java.io.IOException
 import java.io.InputStream
 import java.util.UUID
+import java.util.zip.ZipException
 import java.util.zip.ZipFile
 import java.util.zip.ZipInputStream
 
@@ -31,6 +32,7 @@ data class PptxLimits(
     val maxEntries: Int = ZipLimits().maxEntries,
     val maxEntryBytes: Long = ZipLimits().maxEntryBytes,
     val maxTotalBytes: Long = ZipLimits().maxTotalBytes,
+    val maxSkippedBytes: Long = ZipLimits().maxSkippedBytes,
     val maxSourceBytes: Long = 512L * 1024 * 1024,
     val maxRatio: Int = ZipLimits().maxRatio,
     val ratioFloorBytes: Long = ZipLimits().ratioFloorBytes,
@@ -67,7 +69,7 @@ data class PptxLimits(
     /** Deterministic cap so a fast machine cannot spend unbounded time on a pathological slide. */
     val maxSlideRenderUnits: Int = 200_000,
 ) {
-    val zipLimits: ZipLimits get() = ZipLimits(maxEntries, maxEntryBytes, maxTotalBytes, maxRatio, ratioFloorBytes)
+    val zipLimits: ZipLimits get() = ZipLimits(maxEntries, maxEntryBytes, maxTotalBytes, maxRatio, ratioFloorBytes, maxSkippedBytes)
 }
 
 internal class PptxRelationship(
@@ -227,7 +229,7 @@ private class PptxReader(
         }
         val stream: () -> InputStream = cached?.let { file -> { file.inputStream() } } ?: openStream
         try {
-            val scan = scanParts(stream)
+            val scan = scanParts(cached, stream)
             val types = parseContentTypes(
                 scan.contentTypes ?: throw PptxFormatException("no [Content_Types].xml: not a presentation"),
             )
@@ -242,8 +244,59 @@ private class PptxReader(
     }
 
     // One walk: XML and relationships in, everything else skipped, since which media a deck needs is only known
-    // once its relationships are read.
-    private fun scanParts(openStream: () -> InputStream): Scan {
+    // once its relationships are read. A cached copy gives random access, so skipped media is never inflated.
+    private fun scanParts(cached: File?, openStream: () -> InputStream): Scan =
+        if (cached != null) scanPartsRandom(cached) else scanPartsStream(openStream)
+
+    private fun scanPartsRandom(cached: File): Scan {
+        val parts = LinkedHashMap<String, ByteArray>()
+        val fonts = LinkedHashMap<String, ByteArray>()
+        var contentTypes: ByteArray? = null
+        var total = 0L
+        var fontTotal = 0
+        val buffer = ByteArray(MEDIA_COPY_BUFFER)
+        try {
+            ZipFile(cached).use { zip ->
+                if (zip.size() > limits.maxEntries) throw PptxFormatException("too many entries")
+                val entries = zip.entries()
+                while (entries.hasMoreElements()) {
+                    val entry = entries.nextElement()
+                    if (entry.isDirectory) continue
+                    val name = entry.name
+                    if (!isSafeEntryName(name) || isSkipped(name)) continue
+                    if (name.equals(CONTENT_TYPES_PART, ignoreCase = true)) {
+                        val bytes = readEntryBounded(zip, entry, limits.maxXmlPartBytes, buffer)
+                            ?: throw PptxFormatException("$name is too large")
+                        total += bytes.size
+                        contentTypes = bytes
+                    } else {
+                        val lower = name.lowercase()
+                        if (lower.endsWith(".fntdata")) {
+                            if (fonts.size >= limits.maxFonts) continue
+                            val cap = (limits.maxFontBytes - fontTotal).coerceAtLeast(0)
+                            val bytes = readEntryBounded(zip, entry, cap, buffer) ?: continue
+                            fontTotal += bytes.size
+                            fonts.putIfAbsent(name, bytes)
+                            continue
+                        }
+                        if (!lower.endsWith(".xml") && !lower.endsWith(".rels")) continue
+                        val bytes = readEntryBounded(zip, entry, limits.maxXmlPartBytes, buffer)
+                            ?: throw PptxFormatException("$name is too large")
+                        total += bytes.size
+                        parts.putIfAbsent(name, bytes)
+                    }
+                    if (total > limits.maxXmlBytes) throw PptxFormatException("xml parts are too large")
+                }
+            }
+        } catch (e: ZipException) {
+            throw PptxFormatException("malformed archive", e)
+        } catch (e: IllegalArgumentException) {
+            throw PptxFormatException("malformed archive", e)
+        }
+        return Scan(parts, contentTypes, fonts)
+    }
+
+    private fun scanPartsStream(openStream: () -> InputStream): Scan {
         val parts = LinkedHashMap<String, ByteArray>()
         val fonts = LinkedHashMap<String, ByteArray>()
         var contentTypes: ByteArray? = null
@@ -385,7 +438,8 @@ private class PptxReader(
                     val entry = entries.nextElement()
                     if (entry.isDirectory) continue
                     accept(entry.name) {
-                        if (entry.size > limits.maxImageBytes) null else readEntryBounded(zip, entry, buffer)
+                        if (entry.size > limits.maxImageBytes) null
+                        else readEntryBounded(zip, entry, limits.maxImageBytes, buffer)
                     }
                 }
             }
@@ -406,8 +460,7 @@ private class PptxReader(
         return written to (wanted.size - written.size)
     }
 
-    private fun readEntryBounded(zip: ZipFile, entry: java.util.zip.ZipEntry, buffer: ByteArray): ByteArray? {
-        val cap = limits.maxImageBytes
+    private fun readEntryBounded(zip: ZipFile, entry: java.util.zip.ZipEntry, cap: Int, buffer: ByteArray): ByteArray? {
         val out = ByteArrayOutputStream(minOf(cap, MEDIA_COPY_BUFFER))
         val compressed = entry.compressedSize
         zip.getInputStream(entry).use { input ->

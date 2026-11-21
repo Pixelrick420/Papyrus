@@ -102,7 +102,8 @@ up hides other apps otherwise.
 - **EPUB safety.** A book is a ZIP from someone else, so it is read with hard limits and never extracted to disk beyond
   its images. A zip-slip entry, an oversized archive or a decompression bomb fails the book, not the app, and DRM is
   refused. Word and OpenDocument files are ZIPs too and are read under the same limits on entries, size and
-  compression ratio.
+  compression ratio. Bytes inflated only to skip an entry the reader never keeps are charged to a separate, larger
+  budget, so a large embedded video does not fail an otherwise valid document.
 - **Crash reports** are JSON files in app storage, written by ACRA. Nothing leaves the device, and document paths,
   content URIs and storage locations are redacted before a report is saved.
 - **Highlights and notes** stay in Papyrus's private database, are removed with the document, and are never written

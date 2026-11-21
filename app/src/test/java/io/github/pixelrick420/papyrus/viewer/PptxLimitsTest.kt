@@ -18,6 +18,7 @@ class PptxLimitsTest {
         assertEquals(512L * 1024 * 1024, limits.maxTotalBytes)
         assertEquals(100, limits.maxRatio)
         assertEquals(1024L * 1024, limits.ratioFloorBytes)
+        assertEquals(2L * 1024 * 1024 * 1024, limits.maxSkippedBytes)
 
         assertEquals(32 * 1024 * 1024, limits.maxXmlPartBytes)
         assertEquals(128L * 1024 * 1024, limits.maxXmlBytes)
@@ -58,7 +59,7 @@ class PptxLimitsTest {
 
         val values = listOf(
             limits.maxEntries.toLong(), limits.maxEntryBytes, limits.maxTotalBytes, limits.maxRatio.toLong(),
-            limits.ratioFloorBytes, limits.maxXmlPartBytes.toLong(), limits.maxXmlBytes,
+            limits.ratioFloorBytes, limits.maxSkippedBytes, limits.maxXmlPartBytes.toLong(), limits.maxXmlBytes,
             limits.maxXmlElements.toLong(), limits.maxXmlDepth.toLong(), limits.maxSlides.toLong(),
             limits.maxShapes.toLong(), limits.maxGroupDepth.toLong(), limits.maxTextChars.toLong(),
             limits.maxParagraphs.toLong(), limits.maxGradientStops.toLong(), limits.maxDashEntries.toLong(),
@@ -91,8 +92,8 @@ class PptxLimitsTest {
     fun `the zip limits are the shared ones, so the readers cannot drift apart`() {
         assertEquals(ZipLimits(), PptxLimits().zipLimits)
         assertEquals(
-            ZipLimits(maxEntries = 3, maxEntryBytes = 1_000, maxTotalBytes = 2_500, maxRatio = 10, ratioFloorBytes = 100),
-            PptxLimits(maxEntries = 3, maxEntryBytes = 1_000, maxTotalBytes = 2_500, maxRatio = 10, ratioFloorBytes = 100).zipLimits,
+            ZipLimits(maxEntries = 3, maxEntryBytes = 1_000, maxTotalBytes = 2_500, maxRatio = 10, ratioFloorBytes = 100, maxSkippedBytes = 5_000),
+            PptxLimits(maxEntries = 3, maxEntryBytes = 1_000, maxTotalBytes = 2_500, maxRatio = 10, ratioFloorBytes = 100, maxSkippedBytes = 5_000).zipLimits,
         )
     }
 }

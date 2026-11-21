@@ -104,7 +104,14 @@ class ZipGuardTest {
     }
 
     @Test
-    fun `an entry the caller never reads is still counted when the next one is asked for`() {
+    fun `a large entry the caller never reads does not fail the archive`() {
+        val bytes = zip("video" to noise(10_000), "after" to noise(200))
+
+        assertNull(refusal(bytes, small, read = false))
+    }
+
+    @Test
+    fun `a skipped entry that compresses implausibly well is still refused`() {
         val loose = small.copy(maxEntryBytes = 1_000_000, maxTotalBytes = 1_000_000)
         val bytes = zip("bomb" to ByteArray(50_000), "after" to noise(10))
 
@@ -112,7 +119,22 @@ class ZipGuardTest {
     }
 
     @Test
-    fun `a skipped entry is charged for the bytes it inflates`() {
+    fun `skipped bytes past the skipped budget are refused`() {
+        val limits = small.copy(maxEntryBytes = 1_000_000, maxTotalBytes = 1_000_000, maxSkippedBytes = 5_000)
+        val bytes = zip("video" to noise(10_000), "after" to noise(10))
+
+        assertEquals("too many skipped bytes", refusal(bytes, limits, read = false))
+    }
+
+    @Test
+    fun `bytes the caller reads still count against the entry and archive caps`() {
+        val bytes = zip("read" to noise(1_001), "skipped" to noise(10_000))
+
+        assertEquals("too large", refusal(bytes, small.copy(maxSkippedBytes = 1_000_000)))
+    }
+
+    @Test
+    fun `bytes inflated by an explicit skip are still ratio-checked`() {
         val loose = small.copy(maxEntryBytes = 1_000_000, maxTotalBytes = 1_000_000)
         val bytes = zip("bomb" to ByteArray(50_000), "after" to noise(10))
 
@@ -149,7 +171,13 @@ class ZipGuardTest {
     @Test
     fun `the epub limits are these limits, so the two readers cannot drift apart`() {
         assertEquals(ZipLimits(), EpubLimits().zipLimits)
-        assertEquals(small, EpubLimits(maxEntries = 3, maxEntryBytes = 1_000, maxTotalBytes = 2_500, maxRatio = 10, ratioFloorBytes = 100).zipLimits)
+        assertEquals(
+            small,
+            EpubLimits(
+                maxEntries = 3, maxEntryBytes = 1_000, maxTotalBytes = 2_500, maxRatio = 10,
+                ratioFloorBytes = 100, maxSkippedBytes = small.maxSkippedBytes,
+            ).zipLimits,
+        )
     }
 
     private companion object {

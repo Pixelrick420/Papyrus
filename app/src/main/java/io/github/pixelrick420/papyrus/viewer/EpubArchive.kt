@@ -19,6 +19,7 @@ data class EpubLimits(
     val maxTotalBytes: Long = ZipLimits().maxTotalBytes,
     val maxRatio: Int = ZipLimits().maxRatio,
     val ratioFloorBytes: Long = ZipLimits().ratioFloorBytes,
+    val maxSkippedBytes: Long = ZipLimits().maxSkippedBytes,
     val maxPartBytes: Int = 16 * 1024 * 1024,
     val maxTextBytes: Long = 64L * 1024 * 1024,
     val maxBlocks: Int = OfficeTextExtractor.MAX_BLOCKS,
@@ -30,7 +31,7 @@ data class EpubLimits(
 ) {
     val svgLimits: SvgLimits get() = SvgLimits(maxSvgElements, maxSvgOps, maxDepth)
 
-    val zipLimits: ZipLimits get() = ZipLimits(maxEntries, maxEntryBytes, maxTotalBytes, maxRatio, ratioFloorBytes)
+    val zipLimits: ZipLimits get() = ZipLimits(maxEntries, maxEntryBytes, maxTotalBytes, maxRatio, ratioFloorBytes, maxSkippedBytes)
 }
 
 internal class EpubScan(val parts: Map<String, ByteArray>, val skippedParts: Int)

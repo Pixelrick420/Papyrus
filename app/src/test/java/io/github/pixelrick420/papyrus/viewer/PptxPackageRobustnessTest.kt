@@ -54,6 +54,8 @@ class PptxPackageRobustnessTest {
     private fun withEntries(vararg extra: Pair<String, ByteArray>): ByteArray =
         OfficeFixtures.zipOf(LinkedHashMap(deck().parts).apply { extra.forEach { (name, bytes) -> put(name, bytes) } })
 
+    private fun noise(size: Int) = kotlin.random.Random(20_261_109).nextBytes(size)
+
     private fun Deck.withPart(name: String, bytes: ByteArray): Deck =
         Deck(LinkedHashMap(parts).apply { put(name, bytes) })
 
@@ -62,6 +64,18 @@ class PptxPackageRobustnessTest {
         val bytes = withEntryAfter("[Content_Types].xml", "ppt/media/bomb.bin", ByteArray(2_000_000))
 
         assertEquals("implausible compression", refusal(bytes))
+    }
+
+    @Test
+    fun `a deck with a large unused media entry opens`() {
+        val bytes = withEntries("ppt/media/video.mp4" to noise(2_000_000))
+        val limits = PptxLimits(maxEntryBytes = 1L * 1024 * 1024, maxTotalBytes = 1L * 1024 * 1024)
+
+        for (dir in listOf(null, temp.newFolder("unused-stream"), temp.newFolder("unused-cached"))) {
+            val pkg = read(bytes, dir, limits)
+            assertEquals("ppt/presentation.xml", pkg.mainPart)
+            assertTrue(pkg.mediaNames.isEmpty())
+        }
     }
 
     @Test
@@ -229,7 +243,7 @@ class PptxPackageRobustnessTest {
     @Test
     fun `a hostile package is refused without touching a file`() {
         val dir = temp.newFolder("media")
-        val bytes = withEntryAfter("[Content_Types].xml", "ppt/media/bomb.bin", ByteArray(2_000_000))
+        val bytes = withEntryAfter("[Content_Types].xml", "ppt/slides/bomb.xml", ByteArray(2_000_000))
 
         try {
             read(bytes, dir)

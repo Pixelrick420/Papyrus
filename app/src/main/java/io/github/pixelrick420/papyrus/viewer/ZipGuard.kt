@@ -6,15 +6,20 @@ import java.io.InputStream
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 
+internal const val DEFAULT_MAX_SKIPPED_BYTES = 2L * 1024 * 1024 * 1024
+
 data class ZipLimits(
     val maxEntries: Int = 10_000,
     val maxEntryBytes: Long = 64L * 1024 * 1024,
     val maxTotalBytes: Long = 512L * 1024 * 1024,
     val maxRatio: Int = 100,
     val ratioFloorBytes: Long = 1024L * 1024,
+    val maxSkippedBytes: Long = DEFAULT_MAX_SKIPPED_BYTES,
 )
 
-// Every byte the ZIP layer inflates is counted as it comes out, skipped entries included, since the next getNextEntry inflates the rest of the one before; declared sizes are never trusted.
+// Bytes the caller reads are charged against the per-entry and archive caps. Bytes inflated only to finish an entry
+// the caller skipped are charged against a separate budget instead: they are discarded, so memory is not at risk,
+// but CPU is. The ratio check covers every inflated byte, retained or skipped, so a skipped bomb is still refused.
 internal class BoundedZipInputStream private constructor(
     private val counting: CountingInputStream,
     private val limits: ZipLimits,
@@ -29,18 +34,26 @@ internal class BoundedZipInputStream private constructor(
 
     private var entries = 0
     private var entryBytes = 0L
+    private var retainedEntryBytes = 0L
     private var entryFrom = 0L
     private var totalBytes = 0L
+    private var skippedBytes = 0L
+    private var finishing = false
 
     override fun getNextEntry(): ZipEntry? {
-        // Finishing the previous entry is read through this class too, so it is charged to that entry.
+        // super.getNextEntry finishes the previous entry through the read below. Whatever it inflates is the
+        // remainder the caller did not read, so charge it to the skipped budget rather than to a retained entry.
+        finishing = true
         val entry = try {
             super.getNextEntry()
         } catch (_: IllegalArgumentException) {
             throw fail("malformed archive")
+        } finally {
+            finishing = false
         } ?: return null
         if (++entries > limits.maxEntries) throw fail("too many entries")
         entryBytes = 0L
+        retainedEntryBytes = 0L
         entryFrom = counting.count
         return entry
     }
@@ -66,11 +79,17 @@ internal class BoundedZipInputStream private constructor(
 
     private fun charge(n: Int) {
         entryBytes += n
-        totalBytes += n
-        if (entryBytes > limits.maxEntryBytes || totalBytes > limits.maxTotalBytes) throw fail("too large")
         if (entryBytes >= limits.ratioFloorBytes) {
             val compressed = (counting.count - entryFrom).coerceAtLeast(1L)
             if (entryBytes / compressed > limits.maxRatio) throw fail("implausible compression")
+        }
+        if (finishing) {
+            skippedBytes += n
+            if (skippedBytes > limits.maxSkippedBytes) throw fail("too many skipped bytes")
+        } else {
+            retainedEntryBytes += n
+            totalBytes += n
+            if (retainedEntryBytes > limits.maxEntryBytes || totalBytes > limits.maxTotalBytes) throw fail("too large")
         }
     }
 
