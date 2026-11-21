@@ -1,5 +1,6 @@
 package io.github.pixelrick420.papyrus.data
 
+import io.github.pixelrick420.papyrus.testutil.FakeClock
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
@@ -7,8 +8,8 @@ import org.junit.Test
 
 class ThumbnailFailureCacheTest {
 
-    private var now = 1_000L
-    private val cache = ThumbnailFailureCache({ now }, maxEntries = 2)
+    private val clock = FakeClock()
+    private val cache = ThumbnailFailureCache(clock.now, maxEntries = 2)
 
     @Test
     fun `a short lived failure expires`() {
@@ -16,7 +17,7 @@ class ThumbnailFailureCacheTest {
         cache.put("1@10", failure, ThumbnailFailureCache.SHORT_TTL)
 
         assertEquals(failure, cache.get("1@10"))
-        now += ThumbnailFailureCache.SHORT_TTL
+        clock.advance(ThumbnailFailureCache.SHORT_TTL)
         assertNull(cache.get("1@10"))
     }
 
@@ -25,7 +26,7 @@ class ThumbnailFailureCacheTest {
         val failure = ThumbnailResult.Unavailable("Unsupported")
         cache.put("1@10", failure, ThumbnailFailureCache.PERMANENT_TTL)
 
-        now += ThumbnailFailureCache.SHORT_TTL * 2
+        clock.advance(ThumbnailFailureCache.SHORT_TTL * 2)
         assertEquals(failure, cache.get("1@10"))
     }
 

@@ -1,5 +1,7 @@
 package io.github.pixelrick420.papyrus.viewer
 
+import io.github.pixelrick420.papyrus.testutil.CountingStreamFactory
+import io.github.pixelrick420.papyrus.testutil.GeneratedFiles
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
@@ -297,16 +299,12 @@ class DocTextExtractorTest {
 
     @Test
     fun `two thousand pieces are decoded without reopening the file per piece`() {
-        val bytes = DocFixtures.doc(pieces = List(2_000) { DocFixtures.Piece("a") })
-        var opens = 0
-        val source = {
-            opens++
-            ByteArrayInputStream(bytes)
-        }
+        val bytes = GeneratedFiles.docWithPieces(2_000)
+        val streams = CountingStreamFactory { ByteArrayInputStream(bytes) }
 
-        val blocks = DocTextExtractor.extract(source, knownLength = bytes.size.toLong())
+        val blocks = DocTextExtractor.extract(streams.factory, knownLength = bytes.size.toLong())
 
         assertTrue(blocks.isNotEmpty())
-        assertTrue("opened the source $opens times", opens <= 16)
+        assertTrue("opened the source ${streams.opens} times", streams.opens <= 16)
     }
 }
