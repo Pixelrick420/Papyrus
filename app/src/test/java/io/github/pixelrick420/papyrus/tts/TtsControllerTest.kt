@@ -9,15 +9,16 @@ import org.junit.Test
 /** Pure queue logic behind a fake [SpeechEngine]: no Android, no real voice. */
 class TtsControllerTest {
 
-    private class FakeEngine(var available: Boolean = true) : SpeechEngine {
+    private class FakeEngine(var available: Boolean = true, var acceptSpeech: Boolean = true) : SpeechEngine {
         val spoken = mutableListOf<String>()
         val utteranceIds = mutableListOf<String>()
         var stops = 0
         var rate = 1.0f
 
-        override fun speak(text: String, utteranceId: String) {
+        override fun speak(text: String, utteranceId: String): Boolean {
             spoken.add(text)
             utteranceIds.add(utteranceId)
+            return acceptSpeech
         }
 
         override fun stop() {
@@ -256,6 +257,21 @@ class TtsControllerTest {
 
         assertTrue(controller.playback.value.hasError)
         assertTrue(engine.spoken.isEmpty())
+    }
+
+    @Test
+    fun `an engine that rejects the request shows the error instead of staying in playing`() {
+        val engine = FakeEngine(acceptSpeech = false)
+        val controller = TtsController(engine)
+        controller.setUnits(units())
+
+        controller.playFrom(0)
+
+        assertTrue(controller.playback.value.hasError)
+        assertEquals("Speech error", controller.playback.value.errorMessage)
+        assertFalse(controller.playback.value.isPlaying)
+        assertEquals(listOf("one"), engine.spoken)
+        assertEquals(2, engine.stops) // setUnits, then the error path
     }
 
     private val prose = "Hello brave world. How are you today? Fine."

@@ -5,7 +5,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 
 interface SpeechEngine {
-    fun speak(text: String, utteranceId: String)
+    /** True when the engine accepted the request; a rejection must be shown rather than left as "playing". */
+    fun speak(text: String, utteranceId: String): Boolean
 
     fun stop()
 
@@ -280,7 +281,7 @@ class TtsController(
     private fun speak(text: String) {
         val utteranceId = "tts_${utteranceSeq++}"
         currentUtteranceId = utteranceId
-        engine.speak(text, utteranceId)
+        if (!engine.speak(text, utteranceId)) onError()
     }
 
     private fun resetPosition() {

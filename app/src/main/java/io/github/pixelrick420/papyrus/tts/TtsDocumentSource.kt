@@ -58,19 +58,28 @@ object TtsDocumentSource {
     fun unitsFromOffice(blocks: List<OfficeBlock>): List<TtsUnit> {
         val units = ArrayList<TtsUnit>()
         blocks.forEachIndexed { index, block ->
-            val text = when (block) {
-                is OfficeBlock.Heading -> block.text
-                is OfficeBlock.Paragraph -> block.text
-                is OfficeBlock.ListItem -> block.text
+            // A table is spoken one row at a time: a whole table as one utterance is long and cannot be paused per row.
+            val texts = when (block) {
                 is OfficeBlock.Table -> block.rows
-                    .map { row -> row.joinToString(" ") { it.text } }
-                    .filter { it.isNotBlank() }
-                    .joinToString(" ")
-                is OfficeBlock.Image -> block.altText.orEmpty()
-                is OfficeBlock.Note -> listOfNotNull(block.text.ifBlank { null }, block.byline).joinToString(" ")
-                OfficeBlock.Divider -> ""
-            }.trim()
-            if (text.isNotEmpty()) units.add(TtsUnit(text, index))
+                    .map { row -> row.joinToString(" ") { it.text }.trim() }
+                    .filter { it.isNotEmpty() }
+                else -> listOf(
+                    when (block) {
+                        is OfficeBlock.Heading -> block.text
+                        is OfficeBlock.Paragraph -> block.text
+                        is OfficeBlock.ListItem -> block.text
+                        is OfficeBlock.Image -> block.altText.orEmpty()
+                        is OfficeBlock.Note -> listOfNotNull(block.text.ifBlank { null }, block.byline).joinToString(" ")
+                        OfficeBlock.Divider -> ""
+                        is OfficeBlock.Table -> "" // Unreachable: rows were emitted above.
+                    }.trim(),
+                ).filter { it.isNotEmpty() }
+            }
+            for (text in texts) {
+                for (range in TtsUnitSplitter.split(text)) {
+                    units.add(TtsUnit(text.substring(range), index, range.first))
+                }
+            }
         }
         return units
     }
@@ -116,10 +125,39 @@ object TtsDocumentSource {
                 lineStart = afterNewline(text, end)
             }
             val paragraph = sb.toString()
-            if (paragraph.isNotEmpty()) result.add(TtsParagraph(start, sourceEnd, paragraph))
+            if (paragraph.isNotEmpty()) {
+                val ranges = TtsUnitSplitter.split(paragraph)
+                if (ranges.size == 1) {
+                    result.add(TtsParagraph(start, sourceEnd, paragraph))
+                } else {
+                    // Splitting is rare, so the source map is built only for a paragraph that needs it. Walking the
+                    // source and the collapsed text together keeps a sub-unit's start exact in O(n), not per sub-unit.
+                    val offsets = collapsedOffsets(text, start, paragraph)
+                    for (range in ranges) {
+                        result.add(TtsParagraph(offsets[range.first], sourceEnd, paragraph.substring(range)))
+                    }
+                }
+            }
             i = lineStart
         }
         return result
+    }
+
+    private fun collapsedOffsets(source: String, from: Int, collapsed: String): IntArray {
+        val offsets = IntArray(collapsed.length)
+        var at = from
+        for (i in collapsed.indices) {
+            val c = collapsed[i]
+            if (c.isWhitespace()) {
+                offsets[i] = at.coerceAtMost(source.lastIndex)
+                if (at < source.length) at++
+            } else {
+                while (at < source.length && source[at].isWhitespace()) at++
+                offsets[i] = at.coerceAtMost(source.lastIndex)
+                at++
+            }
+        }
+        return offsets
     }
 
     private fun lineEnd(text: String, from: Int): Int {

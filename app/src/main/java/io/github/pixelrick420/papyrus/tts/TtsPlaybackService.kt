@@ -13,6 +13,7 @@ import android.content.pm.ServiceInfo
 import android.graphics.drawable.Icon
 import android.media.AudioAttributes
 import android.media.AudioManager
+import android.media.MediaMetadata
 import android.media.session.MediaSession
 import android.media.session.PlaybackState
 import android.os.Build
@@ -64,13 +65,17 @@ class TtsPlaybackService : Service(), TextToSpeech.OnInitListener {
     }
 
     private val engine = object : SpeechEngine {
-        override fun speak(text: String, utteranceId: String) {
-            if (engineFailed) return
+        override fun speak(text: String, utteranceId: String): Boolean {
+            if (engineFailed) return false
             if (!engineReady) {
                 pendingSpeak = text to utteranceId
-                return
+                return true
             }
-            tts.speak(text, TextToSpeech.QUEUE_FLUSH, Bundle(), utteranceId)
+            val result = tts.speak(text, TextToSpeech.QUEUE_FLUSH, Bundle(), utteranceId)
+            if (result == TextToSpeech.ERROR) {
+                scope.launch { controller?.onUtteranceError(utteranceId, getString(R.string.tts_error_speech)) }
+            }
+            return result != TextToSpeech.ERROR
         }
 
         override fun stop() {
@@ -191,7 +196,10 @@ class TtsPlaybackService : Service(), TextToSpeech.OnInitListener {
         tts.setSpeechRate(pendingRate)
         pendingSpeak?.let { (text, id) ->
             pendingSpeak = null
-            tts.speak(text, TextToSpeech.QUEUE_FLUSH, Bundle(), id)
+            val result = tts.speak(text, TextToSpeech.QUEUE_FLUSH, Bundle(), id)
+            if (result == TextToSpeech.ERROR) {
+                scope.launch { controller?.onUtteranceError(id, getString(R.string.tts_error_speech)) }
+            }
         }
     }
 
@@ -208,6 +216,11 @@ class TtsPlaybackService : Service(), TextToSpeech.OnInitListener {
         if (started) {
             getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, buildNotification(session.state.value))
         }
+        mediaSession.setMetadata(
+            MediaMetadata.Builder()
+                .putString(MediaMetadata.METADATA_KEY_TITLE, session.state.value.documentTitle)
+                .build(),
+        )
         mediaSession.setPlaybackState(
             PlaybackState.Builder()
                 .setActions(
@@ -222,7 +235,7 @@ class TtsPlaybackService : Service(), TextToSpeech.OnInitListener {
                     if (playback.isPlaying) PlaybackState.STATE_PLAYING
                     else if (playback.isPaused) PlaybackState.STATE_PAUSED
                     else PlaybackState.STATE_STOPPED,
-                    0L,
+                    PlaybackState.PLAYBACK_POSITION_UNKNOWN,
                     playback.speed,
                 )
                 .build(),
@@ -324,11 +337,13 @@ class TtsPlaybackService : Service(), TextToSpeech.OnInitListener {
         private const val CHANNEL_ID = "tts_playback"
         private const val NOTIFICATION_ID = 0x7A57
         const val ACTION_PLAY = "io.github.pixelrick420.papyrus.tts.PLAY"
+        /** Notification-only: starting the service with this action would skip startForeground. */
         const val ACTION_PAUSE = "io.github.pixelrick420.papyrus.tts.PAUSE"
+        /** Notification-only: starting the service with this action would skip startForeground. */
         const val ACTION_STOP = "io.github.pixelrick420.papyrus.tts.STOP"
 
-        fun start(context: Context, action: String = ACTION_PLAY) {
-            val intent = Intent(context, TtsPlaybackService::class.java).setAction(action)
+        fun start(context: Context) {
+            val intent = Intent(context, TtsPlaybackService::class.java).setAction(ACTION_PLAY)
             context.startForegroundService(intent)
         }
     }

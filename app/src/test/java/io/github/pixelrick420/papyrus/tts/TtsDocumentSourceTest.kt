@@ -118,7 +118,7 @@ class TtsDocumentSourceTest {
     }
 
     @Test
-    fun `office tables read row-wise and notes gain their byline`() {
+    fun `office tables read one unit per row and notes gain their byline`() {
         val blocks = listOf(
             OfficeBlock.Table(
                 rows = listOf(
@@ -129,7 +129,8 @@ class TtsDocumentSourceTest {
             OfficeBlock.Note(label = "1", text = "A remark", byline = "Ada"),
         )
         val units = TtsDocumentSource.unitsFromOffice(blocks)
-        assertEquals(listOf("a b c d", "A remark Ada"), units.map { it.text })
+        assertEquals(listOf("a b", "c d", "A remark Ada"), units.map { it.text })
+        assertEquals(listOf(0, 0, 1), units.map { it.anchor })
     }
 
     @Test
