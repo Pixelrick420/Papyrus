@@ -546,7 +546,7 @@ class PdfPageTextTest {
         var failed = false
         try {
             PdfPageText("abc", FloatArray(8))
-        } catch (e: IllegalArgumentException) {
+        } catch (ignored: IllegalArgumentException) {
             failed = true
         }
         assertTrue("a mismatched box array should be rejected, not silently misaligned", failed)

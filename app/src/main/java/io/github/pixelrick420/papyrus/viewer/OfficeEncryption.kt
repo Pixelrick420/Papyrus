@@ -206,7 +206,11 @@ object OfficeEncryption {
         val entries = parseOdfManifest(openStream, newParserFactory)
         val encrypted = entries.filter { it.encryption != null }
         if (encrypted.isEmpty()) return Party.NOT_ENCRYPTED
-        return if (encrypted.all { supportedOdf(it.encryption!!) }) Party.PASSWORD else Party.UNSUPPORTED
+        return if (encrypted.all { entry -> entry.encryption?.let(::supportedOdf) == true }) {
+            Party.PASSWORD
+        } else {
+            Party.UNSUPPORTED
+        }
     }
 
     private fun decryptOdf(

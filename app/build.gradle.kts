@@ -207,9 +207,19 @@ detekt {
     // detekt 2.x replaced 1.x's weight-based maxIssues with failOnSeverity; Info -- the lowest
     // severity -- preserves the old maxIssues=0 strictness.
     failOnSeverity = FailOnSeverity.Info
-    // Type resolution is left off: it would need detekt to run against the compiled classpath. Every enabled rule works on the AST alone.
+    // The AST-only rules run here; the type-resolution rules run in detektDebug below.
     ignoreFailures = false
 }
+
+// Plain `detekt` cannot resolve types, so the three type-resolution rules only run under detektDebug.
+// That task gets its own config: the AST "unused" rules produce false positives when AGP's BuildConfig is unresolved.
+tasks.matching { it.name == "detektDebug" }.configureEach {
+    if (this is dev.detekt.gradle.Detekt) {
+        config.setFrom(rootProject.file("config/detekt/detekt-type-resolution.yml"))
+        baseline.set(rootProject.file("config/detekt/baseline.xml"))
+    }
+}
+tasks.named("check") { dependsOn("detektDebug") }
 
 // `release` is unsigned unless PAPYRUS_* properties were given, so adb gets a throwaway debug-signed copy. The debug key must never become the release signing config.
 

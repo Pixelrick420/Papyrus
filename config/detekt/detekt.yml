@@ -52,12 +52,22 @@ exceptions:
       - 'ParseException'
 
 complexity:
+  # Measured on this codebase: defaults report 217 findings (7 LargeClass, 46 LongMethod,
+  # 164 TooManyFunctions). OfficeTextExtractor.kt is ~730 lines by design, and the large screens
+  # are the target of a separate decomposition, so a gate here would be noise until that lands.
   active: false
-  # OfficeTextExtractor.kt is ~730 lines by design (one streaming parse walk with local state classes), which
-  # LargeClass, LongMethod and TooManyFunctions would only flag as noise.
 
 coroutines:
-  active: false
+  active: true
+  GlobalCoroutineUsage:
+    active: true
+  RedundantSuspendModifier:
+    active: true
+  SleepInsteadOfDelay:
+    active: true
+  SuspendFunWithFlowReturnType:
+    active: true
+  # SuspendFunSwallowedCancellation needs type resolution; it runs under detektDebug only.
 
 naming:
   active: false

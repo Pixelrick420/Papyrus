@@ -6,6 +6,7 @@ import android.net.Uri
 import android.util.Log
 import android.util.LruCache
 import android.util.Xml
+import io.github.pixelrick420.papyrus.data.openRequired
 import io.github.pixelrick420.papyrus.viewer.NormRect
 import io.github.pixelrick420.papyrus.viewer.PPTX_DIR_PREFIX
 import io.github.pixelrick420.papyrus.viewer.PageBitmapSource
@@ -46,7 +47,6 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.xmlpull.v1.XmlPullParser
 import java.io.File
-import java.io.FileNotFoundException
 import java.io.InputStream
 import java.util.Collections
 import java.util.UUID
@@ -307,6 +307,8 @@ internal class SlidePageSource private constructor(
         Log.w(TAG, "Slide $index unavailable: $name")
     }
 
+    // Detached cleanup: a failure, including cancellation, must never escape the close scope.
+    @Suppress("SuspendFunSwallowedCancellation")
     override fun close() {
         synchronized(openSources) { openSources.remove(this) }
         CoroutineScope(dispatcher).launch {
@@ -353,6 +355,8 @@ internal class SlidePageSource private constructor(
             for (source in sources) source.trimMemory(evictAll)
         }
 
+        // The scratch media dir is deleted before the failure, including cancellation, is rethrown.
+        @Suppress("SuspendFunSwallowedCancellation")
         suspend fun open(
             context: Context,
             uri: Uri,
@@ -362,10 +366,7 @@ internal class SlidePageSource private constructor(
             val dir = mediaDir(context)
             try {
                 openStream(
-                    open = {
-                        context.contentResolver.openInputStream(uri)
-                            ?: throw FileNotFoundException(uri.toString())
-                    },
+                    open = { context.contentResolver.openRequired(uri) },
                     mediaDir = dir,
                     presets = presets(context),
                     assets = context.assets,
@@ -378,6 +379,8 @@ internal class SlidePageSource private constructor(
             }
         }
 
+        // The scratch media dir is deleted before the failure, including cancellation, is rethrown.
+        @Suppress("SuspendFunSwallowedCancellation")
         suspend fun openFile(
             context: Context,
             file: File,

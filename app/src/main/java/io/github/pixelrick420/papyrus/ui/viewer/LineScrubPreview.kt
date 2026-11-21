@@ -22,6 +22,7 @@ import io.github.pixelrick420.papyrus.viewer.TextChunkView
 import io.github.pixelrick420.papyrus.viewer.lineAt
 import io.github.pixelrick420.papyrus.viewer.lineSnippet
 import io.github.pixelrick420.papyrus.viewer.locateLine
+import kotlinx.coroutines.CancellationException
 import java.text.NumberFormat
 
 // Nothing is worked out unless [scrubbing], and then only when the line changes; no line table, so it costs a large file nothing extra.
@@ -41,7 +42,13 @@ internal fun BoxScope.LineScrubPreview(
         snapshotFlow { topLine(listState, lines) }.collect { line ->
             val target = locateLine(line, lines)
             val snippet = target?.let { spot ->
-                val text = chunks.peek(spot.chunk) ?: runCatching { chunks.load(spot.chunk) }.getOrNull()
+                val text = chunks.peek(spot.chunk) ?: try {
+                    chunks.load(spot.chunk)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    null
+                }
                 text?.let { lineSnippet(it, spot.lineInChunk) }
             }.orEmpty()
             val number = digits.format(line)

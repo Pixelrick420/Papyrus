@@ -15,6 +15,8 @@ internal class PdfCopyWriter<K, D : Closeable>(
     private val dispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) {
 
+    // Deleting a partial copy runs in NonCancellable before the cancellation is rethrown.
+    @Suppress("SuspendFunSwallowedCancellation")
     suspend fun write(target: K, highlights: Map<Int, List<List<NormRect>>> = emptyMap()): Boolean {
         val destination = try {
             withContext(dispatcher) { open(target) }

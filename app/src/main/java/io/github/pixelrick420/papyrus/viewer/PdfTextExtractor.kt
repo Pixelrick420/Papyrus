@@ -40,6 +40,8 @@ object PdfTextExtractor {
     fun extractPage(document: PDDocument, pageIndex: Int): PdfPageText =
         collect(PageCollector(), document, pageIndex, trackBoxes = true)
 
+    // A broken page yields empty text; the other pages and search stay usable.
+    @Suppress("TooGenericExceptionCaught", "SwallowedException")
     private fun collect(collector: PageCollector, document: PDDocument, page: Int, trackBoxes: Boolean): PdfPageText {
         collector.reset(trackBoxes)
         collector.startPage = page + 1

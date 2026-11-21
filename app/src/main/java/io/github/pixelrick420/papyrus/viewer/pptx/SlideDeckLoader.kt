@@ -27,7 +27,8 @@ internal class SlideDeck(
 
 internal object SlideDeckLoader {
 
-    @Suppress("TooGenericExceptionCaught")
+    // The source is closed before the failure, including cancellation, is rethrown.
+    @Suppress("TooGenericExceptionCaught", "SuspendFunSwallowedCancellation")
     suspend fun load(context: Context, uri: Uri): SlideDeck = withContext(Dispatchers.IO) {
         val source = SlidePageSource.open(context, uri, buildTextIndex = false, labels = pictureLabels(context))
         try {
@@ -38,7 +39,8 @@ internal object SlideDeckLoader {
         }
     }
 
-    @Suppress("TooGenericExceptionCaught")
+    // The source is closed before the failure, including cancellation, is rethrown.
+    @Suppress("TooGenericExceptionCaught", "SuspendFunSwallowedCancellation")
     suspend fun loadFile(context: Context, file: File): SlideDeck = withContext(Dispatchers.IO) {
         val source = SlidePageSource.openFile(context, file, buildTextIndex = false, labels = pictureLabels(context))
         try {

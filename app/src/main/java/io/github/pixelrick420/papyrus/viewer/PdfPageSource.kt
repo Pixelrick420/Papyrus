@@ -11,6 +11,7 @@ import android.system.OsConstants
 import android.util.Log
 import android.util.LruCache
 import androidx.core.graphics.createBitmap
+import io.github.pixelrick420.papyrus.data.openRequired
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -241,7 +242,8 @@ class PdfPageSource private constructor(
     }
 
     // Closes after any in-flight render; the detached body is guarded so an escaping exception can't
-    // kill the process.
+    // kill the process. Cancellation is part of that guard: closing must never propagate.
+    @Suppress("SuspendFunSwallowedCancellation")
     override fun close() {
         synchronized(openSources) { openSources.remove(this) }
         CoroutineScope(dispatcher).launch {
@@ -281,6 +283,8 @@ class PdfPageSource private constructor(
         /** Upper bound on a page bitmap's height, so a degenerate page size never asks for a bitmap the device cannot hold. */
         internal const val MAX_PAGE_HEIGHT_PX = 16_384
 
+        // An unseekable PDF gets one bounded copy; the descriptor and copy are closed on every other path.
+        @Suppress("SwallowedException", "TooGenericExceptionCaught")
         suspend fun open(context: Context, uri: Uri): PdfPageSource = withContext(Dispatchers.IO) {
             val resolver = context.contentResolver
             val pfd = resolver.openFileDescriptor(uri, "r") ?: throw FileNotFoundException(uri.toString())
@@ -306,8 +310,7 @@ class PdfPageSource private constructor(
             val dir = File(context.cacheDir, PDF_VIEW_DIR).apply { mkdirs() }
             val copy = File.createTempFile("view-", ".pdf", dir)
             try {
-                (resolver.openInputStream(uri) ?: throw FileNotFoundException(uri.toString()))
-                    .use { input -> copy.outputStream().use { input.copyTo(it) } }
+                resolver.openRequired(uri).use { input -> copy.outputStream().use { input.copyTo(it) } }
                 val copyPfd = ParcelFileDescriptor.open(copy, ParcelFileDescriptor.MODE_READ_ONLY)
                 try {
                     openDescriptor(copyPfd, copy)
@@ -341,6 +344,8 @@ class PdfPageSource private constructor(
             false
         }
 
+        // Close the descriptor before rethrowing an open failure.
+        @Suppress("TooGenericExceptionCaught")
         suspend fun openFile(file: File): PdfPageSource = withContext(Dispatchers.IO) {
             val pfd = ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
             try {
@@ -364,6 +369,8 @@ class PdfPageSource private constructor(
             }
         }
 
+        // PdfRenderer signals a password-protected file as a SecurityException.
+        @Suppress("SwallowedException")
         private fun createEngine(pfd: ParcelFileDescriptor, capabilities: PdfCapabilities): PdfEngine =
             try {
                 PdfEngineFactory.create(pfd, capabilities)

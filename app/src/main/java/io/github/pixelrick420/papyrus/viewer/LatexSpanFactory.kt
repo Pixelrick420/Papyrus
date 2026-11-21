@@ -1,6 +1,7 @@
 package io.github.pixelrick420.papyrus.viewer
 
 import android.content.Context
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
@@ -62,7 +63,9 @@ class LatexSpanFactory(
     private suspend fun render(ctx: Context, range: LatexRange, fontSizePx: Float, color: Int): Pair<LatexRange, RaTeXSpan?> {
         val span = if (!range.renderable) null else try {
             RaTeXSpan.create(ctx, range.latex, fontSizePx * 0.65f, color, range.isBlock)
-        } catch (e: Exception) {
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
             null
         }
         return range to span

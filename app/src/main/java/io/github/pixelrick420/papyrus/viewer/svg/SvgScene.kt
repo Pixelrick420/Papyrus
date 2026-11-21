@@ -106,7 +106,8 @@ internal class SvgSceneBuilder(
         return true
     }
 
-    fun end(@Suppress("UNUSED_PARAMETER") name: String) {
+    @Suppress("UnusedParameter")
+    fun end(name: String) {
         if (stack.isNotEmpty()) stack.removeAt(stack.lastIndex)
     }
 

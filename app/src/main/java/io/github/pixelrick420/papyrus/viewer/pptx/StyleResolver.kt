@@ -33,7 +33,7 @@ internal class StyleResolver(
 
     fun resolveAll(pkg: PptxPackage, presentation: PresentationInfo): DeckScenes {
         val provider = lazyScenes(pkg, presentation)
-        return DeckScenes(List(provider.count) { index -> provider.scene(index)!! })
+        return DeckScenes(List(provider.count) { index -> checkNotNull(provider.scene(index)) { "scene $index missing" } })
     }
 
     /** Masters, layouts, themes and the slide list are read once; slide scenes are resolved on demand. */

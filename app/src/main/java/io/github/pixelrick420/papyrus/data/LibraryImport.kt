@@ -5,7 +5,6 @@ import android.net.Uri
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
-import java.io.FileNotFoundException
 import java.io.IOException
 import java.io.InputStream
 import java.security.MessageDigest
@@ -105,8 +104,7 @@ object LibraryImport {
     internal fun matchesSize(candidate: File, sourceSize: Long): Boolean =
         sourceSize <= 0 || candidate.length() == sourceSize
 
-    private fun openSource(context: Context, source: Uri): InputStream =
-        context.contentResolver.openInputStream(source) ?: throw FileNotFoundException(source.toString())
+    private fun openSource(context: Context, source: Uri): InputStream = context.contentResolver.openRequired(source)
 
     internal fun copyStream(openStream: () -> InputStream, target: File): File {
         val temp = File.createTempFile(TEMP_PREFIX, TEMP_SUFFIX, target.parentFile)

@@ -39,6 +39,7 @@ import io.github.pixelrick420.papyrus.data.SafAccess
 import io.github.pixelrick420.papyrus.data.TextIndexState
 import io.github.pixelrick420.papyrus.data.ThumbnailResult
 import io.github.pixelrick420.papyrus.data.shareIntent
+import io.github.pixelrick420.papyrus.data.openRequired
 import io.github.pixelrick420.papyrus.tts.TtsDocumentSource
 import io.github.pixelrick420.papyrus.tts.TtsPlaybackService
 import io.github.pixelrick420.papyrus.tts.TtsSession
@@ -1077,7 +1078,8 @@ class ViewerViewModel(
             }
         }
 
-    @Suppress("TooGenericExceptionCaught", "SwallowedException")
+    // The plaintext copy must be deleted before the failure, including cancellation, is rethrown.
+    @Suppress("TooGenericExceptionCaught", "SwallowedException", "SuspendFunSwallowedCancellation")
     private suspend fun unlockPdf(uri: Uri, password: String): ViewerContent {
         app.awaitUnlockedSweep()
         val dir = File(app.cacheDir, PDF_UNLOCK_DIR).apply { mkdirs() }
@@ -1098,7 +1100,8 @@ class ViewerViewModel(
     }
 
     /** Office decryption writes a plaintext copy, so it is only kept once extraction/loading has succeeded. */
-    @Suppress("TooGenericExceptionCaught", "SwallowedException")
+    // The plaintext copy must be deleted before the failure, including cancellation, is rethrown.
+    @Suppress("TooGenericExceptionCaught", "SwallowedException", "SuspendFunSwallowedCancellation")
     private suspend fun unlockOffice(uri: Uri, format: DocumentFormat, password: String): ViewerContent {
         val ctx = currentCoroutineContext()
         app.awaitUnlockedSweep()
@@ -1558,8 +1561,7 @@ class ViewerViewModel(
     private val contentUri: String
         get() = unlocked.uri ?: documentUri
 
-    private fun openStream(uri: Uri): InputStream =
-        app.contentResolver.openInputStream(uri) ?: throw FileNotFoundException(uri.toString())
+    private fun openStream(uri: Uri): InputStream = app.contentResolver.openRequired(uri)
 
     private fun byteSource(uri: Uri) = ByteSource { offset ->
         val stream = openStream(uri)

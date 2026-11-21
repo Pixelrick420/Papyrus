@@ -87,6 +87,8 @@ class ThumbnailLoader(private val context: Context) {
 
     private class Gate(val mutex: Mutex, var users: Int = 0)
 
+    // A thumbnail is decoration: no parse or provider failure should crash the list.
+    @Suppress("TooGenericExceptionCaught", "SwallowedException")
     suspend fun load(document: DocumentEntity): ThumbnailResult = withContext(Dispatchers.IO) {
         val cacheKey = thumbnailCacheKey(document)
         cachedResult(document)?.let { return@withContext it }
@@ -163,10 +165,10 @@ class ThumbnailLoader(private val context: Context) {
         // mediaDir = null: thumbnails are text only, and writing media would double the cacheDir cost.
         val uri = document.uri.toUri()
         val blocks = if (document.format == DocumentFormat.DOC) {
-            val source = { openStream(uri) ?: throw FileNotFoundException(uri.toString()) }
+            val source = { requiredStream(uri) }
             DocTextExtractor.extract(source, THUMBNAIL_BLOCK_BUDGET, document.sizeBytes)
         } else {
-            val source = { openStream(uri) ?: throw FileNotFoundException(uri.toString()) }
+            val source = { requiredStream(uri) }
             OfficeTextExtractor(mediaDir = null)
                 .extract(source, document.format, THUMBNAIL_BLOCK_BUDGET)
         }
@@ -186,7 +188,7 @@ class ThumbnailLoader(private val context: Context) {
         .toList()
 
     private fun renderEpub(uri: Uri): Bitmap? {
-        val open = { openStream(uri) ?: throw FileNotFoundException(uri.toString()) }
+        val open = { requiredStream(uri) }
         val extractor = EpubExtractor(mediaDir = null, blockBudget = THUMBNAIL_BLOCK_BUDGET)
         extractor.readCover(open)?.let { bytes -> decodeCover(bytes)?.let { return it } }
         return drawTextTile(previewLines(extractor.extract(open, previewChapters = EPUB_PREVIEW_CHAPTERS).blocks))
@@ -238,6 +240,8 @@ class ThumbnailLoader(private val context: Context) {
     } catch (_: SecurityException) {
         null
     }
+
+    private fun requiredStream(uri: Uri): InputStream = openStream(uri) ?: throw FileNotFoundException(uri.toString())
 
     private fun readHead(input: InputStream, limit: Int): ByteArray? {
         val out = ByteArrayOutputStream()

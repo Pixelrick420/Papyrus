@@ -378,7 +378,7 @@ internal object ChartParser {
         val cache = ref.child(CHART_NS, "numCache")
             ?: ref.child(CHART_NS, "strCache")
             ?: ref.child(CHART_NS, "multiLvlStrCache")
-            ?: if (ref.name.localName == "numLit" || ref.name.localName == "strLit") ref else null
+            ?: ref.takeIf { it.name.localName == "numLit" || it.name.localName == "strLit" }
             ?: return null
         val formatCode = cache.child(CHART_NS, "formatCode")?.text?.trim()
         val points = ArrayList<ChartCacheValue>()
@@ -471,9 +471,10 @@ internal object ChartParser {
     private fun parseTitle(node: XNode): ChartTitle {
         val tx = node.child(CHART_NS, "tx")
         val rich = tx?.child(CHART_NS, "rich")
+        val strRef = tx?.child(CHART_NS, "strRef")
         val text = when {
             rich != null -> richTextOf(rich)
-            tx?.child(CHART_NS, "strRef") != null -> firstCachedValue(tx.child(CHART_NS, "strRef")!!) ?: ""
+            strRef != null -> firstCachedValue(strRef) ?: ""
             else -> ""
         }
         return ChartTitle(

@@ -18,7 +18,6 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import java.io.File
-import java.io.FileNotFoundException
 import java.io.InputStream
 import java.util.concurrent.ConcurrentHashMap
 
@@ -304,7 +303,8 @@ class DocumentRepository(
 
     // A SAF grant can only come from the user picking the file again, so the re-pick must match
     // [matchesRepick]: same name and format.
-    @Suppress("TooGenericExceptionCaught")
+    // The new grant must be released even when a cancelled rebind is rethrown.
+    @Suppress("TooGenericExceptionCaught", "SuspendFunSwallowedCancellation")
     suspend fun regrant(expected: DocumentEntity, picked: Uri): Boolean = withContext(Dispatchers.IO) {
         val meta = SafStorage.queryMetadata(context, picked)
         val pickedFormat = resolveFormat(picked, meta.displayName, meta.mimeType)
@@ -351,8 +351,7 @@ class DocumentRepository(
             else -> false
         }
 
-    private fun openStream(uri: Uri): InputStream =
-        resolver.openInputStream(uri) ?: throw FileNotFoundException(uri.toString())
+    private fun openStream(uri: Uri): InputStream = resolver.openRequired(uri)
 
     private suspend fun buildEntity(uri: Uri): DocumentEntity {
         val meta = SafStorage.queryMetadata(context, uri)

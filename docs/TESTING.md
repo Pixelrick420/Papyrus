@@ -31,7 +31,9 @@ omission. The failing tests are listed in the job summary and as warnings, and `
 The DOCX/ODT, EPUB and DOC extractors run against archives the tests build in memory (kxml2 stands in for the platform's
 `XmlPullParser`, and the `.doc` fixtures assemble the OLE2 container and piece table from scratch). detekt is scoped to
 dead code and correctness; deliberate broad catches carry a local `@Suppress` rather than a shared baseline entry, so a
-new catch with the same shape still fails the build.
+new catch with the same shape still fails the build. `check` runs both detekt tasks: the AST-only one enforces unused
+code and broad catches, and `detektDebug` resolves types to enforce `!!`-free code, no unreachable code, and immediate
+rethrow of a caught `CancellationException` in suspend functions.
 
 ## What CI runs
 

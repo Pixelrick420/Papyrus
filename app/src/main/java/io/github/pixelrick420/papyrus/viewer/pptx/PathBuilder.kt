@@ -146,9 +146,10 @@ internal class PathBuilder(private val limits: PptxLimits = PptxLimits()) {
                         if (afterClose) segments += PresetSegment.MoveTo(currentX, currentY)
                         segments += arc
                         open = true
-                        val end = arc.last().endpoint()!!
-                        currentX = end.first
-                        currentY = end.second
+                        arc.last().endpoint()?.let { end ->
+                            currentX = end.first
+                            currentY = end.second
+                        }
                     }
                 }
                 PresetCommand.Close -> {

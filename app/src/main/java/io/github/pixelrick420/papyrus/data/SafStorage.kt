@@ -8,6 +8,11 @@ import android.provider.OpenableColumns
 import androidx.activity.result.contract.ActivityResultContracts
 import java.io.FileNotFoundException
 import java.io.IOException
+import java.io.InputStream
+
+/** Opens a URI or fails with the same exception a missing file would raise. */
+internal fun ContentResolver.openRequired(uri: Uri): InputStream =
+    openInputStream(uri) ?: throw FileNotFoundException(uri.toString())
 
 enum class SafAccess {
     Readable,

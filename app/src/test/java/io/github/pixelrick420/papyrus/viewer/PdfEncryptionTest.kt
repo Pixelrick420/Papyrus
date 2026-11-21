@@ -95,7 +95,7 @@ class PdfEncryptionTest {
         var threw = false
         try {
             PdfEncryption.decrypt(factory(bytes), "guess", target)
-        } catch (e: InvalidPasswordException) {
+        } catch (ignored: InvalidPasswordException) {
             threw = true
         }
 

@@ -21,6 +21,8 @@ enum class PdfEncryption {
         fun status(openStream: () -> InputStream): PdfEncryption =
             if (mentionsEncryption(openStream)) authoritativeStatus(openStream) else NOT_ENCRYPTED
 
+        // A bad file is classified as unencrypted here so the renderer reports the real damage.
+        @Suppress("TooGenericExceptionCaught", "SwallowedException")
         fun authoritativeStatus(openStream: () -> InputStream): PdfEncryption =
             try {
                 openStream().use { stream ->
@@ -36,6 +38,8 @@ enum class PdfEncryption {
             }
 
         // The `/Encrypt` trailer can sit at the end, near the start (linearized), or in a PDF 1.5 xref stream, so the whole stream is scanned in fixed chunks.
+        // A failed scan is not evidence of encryption; the renderer still opens the file.
+        @Suppress("TooGenericExceptionCaught", "SwallowedException")
         internal fun mentionsEncryption(openStream: () -> InputStream, scanLimit: Long = MAX_SCAN_BYTES): Boolean =
             try {
                 openStream().use { containsToken(it, scanLimit) }
@@ -76,6 +80,8 @@ enum class PdfEncryption {
             return -1
         }
 
+        // Delete the partial plaintext copy before the failure is rethrown.
+        @Suppress("TooGenericExceptionCaught")
         fun decrypt(openStream: () -> InputStream, password: String, target: File) {
             try {
                 openStream().use { stream ->

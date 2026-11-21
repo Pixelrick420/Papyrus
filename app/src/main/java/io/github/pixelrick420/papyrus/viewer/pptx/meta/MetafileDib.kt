@@ -126,37 +126,40 @@ internal object MetafileDib {
         depth: Int,
         palette: IntArray,
         masks: Masks?,
-    ): Int = when (depth) {
-        1 -> {
-            val value = bytes[row.toInt() + x / 8].toInt() and 0xFF
-            palette[(value shr (7 - x % 8)) and 1]
+    ): Int {
+        return when (depth) {
+            1 -> {
+                val value = bytes[row.toInt() + x / 8].toInt() and 0xFF
+                palette[(value shr (7 - x % 8)) and 1]
+            }
+            4 -> {
+                val value = bytes[row.toInt() + x / 2].toInt() and 0xFF
+                palette[if (x % 2 == 0) value shr 4 else value and 0x0F]
+            }
+            8 -> palette[bytes[row.toInt() + x].toInt() and 0xFF]
+            16 -> {
+                val at = row + x * 2L
+                val value = (bytes[at.toInt()].toInt() and 0xFF) or ((bytes[at.toInt() + 1].toInt() and 0xFF) shl 8)
+                packed(value, masks ?: return -1, 0xFF)
+            }
+            24 -> {
+                val at = row + x * 3L
+                val blue = bytes[at.toInt()].toInt() and 0xFF
+                val green = bytes[at.toInt() + 1].toInt() and 0xFF
+                val red = bytes[at.toInt() + 2].toInt() and 0xFF
+                (0xFF shl 24) or (red shl 16) or (green shl 8) or blue
+            }
+            32 -> {
+                val at = row + x * 4L
+                val value = (bytes[at.toInt()].toInt() and 0xFF) or
+                    ((bytes[at.toInt() + 1].toInt() and 0xFF) shl 8) or
+                    ((bytes[at.toInt() + 2].toInt() and 0xFF) shl 16) or
+                    ((bytes[at.toInt() + 3].toInt() and 0xFF) shl 24)
+                val colour = masks ?: return -1
+                packed(value, colour, colour.alpha)
+            }
+            else -> -1
         }
-        4 -> {
-            val value = bytes[row.toInt() + x / 2].toInt() and 0xFF
-            palette[if (x % 2 == 0) value shr 4 else value and 0x0F]
-        }
-        8 -> palette[bytes[row.toInt() + x].toInt() and 0xFF]
-        16 -> {
-            val at = row + x * 2L
-            val value = (bytes[at.toInt()].toInt() and 0xFF) or ((bytes[at.toInt() + 1].toInt() and 0xFF) shl 8)
-            packed(value, masks!!, 0xFF)
-        }
-        24 -> {
-            val at = row + x * 3L
-            val blue = bytes[at.toInt()].toInt() and 0xFF
-            val green = bytes[at.toInt() + 1].toInt() and 0xFF
-            val red = bytes[at.toInt() + 2].toInt() and 0xFF
-            (0xFF shl 24) or (red shl 16) or (green shl 8) or blue
-        }
-        32 -> {
-            val at = row + x * 4L
-            val value = (bytes[at.toInt()].toInt() and 0xFF) or
-                ((bytes[at.toInt() + 1].toInt() and 0xFF) shl 8) or
-                ((bytes[at.toInt() + 2].toInt() and 0xFF) shl 16) or
-                ((bytes[at.toInt() + 3].toInt() and 0xFF) shl 24)
-            packed(value, masks!!, masks.alpha)
-        }
-        else -> -1
     }
 
     private fun packed(value: Int, masks: Masks, alphaMask: Int): Int {

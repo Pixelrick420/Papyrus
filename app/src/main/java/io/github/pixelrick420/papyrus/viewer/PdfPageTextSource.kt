@@ -168,6 +168,8 @@ class PdfPageTextSource(
         return loaded
     }
 
+    // Detached cleanup: a failure, including cancellation, must never escape the close scope.
+    @Suppress("SuspendFunSwallowedCancellation")
     override fun close() {
         CoroutineScope(Dispatchers.IO).launch {
             runCatching {

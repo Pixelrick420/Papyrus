@@ -13,6 +13,7 @@ import io.github.pixelrick420.papyrus.data.ReaderPresence
 import io.github.pixelrick420.papyrus.data.SearchIndexer
 import io.github.pixelrick420.papyrus.data.SearchRepository
 import io.github.pixelrick420.papyrus.data.SettingsRepository
+import io.github.pixelrick420.papyrus.data.openRequired
 import io.github.pixelrick420.papyrus.data.ThumbnailLoader
 import io.github.pixelrick420.papyrus.data.batterySaverFlow
 import io.github.pixelrick420.papyrus.tts.TtsSession
@@ -36,7 +37,6 @@ import org.acra.ReportField
 import org.acra.data.StringFormat
 import org.acra.ktx.initAcra
 import java.io.File
-import java.io.FileNotFoundException
 import java.util.concurrent.Executors
 
 class MainApplication : Application() {
@@ -72,9 +72,7 @@ class MainApplication : Application() {
     }
 
     val searchIndexer: SearchIndexer by lazy {
-        val extractor = DocumentTextExtractor(this, indexerDispatcher) { uri ->
-            contentResolver.openInputStream(uri) ?: throw FileNotFoundException("no stream for $uri")
-        }
+        val extractor = DocumentTextExtractor(this, indexerDispatcher) { uri -> contentResolver.openRequired(uri) }
         val enabled = settings.settings.map { it.contentIndexing }
         val gate = IndexingGate(
             enabled = enabled,
@@ -147,7 +145,7 @@ class MainApplication : Application() {
         // Off the main thread: the first thing indexing does is open the database, and a kill
         // between the two is harmless because the queue lives in that database.
         applicationScope.launch { searchIndexer.start(this) }
-        applicationScope.launch { runCatching { repository.sweepOrphanedImports(startedAt) } }
+        applicationScope.launch { repository.sweepOrphanedImports(startedAt) }
     }
 
     override fun onTrimMemory(level: Int) {
