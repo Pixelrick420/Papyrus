@@ -12,7 +12,7 @@ import java.io.File
 class ImportFileNameAndroidTest {
 
     @Test
-    fun `a worst case CJK name creates a file in app storage`() {
+    fun aWorstCaseCjkNameCreatesAFileInAppStorage() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val dir = LibraryImport.importsDir(context).apply { mkdirs() }
         val name = LibraryImport.importFileName("中".repeat(130), null, "application/pdf", 1L)
@@ -28,7 +28,7 @@ class ImportFileNameAndroidTest {
     }
 
     @Test
-    fun `a long title with an early dot keeps its extension in app storage`() {
+    fun aLongTitleWithAnEarlyDotKeepsItsExtensionInAppStorage() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val dir = LibraryImport.importsDir(context).apply { mkdirs() }
         val docx = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"

@@ -23,6 +23,7 @@ class SlowContentProvider : ContentProvider() {
                 throw FileNotFoundException("openFile interrupted").apply { initCause(e) }
             }
         }
+        val payload = File(requireContext().cacheDir, "slow-content.txt").apply { writeText("slow provider payload") }
         return ParcelFileDescriptor.open(payload, ParcelFileDescriptor.MODE_READ_ONLY)
     }
 
@@ -41,10 +42,6 @@ class SlowContentProvider : ContentProvider() {
     override fun update(uri: Uri, values: ContentValues?, selection: String?, selectionArgs: Array<String>?): Int = 0
 
     override fun getType(uri: Uri): String = "text/plain"
-
-    private val payload: File by lazy {
-        File(requireContext().cacheDir, "slow-content.txt").apply { writeText("slow provider payload") }
-    }
 
     companion object {
         const val AUTHORITY = "io.github.pixelrick420.papyrus.test.slowcontent"

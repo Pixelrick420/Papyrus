@@ -17,7 +17,7 @@ import java.io.File
 class PdfAspectRatioTest {
 
     @Test
-    fun `a page with no width gets a usable ratio`() = runBlocking {
+    fun aPageWithNoWidthGetsAUsableRatio() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val file = File(context.cacheDir, "zero-width.pdf")
         try {

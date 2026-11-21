@@ -24,7 +24,7 @@ class ShareTargetTest : E2eTest() {
         val scenario = ActivityScenario.launch<MainActivity>(intent)
         try {
             app.assertShown(app.text("shared.pdf"), AppDriver.LOAD_TIMEOUT_MS)
-            app.assertShown(app.label("shared text"), AppDriver.LOAD_TIMEOUT_MS)
+            app.assertShown(app.descContains("shared text"), AppDriver.LOAD_TIMEOUT_MS)
         } finally {
             scenario.close()
         }

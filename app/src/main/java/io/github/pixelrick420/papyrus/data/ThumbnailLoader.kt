@@ -16,6 +16,7 @@ import androidx.core.net.toUri
 import io.github.pixelrick420.papyrus.viewer.DocTextExtractor
 import io.github.pixelrick420.papyrus.viewer.EpubExtractor
 import io.github.pixelrick420.papyrus.viewer.OfficeBlock
+import io.github.pixelrick420.papyrus.viewer.OfficeEncryption
 import io.github.pixelrick420.papyrus.viewer.OfficeTextExtractor
 import io.github.pixelrick420.papyrus.viewer.PdfPageSource
 import io.github.pixelrick420.papyrus.viewer.pptx.SlidePageSource
@@ -29,6 +30,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.io.ByteArrayOutputStream
 import java.io.FileNotFoundException
+import java.io.IOException
 import java.io.InputStream
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.coroutines.cancellation.CancellationException
@@ -164,6 +166,7 @@ class ThumbnailLoader(private val context: Context) {
     private fun renderOffice(document: DocumentEntity): Bitmap? {
         // mediaDir = null: thumbnails are text only, and writing media would double the cacheDir cost.
         val uri = document.uri.toUri()
+        if (OfficeEncryption.isEncrypted(openStream = { requiredStream(uri) })) throw IOException("encrypted office document")
         val blocks = if (document.format == DocumentFormat.DOC) {
             val source = { requiredStream(uri) }
             DocTextExtractor.extract(source, THUMBNAIL_BLOCK_BUDGET, document.sizeBytes)

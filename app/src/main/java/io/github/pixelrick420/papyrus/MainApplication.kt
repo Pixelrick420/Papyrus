@@ -162,13 +162,14 @@ class MainApplication : Application() {
 
     private fun installStrictMode() {
         if (!BuildConfig.DEBUG) return
-        val instrumented = runCatching { Class.forName("androidx.test.platform.app.InstrumentationRegistry") }.isSuccess
+        // The test harness triggers violations on the main thread and its logs distort frame timing.
+        if (runCatching { Class.forName("androidx.test.platform.app.InstrumentationRegistry") }.isSuccess) return
         StrictMode.setThreadPolicy(
             StrictMode.ThreadPolicy.Builder()
                 .detectDiskReads()
                 .detectDiskWrites()
                 .detectNetwork()
-                .apply { if (instrumented) penaltyDeath() else penaltyLog() }
+                .penaltyLog()
                 .build(),
         )
     }

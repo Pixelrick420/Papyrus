@@ -19,9 +19,9 @@ class SearchTokenizerTest {
             val documents = database.documentDao()
             val search = database.searchDao()
             insert(documents, REAL_ID, "A real sentence with हिन्दी in it")
-            insert(documents, DECOY_ID, "है न दी")
+            insert(documents, DECOY_ID, "दी न है")
             index(search, REAL_ID, "A real sentence with हिन्दी in it")
-            index(search, DECOY_ID, "है न दी")
+            index(search, DECOY_ID, "दी न है")
 
             val hits = SearchRepository(search).search("हिन्दी")
 

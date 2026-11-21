@@ -271,13 +271,13 @@ internal class AppDriver {
         // must not reference anything R8 is free to rename.
         private const val MAIN_ACTIVITY = "io.github.pixelrick420.papyrus.MainActivity"
 
-        const val LAUNCH_TIMEOUT_MS = 15_000L
+        const val LAUNCH_TIMEOUT_MS = 10_000L
 
-        const val UI_TIMEOUT_MS = 10_000L
+        const val UI_TIMEOUT_MS = 6_000L
 
-        const val LOAD_TIMEOUT_MS = 20_000L
+        const val LOAD_TIMEOUT_MS = 12_000L
 
-        const val SETTLE_TIMEOUT_MS = 3_000L
+        const val SETTLE_TIMEOUT_MS = 2_000L
 
         private const val MAX_SCROLLS = 15
 
