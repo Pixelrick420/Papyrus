@@ -8,3 +8,11 @@ Papyrus 2.1.1 fixes bugs found after 2.1.
 - Text extraction, search cache keys and LaTeX rendering are more robust
 - Library indexing is hardened and the database migrates to schema version 2 without losing outlines
 - Improved load time for pptx files
+- Share documents to Papyrus from other apps, and failed bookmark, highlight or note writes show one notice
+- Large unused media entries no longer stop PPTX, DOCX, ODT or EPUB files from opening
+- Read aloud splits long passages, speaks tables row by row, and reports speech-engine rejections
+- Jumping in long text shows a placeholder then the text, and an unreadable chunk can be retried
+- Temporary PDF copies are swept after a restart, and a damaged PDF is no longer copied in full before failing
+- Unreadable thumbnails stop being re-rendered on every scroll
+- Malformed Word links degrade to text and password checks stop promptly when cancelled
+- Long or non-Latin import names keep their extension and still save

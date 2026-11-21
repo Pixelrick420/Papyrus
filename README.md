@@ -115,7 +115,7 @@ Detailed feature notes are in [docs/FEATURES.md](docs/FEATURES.md) and every set
    phones, `app-armeabi-v7a-release.apk` for older 32-bit ARM ones, or `app-universal-release.apk` if unsure or on an
    x86_64 device.
 2. Install it; Android may ask you to allow installs from your browser or file manager.
-3. Open a document from Papyrus, or tap one in another app and choose Papyrus.
+3. Open a document from Papyrus, tap one in another app and choose Papyrus, or share a file to Papyrus.
 
 Needs Android 8.0 or newer. No Play Services, no network permission, no account.
 
