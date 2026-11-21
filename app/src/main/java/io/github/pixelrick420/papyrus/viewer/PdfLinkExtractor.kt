@@ -48,7 +48,7 @@ object PdfLinkExtractor {
 
     private fun targetOf(link: PDAnnotationLink, destinations: Destinations): PdfLinkTarget? {
         when (val action = link.action) {
-            is PDActionURI -> return resolvedLink(action.uri)?.let { PdfLinkTarget.External(it) }
+            is PDActionURI -> return resolvedLink(action.uri, Completion.HostLike)?.let { PdfLinkTarget.External(it) }
             is PDActionGoTo -> return destinations.targetOf(action.destination)
             null -> Unit
             else -> return null

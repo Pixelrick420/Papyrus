@@ -43,7 +43,7 @@ object LibraryImport {
         return fallback
     }
 
-    private fun withUuid(name: String): String {
+    internal fun withUuid(name: String): String {
         val dot = name.lastIndexOf('.')
         return if (dot > 0) {
             "${name.substring(0, dot)}-${UUID.randomUUID()}${name.substring(dot)}"
@@ -124,7 +124,7 @@ object LibraryImport {
         return target
     }
 
-    internal fun importFileName(
+    fun importFileName(
         displayName: String?,
         uriSegment: String?,
         mimeType: String?,
@@ -160,17 +160,41 @@ object LibraryImport {
         ?.trimEnd('.')
         ?.takeIf { it.isNotBlank() }
 
-    private fun withExtension(name: String, extension: String?): String {
-        val stem = name.take(MAX_STEM_LENGTH).trimEnd('.')
-        val hasExtension = stem.contains('.') && stem.substringAfterLast('.').isNotEmpty()
-        if (hasExtension || extension == null) return stem
-        return "$stem.$extension"
+    internal fun withExtension(name: String, extension: String?): String {
+        val (stem, suffix) = when {
+            extension == null -> name to null
+            name.endsWith(".$extension", ignoreCase = true) ->
+                name.dropLast(extension.length + 1) to name.takeLast(extension.length + 1)
+            else -> name to ".$extension"
+        }
+        return truncateStem(stem) + suffix.orEmpty()
+    }
+
+    // Cutting by code point keeps surrogate pairs intact; the byte cap leaves room for suffixes and the uuid fallback.
+    private fun truncateStem(stem: String): String {
+        val cut = StringBuilder()
+        var units = 0
+        var bytes = 0
+        var index = 0
+        while (index < stem.length) {
+            val codePoint = stem.codePointAt(index)
+            val charCount = Character.charCount(codePoint)
+            val codePointBytes = String(Character.toChars(codePoint)).toByteArray(Charsets.UTF_8).size
+            if (units + charCount > MAX_STEM_LENGTH || bytes + codePointBytes > MAX_STEM_BYTES) break
+            cut.appendCodePoint(codePoint)
+            units += charCount
+            bytes += codePointBytes
+            index += charCount
+        }
+        return cut.toString().trimEnd(' ', '.').ifEmpty { FALLBACK_STEM }
     }
 
     private const val IMPORTS_DIR = "imports"
     private const val TEMP_PREFIX = "import-"
     private const val TEMP_SUFFIX = ".tmp"
     private const val MAX_STEM_LENGTH = 120
+    private const val MAX_STEM_BYTES = 200
+    private const val FALLBACK_STEM = "document"
     private const val MAX_NAME_ATTEMPTS = 64
     private const val COMPARE_BUFFER_SIZE = 64 * 1024
 }

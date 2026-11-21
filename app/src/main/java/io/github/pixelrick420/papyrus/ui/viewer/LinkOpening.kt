@@ -17,7 +17,7 @@ internal val LocalLinkOpener = staticCompositionLocalOf<(String) -> Unit> { { _ 
 
 internal val LocalBookLinkOpener = staticCompositionLocalOf<(BookLink) -> Unit> { { _ -> } }
 
-// Filtered through [resolvedLink] so a document can never send the reader to a `javascript:`, `file:` or `intent:` address.
+// Filtered through [resolvedLink] so a document can never send the reader to a dangerous scheme or a bare file name.
 internal fun openLink(context: Context, url: String): Boolean {
     val resolved = resolvedLink(url) ?: return false
     val intent = Intent(Intent.ACTION_VIEW, Uri.parse(resolved))

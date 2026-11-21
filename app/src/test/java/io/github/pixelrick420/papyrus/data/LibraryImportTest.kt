@@ -74,6 +74,53 @@ class LibraryImportTest {
     }
 
     @Test
+    fun `a name equal to the extension gets a document stem`() {
+        assertEquals("document.pdf", LibraryImport.importFileName(".pdf", null, "application/pdf", 1L))
+    }
+
+    @Test
+    fun `a name that already ends in the right extension keeps its own case`() {
+        assertEquals("Report.PDF", LibraryImport.importFileName("Report.PDF", null, "application/pdf", 1L))
+        assertEquals("notes.txt", LibraryImport.importFileName("notes.txt", null, "text/plain", 1L))
+    }
+
+    @Test
+    fun `a long CJK name is cut by bytes and keeps its extension`() {
+        val name = LibraryImport.importFileName("中".repeat(130), null, "application/pdf", 1L)
+
+        assertTrue(name.endsWith(".pdf"))
+        assertTrue(name.toByteArray(Charsets.UTF_8).size <= MAX_FILE_BYTES)
+        assertEquals(198, name.substringBeforeLast('.').toByteArray(Charsets.UTF_8).size)
+    }
+
+    @Test
+    fun `an emoji run across the cut stays valid UTF-8`() {
+        val stem = LibraryImport.withExtension("😀".repeat(60), "pdf").substringBeforeLast('.')
+
+        assertEquals(stem, String(stem.toByteArray(Charsets.UTF_8), Charsets.UTF_8))
+        assertTrue(stem.toByteArray(Charsets.UTF_8).size <= MAX_STEM_BYTES)
+    }
+
+    @Test
+    fun `a long title with an early dot keeps its real extension`() {
+        val docx = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        val chapter = LibraryImport.importFileName("Chapter 1. " + "a".repeat(130), null, docx, 1L)
+        val version = LibraryImport.importFileName("Notes v1.2 final " + "a".repeat(120), null, docx, 1L)
+
+        assertTrue(chapter.endsWith(".docx"))
+        assertTrue(version.endsWith(".docx"))
+        assertTrue(chapter.toByteArray(Charsets.UTF_8).size <= MAX_FILE_BYTES)
+        assertTrue(version.toByteArray(Charsets.UTF_8).size <= MAX_FILE_BYTES)
+    }
+
+    @Test
+    fun `the uuid fallback stays within the file name byte limit`() {
+        val name = LibraryImport.importFileName("中".repeat(130), null, "application/pdf", 1L)
+
+        assertTrue(LibraryImport.withUuid(name).toByteArray(Charsets.UTF_8).size <= MAX_FILE_BYTES)
+    }
+
+    @Test
     fun `a free name is returned unchanged`() {
         assertEquals("report.pdf", LibraryImport.uniqueName("report.pdf", emptySet()))
     }
@@ -256,6 +303,9 @@ class LibraryImportTest {
     }
 
     private companion object {
+        const val MAX_STEM_BYTES = 200
+        const val MAX_FILE_BYTES = 255
+
         // Millisecond stamps: a file from an earlier run, the moment this run started, and one written after.
         const val OLD = 1_000_000L
         const val CUTOFF = 10_000_000L
