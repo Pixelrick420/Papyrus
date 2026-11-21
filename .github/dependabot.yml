@@ -1,0 +1,18 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly }
+
+  # pdfbox-android parses untrusted PDFs; review its fork for advisories and upstream movement on a cadence
+  # before taking an update, rather than treating a version bump as a mechanical change.
+  - package-ecosystem: gradle
+    directory: /
+    schedule: { interval: weekly }
+    groups:
+      androidx: { patterns: ["androidx.*"] }
+      kotlin: { patterns: ["org.jetbrains.kotlin*", "com.google.devtools.ksp*"] }
+
+  - package-ecosystem: npm
+    directory: /web
+    schedule: { interval: weekly }

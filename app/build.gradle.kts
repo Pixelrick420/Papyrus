@@ -4,9 +4,9 @@ import java.nio.file.StandardCopyOption
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
-    id("com.android.application")
-    id("org.jetbrains.kotlin.plugin.compose")
-    id("com.google.devtools.ksp")
+    alias(libs.plugins.android.application)
+    alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.ksp)
     id("dev.detekt")
 }
 
@@ -135,58 +135,57 @@ kotlin {
 }
 
 dependencies {
-    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
+    coreLibraryDesugaring(libs.desugar.jdk.libs)
 
-    implementation("androidx.core:core-ktx:1.16.0")
-    implementation("androidx.activity:activity-compose:1.10.1")
-    implementation("androidx.customview:customview:1.2.0")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
+    implementation(libs.androidx.core.ktx)
+    implementation(libs.androidx.activity.compose)
+    implementation(libs.androidx.customview)
+    implementation(libs.kotlinx.coroutines.android)
 
-    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.9.0")
-    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.9.0")
+    implementation(libs.androidx.lifecycle.runtime.compose)
+    implementation(libs.androidx.lifecycle.viewmodel.compose)
 
-    implementation(platform("androidx.compose:compose-bom:2026.09.00"))
-    implementation("androidx.compose.ui:ui")
-    implementation("androidx.compose.ui:ui-graphics")
-    implementation("androidx.compose.material3:material3")
-    implementation("androidx.compose.material3:material3-window-size-class")
-    implementation("androidx.compose.material:material-icons-core")
-    implementation("androidx.navigation:navigation-compose:2.9.0")
+    implementation(platform(libs.compose.bom))
+    implementation(libs.androidx.compose.ui)
+    implementation(libs.androidx.compose.ui.graphics)
+    implementation(libs.androidx.compose.material3)
+    implementation(libs.androidx.compose.material3.window.size)
+    implementation(libs.androidx.compose.material.icons.core)
+    implementation(libs.androidx.navigation.compose)
 
-    implementation("androidx.room:room-runtime:2.8.5")
-    ksp("androidx.room:room-compiler:2.8.5")
+    implementation(libs.androidx.room.runtime)
+    ksp(libs.androidx.room.compiler)
 
-    implementation("com.tom-roush:pdfbox-android:2.0.27.0")
+    implementation(libs.pdfbox.android)
 
-    val markwon = "4.6.2"
-    implementation("io.noties.markwon:core:$markwon")
-    implementation("io.noties.markwon:ext-strikethrough:$markwon")
-    implementation("io.noties.markwon:ext-tables:$markwon")
-    implementation("io.noties.markwon:ext-tasklist:$markwon")
+    implementation(libs.markwon.core)
+    implementation(libs.markwon.ext.strikethrough)
+    implementation(libs.markwon.ext.tables)
+    implementation(libs.markwon.ext.tasklist)
     // `data:` URI images only; the HTTP loaders are removed in MarkdownRenderer, the reader stays offline.
-    implementation("io.noties.markwon:image:$markwon")
-    implementation("io.github.erweixin:ratex-android:0.1.15")
+    implementation(libs.markwon.image)
+    implementation(libs.ratex.android)
     // No Prism4j: fenced code is coloured by the app's own tokenizer (SyntaxHighlighter), and autolinks are
     // matched by Autolinks, so neither `syntax-highlight` nor `linkify` is needed.
 
     // Local-only crash reporting (replaces Crashlytics). `auto-service` is excluded: it leaks in from acra-core and drags in Guava.
-    implementation("ch.acra:acra-core:5.12.0") {
+    implementation(libs.acra.core) {
         exclude(group = "com.google.auto.service", module = "auto-service")
     }
 
     // JUnit 4, not 5: AGP's testDebugUnitTest runs it without an extra runner. No Robolectric: these tests need no Android runtime beyond a stubbed XmlPullParser.
-    testImplementation("junit:junit:4.13.2")
+    testImplementation(libs.junit)
     // kxml2 is a reference XmlPullParser: the extractor takes its parser from an injected factory so
     // tests can substitute this one, since android.util.Xml is a platform stub under plain JUnit.
-    testImplementation("net.sf.kxml:kxml2:2.3.0")
+    testImplementation(libs.kxml2)
 
-    androidTestImplementation("androidx.test.ext:junit:1.2.1")
-    androidTestImplementation("androidx.test:runner:1.6.2")
-    androidTestImplementation(platform("androidx.compose:compose-bom:2026.09.00"))
-    androidTestImplementation("androidx.compose.ui:ui-test-junit4")
+    androidTestImplementation(libs.androidx.test.junit)
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(platform(libs.compose.bom))
+    androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     // The end-to-end tests drive the installed app through its accessibility tree, so they never call into its code.
-    androidTestImplementation("androidx.test.uiautomator:uiautomator:2.3.0")
-    debugImplementation("androidx.compose.ui:ui-test-manifest")
+    androidTestImplementation(libs.uiautomator)
+    debugImplementation(libs.androidx.compose.ui.test.manifest)
 }
 
 // Room exports each schema version here, committed so a migration is written against the exact schema a release was built from.

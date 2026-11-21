@@ -1,0 +1,62 @@
+[versions]
+agp = "9.4.1"
+kotlin-compose = "2.2.10"
+ksp = "2.3.12"
+detekt = "2.0.0-alpha.6"
+desugar-jdk-libs = "2.1.5"
+androidx-core = "1.16.0"
+androidx-activity = "1.10.1"
+androidx-customview = "1.2.0"
+coroutines = "1.10.2"
+androidx-lifecycle = "2.9.0"
+compose = "2026.09.00"
+androidx-navigation = "2.9.0"
+androidx-room = "2.8.5"
+pdfbox-android = "2.0.27.0"
+markwon = "4.6.2"
+ratex-android = "0.1.15"
+acra = "5.12.0"
+junit = "4.13.2"
+kxml2 = "2.3.0"
+androidx-test-junit = "1.2.1"
+androidx-test-runner = "1.6.2"
+uiautomator = "2.3.0"
+
+[libraries]
+desugar-jdk-libs = { module = "com.android.tools:desugar_jdk_libs", version.ref = "desugar-jdk-libs" }
+androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "androidx-core" }
+androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "androidx-activity" }
+androidx-customview = { module = "androidx.customview:customview", version.ref = "androidx-customview" }
+kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }
+androidx-lifecycle-runtime-compose = { module = "androidx.lifecycle:lifecycle-runtime-compose", version.ref = "androidx-lifecycle" }
+androidx-lifecycle-viewmodel-compose = { module = "androidx.lifecycle:lifecycle-viewmodel-compose", version.ref = "androidx-lifecycle" }
+compose-bom = { module = "androidx.compose:compose-bom", version.ref = "compose" }
+androidx-compose-ui = { module = "androidx.compose.ui:ui" }
+androidx-compose-ui-graphics = { module = "androidx.compose.ui:ui-graphics" }
+androidx-compose-material3 = { module = "androidx.compose.material3:material3" }
+androidx-compose-material3-window-size = { module = "androidx.compose.material3:material3-window-size-class" }
+androidx-compose-material-icons-core = { module = "androidx.compose.material:material-icons-core" }
+androidx-navigation-compose = { module = "androidx.navigation:navigation-compose", version.ref = "androidx-navigation" }
+androidx-room-runtime = { module = "androidx.room:room-runtime", version.ref = "androidx-room" }
+androidx-room-compiler = { module = "androidx.room:room-compiler", version.ref = "androidx-room" }
+pdfbox-android = { module = "com.tom-roush:pdfbox-android", version.ref = "pdfbox-android" }
+markwon-core = { module = "io.noties.markwon:core", version.ref = "markwon" }
+markwon-ext-strikethrough = { module = "io.noties.markwon:ext-strikethrough", version.ref = "markwon" }
+markwon-ext-tables = { module = "io.noties.markwon:ext-tables", version.ref = "markwon" }
+markwon-ext-tasklist = { module = "io.noties.markwon:ext-tasklist", version.ref = "markwon" }
+markwon-image = { module = "io.noties.markwon:image", version.ref = "markwon" }
+ratex-android = { module = "io.github.erweixin:ratex-android", version.ref = "ratex-android" }
+acra-core = { module = "ch.acra:acra-core", version.ref = "acra" }
+junit = { module = "junit:junit", version.ref = "junit" }
+kxml2 = { module = "net.sf.kxml:kxml2", version.ref = "kxml2" }
+androidx-test-junit = { module = "androidx.test.ext:junit", version.ref = "androidx-test-junit" }
+androidx-test-runner = { module = "androidx.test:runner", version.ref = "androidx-test-runner" }
+androidx-compose-ui-test-junit4 = { module = "androidx.compose.ui:ui-test-junit4" }
+uiautomator = { module = "androidx.test.uiautomator:uiautomator", version.ref = "uiautomator" }
+androidx-compose-ui-test-manifest = { module = "androidx.compose.ui:ui-test-manifest" }
+
+[plugins]
+android-application = { id = "com.android.application", version.ref = "agp" }
+kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin-compose" }
+ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
+detekt = { id = "dev.detekt", version.ref = "detekt" }
