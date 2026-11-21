@@ -5,7 +5,7 @@
 <h1 align="center">Papyrus</h1>
 
 <p align="center">
-  <em>Offline document viewer for Android: PDF, Word, OpenDocument, EPUB, PowerPoint, Markdown, text, code and CSV/TSV.</em><br>
+  <em>Offline document viewer for Android: PDF, Word, OpenDocument, EPUB, <br>PowerPoint, Markdown, text, code, CSV and TSV.</em><br>
   <sub>No internet permission. No ads. No accounts. No analytics.</sub>
 </p>
 
