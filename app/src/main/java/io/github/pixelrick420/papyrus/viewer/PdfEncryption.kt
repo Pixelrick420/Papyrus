@@ -5,9 +5,6 @@ import com.tom_roush.pdfbox.pdmodel.encryption.InvalidPasswordException
 import java.io.File
 import java.io.InputStream
 
-/** Cache dir for decrypted PDF copies; swept on startup so a kill leaves no plaintext. */
-const val PDF_UNLOCK_DIR = "pdf-unlock"
-
 // A corrupt PDF reads as [NOT_ENCRYPTED] so it fails rather than prompts.
 enum class PdfEncryption {
     NOT_ENCRYPTED,

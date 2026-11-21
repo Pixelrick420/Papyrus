@@ -124,6 +124,22 @@ erDiagram
     }
 ```
 
+## Cache layout
+
+Everything under `cacheDir` is private and disposable. Startup sweeping happens off the main thread before the app
+opens a document; age cut-offs are measured against the current process start, so nothing this process is still using
+is removed.
+
+| Path | Written by | Cleaned by |
+|---|---|---|
+| `pdf-unlock/` | PDF password unlocking | `MainApplication.sweepUnlocked` on startup, plus `UnlockedCopy` when replaced or discarded |
+| `office-unlock/` | Office password unlocking | `MainApplication.sweepUnlocked` on startup |
+| `pdf-view/` | `PdfPageSource` copies of non-seekable PDF descriptors | `MainApplication.sweepUnlocked` by age on startup, plus `PdfPageSource.close` |
+| `office-media/` | Image extraction for a viewer, in `<document id>/` | `ViewerViewModel.onCleared`, plus `MainApplication.sweepUnlocked` by age on startup |
+| `pptx-<uuid>/` | `SlidePageSource` media extraction | `SlidePageSource.close`, plus `MainApplication.sweepUnlocked` by age on startup |
+
+`pdf-view/` replaced older `view-*.pdf` files in the cache root; those are no longer written.
+
 ## Content search
 
 A background indexer fills `document_text` for every document that has no text yet, in small batches, and runs

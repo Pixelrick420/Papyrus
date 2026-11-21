@@ -538,26 +538,29 @@ fun ViewerScreen(
                                 CircularProgressIndicator(Modifier.align(Alignment.Center))
                             }
                         }
-                        is ViewerContent.Pdf -> PdfViewer(
-                            source = content.source,
-                            aspectRatios = content.aspectRatios,
-                            zoom = zoom,
-                            selectionState = selectionState,
-                            nightMode = settings.nightMode,
-                            pageHits = find.hits,
-                            pageMatches = find.pageMatches,
-                            highlights = pageHighlights,
-                            onMark = { noteMark = it },
-                            activePage = find.activeIndex,
-                            activeOccurrence = find.activeOccurrence,
-                            loadLinks = viewModel::pageLinks,
-                            onLinkTarget = followPdfLink,
-                            position = position,
-                            speaking = spoken,
-                            ttsLocked = voiceLocksScroll,
-                            highlightAlpha = highlightAlpha,
-                            onlyActive = arrival != null,
-                        )
+                        is ViewerContent.Pdf -> {
+                            val aspectRatios by content.aspectRatios.collectAsStateWithLifecycle()
+                            PdfViewer(
+                                source = content.source,
+                                aspectRatios = aspectRatios,
+                                zoom = zoom,
+                                selectionState = selectionState,
+                                nightMode = settings.nightMode,
+                                pageHits = find.hits,
+                                pageMatches = find.pageMatches,
+                                highlights = pageHighlights,
+                                onMark = { noteMark = it },
+                                activePage = find.activeIndex,
+                                activeOccurrence = find.activeOccurrence,
+                                loadLinks = viewModel::pageLinks,
+                                onLinkTarget = followPdfLink,
+                                position = position,
+                                speaking = spoken,
+                                ttsLocked = voiceLocksScroll,
+                                highlightAlpha = highlightAlpha,
+                                onlyActive = arrival != null,
+                            )
+                        }
                         is ViewerContent.Markdown -> MarkdownViewer(
                             markwon = content.markwon,
                             source = content.source,

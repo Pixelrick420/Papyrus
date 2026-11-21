@@ -70,6 +70,7 @@ import io.github.pixelrick420.papyrus.R
 import io.github.pixelrick420.papyrus.data.Highlight
 import io.github.pixelrick420.papyrus.data.HighlightKind
 import io.github.pixelrick420.papyrus.data.LocationKind
+import io.github.pixelrick420.papyrus.viewer.DEFAULT_ASPECT
 import io.github.pixelrick420.papyrus.viewer.NormRect
 import io.github.pixelrick420.papyrus.viewer.PageBitmapSource
 import io.github.pixelrick420.papyrus.viewer.PdfLinkTarget
@@ -158,6 +159,17 @@ internal fun PdfViewer(
     val renderIncomplete by source.incomplete.collectAsState(false)
     val restoreTarget = rememberRestoredTarget(LocationKind.PAGE, source.pageCount, position)
     val listState = rememberLazyListState(initialFirstVisibleItemIndex = restoreTarget?.unit ?: 0)
+    // A page height arriving later moves the list; hold the page the reader was already looking at.
+    val scrollAnchor = rememberUpdatedState(listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset)
+    var ratiosSettled by remember { mutableStateOf(false) }
+    LaunchedEffect(aspectRatios) {
+        if (!ratiosSettled) {
+            ratiosSettled = true
+            return@LaunchedEffect
+        }
+        val (index, offset) = scrollAnchor.value
+        listState.scrollToItem(index, offset)
+    }
     val geometry = rememberLazyScrollGeometry(listState)
     val scrolling by remember { derivedStateOf { listState.isScrollInProgress } }
     // The page whose top edge has crossed the middle of the screen, not the one clipping the top.
@@ -362,8 +374,6 @@ internal fun PdfViewer(
 }
 
 private data class TileImage(val rect: NormRect, val bitmap: ImageBitmap)
-
-private const val DEFAULT_ASPECT = 1.414f
 
 private val PAGE_INDICATOR_CLEARANCE = 56.dp
 

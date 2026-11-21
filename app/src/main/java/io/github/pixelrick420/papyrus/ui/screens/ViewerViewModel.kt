@@ -52,6 +52,7 @@ import io.github.pixelrick420.papyrus.viewer.ChunkProvider
 import io.github.pixelrick420.papyrus.viewer.CodeLanguage
 import io.github.pixelrick420.papyrus.viewer.CodeLanguages
 import io.github.pixelrick420.papyrus.viewer.DelimitedFile
+import io.github.pixelrick420.papyrus.viewer.DEFAULT_ASPECT
 import io.github.pixelrick420.papyrus.viewer.DocTextExtractor
 import io.github.pixelrick420.papyrus.viewer.DocumentPasswordException
 import io.github.pixelrick420.papyrus.viewer.EpubExtractor
@@ -64,6 +65,7 @@ import io.github.pixelrick420.papyrus.viewer.OfficeBlock
 import io.github.pixelrick420.papyrus.viewer.NormRect
 import io.github.pixelrick420.papyrus.viewer.OfficeEncryption
 import io.github.pixelrick420.papyrus.viewer.OfficeTextExtractor
+import io.github.pixelrick420.papyrus.viewer.OFFICE_MEDIA_DIR
 import io.github.pixelrick420.papyrus.viewer.OFFICE_UNLOCK_DIR
 import io.github.pixelrick420.papyrus.viewer.PDF_UNLOCK_DIR
 import io.github.pixelrick420.papyrus.viewer.PdfCopyWriter
@@ -141,7 +143,7 @@ import kotlin.coroutines.cancellation.CancellationException
 
 sealed interface ViewerContent {
     data object Loading : ViewerContent
-    data class Pdf(val source: PdfPageSource, val aspectRatios: List<Float>) : ViewerContent
+    data class Pdf(val source: PdfPageSource, val aspectRatios: StateFlow<List<Float>>) : ViewerContent
     data class Markdown(
         val markwon: Markwon,
         val source: String,
@@ -393,7 +395,7 @@ class ViewerViewModel(
     private val unlocked = UnlockedCopy()
 
     /** Per document: a shared directory would let a viewer delete another's images. */
-    private val mediaDir: File by lazy { File(app.cacheDir, "office-media/$documentId") }
+    private val mediaDir: File by lazy { File(app.cacheDir, OFFICE_MEDIA_DIR).resolve(documentId.toString()) }
 
     /** When the reading position may be saved. Declared above `init`: `load()` runs inline on the main
      * dispatcher and would otherwise reach it before it exists. */
@@ -1037,12 +1039,31 @@ class ViewerViewModel(
             else -> unlockPdf(doc.uri.toUri(), password)
         }
 
+    private fun pdfContent(source: PdfPageSource): ViewerContent.Pdf {
+        val ratios = MutableStateFlow(List(source.pageCount) { DEFAULT_ASPECT })
+        viewModelScope.launch {
+            if (source.pageCount == 0) return@launch
+            // Page one sets the initial layout; the rest arrive in chunks so a long PDF opens before every page is measured.
+            val first = source.loadAspectRatio(0)
+            ratios.value = List(source.pageCount) { first }
+            var start = 1
+            while (start < source.pageCount) {
+                ensureActive()
+                val end = minOf(start + ASPECT_CHUNK_PAGES, source.pageCount)
+                val updated = ratios.value.toMutableList()
+                for (index in start until end) updated[index] = source.loadAspectRatio(index)
+                ratios.value = updated
+                start = end
+            }
+        }
+        return ViewerContent.Pdf(source, ratios.asStateFlow())
+    }
+
     // If the renderer still wants a password the byte screen was wrong, so the real parser decides the lock kind.
     @Suppress("TooGenericExceptionCaught", "SwallowedException")
     private suspend fun openUnencryptedPdf(uri: Uri): ViewerContent =
         try {
-            val source = PdfPageSource.open(app, uri)
-            ViewerContent.Pdf(source, source.loadAspectRatios())
+            pdfContent(PdfPageSource.open(app, uri))
         } catch (e: PdfPasswordException) {
             when (PdfEncryption.authoritativeStatus { openStream(uri) }) {
                 PdfEncryption.USER_PASSWORD -> ViewerContent.NeedsPassword()
@@ -1059,10 +1080,9 @@ class ViewerViewModel(
         try {
             PdfEncryption.decrypt({ openStream(uri) }, password, target)
             val source = PdfPageSource.openFile(target)
-            val aspectRatios = source.loadAspectRatios()
             // Kept only once it has opened, and the copy it replaces goes with it.
             unlocked.keep(target, target.toUri().toString())
-            return ViewerContent.Pdf(source, aspectRatios)
+            return pdfContent(source)
         } catch (e: InvalidPasswordException) {
             target.delete()
             return ViewerContent.NeedsPassword(incorrect = true)
@@ -1552,6 +1572,8 @@ class ViewerViewModel(
     }
 
     private companion object {
+        const val ASPECT_CHUNK_PAGES = 50
+
         // Bounds TextView memory: Markwon Spanned instances allocate heavily per byte for code/math styling.
         const val MAX_MARKDOWN_BYTES = 6 * 1024 * 1024
 

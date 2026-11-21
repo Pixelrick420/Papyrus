@@ -5,11 +5,17 @@ import android.graphics.Bitmap
 import android.graphics.Color
 import android.net.Uri
 import android.os.ParcelFileDescriptor
+import android.system.ErrnoException
+import android.system.Os
+import android.system.OsConstants
 import android.util.Log
 import android.util.LruCache
 import androidx.core.graphics.createBitmap
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
@@ -19,6 +25,7 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileNotFoundException
 import java.io.IOException
+import java.io.InputStream
 import java.util.Collections
 import java.util.WeakHashMap
 import kotlin.math.roundToInt
@@ -34,6 +41,9 @@ class PdfPageSource private constructor(
 ) : PageBitmapSource {
 
     override val pageCount: Int = engine.pageCount
+
+    private val _aspectRatios = MutableStateFlow(List(pageCount) { DEFAULT_ASPECT })
+    val aspectRatios: StateFlow<List<Float>> = _aspectRatios.asStateFlow()
 
     val hasForm: Boolean get() = capabilities.forms
 
@@ -56,9 +66,18 @@ class PdfPageSource private constructor(
 
     override suspend fun loadAspectRatios(): List<Float> = withContext(dispatcher) {
         lock.withLock {
-            List(pageCount) { i -> engine.open(i).use { it.height.toFloat() / it.width } }
-        }
+            List(pageCount) { i ->
+                try {
+                    engine.open(i).use { sanitizedAspect(it.width.toFloat(), it.height.toFloat()) }
+                } catch (_: Exception) {
+                    DEFAULT_ASPECT
+                }
+            }
+        }.also { _aspectRatios.value = it }
     }
+
+    internal suspend fun loadAspectRatio(index: Int): Float =
+        withPage(index) { sanitizedAspect(it.width.toFloat(), it.height.toFloat()) } ?: DEFAULT_ASPECT
 
     override fun cached(index: Int, widthPx: Int): Bitmap? = cache.get(PageKey(index, widthPx))
 
@@ -271,9 +290,21 @@ class PdfPageSource private constructor(
                 pfd.close()
                 throw e
             } catch (e: IOException) {
-                pfd.close() // not seekable (some providers) or corrupt: retry from a cached copy
+                val fallback = pdfOpenFallback(
+                    statSize = pfd.statSize,
+                    seekable = isSeekable(pfd),
+                    hasPdfHeader = runCatching { hasPdfHeader(resolver.openInputStream(uri)) }.getOrDefault(false),
+                    usableSpace = context.cacheDir.usableSpace,
+                )
+                pfd.close()
+                when (fallback) {
+                    PdfOpenFallback.FAIL_FORMAT -> throw IOException("Not a seekable PDF", e)
+                    PdfOpenFallback.FAIL_NO_SPACE -> throw IOException("Not enough cache space for this PDF", e)
+                    PdfOpenFallback.COPY -> Unit
+                }
             }
-            val copy = File.createTempFile("view-", ".pdf", context.cacheDir)
+            val dir = File(context.cacheDir, PDF_VIEW_DIR).apply { mkdirs() }
+            val copy = File.createTempFile("view-", ".pdf", dir)
             try {
                 (resolver.openInputStream(uri) ?: throw FileNotFoundException(uri.toString()))
                     .use { input -> copy.outputStream().use { input.copyTo(it) } }
@@ -288,6 +319,26 @@ class PdfPageSource private constructor(
                 copy.delete()
                 throw e
             }
+        }
+
+        private const val PDF_HEADER_SNIFF_BYTES = 1024
+
+        private fun hasPdfHeader(stream: InputStream?): Boolean = stream?.use { input ->
+            val head = ByteArray(PDF_HEADER_SNIFF_BYTES)
+            var read = 0
+            while (read < head.size) {
+                val count = input.read(head, read, head.size - read)
+                if (count < 0) break
+                read += count
+            }
+            startsWithPdfHeader(head.copyOf(read))
+        } ?: false
+
+        private fun isSeekable(pfd: ParcelFileDescriptor): Boolean = try {
+            Os.lseek(pfd.fileDescriptor, 0L, OsConstants.SEEK_CUR)
+            true
+        } catch (_: ErrnoException) {
+            false
         }
 
         suspend fun openFile(file: File): PdfPageSource = withContext(Dispatchers.IO) {

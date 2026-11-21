@@ -7,6 +7,7 @@ import android.util.Log
 import android.util.LruCache
 import android.util.Xml
 import io.github.pixelrick420.papyrus.viewer.NormRect
+import io.github.pixelrick420.papyrus.viewer.PPTX_DIR_PREFIX
 import io.github.pixelrick420.papyrus.viewer.PageBitmapSource
 import io.github.pixelrick420.papyrus.viewer.TileGrid
 import io.github.pixelrick420.papyrus.viewer.bitmapCacheBudgetBytes
@@ -344,24 +345,12 @@ internal class SlidePageSource private constructor(
 
         private const val MAX_CACHED_LISTS = 6
 
-        private const val PPTX_DIR_PREFIX = "pptx-"
-
-        /** Only dirs left by an earlier process are stale; a dir created this run may still be in use. */
-        private val processStartMillis = System.currentTimeMillis()
-
         private val openSources: MutableSet<SlidePageSource> =
             Collections.newSetFromMap(WeakHashMap<SlidePageSource, Boolean>())
 
         fun trimAll(evictAll: Boolean) {
             val sources = synchronized(openSources) { openSources.toList() }
             for (source in sources) source.trimMemory(evictAll)
-        }
-
-        /** Media directories are per-open UUIDs; a killed process leaves them behind for the next start. */
-        fun sweepStaleTempDirs(cacheDir: File) {
-            cacheDir.listFiles { file ->
-                file.isDirectory && file.name.startsWith(PPTX_DIR_PREFIX) && file.lastModified() < processStartMillis
-            }?.forEach { runCatching { it.deleteRecursively() } }
         }
 
         suspend fun open(

@@ -16,8 +16,12 @@ import io.github.pixelrick420.papyrus.data.SettingsRepository
 import io.github.pixelrick420.papyrus.data.ThumbnailLoader
 import io.github.pixelrick420.papyrus.data.batterySaverFlow
 import io.github.pixelrick420.papyrus.tts.TtsSession
+import io.github.pixelrick420.papyrus.viewer.CacheSweeper
+import io.github.pixelrick420.papyrus.viewer.OFFICE_MEDIA_DIR
 import io.github.pixelrick420.papyrus.viewer.OFFICE_UNLOCK_DIR
 import io.github.pixelrick420.papyrus.viewer.PDF_UNLOCK_DIR
+import io.github.pixelrick420.papyrus.viewer.PDF_VIEW_DIR
+import io.github.pixelrick420.papyrus.viewer.PPTX_DIR_PREFIX
 import io.github.pixelrick420.papyrus.viewer.PdfPageSource
 import io.github.pixelrick420.papyrus.viewer.pptx.SlidePageSource
 import io.github.pixelrick420.papyrus.viewer.textCacheKey
@@ -133,7 +137,7 @@ class MainApplication : Application() {
         // Off the main thread: deleting a large cache would otherwise stall startup.
         applicationScope.launch {
             try {
-                sweepUnlocked()
+                sweepUnlocked(startedAt)
             } finally {
                 unlockedSweep.complete(Unit)
             }
@@ -176,10 +180,12 @@ class MainApplication : Application() {
     }
 
     /** A kill mid-view leaves a decrypted copy behind, so clear the whole directory on the next start. */
-    private fun sweepUnlocked() {
+    private fun sweepUnlocked(startedAt: Long) {
         runCatching { File(cacheDir, PDF_UNLOCK_DIR).deleteRecursively() }
         runCatching { File(cacheDir, OFFICE_UNLOCK_DIR).deleteRecursively() }
-        SlidePageSource.sweepStaleTempDirs(cacheDir)
+        CacheSweeper.sweepOlderThan(File(cacheDir, PDF_VIEW_DIR), startedAt)
+        CacheSweeper.sweepOlderThan(File(cacheDir, OFFICE_MEDIA_DIR), startedAt)
+        CacheSweeper.sweepOlderThan(cacheDir, startedAt, PPTX_DIR_PREFIX)
     }
 
     private companion object {

@@ -20,9 +20,6 @@ import javax.crypto.Mac
 import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
 
-/** Cache dir for decrypted office copies; swept on startup so a kill leaves no plaintext. */
-const val OFFICE_UNLOCK_DIR = "office-unlock"
-
 class DocumentPasswordException : IOException("Password-protected document")
 
 object OfficeEncryption {
