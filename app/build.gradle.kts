@@ -198,6 +198,11 @@ tasks.matching { it.name == "kspReleaseKotlin" }.configureEach {
     mustRunAfter("kspDebugKotlin")
 }
 
+// Reports drive the plan 13 C3 stability review before screen decomposition.
+composeCompiler {
+    reportsDestination = layout.buildDirectory.dir("compose-reports")
+}
+
 detekt {
     buildUponDefaultConfig = false
     allRules = false
