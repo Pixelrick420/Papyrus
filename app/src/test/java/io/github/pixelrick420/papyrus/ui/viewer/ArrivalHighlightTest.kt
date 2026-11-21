@@ -20,6 +20,11 @@ class ArrivalHighlightTest {
     }
 
     @Test
+    fun `a mark bearing word is highlighted whole`() {
+        assertEquals("हिन्दी", focusTermFor("हिन्दी", true))
+    }
+
+    @Test
     fun `a title-only match has no occurrence to land on`() {
         assertNull(focusTermFor("papyrus", false))
     }

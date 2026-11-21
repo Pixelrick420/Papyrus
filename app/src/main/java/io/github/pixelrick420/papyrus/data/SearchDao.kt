@@ -34,7 +34,7 @@ data class SnippetRow(
 @Dao
 interface SearchDao {
 
-    // Includes stale rows and FAILED rows whose indexedAt retry deadline has passed; bounded by [limit].
+    // Includes stale rows and FAILED rows whose deadline passed; a failed row waits for the next pass.
     @Query(
         "SELECT d.* FROM documents d LEFT JOIN document_text t ON t.rowid = d.id " +
             "WHERE t.rowid IS NULL OR t.indexVersion < :version OR t.sourceSize != d.sizeBytes " +

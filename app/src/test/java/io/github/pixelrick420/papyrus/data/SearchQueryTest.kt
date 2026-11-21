@@ -73,6 +73,33 @@ class SearchQueryTest {
     }
 
     @Test
+    fun `a Devanagari word keeps its vowel signs in one term`() {
+        assertEquals("\"हिन्दी*\"", expression("हिन्दी"))
+        assertEquals(listOf("हिन्दी"), terms("हिन्दी"))
+    }
+
+    @Test
+    fun `Arabic harakat stay inside one term`() {
+        assertEquals(listOf("مَرْحَبًا"), terms("مَرْحَبًا"))
+    }
+
+    @Test
+    fun `a decomposed accent stays inside its word`() {
+        assertEquals("\"e\u0301cole*\"", expression("e\u0301cole"))
+        assertEquals(listOf("e\u0301cole"), terms("e\u0301cole"))
+    }
+
+    @Test
+    fun `marks do not join separate words`() {
+        assertEquals(listOf("paper", "हिन्दी"), terms("paper हिन्दी"))
+    }
+
+    @Test
+    fun `a zero width non-joiner still separates words`() {
+        assertEquals(listOf("خانه", "ها"), terms("خانه\u200Cها"))
+    }
+
+    @Test
     fun `digits are words, so a year is searchable`() {
         assertEquals("\"2024*\"", expression("2024"))
     }
@@ -125,7 +152,7 @@ class SearchQueryTest {
 
     @Test
     fun `an expression is only quoted words, never an FTS operator`() {
-        val phrase = "\"[\\p{L}\\p{N}]+\\*?\""
+        val phrase = "\"[\\p{L}\\p{N}\\p{M}]+\\*?\""
         val shape = Regex("^$phrase( $phrase)*$")
         for (input in inputs) {
             val parsed = SearchQuery.parse(input) ?: continue
@@ -147,8 +174,8 @@ class SearchQueryTest {
     }
 
     @Test
-    fun `every term is letters and digits only`() {
-        val word = Regex("^[\\p{L}\\p{N}]+$")
+    fun `every term is letters, digits and marks only`() {
+        val word = Regex("^[\\p{L}\\p{N}\\p{M}]+$")
         for (input in inputs) {
             for (term in SearchQuery.parse(input)?.terms.orEmpty()) {
                 assertTrue("'$term' from ${input.escaped()}", word.matches(term))
@@ -158,10 +185,10 @@ class SearchQueryTest {
 
     @Test
     fun `a query with a word in it always parses`() {
-        val letter = Regex("[\\p{L}\\p{N}]")
+        val wordCharacter = Regex("[\\p{L}\\p{N}\\p{M}]")
         for (input in inputs) {
             val parsed = SearchQuery.parse(input)
-            if (letter.containsMatchIn(input)) assertNotNull(input.escaped(), parsed) else assertNull(input.escaped(), parsed)
+            if (wordCharacter.containsMatchIn(input)) assertNotNull(input.escaped(), parsed) else assertNull(input.escaped(), parsed)
         }
     }
 

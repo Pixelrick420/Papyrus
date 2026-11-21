@@ -5,8 +5,8 @@ data class ParsedSearch(
     val terms: List<String>,
 )
 
-// The split keeps only letters and digits, so a typed operator never reaches the parser; each word is
-// quoted, and one long enough for a prefix match gets a trailing *.
+// The split keeps letters, digits and marks, so a typed operator never reaches the parser and a vowel sign stays with its word;
+// each word is quoted, and one long enough for a prefix match gets a trailing *.
 object SearchQuery {
 
     /** Shortest word that earns a prefix match; the length the index's prefix tables start at. */
@@ -15,7 +15,7 @@ object SearchQuery {
     /** Words kept from one query, so a pasted paragraph cannot become an expensive expression. */
     const val MAX_TERMS = 8
 
-    private val WORD_SEPARATOR = Regex("[^\\p{L}\\p{N}]+")
+    private val WORD_SEPARATOR = Regex("[^\\p{L}\\p{N}\\p{M}]+")
 
     fun parse(input: String): ParsedSearch? {
         val words = input.split(WORD_SEPARATOR).filter { it.isNotEmpty() }

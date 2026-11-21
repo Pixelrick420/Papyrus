@@ -74,8 +74,13 @@ Content search only finds text that is in the index.
 - Encrypted and DRM-protected documents are not indexed, nor are files over the 64 MB source cap, and a document is
   indexed only up to 1,000,000 characters. A plain-text file is read up to 8 MB before that character cap applies.
 - A scanned PDF with no text layer is indexed as empty.
-- A document whose text could not be read is tried again after five minutes; no further retries happen once it is
-  marked `SKIPPED` or `TOO_LARGE`.
+- A document whose text could not be read becomes eligible again after five minutes, but there is no timer: it is
+  retried only on the next indexing pass (at start-up, after a library change, or when the gate reopens). No further
+  retries happen once it is marked `SKIPPED` or `TOO_LARGE`.
+- Search keeps Unicode marks with their letters, so Indic vowel signs and Arabic harakat stay inside one query word.
+  The index tokenizer still splits those marks into a phrase of fragments, which is more precise than matching each
+  fragment independently but can still match adjacent fragments in unrelated text. CJK and Thai runs are not
+  segmented; a whole run is one token.
 - A document is searchable by content only once the indexer has reached it, which can take a while on a large library
   and, for files above the 512 KB eager threshold, does not happen while you read or under battery saver. With
   **Search inside documents** off it does not happen at all.

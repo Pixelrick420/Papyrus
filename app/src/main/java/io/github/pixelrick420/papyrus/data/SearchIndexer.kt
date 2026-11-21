@@ -123,7 +123,7 @@ class SearchIndexer(
         yield()
         val extracted = extract(document)
         val now = System.currentTimeMillis()
-        // A failed row is not eligible again until its indexedAt deadline passes.
+        // A failed row waits for its deadline and then the next pass; there is no retry timer.
         val retryAt = if (extracted.state == TextIndexState.FAILED) now + FAILED_RETRY_MILLIS else now
         val row = DocumentTextEntity(
             documentId = document.id,
