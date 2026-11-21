@@ -5,9 +5,12 @@ import java.io.InputStream
 import java.util.BitSet
 
 // Read-only and bounds-checked: a truncated or cyclic file throws instead of looping or over-allocating.
-internal class CompoundFile(private val openStream: () -> InputStream, private val fileLength: Long) {
+internal class CompoundFile(private val openStream: () -> InputStream, knownLength: Long? = null) {
     private class Entry(val name: String, val type: Int, val start: Int, val size: Long)
     private class Chunk(val fileOffset: Long, val dest: Int, val length: Int)
+
+    private val fileLength: Long = knownLength?.takeIf { it in HEADER_SIZE..MAX_FILE_BYTES } ?: probeLength(openStream)
+    private val cachedStreams = HashMap<String, ByteArray>()
 
     private val sectorSize: Int
     private val totalSectors: Int
@@ -48,7 +51,7 @@ internal class CompoundFile(private val openStream: () -> InputStream, private v
             throw IOException("unsupported mini sector size")
         }
         miniCutoff = u32(header, MINI_CUTOFF_OFFSET)
-        totalSectors = ((fileLength - HEADER_SIZE) / sectorSize).toInt()
+        totalSectors = ((fileLength - maxOf(HEADER_SIZE, sectorSize)) / sectorSize).toInt()
         if (totalSectors < 1) throw IOException("compound file has no sectors")
 
         val perFat = sectorSize / 4
@@ -94,6 +97,15 @@ internal class CompoundFile(private val openStream: () -> InputStream, private v
     fun streamSize(name: String): Long? =
         entries.firstOrNull { it.type == ENTRY_STREAM && it.name.equals(name, ignoreCase = true) }?.size
 
+    fun cacheStream(name: String, maxBytes: Int): Boolean {
+        val key = name.lowercase()
+        if (key in cachedStreams) return true
+        val size = streamSize(name) ?: return false
+        if (size <= 0 || size > maxBytes) return false
+        cachedStreams[key] = read(name, 0, size.toInt())
+        return true
+    }
+
     fun read(name: String, offset: Long, length: Int): ByteArray {
         val entry = entries.firstOrNull { it.type == ENTRY_STREAM && it.name.equals(name, ignoreCase = true) }
             ?: throw IOException("stream not found: $name")
@@ -101,6 +113,9 @@ internal class CompoundFile(private val openStream: () -> InputStream, private v
             throw IOException("read out of bounds: $name")
         }
         if (length == 0) return ByteArray(0)
+        cachedStreams[name.lowercase()]?.let { cached ->
+            return cached.copyOfRange(offset.toInt(), offset.toInt() + length)
+        }
         val chunks = if (entry.size < miniCutoff) {
             miniChunks(entry, offset, length)
         } else {

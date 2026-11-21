@@ -163,6 +163,18 @@ class OfficeFormattingTest {
     }
 
     @Test
+    fun `a lowercase external target mode is still a hyperlink`() {
+        val rels = OfficeFixtures.docxLinkRels("rId5" to "https://example.com/a")
+            .replace("TargetMode=\"External\"", "TargetMode=\"external\"")
+        val body = """<w:p><w:hyperlink r:id="rId5"><w:r><w:t>site</w:t></w:r></w:hyperlink></w:p>"""
+
+        val paragraph = extractDocx(docx(body, rels = rels))[0] as OfficeBlock.Paragraph
+
+        assertEquals("site", paragraph.text)
+        assertEquals(listOf(TextSpan(0, 4, CharFormat(link = "https://example.com/a"))), paragraph.spans)
+    }
+
+    @Test
     fun `docx hyperlink written as a simple field is a link`() {
         val body = """
             <w:p><w:fldSimple w:instr=" HYPERLINK &quot;https://example.org/x&quot; "><w:r><w:t>link</w:t></w:r></w:fldSimple></w:p>

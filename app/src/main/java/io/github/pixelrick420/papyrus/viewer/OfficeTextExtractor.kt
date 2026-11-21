@@ -108,7 +108,7 @@ class OfficeTextExtractor(
                 val id = p.getAttributeValue(null, "Id")
                 val target = p.getAttributeValue(null, "Target")
                 if (id != null && target != null) {
-                    if (p.getAttributeValue(null, "TargetMode") == "External") {
+                    if (p.getAttributeValue(null, "TargetMode")?.equals("External", ignoreCase = true) == true) {
                         links[id] = target
                     } else {
                         targets[id] = resolveDocxTarget(target)
@@ -134,7 +134,7 @@ class OfficeTextExtractor(
         blockBudget: Int,
     ): MutableList<OfficeBlock> {
         val factory: ParserFactory = { newParser(it) }
-        val rels = parseRels(parts[DOCX_RELS])
+        val rels = optionalPart(DocxRels.EMPTY) { parseRels(parts[DOCX_RELS]) }
         val styles = optionalPart(DocxStyles.empty()) { readDocxStyles(parts[DOCX_STYLES], factory) }
         val numbering = optionalPart(DocxNumbering.EMPTY) { readDocxNumbering(parts[DOCX_NUMBERING], factory) }
 

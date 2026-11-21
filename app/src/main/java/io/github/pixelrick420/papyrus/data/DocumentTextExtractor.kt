@@ -70,7 +70,7 @@ class DocumentTextExtractor(
     private suspend fun read(document: DocumentEntity): ExtractedText? = when (document.format) {
         DocumentFormat.PDF -> readPdf(document.uri.toUri())
         DocumentFormat.DOCX, DocumentFormat.ODT -> readOffice(document)
-        DocumentFormat.DOC -> readDoc(document.uri.toUri())
+        DocumentFormat.DOC -> readDoc(document.uri.toUri(), document.sizeBytes)
         DocumentFormat.EPUB -> readEpub(document.uri.toUri())
         DocumentFormat.PPTX -> readPptx(document.uri.toUri())
         DocumentFormat.TEXT, DocumentFormat.CODE, DocumentFormat.MARKDOWN, DocumentFormat.CSV ->
@@ -97,11 +97,11 @@ class DocumentTextExtractor(
         return indexable(officeBlocksToText(blocks, MAX_INDEX_CHARS))
     }
 
-    private fun readDoc(uri: Uri): ExtractedText {
+    private fun readDoc(uri: Uri, sizeBytes: Long): ExtractedText {
         if (OfficeEncryption.isEncrypted({ openStream(uri) })) {
             return ExtractedText("", TextIndexState.SKIPPED)
         }
-        return indexable(officeBlocksToText(DocTextExtractor.extract({ openStream(uri) }), MAX_INDEX_CHARS))
+        return indexable(officeBlocksToText(DocTextExtractor.extract({ openStream(uri) }, knownLength = sizeBytes), MAX_INDEX_CHARS))
     }
 
     private fun readPptx(uri: Uri): ExtractedText {

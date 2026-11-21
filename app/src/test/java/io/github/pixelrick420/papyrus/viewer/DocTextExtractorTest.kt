@@ -2,7 +2,9 @@ package io.github.pixelrick420.papyrus.viewer
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.ByteArrayInputStream
 import java.io.IOException
 
 class DocTextExtractorTest {
@@ -291,5 +293,20 @@ class DocTextExtractorTest {
     @Test
     fun `an fc past the table stream is rejected`() {
         assertIoException(DocFixtures.doc("Hello", fcClx = 10_000))
+    }
+
+    @Test
+    fun `two thousand pieces are decoded without reopening the file per piece`() {
+        val bytes = DocFixtures.doc(pieces = List(2_000) { DocFixtures.Piece("a") })
+        var opens = 0
+        val source = {
+            opens++
+            ByteArrayInputStream(bytes)
+        }
+
+        val blocks = DocTextExtractor.extract(source, knownLength = bytes.size.toLong())
+
+        assertTrue(blocks.isNotEmpty())
+        assertTrue("opened the source $opens times", opens <= 16)
     }
 }

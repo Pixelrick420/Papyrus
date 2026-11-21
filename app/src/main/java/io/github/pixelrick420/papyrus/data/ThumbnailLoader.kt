@@ -164,7 +164,7 @@ class ThumbnailLoader(private val context: Context) {
         val uri = document.uri.toUri()
         val blocks = if (document.format == DocumentFormat.DOC) {
             val source = { openStream(uri) ?: throw FileNotFoundException(uri.toString()) }
-            DocTextExtractor.extract(source, THUMBNAIL_BLOCK_BUDGET)
+            DocTextExtractor.extract(source, THUMBNAIL_BLOCK_BUDGET, document.sizeBytes)
         } else {
             val source = { openStream(uri) ?: throw FileNotFoundException(uri.toString()) }
             OfficeTextExtractor(mediaDir = null)

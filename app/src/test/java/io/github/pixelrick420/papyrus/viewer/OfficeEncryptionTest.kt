@@ -3,6 +3,7 @@ package io.github.pixelrick420.papyrus.viewer
 import io.github.pixelrick420.papyrus.data.DocumentFormat
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -15,6 +16,7 @@ import java.util.Base64
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
+import kotlinx.coroutines.CancellationException
 
 // Fixtures are real and independently produced: msoffcrypto Agile `.docx` and a hand-rolled ODF 1.2 CBC package.
 class OfficeEncryptionTest {
@@ -281,5 +283,53 @@ class OfficeEncryptionTest {
         val info = byteArrayOf(0x04, 0x00, 0x02, 0x00, 0x40, 0x00, 0x00, 0x00)
         val bytes = DocFixtures.compound(mapOf("EncryptionInfo" to info))
         assertEquals(OfficeEncryption.Party.UNSUPPORTED, OfficeEncryption.status(DocFixtures.streamFactory(bytes), OfficeFixtures::parser))
+    }
+
+    @Test
+    fun `agile key derivation checks every interval`() {
+        var checks = 0
+
+        OfficeEncryption.deriveIteratedHash("secret", ByteArray(8), "SHA1", 20_000) { checks++ }
+
+        assertEquals(5, checks)
+    }
+
+    @Test
+    fun `agile key derivation stops when the caller cancels`() {
+        var checks = 0
+
+        val failure = assertThrows(CancellationException::class.java) {
+            OfficeEncryption.deriveIteratedHash("secret", ByteArray(8), "SHA1", 5_000_000) {
+                checks++
+                if (checks == 3) throw CancellationException("cancelled")
+            }
+        }
+
+        assertEquals(3, checks)
+        assertEquals("cancelled", failure.message)
+    }
+
+    @Test
+    fun `pbkdf2 checks every interval`() {
+        var checks = 0
+
+        OfficeEncryption.pbkdf2Sha1(ByteArray(8), ByteArray(8), 20_000, 20) { checks++ }
+
+        assertEquals(4, checks)
+    }
+
+    @Test
+    fun `pbkdf2 stops when the caller cancels`() {
+        var checks = 0
+
+        val failure = assertThrows(CancellationException::class.java) {
+            OfficeEncryption.pbkdf2Sha1(ByteArray(8), ByteArray(8), 1_000_000, 20) {
+                checks++
+                if (checks == 2) throw CancellationException("cancelled")
+            }
+        }
+
+        assertEquals(2, checks)
+        assertEquals("cancelled", failure.message)
     }
 }

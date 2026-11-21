@@ -50,4 +50,15 @@ class CompoundFileTest {
     fun `probeLength counts a stream that stalls briefly`() {
         assertEquals(3L, probeLength { Stalling(byteArrayOf(1, 2, 3), zeros = MAX_STALLED_READS - 1) })
     }
+
+    @Test
+    fun `a 4096 byte sector compound file reads its streams`() {
+        val payload = "4096-sector payload".toByteArray()
+        val bytes = DocFixtures.compound(mapOf("Payload" to payload), sectorSize = 4096)
+
+        val cfb = CompoundFile(DocFixtures.streamFactory(bytes))
+
+        assertEquals(payload.size.toLong(), cfb.streamSize("Payload"))
+        assertArrayEquals(payload, cfb.read("Payload", 0, payload.size))
+    }
 }

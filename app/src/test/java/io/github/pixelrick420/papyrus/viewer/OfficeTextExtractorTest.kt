@@ -375,6 +375,26 @@ class OfficeTextExtractorTest {
     }
 
     @Test
+    fun `a broken rels part degrades to text without links or images`() {
+        val bytes = OfficeFixtures.docx(
+            bodyXml = OfficeFixtures.docxBody(
+                """
+                <w:p><w:r><w:t>keep me</w:t></w:r></w:p>
+                <w:p><w:r><w:drawing><a:blip r:embed="rId7"/></w:drawing></w:r></w:p>
+                """.trimIndent(),
+            ),
+            relsXml = """<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId7" Target="media/pic.png"""",
+            media = mapOf("pic.png" to OfficeFixtures.PNG_1X1),
+        )
+        val mediaDir = temp.newFolder("media")
+
+        val blocks = extractDocx(bytes, mediaDir)
+
+        assertEquals(listOf(OfficeBlock.Paragraph("keep me")), blocks)
+        assertEquals(0, mediaDir.listFiles()!!.size)
+    }
+
+    @Test
     fun `with no media dir the extractor still returns the text`() {
         val bytes = OfficeFixtures.docx(
             bodyXml = OfficeFixtures.docxBody(

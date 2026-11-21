@@ -80,12 +80,12 @@ internal object DocFixtures {
 
     fun u32Bytes(value: Long): ByteArray = ByteArray(4) { i -> ((value shr (i * 8)) and 0xFF).toByte() }
 
-    fun firstFatSectorOffset(bytes: ByteArray): Int {
+    fun firstFatSectorOffset(bytes: ByteArray, sectorSize: Int = 512): Int {
         val id = (bytes[0x4C].toLong() and 0xFF) or
             ((bytes[0x4D].toLong() and 0xFF) shl 8) or
             ((bytes[0x4E].toLong() and 0xFF) shl 16) or
             ((bytes[0x4F].toLong() and 0xFF) shl 24)
-        return ((id + 1) * 512).toInt()
+        return ((id + 1) * sectorSize).toInt()
     }
 
     private class LaidOut(val bytes: ByteArray, val fc: Long, val chars: Int)
@@ -154,8 +154,9 @@ internal object DocFixtures {
         return fib
     }
 
-    fun compound(streams: Map<String, ByteArray>): ByteArray {
-        val sectorSize = 512
+    fun compound(streams: Map<String, ByteArray>, sectorSize: Int = 512): ByteArray {
+        require(sectorSize == 512 || sectorSize == 4096)
+        val headerSize = maxOf(HEADER_SIZE, sectorSize)
         val perFat = sectorSize / 4
 
         val mini = ByteArrayOutputStream()
@@ -218,13 +219,13 @@ internal object DocFixtures {
             for (i in chain.indices) fat[chain[i]] = if (i == chain.lastIndex) ENDOFCHAIN else chain[i + 1]
         }
 
-        val out = ByteArray(HEADER_SIZE + total * sectorSize)
+        val out = ByteArray(headerSize + total * sectorSize)
         val header = ByteArray(HEADER_SIZE)
         OLE_SIGNATURE.forEachIndexed { i, byte -> header[i] = byte.toByte() }
         putU16(header, 0x18, 0x003E)
         putU16(header, 0x1A, 0x0003)
         putU16(header, 0x1C, 0xFFFE)
-        putU16(header, 0x1E, 9)
+        putU16(header, 0x1E, if (sectorSize == 4096) 12 else 9)
         putU16(header, 0x20, 6)
         putU32(header, 0x2C, fatCount.toLong())
         putU32(header, 0x30, chains.getValue(KEY_DIR).first().toLong())
@@ -242,7 +243,7 @@ internal object DocFixtures {
             for (sector in chains.getValue(key)) {
                 val n = minOf(sectorSize, data.size - at)
                 if (n > 0) {
-                    System.arraycopy(data, at, out, HEADER_SIZE + sector * sectorSize, n)
+                    System.arraycopy(data, at, out, headerSize + sector * sectorSize, n)
                     at += n
                 }
             }
@@ -252,7 +253,7 @@ internal object DocFixtures {
         for ((name, blob) in regular) writeChain(name, blob)
         writeChain(KEY_DIR, dirBytes)
         for (f in 0 until fatCount) {
-            val pos = HEADER_SIZE + (dataSectors + f) * sectorSize
+            val pos = headerSize + (dataSectors + f) * sectorSize
             for (i in 0 until perFat) {
                 val idx = f * perFat + i
                 if (idx < total) putU32(out, pos + i * 4, fat[idx].toLong() and 0xFFFFFFFFL)

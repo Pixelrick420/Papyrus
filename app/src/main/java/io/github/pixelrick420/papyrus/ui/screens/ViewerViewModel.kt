@@ -996,7 +996,7 @@ class ViewerViewModel(
             }
             DocumentFormat.DOC -> when (OfficeEncryption.status({ openStream(uri) })) {
                 OfficeEncryption.Party.NOT_ENCRYPTED -> {
-                    val blocks = DocTextExtractor.extract({ openStream(uri) })
+                    val blocks = DocTextExtractor.extract({ openStream(uri) }, knownLength = doc.sizeBytes)
                     if (blocks.isEmpty()) ViewerContent.Failed(UiText(R.string.viewer_error_empty)) else ViewerContent.Office(blocks)
                 }
                 else -> ViewerContent.Failed(UiText(R.string.viewer_error_password))
@@ -1095,12 +1095,13 @@ class ViewerViewModel(
     /** Office decryption writes a plaintext copy, so it is only kept once extraction/loading has succeeded. */
     @Suppress("TooGenericExceptionCaught", "SwallowedException")
     private suspend fun unlockOffice(uri: Uri, format: DocumentFormat, password: String): ViewerContent {
+        val ctx = currentCoroutineContext()
         app.awaitUnlockedSweep()
         val dir = File(app.cacheDir, OFFICE_UNLOCK_DIR).apply { mkdirs() }
         val target = File.createTempFile("unlock-", ".${format.name.lowercase()}", dir)
         if (format == DocumentFormat.PPTX) {
             val deck = try {
-                OfficeEncryption.decrypt({ openStream(uri) }, password, target)
+                OfficeEncryption.decrypt({ openStream(uri) }, password, target, ensureActive = { ctx.ensureActive() })
                 SlideDeckLoader.loadFile(app, target)
             } catch (expected: DocumentPasswordException) {
                 target.delete()

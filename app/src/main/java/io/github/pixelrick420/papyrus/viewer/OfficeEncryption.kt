@@ -59,13 +59,14 @@ object OfficeEncryption {
         password: String,
         target: File,
         newParserFactory: () -> XmlPullParser = { Xml.newPullParser() },
+        ensureActive: () -> Unit = {},
     ) {
         var completed = false
         try {
             val head = readHead(openStream)
             when {
-                isOle2(head) -> decryptAgile(openStream, password, target, newParserFactory)
-                isZip(head) -> decryptOdf(openStream, password, target, newParserFactory)
+                isOle2(head) -> decryptAgile(openStream, password, target, newParserFactory, ensureActive)
+                isZip(head) -> decryptOdf(openStream, password, target, newParserFactory, ensureActive)
                 else -> throw IOException("unsupported encryption")
             }
             completed = true
@@ -75,7 +76,7 @@ object OfficeEncryption {
     }
 
     private fun oleStatus(openStream: () -> InputStream): Party {
-        val cfb = CompoundFile(openStream, probeLength(openStream))
+        val cfb = CompoundFile(openStream)
         if (!cfb.hasStream(ENCRYPTION_INFO)) return Party.NOT_ENCRYPTED
         val size = cfb.streamSize(ENCRYPTION_INFO) ?: return Party.NOT_ENCRYPTED
         if (size < ENCRYPTION_INFO_HEADER || size > MAX_ENCRYPTION_INFO) return Party.UNSUPPORTED
@@ -88,8 +89,9 @@ object OfficeEncryption {
         password: String,
         target: File,
         newParserFactory: () -> XmlPullParser,
+        ensureActive: () -> Unit,
     ) {
-        val cfb = CompoundFile(openStream, probeLength(openStream))
+        val cfb = CompoundFile(openStream)
         val size = cfb.streamSize(ENCRYPTION_INFO) ?: throw IOException("EncryptionInfo not found")
         if (size < ENCRYPTION_INFO_HEADER || size > MAX_ENCRYPTION_INFO) throw IOException("unsupported EncryptionInfo")
         val info = cfb.read(ENCRYPTION_INFO, 0, size.toInt())
@@ -97,7 +99,7 @@ object OfficeEncryption {
         if (version != AGILE_MAJOR to AGILE_MINOR) throw IOException("unsupported EncryptionInfo version")
         val agile = parseAgile(info.copyOfRange(ENCRYPTION_INFO_HEADER, info.size), newParserFactory)
 
-        val h = deriveIteratedHash(password, agile.passwordSalt, agile.hashName, agile.spinCount)
+        val h = deriveIteratedHash(password, agile.passwordSalt, agile.hashName, agile.spinCount, ensureActive)
         if (wrongPassword(agile, h)) throw DocumentPasswordException()
         val secretKey = aesCbcDecrypt(
             agile.encryptedKeyValue,
@@ -107,7 +109,7 @@ object OfficeEncryption {
         if (secretKey.size != agile.keyBits / 8) throw IOException("invalid key size")
 
         val packageSize = cfb.streamSize(ENCRYPTED_PACKAGE) ?: throw IOException("EncryptedPackage not found")
-        decryptPackage(cfb, packageSize, secretKey, agile.keyDataSalt, agile.hashName, target)
+        decryptPackage(cfb, packageSize, secretKey, agile.keyDataSalt, agile.hashName, target, ensureActive)
     }
 
     private fun wrongPassword(agile: AgileInfo, h: ByteArray): Boolean {
@@ -133,6 +135,7 @@ object OfficeEncryption {
         keyDataSalt: ByteArray,
         hashName: String,
         target: File,
+        ensureActive: () -> Unit,
     ) {
         val header = cfb.read(ENCRYPTED_PACKAGE, 0, PACKAGE_SIZE_HEADER)
         val totalSize = u32(header, 0) or (u32(header, 4) shl 32)
@@ -143,6 +146,7 @@ object OfficeEncryption {
             var remaining = totalSize
             var segment = 0
             while (remaining > 0) {
+                ensureActive()
                 val available = packageSize - offset
                 if (available <= 0) throw IOException("truncated encrypted package")
                 val chunkSize = minOf(SEGMENT_LENGTH.toLong(), available).toInt()
@@ -210,6 +214,7 @@ object OfficeEncryption {
         password: String,
         target: File,
         newParserFactory: () -> XmlPullParser,
+        ensureActive: () -> Unit,
     ) {
         val entries = parseOdfManifest(openStream, newParserFactory).associateBy { it.path }
         openStream().use { input ->
@@ -220,7 +225,7 @@ object OfficeEncryption {
                         if (entry.isDirectory) continue
                         val data = readBounded(zip)
                         val encryption = entries[entry.name]?.encryption
-                        val plain = if (encryption == null) data else decryptOdfEntry(data, encryption, password)
+                        val plain = if (encryption == null) data else decryptOdfEntry(data, encryption, password, ensureActive)
                         out.putNextEntry(java.util.zip.ZipEntry(entry.name))
                         out.write(plain)
                         out.closeEntry()
@@ -230,12 +235,17 @@ object OfficeEncryption {
         }
     }
 
-    private fun decryptOdfEntry(data: ByteArray, encryption: OdfEncryption, password: String): ByteArray {
+    private fun decryptOdfEntry(
+        data: ByteArray,
+        encryption: OdfEncryption,
+        password: String,
+        ensureActive: () -> Unit,
+    ): ByteArray {
         // The manifest sets the work the derivation does, so it is checked here too, not only for the prompt.
         if (!supportedOdf(encryption)) throw IOException("unsupported encryption")
         if (data.size % AES_BLOCK != 0) throw IOException("invalid encrypted entry")
         val startKey = startKey(password, encryption.startKeyName)
-        val key = pbkdf2Sha1(startKey, encryption.salt, encryption.iterationCount, encryption.keySize)
+        val key = pbkdf2Sha1(startKey, encryption.salt, encryption.iterationCount, encryption.keySize, ensureActive)
         val decrypted = aesCbcDecrypt(data, key, encryption.iv)
         val compressed = unpad(decrypted)
         verifyOdfChecksum(compressed, encryption)
@@ -341,13 +351,20 @@ object OfficeEncryption {
         }
     }
 
-    private fun deriveIteratedHash(password: String, salt: ByteArray, hashName: String, spinCount: Int): ByteArray {
+    internal fun deriveIteratedHash(
+        password: String,
+        salt: ByteArray,
+        hashName: String,
+        spinCount: Int,
+        ensureActive: () -> Unit = {},
+    ): ByteArray {
         if (spinCount < 0 || spinCount > MAX_SPIN_COUNT) throw IOException("unsupported spin count")
         val md = MessageDigest.getInstance(jcaHash(hashName))
         md.update(salt)
         md.update(password.toByteArray(Charsets.UTF_16LE))
         var h = md.digest()
         for (i in 0 until spinCount) {
+            if (i % KDF_CHECK_INTERVAL == 0) ensureActive()
             md.reset()
             md.update(le32(i))
             md.update(h)
@@ -364,7 +381,13 @@ object OfficeEncryption {
         return md.digest().copyOf(keyBits / 8)
     }
 
-    private fun pbkdf2Sha1(password: ByteArray, salt: ByteArray, iterations: Int, dkLen: Int): ByteArray {
+    internal fun pbkdf2Sha1(
+        password: ByteArray,
+        salt: ByteArray,
+        iterations: Int,
+        dkLen: Int,
+        ensureActive: () -> Unit = {},
+    ): ByteArray {
         if (iterations <= 0 || dkLen <= 0) throw IOException("invalid key derivation parameters")
         val mac = Mac.getInstance("HmacSHA1")
         mac.init(SecretKeySpec(password, "HmacSHA1"))
@@ -380,6 +403,7 @@ object OfficeEncryption {
             mac.doFinal(u, 0)
             System.arraycopy(u, 0, t, 0, hLen)
             for (round in 1 until iterations) {
+                if (round % KDF_CHECK_INTERVAL == 0) ensureActive()
                 mac.reset()
                 mac.update(u)
                 mac.doFinal(u, 0)
@@ -536,6 +560,7 @@ private const val ALGORITHM_AES256_CBC = "aes256-cbc"
 private const val CHECKSUM_BYTES = 1024
 
 private const val MAX_SPIN_COUNT = 5_000_000
+private const val KDF_CHECK_INTERVAL = 4096
 
 /** An order of magnitude over what producers write (LibreOffice: 100,000); one derivation runs per entry. */
 private const val MAX_PBKDF2_ITERATIONS = 1_000_000

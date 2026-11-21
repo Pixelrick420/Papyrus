@@ -16,13 +16,20 @@ object DocTextExtractor {
     const val MAX_TOTAL_CHARS = 16_000_000
 
     private const val MAX_CLX_BYTES = 16 * 1024 * 1024
+    private const val MAX_WORD_STREAM_BYTES = 64 * 1024 * 1024
+    private const val MAX_TABLE_STREAM_BYTES = 16 * 1024 * 1024
 
     // [openStream] must return a fresh stream on every call. [maxBlocks] bounds the piece loop: the viewer keeps the full [MAX_BLOCKS], a thumbnail only its first lines.
-    fun extract(openStream: () -> InputStream, maxBlocks: Int = MAX_BLOCKS): List<OfficeBlock> {
-        val fileLength = probeLength(openStream)
-        val cfb = CompoundFile(openStream, fileLength)
+    fun extract(
+        openStream: () -> InputStream,
+        maxBlocks: Int = MAX_BLOCKS,
+        knownLength: Long? = null,
+    ): List<OfficeBlock> {
+        val cfb = CompoundFile(openStream, knownLength)
+        cfb.cacheStream(DocFib.WORD_DOCUMENT, MAX_WORD_STREAM_BYTES)
         val fib = DocFibParser.parse(cfb)
         if (fib.ccpText == 0) return emptyList()
+        cfb.cacheStream(fib.tableStream, MAX_TABLE_STREAM_BYTES)
         val pieces = DocPieceTable.parse(readClx(cfb, fib))
         val builder = DocBlockBuilder(maxBlocks, DocListTables.parse(cfb, fib))
         decodePieces(cfb, fib, pieces, DocFormattingParser.open(cfb, fib), builder)
