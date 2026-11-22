@@ -84,7 +84,7 @@ internal fun extractSpanHiddenText(span: Any): String? {
     // A footnote's anchor is made up by the preprocessor, not written by the author: searching for "note" must not
     // light up every marker whose label was `[^note]`.
     if (span is LinkSpan) return span.link.takeUnless { MarkdownFootnotes.isAnchor(it) }
-    if (span is AsyncDrawableSpan) return span.drawable?.destination
+    if (span is AsyncDrawableSpan) return span.drawable.destination
     if (span is URLSpan) {
         return try {
             span.url

@@ -207,7 +207,7 @@ private class PptxReader(
     fun read(openStream: () -> InputStream): PptxPackage {
         val cached = mediaDir?.let { File(it, "source-${UUID.randomUUID()}.pptx") }
         if (cached != null) {
-            mediaDir?.mkdirs()
+            mediaDir.mkdirs()
             try {
                 val buffer = ByteArray(MEDIA_COPY_BUFFER)
                 var copied = 0L

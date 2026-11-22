@@ -49,7 +49,7 @@ govern the component itself.
    The Markdown renderer: Spannable output, no WebView or network. Only `data:` URI images are loaded;
    the http/https scheme handlers are removed at build time so no build can fetch from a document.
 
-6. org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2
+6. org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0
    License: Apache License, Version 2.0
    Bundled component: yes
    Coroutines on Android, used throughout the ViewModel and viewer for asynchronous work.

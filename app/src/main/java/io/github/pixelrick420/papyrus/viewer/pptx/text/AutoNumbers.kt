@@ -202,8 +202,8 @@ internal class AutoNumbers {
             rest == 15 -> builder.append("טו")
             rest == 16 -> builder.append("טז")
             else -> {
-                HEBREW_TENS[rest / 10]?.let(builder::append)
-                HEBREW_UNITS[rest % 10]?.let(builder::append)
+                HEBREW_TENS[rest / 10].let(builder::append)
+                HEBREW_UNITS[rest % 10].let(builder::append)
             }
         }
         return builder.toString()
