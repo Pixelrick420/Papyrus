@@ -9,14 +9,13 @@ import org.acra.sender.ReportSenderException
 import org.acra.sender.ReportSenderFactory
 import java.io.File
 import java.io.IOException
-import java.util.UUID
 import java.util.regex.Pattern
 
 class LocalFileReportSender : ReportSender {
     override fun send(context: Context, errorContent: CrashReportData) {
         try {
             val dir = CrashReportStore.directory(context).apply { mkdirs() }
-            val id = errorContent.getString(ReportField.REPORT_ID) ?: UUID.randomUUID().toString()
+            val id = errorContent.getString(ReportField.REPORT_ID)
             // Any free-text field can carry a document path, not only the stack trace.
             redactReport(errorContent, listOf(context.filesDir.absolutePath, context.cacheDir.absolutePath))
             File(dir, "crash-${System.currentTimeMillis()}-$id.json").writeText(errorContent.toJSON())
