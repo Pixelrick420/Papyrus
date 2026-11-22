@@ -66,15 +66,7 @@ class PdfPageSource private constructor(
     }
 
     override suspend fun loadAspectRatios(): List<Float> = withContext(dispatcher) {
-        lock.withLock {
-            List(pageCount) { i ->
-                try {
-                    engine.open(i).use { sanitizedAspect(it.width.toFloat(), it.height.toFloat()) }
-                } catch (_: Exception) {
-                    DEFAULT_ASPECT
-                }
-            }
-        }.also { _aspectRatios.value = it }
+        List(pageCount) { loadAspectRatio(it) }.also { _aspectRatios.value = it }
     }
 
     internal suspend fun loadAspectRatio(index: Int): Float =

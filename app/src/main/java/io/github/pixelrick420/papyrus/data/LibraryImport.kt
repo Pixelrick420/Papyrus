@@ -112,7 +112,12 @@ object LibraryImport {
         val temp = File.createTempFile(TEMP_PREFIX, TEMP_SUFFIX, target.parentFile)
         var moved = false
         try {
-            openStream().use { input -> temp.outputStream().use { output -> input.copyTo(output) } }
+            openStream().use { input ->
+                temp.outputStream().use { output ->
+                    input.copyTo(output)
+                    output.channel.force(true)
+                }
+            }
             if (!temp.renameTo(target)) throw IOException("Couldn't move the imported file into place")
             moved = true
         } finally {

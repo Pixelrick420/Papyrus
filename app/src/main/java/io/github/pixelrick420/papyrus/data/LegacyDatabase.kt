@@ -2,7 +2,7 @@ package io.github.pixelrick420.papyrus.data
 
 import android.content.Context
 
-/** 1.0 moved to a new database file; deleting the 0.x one avoids a Room downgrade and leaves no dead storage. */
+/** Drops the 0.x database before the current one opens; that old data is not migrated. */
 internal object LegacyDatabase {
     private const val NAME = "papyrus.db"
 

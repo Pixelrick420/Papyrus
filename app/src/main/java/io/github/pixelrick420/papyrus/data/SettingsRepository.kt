@@ -127,7 +127,9 @@ class SettingsRepository(context: Context) {
 
     // Clearing the file alone leaves values this process already read in place.
     fun resetToDefaults() {
+        val promptShown = notificationPromptShown()
         prefs.edit { clear() }
+        if (promptShown) markNotificationPromptShown()
         _settings.value = AppSettings()
     }
 

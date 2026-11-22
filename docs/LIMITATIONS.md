@@ -58,7 +58,7 @@
 
 - UTF-8 and single-byte files have no size cap: text is decoded in chunks as it scrolls.
 - UTF-16, multi-byte East Asian files and files the provider will not reopen twice are held in memory and capped.
-- Recognised code files get a full pass at open to seed lexer states for later chunks (`chunkStartStates` in `SyntaxHighlighter.kt`); a chunk over `MAX_HIGHLIGHT_CHARS` (20,000) stays plain.
+- Recognised code files seed lexer states for later chunks on demand (`lazyChunkStartStates` / `ensure(index)` in `SyntaxHighlighter.kt`); a chunk over `MAX_HIGHLIGHT_CHARS` (20,000) stays plain.
 
 ## Read aloud
 

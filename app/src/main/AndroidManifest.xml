@@ -99,7 +99,7 @@
             </intent-filter>
         </activity>
 
-        <!-- Shares filesDir/imports as a content:// URI. -->
+        <!-- Shares filesDir/imports and crash-reports as content:// URIs. -->
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

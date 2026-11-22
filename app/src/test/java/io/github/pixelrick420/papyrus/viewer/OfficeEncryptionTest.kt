@@ -288,8 +288,8 @@ class OfficeEncryptionTest {
     fun `a bomb ahead of the odf manifest is not walked to find it`() {
         val bytes = odfWithExtraEntry("Pictures/bomb.bin", ByteArray(8 * 1024 * 1024), first = true)
 
-        // Not offered a password prompt: the manifest was never reached, and the extractor refuses the file.
-        assertEquals(OfficeEncryption.Party.NOT_ENCRYPTED, odfStatus(bytes))
+        // The bomb stops the manifest scan: an error, never a password prompt.
+        assertEquals(OfficeEncryption.Party.ERROR, odfStatus(bytes))
     }
 
     @Test

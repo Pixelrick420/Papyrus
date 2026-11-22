@@ -24,7 +24,7 @@ class DocumentPasswordException : IOException("Password-protected document")
 
 object OfficeEncryption {
 
-    enum class Party { NOT_ENCRYPTED, PASSWORD, UNSUPPORTED }
+    enum class Party { NOT_ENCRYPTED, PASSWORD, UNSUPPORTED, ERROR }
 
     // [newParserFactory] is injected because [Xml.newPullParser] is a platform stub, so a JVM unit
     // test would get null instead of a parser (same seam `OfficeTextExtractor` uses).
@@ -41,20 +41,23 @@ object OfficeEncryption {
                 else -> Party.NOT_ENCRYPTED
             }
         } catch (expected: IOException) {
-            Party.NOT_ENCRYPTED
+            Party.ERROR
         } catch (expected: XmlPullParserException) {
-            Party.NOT_ENCRYPTED
+            Party.ERROR
         } catch (expected: GeneralSecurityException) {
-            Party.NOT_ENCRYPTED
+            Party.ERROR
         } catch (expected: IllegalArgumentException) {
-            Party.NOT_ENCRYPTED
+            Party.ERROR
         }
 
     fun isEncrypted(
         openStream: () -> InputStream,
         newParserFactory: () -> XmlPullParser = { Xml.newPullParser() },
         knownLength: Long? = null,
-    ): Boolean = status(openStream, newParserFactory, knownLength) != Party.NOT_ENCRYPTED
+    ): Boolean = when (status(openStream, newParserFactory, knownLength)) {
+        Party.PASSWORD, Party.UNSUPPORTED -> true
+        Party.NOT_ENCRYPTED, Party.ERROR -> false
+    }
 
     fun decrypt(
         openStream: () -> InputStream,

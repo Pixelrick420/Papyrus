@@ -133,6 +133,7 @@ internal sealed interface PlatformBoundary {
 
 internal object PdfEngineFactory {
 
+    @Suppress("TooGenericExceptionCaught") // Vendors fail platform engine construction in different ways.
     fun create(descriptor: ParcelFileDescriptor, capabilities: PdfCapabilities): PdfEngine {
         if (capabilities.kind != PdfEngineKind.LEGACY) {
             try {
@@ -145,6 +146,8 @@ internal object PdfEngineFactory {
                 // The capability check found the API level, but not its class or method on this
                 // build: rendering still works, so one engine down is better than no document.
                 Log.w(TAG, "platform PDF engine missing: ${e.javaClass.simpleName}")
+            } catch (e: Exception) {
+                Log.w(TAG, "platform PDF engine failed: ${e.javaClass.simpleName}")
             }
         }
         return PdfEngineLegacy(PdfRenderer(descriptor))

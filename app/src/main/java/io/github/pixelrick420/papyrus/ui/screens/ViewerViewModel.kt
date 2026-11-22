@@ -1008,6 +1008,7 @@ class ViewerViewModel(
                 }
                 OfficeEncryption.Party.PASSWORD -> ViewerContent.NeedsPassword()
                 OfficeEncryption.Party.UNSUPPORTED -> ViewerContent.Failed(UiText(R.string.viewer_error_password))
+                OfficeEncryption.Party.ERROR -> ViewerContent.Failed(UiText(R.string.viewer_error_generic))
             }
             DocumentFormat.EPUB -> try {
                 val book = EpubExtractor(mediaDir = mediaDir).extract({ openStream(uri) })
@@ -1031,6 +1032,7 @@ class ViewerViewModel(
                     val blocks = DocTextExtractor.extract({ openStream(uri) }, knownLength = doc.sizeBytes)
                     if (blocks.isEmpty()) ViewerContent.Failed(UiText(R.string.viewer_error_empty)) else ViewerContent.Office(blocks)
                 }
+                OfficeEncryption.Party.ERROR -> ViewerContent.Failed(UiText(R.string.viewer_error_generic))
                 else -> ViewerContent.Failed(UiText(R.string.viewer_error_password))
             }
             DocumentFormat.PPTX -> when (OfficeEncryption.status({ openStream(uri) })) {
@@ -1039,6 +1041,7 @@ class ViewerViewModel(
                 }
                 OfficeEncryption.Party.PASSWORD -> ViewerContent.NeedsPassword()
                 OfficeEncryption.Party.UNSUPPORTED -> ViewerContent.Failed(UiText(R.string.viewer_error_password))
+                OfficeEncryption.Party.ERROR -> ViewerContent.Failed(UiText(R.string.viewer_error_generic))
             }
             DocumentFormat.UNKNOWN -> ViewerContent.Failed(UiText(R.string.viewer_error_unsupported))
         }

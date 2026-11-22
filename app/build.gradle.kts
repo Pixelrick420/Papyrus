@@ -49,7 +49,7 @@ android {
     namespace = "io.github.pixelrick420.papyrus"
     compileSdk = 37
 
-    // Pinned so `stripReleaseDebugSymbols` finds a strip tool; AGP's NDK default (27.0.120779) isn't installed here.
+    // Pinned so `stripReleaseDebugSymbols` finds an installed strip tool.
     ndkVersion = "28.2.13676358"
 
     defaultConfig {

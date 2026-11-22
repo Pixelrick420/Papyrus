@@ -7,7 +7,7 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-/** 1.0 starts a new database generation: 0.x databases are deleted before this one opens, never downgraded. */
+/** Current databases start at schema 1 and migrate in place to 2; 0.x data is not carried over. */
 @Database(
     entities = [
         DocumentEntity::class,
