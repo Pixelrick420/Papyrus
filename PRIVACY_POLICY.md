@@ -9,5 +9,6 @@ Papyrus does not collect user data.
   locations are redacted before saving. Delete reports in **Settings -> Crash Reports**.
 - Search text is stored in a private on-device database, removed with the document, and not kept for protected
   documents, files over the size cap or text past the indexing cap.
-- Highlights, notes, bookmarks and reading positions stay in that database, are removed with the document, and never
-  leave the device.
+- Notes, bookmarks and reading positions stay in that database, are removed with the document, and never leave the
+  device. Highlights also stay there, except that **Save highlighted copy** writes plain highlights into a PDF copy;
+  notes are not exported.

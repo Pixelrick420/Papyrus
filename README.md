@@ -135,21 +135,21 @@ because the `release` build type is unsigned unless all four `PAPYRUS_*` signing
 fails outright if any configuration resolves a Google Play Services, Firebase, ML Kit, Play or data-transport
 dependency, so F-Droid compliance is enforced rather than documented.
 
-Test commands, the emulator suite and CI detail: [docs/TESTING.md](docs/TESTING.md). Release, tag and signing rules:
-[docs/RELEASING.md](docs/RELEASING.md).
+CI, tag and release steps are defined in `.github/workflows/build.yml`; signing properties are described in
+`app/build.gradle.kts`.
 
 ## Known limitations
 
 - **PowerPoint** slides cover text, tables, shapes, pictures, charts, SmartArt, WordArt and effects; speaker notes are
   not shown, EMF+ pictures show a placeholder, and 3-D effects stay flat ([details](docs/LIMITATIONS.md#powerpoint)).
-- **DOC** files carry paragraphs and tables only: no images, and headings arrive as plain paragraphs. Encrypted and
-  Word 6/95 files are rejected.
+- **DOC** files carry paragraphs and tables only: no images. Styled headings render as headings and appear in the
+  outline; encrypted and Word 6/95 files are rejected.
 - **EPUB** fixed-layout books keep page boundaries and page-sized pictures, but absolutely positioned text reflows;
   styles are read for bold, italic and alignment only, and SVG support is a straight-shape subset.
-- **Password-protected** files open as PDF, `.docx`/`.pptx` (ECMA-376 Agile) or `.odt` (ODF 1.2 AES-256-CBC);
-  newer ODF 1.3 and legacy binary schemes are reported but not opened.
-- **PDF form fields** need Android 12 or newer with the PDF SDK form extension, and saving highlights into a copy needs
-  a newer extension; XFA forms cannot be filled and signature fields cannot be signed.
+- **Password-protected** files open as PDF, `.docx`/`.pptx` (ECMA-376 Agile) or `.odt` (ODF with AES-256-CBC,
+  PBKDF2); unsupported ODF encryption and legacy binary schemes are reported but not opened.
+- **PDF form fields** need Android 15 (API 35) or Android 12+ with PDF SDK extension 13+; saving highlights into a
+  copy needs extension 18+ or API 37+. XFA forms cannot be filled and signature fields cannot be signed.
 - **PDF notes** stay in Papyrus; a saved copy carries plain highlights only. A PDF over 128 MB is not read for an
   outline, though a cached one is still shown.
 - **Markdown** shows an image only as a `data:` URI, since the app never touches the network; every other image falls
@@ -167,10 +167,12 @@ Per-format caveats, including the EPUB, PDF and search detail behind these lines
 ## Architecture
 
 Documents arrive from the file picker or another app, are identified by extension, MIME type and a short content
-sniff, and open in a viewer that renders entirely on-device. Picked files join a Room-backed library with reading
-positions, bookmarks, highlights and a full-text index; documents handed over by another app join only when
-**Autosave external docs** is on. Read aloud reuses the text the viewer already extracted. The flowchart, schema
-diagram and search-indexer detail are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+sniff, and open in a viewer that renders entirely on-device. Picked files normally join a Room-backed library with
+reading positions, bookmarks, highlights and a full-text index; encrypted files with **Autosave encrypted docs** off
+and files whose read grant cannot be persisted are handed over transiently instead. Another app's handover joins only
+when the matching autosave setting is on (**Autosave external docs**, or **Autosave encrypted docs** for a protected
+file). Read aloud reuses the text the viewer already extracted. The flowchart, schema diagram and search-indexer
+detail are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Website
 
@@ -180,7 +182,7 @@ commands, pinned versions and CI detail are in [web/README.md](web/README.md).
 ## Contributing
 
 Issues and pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for the checks to run, the licensing rules
-for the PPTX feature, and the accessibility and testing guides.
+for the PPTX feature, and the accessibility guide.
 
 ## License
 

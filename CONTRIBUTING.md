@@ -2,8 +2,8 @@
 
 Issues and pull requests are welcome.
 
-- Run `./gradlew check` (unit tests, lint, detekt) before sending a PR; see [docs/TESTING.md](docs/TESTING.md).
-- Keep changes focused; put per-format and CI detail in `docs/`, not the README.
+- Run `./gradlew check` (unit tests, lint, detekt) before sending a PR.
+- Keep changes focused; put per-format detail in `docs/`, not the README.
 - Accessibility changes must follow [ACCESSIBILITY.md](ACCESSIBILITY.md) and `AccessibilitySemanticsTest`.
 - Screenshots live in `fastlane/metadata/android/en-US/images/`.
 

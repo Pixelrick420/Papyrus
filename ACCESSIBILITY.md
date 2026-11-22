@@ -22,7 +22,8 @@ checked by hand with the script below.
   as disabled.
 - Snackbars are one polite region including Undo; a second message waits. An empty two-pane placeholder is one plain
   text node.
-- `FocusOrderTest` pins bar order; interactive targets are at least 48dp via `minimumInteractiveComponentSize`.
+- `FocusOrderTest` pins bar order; `AccessibilitySemanticsTest` checks 48dp touch bounds with its `minTouchTarget`
+  matcher.
 
 ## Running the suite
 

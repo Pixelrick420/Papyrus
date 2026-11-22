@@ -8,10 +8,11 @@
 
 ## Word and OpenDocument
 
-- DOC carries paragraphs and tables only: no images, headings become paragraphs; encrypted and Word 6/95 files are
-  rejected.
-- Protected files open as `.docx`/`.pptx` (ECMA-376 Agile) or `.odt` (ODF 1.2 AES-256-CBC), plus PDF. ODF 1.3
-  and legacy schemes are reported as protected but not opened.
+- DOC carries paragraphs and tables only: no images. Styled headings render as headings and appear in the outline;
+  encrypted and Word 6/95 files are rejected.
+- Protected files open as `.docx`/`.pptx` (ECMA-376 Agile) or `.odt` (ODF with AES-256-CBC and PBKDF2), plus PDF.
+  Unsupported ODF encryption and legacy schemes are reported as protected but not opened; ODF files are gated by their
+  encryption parameters, not the ODF version.
 
 ## EPUB
 
@@ -25,8 +26,8 @@
 ## PDF
 
 - Outlines are skipped above 128 MB (`MAX_OUTLINE_FILE_BYTES` in `ViewerViewModel.kt`); a cached outline still shows.
-- Form fields need Android 12+ with the PDF SDK form extension; writing highlights into a saved copy needs the newer
-  extension built in from Android 17. Elsewhere text, find and selection fall back to PDFBox. XFA cannot be filled,
+- Form fields need Android 15 (API 35) or Android 12+ with PDF SDK extension 13+; writing highlights into a saved copy
+  needs extension 18+ or API 37+. Elsewhere text, find and selection fall back to PDFBox. XFA cannot be filled,
   signatures cannot be signed, and field count is capped.
 - Notes are stored and drawn in Papyrus only; saved copies carry plain highlights.
 

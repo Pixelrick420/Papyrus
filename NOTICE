@@ -37,7 +37,7 @@ govern the component itself.
 3. androidx.* / Jetpack Compose / Room / Navigation / Lifecycle
    License: Apache License, Version 2.0
 
-4. ch.acra:acra-core:5.12.0
+4. ch.acra:acra-core:5.14.2
    License: Apache License, Version 2.0 / MIT
    Bundled component: yes
    Local-only crash reporting. `auto-service` is excluded at build time.

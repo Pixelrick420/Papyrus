@@ -8,7 +8,7 @@ Labels match the app; defaults are the app's own.
 - **Syntax highlighting**: comments, strings, keywords and numbers in source/config files.
 - **Line numbers**: gutter in text, logs and code.
 - **Wrap long lines**: wrap at screen edge; off scrolls sideways.
-- **Hyphenation**: syllables in `.txt` only; never logs or code.
+- **Hyphenation**: syllables in prose text files, not code or `.log`; a `.txt` that looks like code is still prose.
 - **Pretty print structured files**: indent JSON, XML, HTML and SVG at the chosen **Tab size** (2, 3, 4 or 8 spaces);
   the stored file is unchanged and oversized files open as stored.
 - **Autosave external docs**: add another app's document to the library; off uses the viewer's **Save to library**.

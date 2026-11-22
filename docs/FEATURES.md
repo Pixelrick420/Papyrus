@@ -23,11 +23,12 @@ The README is the landing page. This is the reference for behavior that needs ex
   in Papyrus; **Save highlighted copy** writes plain highlights only through the system picker.
 - **PDF forms**: AcroForm fields are offered where the platform exposes them; edits affect the open document until
   **Save a copy**. XFA cannot be filled; signatures can be seen but not signed.
-- **Read aloud** speaks pages, slides, chunks, blocks, markdown paragraphs and screenfuls; it shades sentence/word
+- **Read aloud** speaks pages, slides, chunks, blocks and markdown paragraphs; it shades sentence/word
   where the engine reports timing, works with the screen off, pauses for calls/other audio/headphone unplug, and
-  exposes play/pause, skip, lock, speed and stop. Long units are split into sentence-safe utterances below
-  `TtsUnitSplitter.MAX_UNIT_CHARS` (3,500), Office tables are spoken row by row, engine rejection is shown as an error,
-  and media controls show the document title. CSV has no speech units.
+  exposes play/pause, skip, lock, speed and stop. Long units are split at sentence bounds where possible, otherwise
+  at whitespace or a hard cut, into utterances of at most `TtsUnitSplitter.MAX_UNIT_CHARS` (3,500). Office tables are
+  spoken row by row, engine rejection is shown as an error, and media controls show the document title. CSV has no
+  speech units.
 - **Text chunks** show a blank placeholder while loading and "Couldn't read this part. Tap to retry." on failure.
 - **PDF page sizes** load lazily: page one sets the initial layout, then the rest arrive in chunks.
 - **Links**: `http`, `https`, `mailto`, `tel` and PDF internal links. PDF links are labelled keyboard/TalkBack stops;
@@ -57,10 +58,11 @@ The README is the landing page. This is the reference for behavior that needs ex
 - No network or storage permission. Foreground-service and media-playback permissions keep speech running with the
   screen off; `POST_NOTIFICATIONS` is asked on first read aloud (Android 13+). A `<queries>` entry exposes the chosen
   TTS engine.
-- EPUB, Word, OpenDocument and PPTX ZIPs are read with entry, size and ratio limits; zip-slip and bombs fail the file.
-  Bytes inflated only to skip unused entries use a separate 2 GiB budget, so a large embedded video does not fail the
-  document. The ratio check still covers skipped bytes.
-- Import names are capped at 120 UTF-16 code units and 200 UTF-8 bytes; the detected extension is preserved.
+- EPUB, Word, OpenDocument and PPTX ZIPs are read with entry, size and ratio limits; bombs fail the file, unsafe EPUB
+  entry names are skipped and Office media names are reduced to a basename. Bytes inflated only to skip unused entries
+  use a separate 2 GiB budget, so a large embedded video does not fail the document. The ratio check still covers
+  skipped bytes.
+- Import name stems are capped at 120 UTF-16 code units and 200 UTF-8 bytes before the detected extension is appended.
 - Crash reports are local ACRA JSON with paths, URIs and storage locations redacted. Highlights and notes stay in the
   private database unless a copy is saved.
 
