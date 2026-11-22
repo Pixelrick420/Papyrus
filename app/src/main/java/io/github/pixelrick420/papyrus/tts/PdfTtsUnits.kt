@@ -9,6 +9,7 @@ class PdfTtsUnits(
     private val lock = Any()
     private val published = ArrayList<TtsUnit>()
     private var nextPage = 0
+    private var pagesWithUnits = 0
 
     override val size: Int get() = synchronized(lock) { published.size }
 
@@ -20,15 +21,19 @@ class PdfTtsUnits(
             nextPage++
         }
         val additions = TtsDocumentSource.paragraphs(extract(page)).map { TtsUnit(it.text, page, it.start) }
-        synchronized(lock) { published.addAll(additions) }
+        synchronized(lock) {
+            published.addAll(additions)
+            if (additions.isNotEmpty()) pagesWithUnits++
+        }
         return true
     }
 
     suspend fun publishThrough(page: Int) {
-        while (page < pageCount && publishedPages() <= page) publishNext()
+        if (page !in 0 until pageCount) return
+        while (synchronized(lock) { nextPage <= page }) publishNext()
     }
 
-    fun publishedPages(): Int = synchronized(lock) { nextPage }
+    fun publishedPages(): Int = synchronized(lock) { pagesWithUnits }
 
     override fun equals(other: Any?): Boolean = this === other
 

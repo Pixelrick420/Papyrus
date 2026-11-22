@@ -46,8 +46,9 @@ class LocalFileReportSender : ReportSender {
 
         internal fun redact(text: String, roots: Collection<String>): String = redact(text, rootRegexes(roots))
 
+        // A space stays in the path only when the next token looks like a file or directory.
         private fun rootRegexes(roots: Collection<String>): List<Regex> =
-            roots.map { Regex(Pattern.quote(it) + """.*""") }
+            roots.map { Regex(Pattern.quote(it) + """(?:[^\s]|\s(?=[^\s]*[./]))*""") }
 
         private fun redact(text: String, rootRegexes: List<Regex>): String =
             rootRegexes.fold(text) { acc, root -> acc.replace(root, "[redacted]") }

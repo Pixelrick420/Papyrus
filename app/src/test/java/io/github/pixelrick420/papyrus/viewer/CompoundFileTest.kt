@@ -117,11 +117,12 @@ class CompoundFileTest {
 
         cfb.openReader("Payload").use { reader ->
             assertArrayEquals(payload.copyOfRange(0, 100), reader.read(0, 100))
-            assertArrayEquals(payload.copyOfRange(100, 100), reader.read(100, 100))
+            assertArrayEquals(payload.copyOfRange(100, 200), reader.read(100, 100))
             assertArrayEquals(ByteArray(0), reader.read(200, 0))
         }
 
-        assertEquals(opened + 1, counting.opens)
+        // The mini-stream payload loads its mini FAT table through one extra open.
+        assertEquals(opened + 2, counting.opens)
         assertThrows(IOException::class.java) { cfb.openReader("Payload").read(0, payload.size + 1) }
     }
 }

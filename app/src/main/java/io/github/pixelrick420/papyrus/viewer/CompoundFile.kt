@@ -135,7 +135,8 @@ internal class CompoundFile(private val openStream: () -> InputStream, knownLeng
     inner class Reader internal constructor(private val path: String, private val entry: Entry) : Closeable {
         private val cached = cachedStreams[path.lowercase()]
         private val input: InputStream? = if (cached == null) openStream() else null
-        private var position = 0L
+        private var streamPosition = 0L
+        private var filePosition = 0L
         private var closed = false
 
         fun read(offset: Long, length: Int): ByteArray {
@@ -143,10 +144,11 @@ internal class CompoundFile(private val openStream: () -> InputStream, knownLeng
             checkBounds(entry, path, offset, length)
             if (length == 0) return ByteArray(0)
             cached?.let { return it.copyOfRange(offset.toInt(), offset.toInt() + length) }
-            if (offset < position) throw IOException("reader requires forward-only reads")
+            if (offset < streamPosition) throw IOException("reader requires forward-only reads")
             val out = ByteArray(length)
             val stream = input ?: throw IOException("reader is closed")
-            position = copyChunks(chunksFor(entry, offset, length), out, stream, position)
+            filePosition = copyChunks(chunksFor(entry, offset, length), out, stream, filePosition)
+            streamPosition = offset + length
             return out
         }
 

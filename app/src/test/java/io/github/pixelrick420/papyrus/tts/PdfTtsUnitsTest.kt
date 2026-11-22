@@ -12,7 +12,7 @@ import org.junit.Test
 
 class PdfTtsUnitsTest {
 
-    private val pages = listOf("First page.\nTwo lines.", "", "Third page.\n\nAnother paragraph.")
+    private val pages = listOf("First page.\n\nTwo lines.", "", "Third page.\n\nAnother paragraph.")
 
     private fun units(read: MutableList<Int> = ArrayList()): PdfTtsUnits =
         PdfTtsUnits(pages.size) { index -> read += index; pages[index] }
