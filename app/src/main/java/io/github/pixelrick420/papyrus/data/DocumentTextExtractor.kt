@@ -98,7 +98,7 @@ class DocumentTextExtractor(
     }
 
     private fun readDoc(uri: Uri, sizeBytes: Long): ExtractedText {
-        if (OfficeEncryption.isEncrypted({ openStream(uri) })) {
+        if (OfficeEncryption.isEncrypted({ openStream(uri) }, knownLength = sizeBytes)) {
             return ExtractedText("", TextIndexState.SKIPPED)
         }
         return indexable(officeBlocksToText(DocTextExtractor.extract({ openStream(uri) }, knownLength = sizeBytes), MAX_INDEX_CHARS))

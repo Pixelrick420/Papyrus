@@ -6,7 +6,7 @@ internal class Autolink(val start: Int, val end: Int, val destination: String)
 internal object Autolinks {
 
     private val URL = Regex("""(?<![\w@])(?:https?://|www\.)[^\s<>\u00a0]+""", RegexOption.IGNORE_CASE)
-    private val EMAIL = Regex("""[A-Za-z0-9._%+\-]+@[A-Za-z0-9\-]+(?:\.[A-Za-z0-9\-]+)*\.[A-Za-z]{2,}""")
+    private val EMAIL = Regex("""(?<![A-Za-z0-9._%+\-])[A-Za-z0-9._%+\-]+@[A-Za-z0-9\-]+(?:\.[A-Za-z0-9\-]+)*\.[A-Za-z]{2,}""")
     private const val WWW = "www."
 
     fun find(text: String): List<Autolink> {

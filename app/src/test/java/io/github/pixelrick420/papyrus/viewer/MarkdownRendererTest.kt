@@ -74,4 +74,26 @@ class MarkdownRendererTest {
         assertEquals(1, factory.ranges.size)
         assertFalse(factory.ranges[0].isBlock)
     }
+
+    @Test
+    fun `latex factory ignores dollars in code spans`() {
+        val factory = LatexSpanFactory(null, "`echo ${'$'}${'$'}` and `echo ${'$'}${'$'}`")
+        assertEquals(0, factory.ranges.size)
+    }
+
+    @Test
+    fun `latex factory ignores dollars in comments fences and link destinations`() {
+        val source = "<!-- ${'$'}${'$'} -->\n```\n${'$'}${'$'}ignored${'$'}${'$'}\n```\n" +
+            "[link](http://x/${'$'}${'$'}z) and ${'$'}${'$'}E=mc^2${'$'}${'$'}"
+        val ranges = LatexSpanFactory(null, source).ranges
+        assertEquals(1, ranges.size)
+        assertEquals("E=mc^2", ranges[0].latex)
+    }
+
+    @Test
+    fun `latex factory keeps a formula that contains backticks`() {
+        val factory = LatexSpanFactory(null, "a ${'$'}${'$'}x `y` z${'$'}${'$'} b")
+        assertEquals(1, factory.ranges.size)
+        assertEquals("x `y` z", factory.ranges[0].latex)
+    }
 }

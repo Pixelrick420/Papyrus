@@ -198,13 +198,13 @@ class ArchiveRobustnessTest {
     }
 
     @Test
-    fun `an epub with an entry that climbs out is refused as a whole`() {
+    fun `an epub with an entry that climbs out is skipped and the book still reads`() {
         for (name in slipNames.filterNot { it == ".." || it == "../" } + "OEBPS/../../x") {
             val bytes = EpubFixtures.epub(listOf(EpubFixtures.chapter("<p>x</p>")), extra = mapOf(name to byteArrayOf(1)))
 
-            val outcome = runCatching { epub(bytes) }.exceptionOrNull()
+            val book = epub(bytes)
 
-            assertTrue("'$name' gave $outcome", outcome is EpubFormatException)
+            assertTrue("'$name' gave no blocks", book.blocks.isNotEmpty())
         }
     }
 

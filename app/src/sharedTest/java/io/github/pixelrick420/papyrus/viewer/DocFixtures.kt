@@ -262,28 +262,69 @@ internal object DocFixtures {
         return out
     }
 
+    private class DirNode(val name: String, val type: Int, val start: Int, val size: Int) {
+        val children = ArrayList<DirNode>()
+        var left = NOSTREAM
+        var right = NOSTREAM
+        var child = NOSTREAM
+    }
+
     private fun directory(
         streams: Map<String, ByteArray>,
         starts: Map<String, Int>,
         rootStart: Int,
         rootSize: Int,
     ): ByteArray {
+        val nodes = ArrayList<DirNode>()
+        val root = DirNode("Root Entry", ENTRY_ROOT, rootStart, rootSize)
+        nodes += root
+        for ((path, blob) in streams) {
+            val parts = path.split('/', '\\').filter { it.isNotEmpty() }
+            var parent = root
+            for (part in parts.dropLast(1)) {
+                parent = parent.children.firstOrNull {
+                    it.type == ENTRY_STORAGE && it.name.equals(part, ignoreCase = true)
+                } ?: DirNode(part, ENTRY_STORAGE, ENDOFCHAIN, 0).also {
+                    parent.children += it
+                    nodes += it
+                }
+            }
+            val leaf = DirNode(parts.last(), ENTRY_STREAM, starts.getValue(path), blob.size)
+            parent.children += leaf
+            nodes += leaf
+        }
+        for (node in nodes) {
+            val sorted = node.children.sortedWith(compareBy<DirNode> { it.name.length }.thenBy { it.name.lowercase() })
+            if (sorted.isNotEmpty()) node.child = linkSiblings(sorted, 0, sorted.lastIndex, nodes)
+        }
         val out = ByteArrayOutputStream()
-        out.write(dirEntry("Root Entry", ENTRY_ROOT, rootStart, rootSize))
-        for ((name, blob) in streams) out.write(dirEntry(name, ENTRY_STREAM, starts.getValue(name), blob.size))
+        for (node in nodes) out.write(dirEntry(node, nodes))
         return out.toByteArray()
     }
 
-    private fun dirEntry(name: String, type: Int, start: Int, size: Int): ByteArray {
+    private fun linkSiblings(sorted: List<DirNode>, from: Int, to: Int, nodes: List<DirNode>): Int {
+        if (from > to) return NOSTREAM
+        val mid = (from + to) / 2
+        val node = sorted[mid]
+        val id = nodes.indexOf(node)
+        node.left = linkSiblings(sorted, from, mid - 1, nodes)
+        node.right = linkSiblings(sorted, mid + 1, to, nodes)
+        return id
+    }
+
+    private fun dirEntry(node: DirNode, nodes: List<DirNode>): ByteArray {
         val entry = ByteArray(ENTRY_SIZE)
-        val nameBytes = name.toByteArray(Charsets.UTF_16LE)
+        val nameBytes = node.name.toByteArray(Charsets.UTF_16LE)
         val copied = minOf(64, nameBytes.size)
         nameBytes.copyInto(entry, 0, 0, copied)
         putU16(entry, 0x40, copied + 2)
-        entry[0x42] = type.toByte()
+        entry[0x42] = node.type.toByte()
         entry[0x43] = 1
-        putU32(entry, 0x74, start.toLong() and 0xFFFFFFFFL)
-        putU32(entry, 0x78, size.toLong())
+        putU32(entry, 0x44, node.left.toLong() and 0xFFFFFFFFL)
+        putU32(entry, 0x48, node.right.toLong() and 0xFFFFFFFFL)
+        putU32(entry, 0x4C, node.child.toLong() and 0xFFFFFFFFL)
+        putU32(entry, 0x74, node.start.toLong() and 0xFFFFFFFFL)
+        putU32(entry, 0x78, node.size.toLong())
         return entry
     }
 
@@ -349,8 +390,10 @@ internal object DocFixtures {
     private const val CLXT_PRC = 0x01
     private const val CLXT_PCDT = 0x02
     private const val FC_COMPRESSED = 0x40000000L
+    private const val ENTRY_STORAGE = 1
     private const val ENTRY_STREAM = 2
     private const val ENTRY_ROOT = 5
+    private const val NOSTREAM = -1
 
     private const val KEY_MINI_STREAM = "\$mini-stream"
     private const val KEY_MINI_FAT = "\$mini-fat"

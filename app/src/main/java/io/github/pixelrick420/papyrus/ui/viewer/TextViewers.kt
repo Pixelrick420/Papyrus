@@ -11,6 +11,7 @@ import android.text.style.ForegroundColorSpan
 import android.text.style.UpdateAppearance
 import android.util.TypedValue
 import android.widget.TextView
+import io.github.pixelrick420.papyrus.viewer.LATEX_RANGE_REGEX
 import io.github.pixelrick420.papyrus.viewer.LatexRange
 import io.github.pixelrick420.papyrus.viewer.LatexSpanFactory
 import androidx.compose.animation.core.Spring
@@ -91,6 +92,8 @@ import io.github.pixelrick420.papyrus.viewer.TextChunkView
 import io.github.pixelrick420.papyrus.viewer.numberedLines
 import io.github.pixelrick420.papyrus.viewer.direction
 import io.noties.markwon.Markwon
+import io.noties.markwon.core.spans.CodeBlockSpan
+import io.noties.markwon.core.spans.CodeSpan
 import io.noties.markwon.core.spans.LinkSpan
 import io.noties.markwon.ext.tables.TableRowSpan
 import kotlinx.coroutines.Dispatchers
@@ -300,30 +303,30 @@ fun MarkdownViewer(
         if (factory.ranges.isEmpty()) return@LaunchedEffect
 
         val deferreds = factory.createSpans(scope, textPx, textColor)
-        for (deferred in deferreds) {
-            val (range, span) = deferred.await()
-            val view = textState.view ?: continue
-            // view.text may be an immutable SpannableString; build a mutable copy so we can swap
-            // the placeholder for the RaTeXSpan, then set it back on the view.
+        var from = 0
+        while (from < deferreds.size) {
+            val to = minOf(from + LATEX_APPLY_BATCH, deferreds.size)
+            val rendered = (from until to).map { deferreds[it].await() }
+            val view = textState.view ?: return@LaunchedEffect
+            if (textState.text !== highlighted) return@LaunchedEffect
             val viewText = SpannableStringBuilder(view.text as Spanned)
             val placeholders = viewText.getSpans(0, viewText.length, LatexPlaceholderSpan::class.java)
             var applied = false
-            for (placeholder in placeholders) {
-                if (placeholder.range == range) {
-                    val start = viewText.getSpanStart(placeholder)
-                    val end = viewText.getSpanEnd(placeholder)
-                    viewText.removeSpan(placeholder)
-                    if (span != null) {
-                        viewText.setSpan(span, start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-                    }
-                    applied = true
-                    break
+            for ((range, span) in rendered) {
+                val placeholder = placeholders.firstOrNull { it.range == range } ?: continue
+                val start = viewText.getSpanStart(placeholder)
+                val end = viewText.getSpanEnd(placeholder)
+                viewText.removeSpan(placeholder)
+                if (span != null) {
+                    viewText.setSpan(span, start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
                 }
+                applied = true
             }
             if (applied) {
                 view.setText(viewText)
                 view.postInvalidate()
             }
+            from = to
         }
     }
 }
@@ -440,27 +443,38 @@ private fun rememberRenderedMarkdown(
     } else {
         parsed
     }
-    // Scans rendered $$...$$ ranges because Markwon output offsets diverge from raw source offsets.
-    val builder = SpannableStringBuilder(base)
-    val renderedText = builder.toString()
-    val renderedRanges = Regex("(?s)\\$\\$(.+?)\\$\\$").findAll(renderedText).map { match ->
-        match.range.first to (match.range.last + 1)
-    }.toList()
-    val factoryRanges = latexFactory?.ranges ?: emptyList()
-    // Zip in order; iterate in reverse so edits do not shift offsets of earlier ranges.
-    renderedRanges.zip(factoryRanges).reversed().forEach { pair ->
-        val (renderedPos, factoryRange) = pair
-        val (renderedStart, renderedEnd) = renderedPos
-        if (renderedEnd > builder.length) return@forEach
-        builder.setSpan(
-            LatexPlaceholderSpan(factoryRange),
-            renderedStart,
-            renderedEnd,
-            Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
-        )
+    return remember(base, latexFactory) {
+        val builder = SpannableStringBuilder(base)
+        val factoryRanges = latexFactory?.ranges.orEmpty()
+        if (factoryRanges.isNotEmpty()) {
+            val codeRanges = buildList {
+                addAll(builder.codeRanges(CodeSpan::class.java))
+                addAll(builder.codeRanges(CodeBlockSpan::class.java))
+            }
+            val renderedRanges = renderedLatexRanges(builder.toString(), codeRanges)
+            if (renderedRanges.size == factoryRanges.size) {
+                renderedRanges.zip(factoryRanges).reversed().forEach { (rendered, factoryRange) ->
+                    builder.setSpan(
+                        LatexPlaceholderSpan(factoryRange),
+                        rendered.first,
+                        rendered.last + 1,
+                        Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+                    )
+                }
+            }
+        }
+        builder
     }
-    return builder
 }
+
+private fun <T : Any> Spanned.codeRanges(type: Class<T>): List<IntRange> =
+    getSpans(0, length, type).map { getSpanStart(it)..getSpanEnd(it) }
+
+internal fun renderedLatexRanges(text: String, codeRanges: List<IntRange>): List<IntRange> =
+    LATEX_RANGE_REGEX.findAll(text)
+        .filterNot { match -> codeRanges.any { match.range.first in it } }
+        .map { it.range }
+        .toList()
 
 /** Debounced: applying spans walks the whole document, which a fast typist would feel. */
 @Composable
@@ -809,7 +823,13 @@ private fun ChunkTextContent(
     viewportHeight: () -> Int,
 ) {
     val language = options.language
-    val startState = options.lexStates?.get(index) ?: 0
+    val startState by produceState(options.lexStates?.get(index) ?: 0, options.lexStates, index) {
+        val states = options.lexStates
+        if (states != null) {
+            states.ensure(index)
+            value = states[index]
+        }
+    }
     // Per chunk and on demand, so a file only pays for the part on screen. A chunk over the cap is minified
     // code, which colour does not help and tens of thousands of spans would slow down.
     val syntax = remember(text, language, startState, syntaxPalette) {
@@ -1170,6 +1190,8 @@ private fun rowOfOccurrence(rows: List<List<OfficeCell>>, occurrence: Int, query
 private val TEXT_SHOW_VELOCITY = 1600.dp
 private val PAGE_BREAK_SPACING = 24.dp
 private const val HIGHLIGHT_DEBOUNCE_MS = 150L
+
+private const val LATEX_APPLY_BATCH = 8
 private val MARKDOWN_BASE_SP = MARKDOWN_BASE_TEXT_SP.sp
 private const val LINE_SPACING_MULTIPLIER = 1.25f
 

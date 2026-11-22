@@ -62,7 +62,7 @@ private fun formatJson(text: String, step: String): String? {
         val c = text[i]
         when {
             c.isWhitespace() -> i++
-            c == '"' -> {
+            c == '"' || c == '\'' -> {
                 val end = jsonStringEnd(text, i) ?: return null
                 layout.startToken()
                 out.append(text, i, end)
@@ -108,7 +108,7 @@ private fun formatJson(text: String, step: String): String? {
             else -> {
                 // A run of literal characters (number, true/false/null, stray garbage): one token,
                 // copied verbatim.
-                val end = jsonLiteralEnd(text, i)
+                val end = jsonLiteralEnd(text, i).coerceAtLeast(i + 1)
                 layout.startToken()
                 out.append(text, i, end)
                 i = end
@@ -158,11 +158,12 @@ private class JsonLayout(private val step: String) {
 }
 
 private fun jsonStringEnd(text: String, start: Int): Int? {
+    val quote = text[start]
     var i = start + 1
     while (i < text.length) {
         when (text[i]) {
             '\\' -> i += 2 // an escaped character cannot end the string, whatever it is
-            '"' -> return i + 1
+            quote -> return i + 1
             else -> i++
         }
     }

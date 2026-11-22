@@ -31,11 +31,12 @@ object OfficeEncryption {
     fun status(
         openStream: () -> InputStream,
         newParserFactory: () -> XmlPullParser = { Xml.newPullParser() },
+        knownLength: Long? = null,
     ): Party =
         try {
             val head = readHead(openStream)
             when {
-                isOle2(head) -> oleStatus(openStream)
+                isOle2(head) -> oleStatus(openStream, knownLength)
                 isZip(head) -> odfStatus(openStream, newParserFactory)
                 else -> Party.NOT_ENCRYPTED
             }
@@ -52,7 +53,8 @@ object OfficeEncryption {
     fun isEncrypted(
         openStream: () -> InputStream,
         newParserFactory: () -> XmlPullParser = { Xml.newPullParser() },
-    ): Boolean = status(openStream, newParserFactory) != Party.NOT_ENCRYPTED
+        knownLength: Long? = null,
+    ): Boolean = status(openStream, newParserFactory, knownLength) != Party.NOT_ENCRYPTED
 
     fun decrypt(
         openStream: () -> InputStream,
@@ -60,12 +62,13 @@ object OfficeEncryption {
         target: File,
         newParserFactory: () -> XmlPullParser = { Xml.newPullParser() },
         ensureActive: () -> Unit = {},
+        knownLength: Long? = null,
     ) {
         var completed = false
         try {
             val head = readHead(openStream)
             when {
-                isOle2(head) -> decryptAgile(openStream, password, target, newParserFactory, ensureActive)
+                isOle2(head) -> decryptAgile(openStream, password, target, newParserFactory, ensureActive, knownLength)
                 isZip(head) -> decryptOdf(openStream, password, target, newParserFactory, ensureActive)
                 else -> throw IOException("unsupported encryption")
             }
@@ -75,8 +78,8 @@ object OfficeEncryption {
         }
     }
 
-    private fun oleStatus(openStream: () -> InputStream): Party {
-        val cfb = CompoundFile(openStream)
+    private fun oleStatus(openStream: () -> InputStream, knownLength: Long?): Party {
+        val cfb = CompoundFile(openStream, knownLength)
         if (!cfb.hasStream(ENCRYPTION_INFO)) return Party.NOT_ENCRYPTED
         val size = cfb.streamSize(ENCRYPTION_INFO) ?: return Party.NOT_ENCRYPTED
         if (size < ENCRYPTION_INFO_HEADER || size > MAX_ENCRYPTION_INFO) return Party.UNSUPPORTED
@@ -90,8 +93,9 @@ object OfficeEncryption {
         target: File,
         newParserFactory: () -> XmlPullParser,
         ensureActive: () -> Unit,
+        knownLength: Long?,
     ) {
-        val cfb = CompoundFile(openStream)
+        val cfb = CompoundFile(openStream, knownLength)
         val size = cfb.streamSize(ENCRYPTION_INFO) ?: throw IOException("EncryptionInfo not found")
         if (size < ENCRYPTION_INFO_HEADER || size > MAX_ENCRYPTION_INFO) throw IOException("unsupported EncryptionInfo")
         val info = cfb.read(ENCRYPTION_INFO, 0, size.toInt())
@@ -109,7 +113,9 @@ object OfficeEncryption {
         if (secretKey.size != agile.keyBits / 8) throw IOException("invalid key size")
 
         val packageSize = cfb.streamSize(ENCRYPTED_PACKAGE) ?: throw IOException("EncryptedPackage not found")
-        decryptPackage(cfb, packageSize, secretKey, agile.keyDataSalt, agile.hashName, target, ensureActive)
+        cfb.openReader(ENCRYPTED_PACKAGE).use { reader ->
+            decryptPackage(reader, packageSize, secretKey, agile.keyDataSalt, agile.keyDataHashName ?: agile.hashName, target, ensureActive)
+        }
     }
 
     private fun wrongPassword(agile: AgileInfo, h: ByteArray): Boolean {
@@ -129,7 +135,7 @@ object OfficeEncryption {
     }
 
     private fun decryptPackage(
-        cfb: CompoundFile,
+        reader: CompoundFile.Reader,
         packageSize: Long,
         key: ByteArray,
         keyDataSalt: ByteArray,
@@ -137,7 +143,7 @@ object OfficeEncryption {
         target: File,
         ensureActive: () -> Unit,
     ) {
-        val header = cfb.read(ENCRYPTED_PACKAGE, 0, PACKAGE_SIZE_HEADER)
+        val header = reader.read(0, PACKAGE_SIZE_HEADER)
         val totalSize = u32(header, 0) or (u32(header, 4) shl 32)
         if (totalSize < 0 || totalSize > packageSize) throw IOException("invalid package size")
         val md = MessageDigest.getInstance(jcaHash(hashName))
@@ -150,7 +156,7 @@ object OfficeEncryption {
                 val available = packageSize - offset
                 if (available <= 0) throw IOException("truncated encrypted package")
                 val chunkSize = minOf(SEGMENT_LENGTH.toLong(), available).toInt()
-                val cipherText = cfb.read(ENCRYPTED_PACKAGE, offset, chunkSize)
+                val cipherText = reader.read(offset, chunkSize)
                 md.reset()
                 val iv = md.digest(keyDataSalt + le32(segment)).copyOf(IV_LENGTH)
                 val plain = aesCbcDecrypt(cipherText, key, iv)
@@ -165,6 +171,7 @@ object OfficeEncryption {
 
     private class AgileInfo {
         var hashName = "SHA512"
+        var keyDataHashName: String? = null
         var keyBits = 256
         var spinCount = 0
         var keyDataSalt = ByteArray(0)
@@ -183,7 +190,7 @@ object OfficeEncryption {
             when (parser.next()) {
                 XmlPullParser.START_TAG -> when (local(parser.name)) {
                     "keyData" -> {
-                        info.hashName = attr(parser, "hashAlgorithm") ?: info.hashName
+                        info.keyDataHashName = attr(parser, "hashAlgorithm") ?: info.keyDataHashName
                         info.keyDataSalt = decodeBase64(attr(parser, "saltValue"))
                     }
                     "encryptedKey" -> {
@@ -377,12 +384,18 @@ object OfficeEncryption {
         return h
     }
 
-    private fun deriveKey(h: ByteArray, blockKey: ByteArray, hashName: String, keyBits: Int): ByteArray {
+    internal fun deriveKey(h: ByteArray, blockKey: ByteArray, hashName: String, keyBits: Int): ByteArray {
         if (keyBits <= 0 || keyBits % 8 != 0) throw IOException("invalid key size")
         val md = MessageDigest.getInstance(jcaHash(hashName))
         md.update(h)
         md.update(blockKey)
-        return md.digest().copyOf(keyBits / 8)
+        val digest = md.digest()
+        val length = keyBits / 8
+        return if (length <= digest.size) {
+            digest.copyOf(length)
+        } else {
+            digest + ByteArray(length - digest.size) { 0x36 }
+        }
     }
 
     internal fun pbkdf2Sha1(
@@ -483,6 +496,9 @@ object OfficeEncryption {
     private fun readZipEntry(openStream: () -> InputStream, name: String, max: Int): ByteArray? {
         openStream().use { input ->
             BoundedZipInputStream(input).use { zip ->
+                val first = zip.nextEntry ?: return null
+                if (first.name == OOXML_CONTENT_TYPES) return null
+                if (first.name == name) return readBounded(zip, max)
                 while (true) {
                     val entry = zip.nextEntry ?: return null
                     if (entry.name == name) return readBounded(zip, max)
@@ -560,6 +576,7 @@ private val BLOCK_KEY_VERIFIER_HASH_VALUE = byteArrayOf(0xD7.toByte(), 0xAA.toBy
 private val BLOCK_KEY_ENCRYPTED_VALUE = byteArrayOf(0x14, 0x6E, 0x0B, 0xE7.toByte(), 0xAB.toByte(), 0xAC.toByte(), 0xD0.toByte(), 0xD6.toByte())
 
 private const val ODF_MANIFEST = "META-INF/manifest.xml"
+private const val OOXML_CONTENT_TYPES = "[Content_Types].xml"
 private const val ALGORITHM_AES256_CBC = "aes256-cbc"
 private const val CHECKSUM_BYTES = 1024
 

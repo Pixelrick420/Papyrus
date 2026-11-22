@@ -9,6 +9,8 @@ object TextSniffer {
 
     private const val MAX_CONTROL_RATIO = 0.02
 
+    private val PRINTABLE_PREFIX_MAGICS = setOf("gif", "riff", "dex", "bzip2")
+
     // Checked before UTF-8 decoding: some binaries decode as valid UTF-8, a ZIP of ASCII names among them.
     private val BINARY_MAGIC: List<Pair<String, ByteArray>> = listOf(
         "zip" to byteArrayOf(0x50, 0x4B, 0x03, 0x04), // PK.. also docx/odt/apk/jar
@@ -65,7 +67,11 @@ object TextSniffer {
         return unexpected.toDouble() / text.length <= MAX_CONTROL_RATIO
     }
 
-    private fun hasBinaryMagic(bytes: ByteArray): Boolean = BINARY_MAGIC.any { (_, magic) ->
-        bytes.size >= magic.size && magic.indices.all { bytes[it] == magic[it] }
+    private fun hasBinaryMagic(bytes: ByteArray): Boolean = BINARY_MAGIC.any { (name, magic) ->
+        if (bytes.size < magic.size || !magic.indices.all { bytes[it] == magic[it] }) return@any false
+        if (name !in PRINTABLE_PREFIX_MAGICS) return@any true
+        if (bytes.size == magic.size) return@any false
+        val next = bytes[magic.size].toInt() and 0xFF
+        next in 0x30..0x39 || next < 0x20 || next > 0x7E
     }
 }

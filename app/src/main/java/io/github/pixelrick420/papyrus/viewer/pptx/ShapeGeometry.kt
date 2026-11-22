@@ -1,7 +1,7 @@
 package io.github.pixelrick420.papyrus.viewer.pptx
 
 /**
- * Resolves the geometry a node stores — an inline custom path, else a named preset from [presets] — for one
+ * Resolves the geometry a node stores (an inline custom path or a named preset from [presets]) for one
  * box size. A connector's stored geometry is drawn as-is; its routing is never recomputed. Flips and rotation
  * stay on the node and are applied by the paint pass through [Affine.forShape].
  */

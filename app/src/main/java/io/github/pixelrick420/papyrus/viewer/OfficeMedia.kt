@@ -173,14 +173,14 @@ internal class OfficeMedia(
             if (declaredSize in 1..OfficeTextExtractor.MAX_IMAGE_BYTES) declaredSize.toInt() else MEDIA_COPY_BUFFER,
         )
         while (true) {
-            // A sized entry that yields more than it declared is rejected, not truncated into a corrupt image.
-            val overBudget = out.size() >= OfficeTextExtractor.MAX_IMAGE_BYTES
-            val overDeclared = declaredSize >= 0 && out.size() >= declaredSize
-            if (overBudget) return null
-            if (overDeclared) return out.toByteArray()
             val n = zip.read(buffer)
-            if (n < 0) return out.toByteArray()
+            if (n < 0) break
             out.write(buffer, 0, n)
+            if (out.size() > OfficeTextExtractor.MAX_IMAGE_BYTES) return null
         }
+        val bytes = out.toByteArray()
+        if (bytes.isEmpty()) return null
+        if (declaredSize >= 0 && bytes.size.toLong() != declaredSize) return null
+        return bytes
     }
 }

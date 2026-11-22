@@ -170,7 +170,9 @@ class ZipGuardTest {
 
     @Test
     fun `the epub limits are these limits, so the two readers cannot drift apart`() {
-        assertEquals(ZipLimits(), EpubLimits().zipLimits)
+        assertEquals(ZipLimits(maxEntries = EPUB_MAX_ENTRIES), EpubLimits().zipLimits)
+        assertEquals(50_000, EPUB_MAX_ENTRIES)
+        assertTrue(EPUB_MAX_ENTRIES > ZipLimits().maxEntries)
         assertEquals(
             small,
             EpubLimits(

@@ -64,6 +64,21 @@ class LocalFileReportSenderRedactionTest {
     }
 
     @Test
+    fun `a root with regex metacharacters is matched literally`() {
+        val root = "/data/user/0/app/files+v1(beta)"
+
+        assertEquals("open [redacted]", LocalFileReportSender.redact("open $root/My Contract.pdf", root))
+        assertEquals("at filesXv1beta", LocalFileReportSender.redact("at filesXv1beta", root))
+    }
+
+    @Test
+    fun `overlapping roots redact every path once`() {
+        val text = "/tmp/data/file.txt and /tmp/other.txt"
+
+        assertEquals("[redacted] and [redacted]", LocalFileReportSender.redact(text, listOf("/tmp/data", "/tmp")))
+    }
+
+    @Test
     fun `single-root overload still covers the original shapes`() {
         val root = "/data/user/0/io.github.pixelrick420.papyrus/files"
         assertEquals("[redacted]", LocalFileReportSender.redact("$root/My Contract.pdf", root))

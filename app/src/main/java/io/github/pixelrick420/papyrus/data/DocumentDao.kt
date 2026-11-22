@@ -39,18 +39,12 @@ interface DocumentDao {
     @Query("UPDATE documents SET uri = :uri WHERE id = :id")
     suspend fun updateUri(id: Long, uri: String)
 
-    /** Takes the URI only when it is free, and releases the old grant in the same transaction. */
+    /** Takes the URI only when it is free, so a grant is never released for a rebind that did not happen. */
     @Transaction
-    suspend fun rebindUri(
-        id: Long,
-        uri: String,
-        oldUri: String?,
-        releaseGrant: (String) -> Unit,
-    ): Boolean {
+    suspend fun rebindUri(id: Long, uri: String): Boolean {
         val owner = getByUri(uri)
         if (owner != null && owner.id != id) return false
         updateUri(id, uri)
-        if (oldUri != null && oldUri != uri) releaseGrant(oldUri)
         return true
     }
 

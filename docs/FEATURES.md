@@ -49,7 +49,7 @@ The README is the landing page. This is the reference for behavior that needs ex
 - **Open with** opens without adding to the library; **Share to Papyrus** accepts one `content://` file (not shared
   text, `file://` or multiple files). **Save to library** keeps a copy.
 - Failed bookmark, highlight or note writes show one notice, even when several fail.
-- Password-protected PDF, Word, OpenDocument and PPTX files unlock locally; the password is never stored or logged.
+- Password-protected PDF, DOCX, ODT and PPTX files unlock locally; the password is never stored or logged.
 - Lost access or a moved/deleted file offers **Pick file**. Open errors name unsupported, protected or damaged files.
 
 ## Privacy & safety

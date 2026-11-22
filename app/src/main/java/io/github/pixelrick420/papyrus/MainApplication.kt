@@ -25,7 +25,7 @@ import io.github.pixelrick420.papyrus.viewer.PDF_VIEW_DIR
 import io.github.pixelrick420.papyrus.viewer.PPTX_DIR_PREFIX
 import io.github.pixelrick420.papyrus.viewer.PdfPageSource
 import io.github.pixelrick420.papyrus.viewer.pptx.SlidePageSource
-import io.github.pixelrick420.papyrus.viewer.textCacheKey
+import io.github.pixelrick420.papyrus.viewer.textCacheModified
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.asCoroutineDispatcher
@@ -84,10 +84,11 @@ class MainApplication : Application() {
             extract = extractor::extract,
             // Only a document coming, going or changing size is worth a pass; a star or an open is not.
             library = repository.documents.map { rows -> rows.map { it.id to it.sizeBytes } }.distinctUntilChanged(),
-            lastModified = { document -> textCacheKey(this, document.uri.toUri())?.lastModified },
+            lastModified = { document -> textCacheModified(this, document.uri.toUri()) },
             enabled = enabled,
             mayIndex = gate.open,
             startDelayMillis = INDEX_START_DELAY_MILLIS,
+            onDocumentFailure = { id, failureClass -> reportSilent(IllegalStateException("index $id failed: $failureClass")) },
         )
     }
 

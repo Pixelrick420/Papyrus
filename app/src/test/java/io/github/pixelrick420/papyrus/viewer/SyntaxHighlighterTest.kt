@@ -6,6 +6,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.util.Random
+import kotlinx.coroutines.runBlocking
 
 class SyntaxHighlighterTest {
 
@@ -56,6 +57,28 @@ class SyntaxHighlighterTest {
         assertEquals(1, states[2])
         assertEquals(listOf("COMMENT:still comment"), tokens("A.java", chunks[1], states[1]))
         assertEquals(listOf("COMMENT:end */", "KEYWORD:int"), tokens("A.java", chunks[2], states[2]))
+    }
+
+    @Test
+    fun `lazy states decode only the chunks needed for the visible chunk`() = runBlocking {
+        val java = language("A.java")
+        val chunks = listOf("/* start", "still comment", "end */ int x;", "int y;")
+        val loads = mutableListOf<Int>()
+        val view = object : TextChunkView {
+            override val size: Int = chunks.size
+            override fun peek(index: Int): String? = chunks.getOrNull(index)
+            override suspend fun load(index: Int): String {
+                loads += index
+                return chunks[index]
+            }
+        }
+
+        val states = SyntaxHighlighter.lazyChunkStartStates(java, view)
+        assertEquals(0, states[2])
+        states.ensure(2)
+
+        assertEquals(listOf(0, 1), loads)
+        assertEquals(listOf(0, 1, 1), (0..2).map { states[it] })
     }
 
     @Test

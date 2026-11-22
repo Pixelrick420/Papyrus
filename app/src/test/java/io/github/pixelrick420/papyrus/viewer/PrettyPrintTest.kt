@@ -330,4 +330,33 @@ class PrettyPrintTest {
         assertEquals("{\n    \"a\": 1\n}", PrettyPrint.formatOnOpen(PrettyKind.JSON, """{"a":1}""", indent = 4).text)
         assertEquals("{\n  \"a\": 1\n}", PrettyPrint.formatOnOpen(PrettyKind.JSON, """{"a":1}""", indent = 5).text)
     }
+
+    @Test(timeout = 1_000)
+    fun `a lone slash at depth zero terminates`() {
+        assertEquals("/", json("/"))
+    }
+
+    @Test(timeout = 1_000)
+    fun `the reported repro terminates`() {
+        assertEquals("{}\n/", json("{} /"))
+    }
+
+    @Test(timeout = 1_000)
+    fun `a lone slash at depth one does not grow the buffer`() {
+        assertEquals("{\n  \"a\": 1\n  /\n}", json("{\"a\":1 /}"))
+    }
+
+    @Test(timeout = 1_000)
+    fun `a lone slash adjacent to a real comment still formats`() {
+        assertEquals("/\n// c", json("/ // c"))
+    }
+
+    @Test
+    fun `json5 single quoted strings keep commas and comment markers inside them`() {
+        assertEquals("{\n  'a': 'x, y'\n}", json("{'a': 'x, y'}"))
+        assertEquals("{\n  'a': 'it\\'s, ok'\n}", json("{'a': 'it\\'s, ok'}"))
+        assertEquals("{\n  'url': 'http://x',\n  'b': 1\n}", json("{'url':'http://x','b':1}"))
+        assertEquals("{\n  \"a\": \"it's, ok\"\n}", json("{\"a\": \"it's, ok\"}"))
+        assertNull(json("{'a: 1}"))
+    }
 }

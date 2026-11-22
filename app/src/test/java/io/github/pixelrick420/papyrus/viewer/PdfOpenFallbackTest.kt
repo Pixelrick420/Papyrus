@@ -1,11 +1,16 @@
 package io.github.pixelrick420.papyrus.viewer
 
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
+import java.io.IOException
 
-class PdfCopyDecisionTest {
+class PdfOpenFallbackTest {
 
     @Test
     fun `the header must be at the start of the sniffed bytes`() {
@@ -47,10 +52,35 @@ class PdfCopyDecisionTest {
     }
 
     @Test
-    fun `a descriptor with no reported size is copied`() {
+    fun `a descriptor with no reported size and no space is not copied`() {
         assertEquals(
-            PdfOpenFallback.COPY,
+            PdfOpenFallback.FAIL_NO_SPACE,
             pdfOpenFallback(statSize = -1L, seekable = true, hasPdfHeader = true, usableSpace = 0L),
         )
+    }
+
+    @Test
+    fun `a known size above the copy cap is refused even with space`() {
+        assertEquals(
+            PdfOpenFallback.FAIL_NO_SPACE,
+            pdfOpenFallback(
+                statSize = MAX_PDF_COPY_BYTES + 1,
+                seekable = false,
+                hasPdfHeader = true,
+                usableSpace = Long.MAX_VALUE,
+            ),
+        )
+    }
+
+    @Test
+    fun `a bounded copy writes exactly the limit and refuses one byte more`() {
+        val bytes = ByteArray(64 * 1024 + 1) { it.toByte() }
+        val exact = ByteArrayOutputStream()
+        copyBounded(ByteArrayInputStream(bytes), exact, bytes.size.toLong())
+        assertArrayEquals(bytes, exact.toByteArray())
+
+        assertThrows(IOException::class.java) {
+            copyBounded(ByteArrayInputStream(bytes), ByteArrayOutputStream(), bytes.size - 1L)
+        }
     }
 }

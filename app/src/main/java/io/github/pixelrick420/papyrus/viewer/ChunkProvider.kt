@@ -14,8 +14,8 @@ fun interface ByteSource {
     fun open(offset: Long): InputStream
 }
 
-// Small files, charsets whose characters can hold a line terminator's bytes (UTF-16, Shift_JIS) and providers that will not open twice are decoded into memory;
-// anything else is indexed once and decoded per chunk on demand.
+// In memory: small files, providers that cannot reopen, and charsets byteSplittable rejects (multi-byte or
+// non-ASCII-compatible, e.g. UTF-16, Shift_JIS); anything else is indexed once and decoded per chunk on demand.
 object ChunkProvider {
 
     const val IN_MEMORY_LIMIT_BYTES = 32 * 1024 * 1024
@@ -118,15 +118,16 @@ internal class IndexedChunks(
     private val dispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) : AbstractList<String>(), RandomAccess, TextChunkView {
 
-    private val lock = Any()
+    private val stateLock = Any()
+    private val ioLock = Any()
     private val cache = ChunkCache(layout.cacheChunks, layout.cacheChars)
 
     override val size: Int get() = index.chunkCount
 
-    val cachedCount: Int get() = synchronized(lock) { cache.size }
+    val cachedCount: Int get() = synchronized(stateLock) { cache.size }
 
     override fun peek(index: Int): String? =
-        if (index in 0 until size) synchronized(lock) { cache[index] } else null
+        if (index in 0 until size) synchronized(stateLock) { cache[index] } else null
 
     override suspend fun load(index: Int): String = withContext(dispatcher) {
         ensureActive()
@@ -141,13 +142,20 @@ internal class IndexedChunks(
 
     private fun decode(index: Int): String {
         if (index !in 0 until size) throw IndexOutOfBoundsException("chunk $index of $size")
-        synchronized(lock) {
+        synchronized(stateLock) {
             cache[index]?.let { return it }
+        }
+        return synchronized(ioLock) {
+            synchronized(stateLock) {
+                cache[index]?.let { return it }
+            }
             val span = this.index.spanOf(index)
             val first = this.index.firstChunkOf(span)
             val decoded = decodeSpan(span)
-            decoded.forEachIndexed { i, text -> cache.put(first + i, text) }
-            return decoded.getOrElse(index - first) { "" }
+            synchronized(stateLock) {
+                decoded.forEachIndexed { i, text -> cache.put(first + i, text) }
+            }
+            decoded.getOrElse(index - first) { "" }
         }
     }
 

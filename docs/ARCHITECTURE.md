@@ -22,9 +22,9 @@ Papyrus is Kotlin, Jetpack Compose and Room.
 | `document_text_fts` | FTS4 inverted index maintained by Room triggers; text is not stored twice |
 
 Child rows use `ON DELETE CASCADE`. `documents` rows are never written with `OnConflictStrategy.REPLACE`, which would
-delete and reinsert them and cascade the children away. Page count and MIME type are read live. A 0.x database is
-deleted on first 1.0 launch; version 2 adds `pdf_outlines.sourceModified` and migrates a 1.x database in place.
-Schemas are exported to `app/schemas/`.
+delete and reinsert them and cascade the children away. Page count and MIME type are read live. Version 2 adds
+`pdf_outlines.sourceModified` and migrates a 2.0/2.1.0 database (schema version 1) in place. Version 2 shipped in 2.1.1;
+2.0 changed the application ID, so 1.x data was not carried over. Schemas are exported to `app/schemas/`.
 
 ## Cache layout
 
@@ -48,8 +48,7 @@ opens; age cut-offs are measured from the current process start.
   next indexing pass. `SKIPPED` and `TOO_LARGE` are terminal.
 - At or below `SearchIndexer.EAGER_MAX_BYTES`, text is read at once, even while a document is open or battery saver is
   on. The **Search inside documents** switch still applies. Larger files pause while reading or under battery saver.
-- A document changes when its recorded size differs, or when the provider reports a new modified time. The modified
-  time is checked once per process and does not open the file.
+- A document changes when its recorded size differs, or when the provider reports a new modified time. The indexer checks the modified time via `textCacheModified`, which queries the provider for metadata only; it does not read the document bytes.
 - Queries split on anything that is not a letter, number or Unicode mark. Only the first few terms are kept; a
   one-character term is dropped when a longer one exists. Terms are quoted for FTS4, then 2+ character terms match
   by prefix. Matching documents are ranked with BM25; excerpts are fetched for the best few after a short debounce.

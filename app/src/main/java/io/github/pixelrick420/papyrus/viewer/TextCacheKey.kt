@@ -22,8 +22,9 @@ data class TextCacheKey(
 // [fromPlatform] keeps the platform engine's reading and PDFBox's apart: they differ in spacing and boxes.
 data class PageTextKey(val document: TextCacheKey, val page: Int, val fromPlatform: Boolean)
 
-// Only a content URI whose provider reports both a modified time and a size gets one; a file URI is never keyed, which keeps a protected PDF's decrypted copy out of anything that outlives its viewer.
-fun textCacheKey(context: Context, uri: Uri): TextCacheKey? {
+private data class TextCacheMetadata(val modified: Long, val size: Long)
+
+private fun textCacheMetadata(context: Context, uri: Uri): TextCacheMetadata? {
     if (uri.scheme != ContentResolver.SCHEME_CONTENT) return null
     val columns = arrayOf(DocumentsContract.Document.COLUMN_LAST_MODIFIED, OpenableColumns.SIZE)
     val stat = try {
@@ -31,16 +32,23 @@ fun textCacheKey(context: Context, uri: Uri): TextCacheKey? {
             if (!cursor.moveToFirst()) return@use null
             val modified = cursor.longOrNull(columns[0])
             val size = cursor.longOrNull(columns[1])
-            if (modified == null || size == null) null else modified to size
+            if (modified == null || size == null) null else TextCacheMetadata(modified, size)
         }
     } catch (ignored: Exception) {
         // Providers throw their own unchecked exceptions, and a revoked grant is a SecurityException.
         null
     }
     // A zero modified time is a provider that does not know, not a file from 1970.
-    if (stat == null || stat.first <= 0L) return null
+    return stat?.takeIf { it.modified > 0L }
+}
+
+fun textCacheModified(context: Context, uri: Uri): Long? = textCacheMetadata(context, uri)?.modified
+
+// Only a content URI whose provider reports both a modified time and a size gets one; a file URI is never keyed, which keeps a protected PDF's decrypted copy out of anything that outlives its viewer.
+fun textCacheKey(context: Context, uri: Uri): TextCacheKey? {
+    val stat = textCacheMetadata(context, uri) ?: return null
     val revision = descriptorRevision(context, uri) ?: unreusableRevision()
-    return TextCacheKey(uri.toString(), stat.first, stat.second, revision)
+    return TextCacheKey(uri.toString(), stat.modified, stat.size, revision)
 }
 
 private fun descriptorRevision(context: Context, uri: Uri): Long? = try {

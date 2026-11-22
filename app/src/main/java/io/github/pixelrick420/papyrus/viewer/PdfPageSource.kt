@@ -287,6 +287,7 @@ class PdfPageSource private constructor(
         @Suppress("SwallowedException", "TooGenericExceptionCaught")
         suspend fun open(context: Context, uri: Uri): PdfPageSource = withContext(Dispatchers.IO) {
             val resolver = context.contentResolver
+            val usableSpace = context.cacheDir.usableSpace
             val pfd = resolver.openFileDescriptor(uri, "r") ?: throw FileNotFoundException(uri.toString())
             try {
                 return@withContext openDescriptor(pfd, null)
@@ -298,7 +299,7 @@ class PdfPageSource private constructor(
                     statSize = pfd.statSize,
                     seekable = isSeekable(pfd),
                     hasPdfHeader = runCatching { hasPdfHeader(resolver.openInputStream(uri)) }.getOrDefault(false),
-                    usableSpace = context.cacheDir.usableSpace,
+                    usableSpace = usableSpace,
                 )
                 pfd.close()
                 when (fallback) {
@@ -309,8 +310,9 @@ class PdfPageSource private constructor(
             }
             val dir = File(context.cacheDir, PDF_VIEW_DIR).apply { mkdirs() }
             val copy = File.createTempFile("view-", ".pdf", dir)
+            val limit = minOf(MAX_PDF_COPY_BYTES, usableSpace)
             try {
-                resolver.openRequired(uri).use { input -> copy.outputStream().use { input.copyTo(it) } }
+                resolver.openRequired(uri).use { input -> copy.outputStream().use { copyBounded(input, it, limit) } }
                 val copyPfd = ParcelFileDescriptor.open(copy, ParcelFileDescriptor.MODE_READ_ONLY)
                 try {
                     openDescriptor(copyPfd, copy)

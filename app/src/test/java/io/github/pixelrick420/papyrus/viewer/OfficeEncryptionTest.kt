@@ -1,6 +1,7 @@
 package io.github.pixelrick420.papyrus.viewer
 
 import io.github.pixelrick420.papyrus.data.DocumentFormat
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
@@ -12,6 +13,7 @@ import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.FileInputStream
 import java.io.IOException
+import java.security.MessageDigest
 import java.util.Base64
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
@@ -99,6 +101,34 @@ class OfficeEncryptionTest {
 
     private fun odfStatus(bytes: ByteArray) =
         OfficeEncryption.status(OfficeFixtures.streamFactory(bytes), OfficeFixtures::parser)
+
+    private fun withFirstZipEntry(source: ByteArray, name: String, data: ByteArray): ByteArray {
+        val out = ByteArrayOutputStream()
+        ZipInputStream(ByteArrayInputStream(source)).use { zip ->
+            ZipOutputStream(out).use { rewritten ->
+                rewritten.putNextEntry(ZipEntry(name))
+                rewritten.write(data)
+                rewritten.closeEntry()
+                while (true) {
+                    val entry = zip.nextEntry ?: break
+                    rewritten.putNextEntry(ZipEntry(entry.name))
+                    rewritten.write(zip.readBytes())
+                    rewritten.closeEntry()
+                }
+            }
+        }
+        return out.toByteArray()
+    }
+
+    private class CountingOpens(private val bytes: ByteArray) {
+        var opens = 0
+            private set
+
+        val factory: () -> java.io.InputStream = {
+            opens++
+            ByteArrayInputStream(bytes)
+        }
+    }
 
     @Test
     fun `a plain docx is not encrypted`() {
@@ -331,5 +361,67 @@ class OfficeEncryptionTest {
 
         assertEquals(2, checks)
         assertEquals("cancelled", failure.message)
+    }
+
+    @Test
+    fun `a short digest is padded with the spec byte for a block key`() {
+        val hash = "hash".toByteArray()
+        val blockKey = byteArrayOf(1, 2, 3)
+        val digest = MessageDigest.getInstance("SHA-1").digest(hash + blockKey)
+
+        val derived = OfficeEncryption.deriveKey(hash, blockKey, "SHA1", 256)
+
+        assertEquals(32, derived.size)
+        assertArrayEquals(digest, derived.copyOf(digest.size))
+        assertTrue(derived.copyOfRange(digest.size, derived.size).all { it == 0x36.toByte() })
+    }
+
+    @Test
+    fun `a digest that already fits is only truncated`() {
+        val hash = "hash".toByteArray()
+        val blockKey = byteArrayOf(1, 2, 3)
+        val digest = MessageDigest.getInstance("SHA-512").digest(hash + blockKey)
+
+        assertArrayEquals(digest.copyOf(32), OfficeEncryption.deriveKey(hash, blockKey, "SHA512", 256))
+    }
+
+    @Test
+    fun `an ooxml first entry keeps a later odf manifest from prompting`() {
+        val bytes = withFirstZipEntry(unsupportedOdf(), "[Content_Types].xml", "<Types/>".toByteArray())
+
+        assertEquals(
+            OfficeEncryption.Party.NOT_ENCRYPTED,
+            OfficeEncryption.status(OfficeFixtures.streamFactory(bytes), OfficeFixtures::parser),
+        )
+    }
+
+    @Test
+    fun `a supplied length skips the probing open`() {
+        val bytes = resource("agile-encrypted.b64")
+        val probed = CountingOpens(bytes)
+        val known = CountingOpens(bytes)
+
+        assertEquals(OfficeEncryption.Party.PASSWORD, OfficeEncryption.status(probed.factory, OfficeFixtures::parser))
+        assertEquals(
+            OfficeEncryption.Party.PASSWORD,
+            OfficeEncryption.status(known.factory, OfficeFixtures::parser, knownLength = bytes.size.toLong()),
+        )
+        assertEquals(probed.opens, known.opens + 1)
+    }
+
+    @Test
+    fun `the agile docx still decrypts when the caller supplies its length`() {
+        val bytes = resource("agile-encrypted.b64")
+        val target = temp.newFile("known-length.docx")
+
+        OfficeEncryption.decrypt(
+            OfficeFixtures.streamFactory(bytes),
+            "secret123",
+            target,
+            OfficeFixtures::parser,
+            knownLength = bytes.size.toLong(),
+        )
+
+        assertTrue(extractedText(target, DocumentFormat.DOCX).contains("Interop secret paragraph."))
     }
 }

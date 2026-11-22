@@ -11,7 +11,6 @@ import android.graphics.Typeface
 import android.net.Uri
 import android.util.LruCache
 import androidx.core.graphics.createBitmap
-import androidx.core.graphics.scale
 import androidx.core.net.toUri
 import io.github.pixelrick420.papyrus.viewer.DocTextExtractor
 import io.github.pixelrick420.papyrus.viewer.EpubExtractor
@@ -151,9 +150,8 @@ class ThumbnailLoader(private val context: Context) {
     private suspend fun renderPdf(uri: Uri): Bitmap? =
         PdfPageSource.open(context, uri).use { source ->
             val page = source.render(0, THUMBNAIL_PDF_WIDTH_PX) ?: return@use null
-            // scale, not Bitmap.copy: copy never changes size. Never recycle `page` -- its LruCache
-            // still owns it, and a recycled bitmap reports byteCount == 0, so close() throws.
-            page.scale(THUMBNAIL_WIDTH_PX, THUMBNAIL_HEIGHT_PX, true)
+            // Never recycle `page` -- PdfPageSource's LruCache still owns it, and close() would throw.
+            renderTile(page)
         }
 
     private fun renderText(uri: Uri): Bitmap? = openStream(uri)?.use { input ->
@@ -166,7 +164,9 @@ class ThumbnailLoader(private val context: Context) {
     private fun renderOffice(document: DocumentEntity): Bitmap? {
         // mediaDir = null: thumbnails are text only, and writing media would double the cacheDir cost.
         val uri = document.uri.toUri()
-        if (OfficeEncryption.isEncrypted(openStream = { requiredStream(uri) })) throw IOException("encrypted office document")
+        if (OfficeEncryption.isEncrypted(openStream = { requiredStream(uri) }, knownLength = document.sizeBytes)) {
+            throw IOException("encrypted office document")
+        }
         val blocks = if (document.format == DocumentFormat.DOC) {
             val source = { requiredStream(uri) }
             DocTextExtractor.extract(source, THUMBNAIL_BLOCK_BUDGET, document.sizeBytes)
@@ -203,7 +203,7 @@ class ThumbnailLoader(private val context: Context) {
             SlidePageSource.open(context, uri, buildTextIndex = false).use { source ->
                 val first = (0 until source.pageCount).firstOrNull { it !in source.hidden } ?: 0
                 val page = source.render(first, THUMBNAIL_PDF_WIDTH_PX) ?: return@withTimeoutOrNull null
-                page.scale(THUMBNAIL_WIDTH_PX, THUMBNAIL_HEIGHT_PX, true)
+                renderTile(page)
             }
         }
     } catch (e: CancellationException) {
@@ -225,16 +225,19 @@ class ThumbnailLoader(private val context: Context) {
         while (width / (sample * 2) >= THUMBNAIL_WIDTH_PX * 2 && height / (sample * 2) >= THUMBNAIL_HEIGHT_PX * 2) sample *= 2
         val decoded = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = sample })
             ?: return null
+        return renderTile(decoded).also { decoded.recycle() }
+    }
+
+    private fun renderTile(source: Bitmap): Bitmap {
         val tile = createBitmap(THUMBNAIL_WIDTH_PX, THUMBNAIL_HEIGHT_PX)
         val canvas = Canvas(tile)
         canvas.drawColor(Color.WHITE)
-        val fill = maxOf(THUMBNAIL_WIDTH_PX.toFloat() / decoded.width, THUMBNAIL_HEIGHT_PX.toFloat() / decoded.height)
+        val fill = fillScale(source.width, source.height, THUMBNAIL_WIDTH_PX, THUMBNAIL_HEIGHT_PX)
         val matrix = Matrix().apply {
             postScale(fill, fill)
-            postTranslate((THUMBNAIL_WIDTH_PX - decoded.width * fill) / 2f, 0f)
+            postTranslate((THUMBNAIL_WIDTH_PX - source.width * fill) / 2f, 0f)
         }
-        canvas.drawBitmap(decoded, matrix, Paint(Paint.FILTER_BITMAP_FLAG))
-        decoded.recycle()
+        canvas.drawBitmap(source, matrix, Paint(Paint.FILTER_BITMAP_FLAG))
         return tile
     }
 
@@ -302,3 +305,6 @@ class ThumbnailLoader(private val context: Context) {
             (Runtime.getRuntime().maxMemory() / 16).toInt().coerceIn(4 shl 20, 32 shl 20)
     }
 }
+
+internal fun fillScale(sourceWidth: Int, sourceHeight: Int, tileWidth: Int, tileHeight: Int): Float =
+    maxOf(tileWidth.toFloat() / sourceWidth, tileHeight.toFloat() / sourceHeight)

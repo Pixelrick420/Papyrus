@@ -26,9 +26,8 @@ govern the component itself.
 1. io.github.erweixin:ratex-android:0.1.15
    License: MIT
    Bundled component: yes
-   Used for $$...$$ LaTeX math rendering in Markdown documents, Block formulas 
-   and inline formulas both render, with graceful fallback to plain text
-   if RaTeX span creation fails.
+   Used for $$...$$ LaTeX math rendering in Markdown documents; block and inline formulas both render,
+   with graceful fallback to plain text if RaTeX span creation fails.
 
 2. com.tom-roush:pdfbox-android:2.0.27.0
    License: Apache License, Version 2.0
@@ -110,6 +109,14 @@ govern the component itself.
     from Apache OpenOffice (Apache License, Version 2.0), revision
     b3b486c6f12b7baba6a5d71c7012f6454f487e5a.
     The Ecma notice is kept beside the file in ECMA-NOTICE.txt.
+
+16. com.atlassian.commonmark:commonmark (+ ext-gfm-*):0.13.0 (via Markwon)
+    License: BSD 2-Clause License
+    Bundled component: yes
+
+17. org.bouncycastle:bcprov/bcpkix/bcutil-jdk15to18:1.72 (via pdfbox-android)
+    License: Bouncy Castle Licence
+    Bundled component: yes
 
 ----------------------------------------------------------------------
 End of third-party notices

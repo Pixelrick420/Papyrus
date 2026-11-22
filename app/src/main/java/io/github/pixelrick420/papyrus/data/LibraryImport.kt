@@ -10,6 +10,8 @@ import java.io.InputStream
 import java.security.MessageDigest
 import java.util.UUID
 
+private val KNOWN_EXTENSIONS: Set<String> = DocumentFormat.entries.flatMap { it.extensions }.toSet()
+
 /** Copies a document into filesDir/imports so it outlives the intent grant that delivered it. */
 object LibraryImport {
 
@@ -159,10 +161,13 @@ object LibraryImport {
         ?.takeIf { it.isNotBlank() }
 
     internal fun withExtension(name: String, extension: String?): String {
+        val dot = name.lastIndexOf('.')
+        val knownSuffix = dot > 0 && name.substring(dot + 1).lowercase() in KNOWN_EXTENSIONS
         val (stem, suffix) = when {
             extension == null -> name to null
             name.endsWith(".$extension", ignoreCase = true) ->
                 name.dropLast(extension.length + 1) to name.takeLast(extension.length + 1)
+            knownSuffix -> name.substring(0, dot) to name.substring(dot)
             else -> name to ".$extension"
         }
         return truncateStem(stem) + suffix.orEmpty()

@@ -2,11 +2,10 @@ package io.github.pixelrick420.papyrus
 
 import android.content.Intent
 import android.content.res.Configuration
-import androidx.core.content.IntentCompat
-import androidx.core.net.toUri
 import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
@@ -16,6 +15,8 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.core.content.IntentCompat
+import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.pixelrick420.papyrus.ui.navigation.PapyrusNavGraph
 import io.github.pixelrick420.papyrus.ui.theme.PapyrusTheme
@@ -29,7 +30,7 @@ class MainActivity : ComponentActivity() {
     private var externalDocument by mutableStateOf<Handover?>(null)
     private var handoverSeq = 0L
 
-    @Suppress("TooGenericExceptionCaught", "SwallowedException")
+    @Suppress("TooGenericExceptionCaught")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val app = application as MainApplication
@@ -58,6 +59,7 @@ class MainActivity : ComponentActivity() {
                         } catch (e: CancellationException) {
                             throw e
                         } catch (e: Exception) {
+                            Log.w(TAG, "handed-over document failed: ${e.javaClass.simpleName}")
                             null
                         }
                     },
@@ -101,6 +103,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private companion object {
+        const val TAG = "MainActivity"
         val NAV_SCRIM_LIGHT = Color.argb(0xe6, 0xFF, 0xFF, 0xFF)
         val NAV_SCRIM_DARK = Color.argb(0x80, 0x1b, 0x1b, 0x1b)
     }

@@ -1,16 +1,27 @@
 package io.github.pixelrick420.papyrus.viewer
 
+import java.io.Closeable
 import java.io.IOException
 import java.io.InputStream
 import java.util.BitSet
 
 // Read-only and bounds-checked: a truncated or cyclic file throws instead of looping or over-allocating.
 internal class CompoundFile(private val openStream: () -> InputStream, knownLength: Long? = null) {
-    private class Entry(val name: String, val type: Int, val start: Int, val size: Long)
+    internal class Entry(
+        val name: String,
+        val type: Int,
+        val start: Int,
+        val size: Long,
+        val left: Int,
+        val right: Int,
+        val child: Int,
+    )
     private class Chunk(val fileOffset: Long, val dest: Int, val length: Int)
 
     private val fileLength: Long = knownLength?.takeIf { it in HEADER_SIZE..MAX_FILE_BYTES } ?: probeLength(openStream)
     private val cachedStreams = HashMap<String, ByteArray>()
+    private val chainCache = HashMap<Int, IntArray>()
+    private val miniChainCache = HashMap<Int, IntArray>()
 
     private val sectorSize: Int
     private val totalSectors: Int
@@ -91,55 +102,98 @@ internal class CompoundFile(private val openStream: () -> InputStream, knownLeng
         firstMiniFat = u32(header, FIRST_MINI_FAT_SECTOR_OFFSET).toInt()
     }
 
-    fun hasStream(name: String): Boolean =
-        entries.any { it.type == ENTRY_STREAM && it.name.equals(name, ignoreCase = true) }
+    fun hasStream(path: String): Boolean = resolve(path)?.type == ENTRY_STREAM
 
-    fun streamSize(name: String): Long? =
-        entries.firstOrNull { it.type == ENTRY_STREAM && it.name.equals(name, ignoreCase = true) }?.size
+    fun streamSize(path: String): Long? = resolve(path)?.takeIf { it.type == ENTRY_STREAM }?.size
 
-    fun cacheStream(name: String, maxBytes: Int): Boolean {
-        val key = name.lowercase()
+    fun cacheStream(path: String, maxBytes: Int): Boolean {
+        val key = path.lowercase()
         if (key in cachedStreams) return true
-        val size = streamSize(name) ?: return false
+        val size = streamSize(path) ?: return false
         if (size <= 0 || size > maxBytes) return false
-        cachedStreams[key] = read(name, 0, size.toInt())
+        cachedStreams[key] = read(path, 0, size.toInt())
         return true
     }
 
-    fun read(name: String, offset: Long, length: Int): ByteArray {
-        val entry = entries.firstOrNull { it.type == ENTRY_STREAM && it.name.equals(name, ignoreCase = true) }
-            ?: throw IOException("stream not found: $name")
-        if (offset < 0 || length < 0 || offset > entry.size || length > entry.size - offset) {
-            throw IOException("read out of bounds: $name")
-        }
+    fun read(path: String, offset: Long, length: Int): ByteArray {
+        val entry = resolve(path)?.takeIf { it.type == ENTRY_STREAM }
+            ?: throw IOException("stream not found: $path")
+        checkBounds(entry, path, offset, length)
         if (length == 0) return ByteArray(0)
-        cachedStreams[name.lowercase()]?.let { cached ->
+        cachedStreams[path.lowercase()]?.let { cached ->
             return cached.copyOfRange(offset.toInt(), offset.toInt() + length)
         }
-        val chunks = if (entry.size < miniCutoff) {
-            miniChunks(entry, offset, length)
-        } else {
-            regularChunks(entry, offset, length)
-        }
+        val chunks = chunksFor(entry, offset, length)
         val out = ByteArray(length)
         // One open for the whole read; chunks sorted by file offset so the stream only moves
         // forward even when the FAT chain itself jumps backwards.
-        val sorted = chunks.sortedBy { it.fileOffset }
-        openStream().use { input ->
-            var pos = 0L
-            for (chunk in sorted) {
-                if (chunk.fileOffset < pos) throw IOException("overlapping chunks")
-                skipFully(input, chunk.fileOffset - pos)
-                readFully(input, out, chunk.dest, chunk.length)
-                pos = chunk.fileOffset + chunk.length
-            }
-        }
+        openStream().use { input -> copyChunks(chunks, out, input, 0L) }
         return out
+    }
+
+    /** Forward-only stream reader: one open handle serves a whole sequential decryption pass. */
+    inner class Reader internal constructor(private val path: String, private val entry: Entry) : Closeable {
+        private val cached = cachedStreams[path.lowercase()]
+        private val input: InputStream? = if (cached == null) openStream() else null
+        private var position = 0L
+        private var closed = false
+
+        fun read(offset: Long, length: Int): ByteArray {
+            if (closed) throw IOException("reader is closed")
+            checkBounds(entry, path, offset, length)
+            if (length == 0) return ByteArray(0)
+            cached?.let { return it.copyOfRange(offset.toInt(), offset.toInt() + length) }
+            if (offset < position) throw IOException("reader requires forward-only reads")
+            val out = ByteArray(length)
+            val stream = input ?: throw IOException("reader is closed")
+            position = copyChunks(chunksFor(entry, offset, length), out, stream, position)
+            return out
+        }
+
+        override fun close() {
+            if (closed) return
+            closed = true
+            input?.close()
+        }
+    }
+
+    fun openReader(path: String): Reader {
+        val entry = resolve(path)?.takeIf { it.type == ENTRY_STREAM }
+            ?: throw IOException("stream not found: $path")
+        return Reader(path, entry)
+    }
+
+    private fun checkBounds(entry: Entry, path: String, offset: Long, length: Int) {
+        if (offset < 0 || length < 0 || offset > entry.size || length > entry.size - offset) {
+            throw IOException("read out of bounds: $path")
+        }
+    }
+
+    private fun copyChunks(chunks: List<Chunk>, out: ByteArray, input: InputStream, from: Long): Long {
+        var position = from
+        for (chunk in chunks.sortedBy { it.fileOffset }) {
+            if (chunk.fileOffset < position) throw IOException("overlapping chunks")
+            skipFully(input, chunk.fileOffset - position)
+            readFully(input, out, chunk.dest, chunk.length)
+            position = chunk.fileOffset + chunk.length
+        }
+        return position
+    }
+
+    private fun chunksFor(entry: Entry, offset: Long, length: Int): List<Chunk> =
+        if (entry.size < miniCutoff) miniChunks(entry, offset, length) else regularChunks(entry, offset, length)
+
+    private fun regularChain(start: Int): IntArray =
+        chainCache.getOrPut(start) { chain(start, fat, totalSectors, "stream chain") }
+
+    private fun miniChain(start: Int): IntArray {
+        val table = miniFat ?: throw IOException("mini FAT missing")
+        return miniChainCache.getOrPut(start) { chain(start, table, table.size, "mini chain") }
     }
 
     private fun regularChunks(entry: Entry, offset: Long, length: Int): List<Chunk> {
         val needed = ((offset + length + sectorSize - 1) / sectorSize).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
-        val sectors = chain(entry.start, fat, totalSectors, "stream ${entry.name}", minOf(needed, totalSectors))
+        val sectors = regularChain(entry.start)
         if (sectors.size < needed) throw IOException("stream chain too short: ${entry.name}")
         val chunks = ArrayList<Chunk>()
         var sectorIndex = (offset / sectorSize).toInt()
@@ -157,9 +211,8 @@ internal class CompoundFile(private val openStream: () -> InputStream, knownLeng
     }
 
     private fun miniChunks(entry: Entry, offset: Long, length: Int): List<Chunk> {
-        val table = miniFat ?: throw IOException("mini FAT missing")
         val needed = ((offset + length + MINI_SECTOR_SIZE - 1) / MINI_SECTOR_SIZE).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
-        val sectors = chain(entry.start, table, table.size, "mini stream ${entry.name}", minOf(needed, table.size))
+        val sectors = miniChain(entry.start)
         if (sectors.size < needed) throw IOException("mini stream chain too short: ${entry.name}")
         val rootSectors = miniRoot
         val chunks = ArrayList<Chunk>()
@@ -178,6 +231,38 @@ internal class CompoundFile(private val openStream: () -> InputStream, knownLeng
             miniIndex++
         }
         return chunks
+    }
+
+    private fun resolve(path: String): Entry? {
+        val parts = path.split('\\', '/').filter { it.isNotEmpty() }
+        var child = root?.child ?: NO_STREAM
+        var found: Entry? = null
+        for ((index, part) in parts.withIndex()) {
+            found = findSibling(child, part) ?: return null
+            if (index < parts.lastIndex) {
+                if (found.type != ENTRY_STORAGE) return null
+                child = found.child
+            }
+        }
+        return found
+    }
+
+    private fun findSibling(start: Int, name: String): Entry? {
+        val seen = BitSet(entries.size)
+        var node = start
+        while (node >= 0 && node < entries.size) {
+            if (seen[node]) throw IOException("directory cycle")
+            seen[node] = true
+            val entry = entries[node]
+            val lengthOrder = name.length.compareTo(entry.name.length)
+            val order = if (lengthOrder == 0) name.compareTo(entry.name, ignoreCase = true) else lengthOrder
+            node = when {
+                order < 0 -> entry.left
+                order > 0 -> entry.right
+                else -> return entry
+            }
+        }
+        return null
     }
 
     // Bounded walk with a seen-set so a cyclic FAT throws instead of spinning.
@@ -212,7 +297,7 @@ internal class CompoundFile(private val openStream: () -> InputStream, knownLeng
         val end = off + length
         while (at + ENTRY_SIZE <= end) {
             val type = sector[at + ENTRY_TYPE_OFFSET].toInt() and 0xFF
-            if (type == ENTRY_STREAM || type == ENTRY_ROOT) {
+            if (type == ENTRY_STREAM || type == ENTRY_ROOT || type == ENTRY_STORAGE) {
                 val nameLen = u16(sector, at + ENTRY_NAME_LENGTH_OFFSET)
                 // nameLen counts the terminator; a broken length must not read past the entry.
                 val nameBytes = (nameLen - 2).coerceIn(0, 64) and 1.inv()
@@ -220,7 +305,15 @@ internal class CompoundFile(private val openStream: () -> InputStream, knownLeng
                 val start = i32(sector, at + ENTRY_START_OFFSET)
                 val size = (i32(sector, at + ENTRY_SIZE_OFFSET).toLong() and 0xFFFFFFFFL) or
                     ((i32(sector, at + ENTRY_SIZE_OFFSET + 4).toLong() and 0xFFFFFFFFL) shl 32)
-                out += Entry(name, type, start, size)
+                out += Entry(
+                    name,
+                    type,
+                    start,
+                    size,
+                    i32(sector, at + ENTRY_LEFT_OFFSET),
+                    i32(sector, at + ENTRY_RIGHT_OFFSET),
+                    i32(sector, at + ENTRY_CHILD_OFFSET),
+                )
             }
             at += ENTRY_SIZE
         }
@@ -364,7 +457,12 @@ private const val DIFAT_OFFSET = 0x4C
 
 private const val ENTRY_NAME_LENGTH_OFFSET = 0x40
 private const val ENTRY_TYPE_OFFSET = 0x42
+private const val ENTRY_LEFT_OFFSET = 0x44
+private const val ENTRY_RIGHT_OFFSET = 0x48
+private const val ENTRY_CHILD_OFFSET = 0x4C
 private const val ENTRY_START_OFFSET = 0x74
 private const val ENTRY_SIZE_OFFSET = 0x78
+private const val ENTRY_STORAGE = 1
 private const val ENTRY_STREAM = 2
 private const val ENTRY_ROOT = 5
+private const val NO_STREAM = -1

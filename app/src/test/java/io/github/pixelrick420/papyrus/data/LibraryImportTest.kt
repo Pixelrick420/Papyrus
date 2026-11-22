@@ -85,6 +85,14 @@ class LibraryImportTest {
     }
 
     @Test
+    fun `a known extension in the name is kept instead of appending the mime extension`() {
+        assertEquals("README.md", LibraryImport.importFileName("README.md", null, "text/plain", 1L))
+        assertEquals("script.py", LibraryImport.importFileName("script.py", null, "text/plain", 1L))
+        assertEquals("data.tsv", LibraryImport.importFileName("data.tsv", null, "text/csv", 1L))
+        assertEquals("NOTES.MD", LibraryImport.importFileName("NOTES.MD", null, "text/plain", 1L))
+    }
+
+    @Test
     fun `a long CJK name is cut by bytes and keeps its extension`() {
         val name = LibraryImport.importFileName("中".repeat(130), null, "application/pdf", 1L)
 

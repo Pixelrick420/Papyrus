@@ -83,7 +83,7 @@ enum class DocumentFormat(
         // claims `conf`.
         fun detect(displayName: String?, mimeType: String?): DocumentFormat {
             val name = displayName?.lowercase().orEmpty()
-            val ext = name.substringAfterLast('.', "").let { if (name.contains('.')) it else "" }
+            val ext = name.substringAfterLast('.', "")
             val mime = mimeType?.lowercase()
             return entries.firstOrNull { ext.isNotEmpty() && ext in it.extensions }
                 ?: entries.firstOrNull { name.isNotEmpty() && name in it.extensions }

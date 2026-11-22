@@ -9,6 +9,9 @@ import java.io.IOException
 import java.io.InputStream
 import java.util.Random
 import java.util.concurrent.CancellationException
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -230,6 +233,40 @@ class ChunkProviderTest {
 
         assertEquals(afterIndexing, afterLoad - 1)
         assertEquals(afterLoad, opens.get())
+    }
+
+    @Test
+    fun `peek and cachedCount do not wait for an in-flight decode`() = runBlocking {
+        val bytes = (1..200).joinToString("\n") { "line $it" }.toByteArray()
+        val armed = AtomicBoolean()
+        val entered = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val blocking = ByteSource { offset ->
+            if (armed.get()) {
+                entered.countDown()
+                release.await()
+            }
+            ByteArrayInputStream(bytes, offset.toInt(), bytes.size - offset.toInt())
+        }
+        val chunks = indexed(bytes, layout(lines = 2), src = blocking).chunks as IndexedChunks
+        armed.set(true)
+        val decoder = Thread { runBlocking { chunks.load(0) } }
+        decoder.start()
+        assertTrue(entered.await(2, TimeUnit.SECONDS))
+        val observed = CountDownLatch(1)
+        val reader = Thread {
+            chunks.peek(0)
+            chunks.cachedCount
+            observed.countDown()
+        }
+        reader.start()
+        try {
+            assertTrue("cache reads blocked behind provider I/O", observed.await(2, TimeUnit.SECONDS))
+        } finally {
+            release.countDown()
+            decoder.join(5_000)
+            reader.join(5_000)
+        }
     }
 
     @Test

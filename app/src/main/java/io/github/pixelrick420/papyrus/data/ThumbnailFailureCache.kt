@@ -10,6 +10,7 @@ internal class ThumbnailFailureCache(
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Entry>?): Boolean = size > maxEntries
     }
 
+    @Synchronized
     fun get(key: String): ThumbnailResult? {
         val entry = entries[key] ?: return null
         if (entry.expiresAt != Long.MAX_VALUE && entry.expiresAt <= clock()) {
@@ -19,12 +20,14 @@ internal class ThumbnailFailureCache(
         return entry.result
     }
 
+    @Synchronized
     fun put(key: String, result: ThumbnailResult, ttlMillis: Long) {
         require(result !is ThumbnailResult.Image)
         val expiresAt = if (ttlMillis == PERMANENT_TTL) Long.MAX_VALUE else clock() + ttlMillis
         entries[key] = Entry(result, expiresAt)
     }
 
+    @Synchronized
     fun evictAll() = entries.clear()
 
     internal data class Entry(val result: ThumbnailResult, val expiresAt: Long)

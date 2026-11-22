@@ -5,8 +5,8 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 /**
- * Records the §6 text-path baseline on a generated 100-slide deck. The device-only targets — 1080 px first-slide and
- * per-slide render time, peak scroll memory and APK delta on low-end and mid-range hardware — are accepted exceptions:
+ * Records the §6 text-path baseline on a generated 100-slide deck. The device-only targets (1080 px first-slide and
+ * per-slide render time, peak scroll memory and APK delta on low-end and mid-range hardware) are accepted exceptions:
  * the JVM cannot measure them, so they stay with the device harness. Regressions are reviewed, not asserted in CI.
  */
 class PptxBenchmarkTest {

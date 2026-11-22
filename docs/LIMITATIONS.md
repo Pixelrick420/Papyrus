@@ -10,8 +10,8 @@
 
 - DOC carries paragraphs and tables only: no images, headings become paragraphs; encrypted and Word 6/95 files are
   rejected.
-- Protected files open only as `.docx` (ECMA-376 Agile) or `.odt` (ODF 1.2 AES-256-CBC), plus PDF. ODF 1.3 and legacy
-  schemes are reported as protected but not opened.
+- Protected files open as `.docx`/`.pptx` (ECMA-376 Agile) or `.odt` (ODF 1.2 AES-256-CBC), plus PDF. ODF 1.3
+  and legacy schemes are reported as protected but not opened.
 
 ## EPUB
 
@@ -38,7 +38,7 @@
 
 ## CSV and TSV
 
-- Not read aloud. Held whole: 8 MB file, 200,000 cells and 1,024 columns; over a cap the view is truncated with the
+- Not read aloud. Held whole: 8 MB file, 200,000 cells, 1,024 columns and 10,000 characters per cell (`MAX_CELL_CHARS` in `DelimitedFile.kt`); over a cap the view is truncated with the
   incomplete-document notice.
 
 ## Content search
@@ -58,3 +58,10 @@
 
 - UTF-8 and single-byte files have no size cap: text is decoded in chunks as it scrolls.
 - UTF-16, multi-byte East Asian files and files the provider will not reopen twice are held in memory and capped.
+- Recognised code files get a full pass at open to seed lexer states for later chunks (`chunkStartStates` in `SyntaxHighlighter.kt`); a chunk over `MAX_HIGHLIGHT_CHARS` (20,000) stays plain.
+
+## Read aloud
+
+- The TTS voice and sentence splitting use the device locale (`Locale.getDefault()` in `TtsPlaybackService.kt` and
+  `TtsAlignment.kt`), with English only as a fallback when that locale has no TTS data; there is no per-document
+  language choice.

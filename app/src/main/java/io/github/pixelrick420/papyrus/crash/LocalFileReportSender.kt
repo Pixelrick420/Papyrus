@@ -27,9 +27,10 @@ class LocalFileReportSender : ReportSender {
     }
 
     private fun redactReport(errorContent: CrashReportData, roots: List<String>) {
+        val rootRegexes = rootRegexes(roots)
         for ((key, value) in errorContent.toMap()) {
             if (value !is String) continue
-            val sanitized = redact(value, roots)
+            val sanitized = redact(value, rootRegexes)
             if (sanitized != value) errorContent.put(key, sanitized)
         }
     }
@@ -43,10 +44,13 @@ class LocalFileReportSender : ReportSender {
 
         internal fun redact(text: String, root: String): String = redact(text, listOf(root))
 
-        internal fun redact(text: String, roots: Collection<String>): String =
-            roots.fold(text) { acc, root ->
-                acc.replace(Regex(Pattern.quote(root) + """.*"""), "[redacted]")
-            }
+        internal fun redact(text: String, roots: Collection<String>): String = redact(text, rootRegexes(roots))
+
+        private fun rootRegexes(roots: Collection<String>): List<Regex> =
+            roots.map { Regex(Pattern.quote(it) + """.*""") }
+
+        private fun redact(text: String, rootRegexes: List<Regex>): String =
+            rootRegexes.fold(text) { acc, root -> acc.replace(root, "[redacted]") }
                 .replace(CONTENT_URI, "[redacted]")
                 .replace(FILE_URI, "[redacted]")
                 .replace(IMPORTS, "[redacted]")

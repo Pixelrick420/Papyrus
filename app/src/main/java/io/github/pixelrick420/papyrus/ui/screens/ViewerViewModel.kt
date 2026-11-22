@@ -40,6 +40,7 @@ import io.github.pixelrick420.papyrus.data.TextIndexState
 import io.github.pixelrick420.papyrus.data.ThumbnailResult
 import io.github.pixelrick420.papyrus.data.shareIntent
 import io.github.pixelrick420.papyrus.data.openRequired
+import io.github.pixelrick420.papyrus.tts.PdfTtsUnits
 import io.github.pixelrick420.papyrus.tts.TtsDocumentSource
 import io.github.pixelrick420.papyrus.tts.TtsPlaybackService
 import io.github.pixelrick420.papyrus.tts.TtsSession
@@ -390,6 +391,8 @@ class ViewerViewModel(
 
     private var speakableJob: Job? = null
 
+    private var ttsPrefetchJob: Job? = null
+
     /** Cancelled per reload, so a quick encoding pick and a settings toggle leave the later one on screen. */
     private var reloadJob: Job? = null
 
@@ -732,13 +735,40 @@ class ViewerViewModel(
 
     fun ttsDocumentId(): String = _state.value.document?.id?.toString().orEmpty()
 
-    // A PDF reads its pages one at a time (never `allPages()`); every other format reuses the text path already loaded.
+    // A PDF grows its units as pages are read; every other format reuses the text path already loaded.
     fun startReadAloud() {
         val document = _state.value.document ?: return
         val content = _state.value.content
         viewModelScope.launch {
+            if (content is ViewerContent.Pdf) {
+                val pageCount = content.source.pageCount
+                if (pageCount <= 0) {
+                    _messages.value = UiText(R.string.viewer_pdf_no_text)
+                    return@launch
+                }
+                val units = PdfTtsUnits(pageCount) { index -> pageText(index)?.text.orEmpty() }
+                val kind = LocationKind.forFormat(document.format) ?: LocationKind.PAGE
+                val location = restoreTarget()?.location?.takeIf { it.kind == kind }
+                    ?: ReadingLocation(kind, 0)
+                units.publishThrough(location.unit.coerceIn(0, pageCount - 1))
+                if (units.isEmpty()) {
+                    _messages.value = UiText(R.string.viewer_pdf_no_text)
+                    return@launch
+                }
+                prepareReadAloud(document, units, location)
+                ttsPrefetchJob?.cancel()
+                ttsPrefetchJob = launch(Dispatchers.IO) {
+                    try {
+                        while (units.publishNext()) ensureActive()
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (error: Exception) {
+                        app.reportSilent(error)
+                    }
+                }
+                return@launch
+            }
             val units = when (content) {
-                is ViewerContent.Pdf -> pdfTtsUnits(content.source.pageCount)
                 // Counting the units reads every chunk, which for a large file is not for the main thread.
                 is ViewerContent.PlainText -> withContext(Dispatchers.IO) {
                     TtsDocumentSource.unitsFromChunks(content.chunks) { ensureActive() }
@@ -757,22 +787,26 @@ class ViewerViewModel(
             val kind = LocationKind.forFormat(document.format) ?: LocationKind.CHUNK
             val location = restoreTarget()?.location?.takeIf { it.kind == kind }
                 ?: ReadingLocation(kind, 0)
-            tts.prepare(
-                documentId = document.id.toString(),
-                title = document.title,
-                format = document.format,
-                units = units,
-                startIndex = TtsDocumentSource.startIndexFor(units, location),
-                speed = tts.state.value.speed.takeIf { it > 0f } ?: 1.0f,
-            )
-            try {
-                TtsPlaybackService.start(app)
-            } catch (_: IllegalStateException) {
-                // Android 12+ refuses a foreground service start once the app has left the foreground.
-                tts.stop()
-            } catch (_: SecurityException) {
-                tts.stop()
-            }
+            prepareReadAloud(document, units, location)
+        }
+    }
+
+    private fun prepareReadAloud(document: DocumentEntity, units: List<TtsUnit>, location: ReadingLocation) {
+        tts.prepare(
+            documentId = document.id.toString(),
+            title = document.title,
+            format = document.format,
+            units = units,
+            startIndex = TtsDocumentSource.startIndexFor(units, location),
+            speed = tts.state.value.speed.takeIf { it > 0f } ?: 1.0f,
+        )
+        try {
+            TtsPlaybackService.start(app)
+        } catch (_: IllegalStateException) {
+            // Android 12+ refuses a foreground service start once the app has left the foreground.
+            tts.stop()
+        } catch (_: SecurityException) {
+            tts.stop()
         }
     }
 
@@ -812,14 +846,6 @@ class ViewerViewModel(
     // The voice must not drag a reader who went somewhere on purpose straight back, so the lock is let go.
     fun ttsReleaseScroll() {
         if (tts.state.value.documentId == ttsDocumentId()) tts.setScrollLocked(false)
-    }
-
-    private suspend fun pdfTtsUnits(pageCount: Int): List<TtsUnit> {
-        val pages = ArrayList<String>(pageCount)
-        for (index in 0 until pageCount) {
-            pages.add(pageText(index)?.text.orEmpty())
-        }
-        return TtsDocumentSource.unitsFromPdfPages(pages)
     }
 
     fun onRestored(applied: PositionSample) {
@@ -1000,7 +1026,7 @@ class ViewerViewModel(
             } catch (expected: EpubProtectedException) {
                 ViewerContent.Failed(UiText(R.string.viewer_error_epub_protected))
             }
-            DocumentFormat.DOC -> when (OfficeEncryption.status({ openStream(uri) })) {
+            DocumentFormat.DOC -> when (OfficeEncryption.status({ openStream(uri) }, knownLength = doc.sizeBytes)) {
                 OfficeEncryption.Party.NOT_ENCRYPTED -> {
                     val blocks = DocTextExtractor.extract({ openStream(uri) }, knownLength = doc.sizeBytes)
                     if (blocks.isEmpty()) ViewerContent.Failed(UiText(R.string.viewer_error_empty)) else ViewerContent.Office(blocks)
@@ -1028,7 +1054,7 @@ class ViewerViewModel(
             chunks = read.chunks,
             encoding = read.encoding,
             language = language,
-            lexStates = language?.let { SyntaxHighlighter.chunkStartStates(it, read.chunks) },
+            lexStates = language?.let { SyntaxHighlighter.lazyChunkStartStates(it, read.view) },
             lineCount = read.lineCount,
             maxLineColumns = read.maxLineColumns,
             truncated = read.truncated,
@@ -1122,7 +1148,7 @@ class ViewerViewModel(
             return deck.toContent()
         }
         val blocks = try {
-            OfficeEncryption.decrypt({ openStream(uri) }, password, target)
+            OfficeEncryption.decrypt({ openStream(uri) }, password, target, ensureActive = { ctx.ensureActive() })
             extractOffice(target.toUri(), format)
         } catch (expected: DocumentPasswordException) {
             target.delete()

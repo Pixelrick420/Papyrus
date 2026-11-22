@@ -11,10 +11,12 @@ class EpubFormatException(message: String, cause: Throwable? = null) : IOExcepti
 
 class EpubProtectedException : IOException("EPUB content is protected")
 
+internal const val EPUB_MAX_ENTRIES = 50_000
+
 // Every bound on reading an EPUB in one value so a test can use small ones; the defaults sit far above a real book and far below what would hurt.
 data class EpubLimits(
-    // The five bounds on the archive itself are the ones Word and OpenDocument files are read under.
-    val maxEntries: Int = ZipLimits().maxEntries,
+    // A book carries more unused images than an office file, so its entry cap is higher.
+    val maxEntries: Int = EPUB_MAX_ENTRIES,
     val maxEntryBytes: Long = ZipLimits().maxEntryBytes,
     val maxTotalBytes: Long = ZipLimits().maxTotalBytes,
     val maxRatio: Int = ZipLimits().maxRatio,
@@ -53,7 +55,7 @@ internal class EpubArchive(
                 while (true) {
                     val entry = zip.nextEntry ?: break
                     val name = entry.name
-                    if (!isSafeEntryName(name)) throw EpubFormatException("unsafe entry name")
+                    if (!isSafeEntryName(name)) continue
                     if (entry.isDirectory) continue
 
                     val keep = wanted(name)

@@ -121,7 +121,7 @@ Needs Android 8.0 or newer. No Play Services, no network permission, no account.
 
 ## Development
 
-Needs JDK 17 and the Android SDK, as pinned in `.github/workflows/build.yml`.
+Needs JDK 17 and the Android SDK with platform 37, build-tools 36.0.0 and NDK 28.2.13676358 installed (see `app/build.gradle.kts` and `.github/actions/setup-android/action.yml`).
 
 | Task                            | What it does                                     |
 | ------------------------------- | ------------------------------------------------ |
@@ -146,8 +146,8 @@ Test commands, the emulator suite and CI detail: [docs/TESTING.md](docs/TESTING.
   Word 6/95 files are rejected.
 - **EPUB** fixed-layout books keep page boundaries and page-sized pictures, but absolutely positioned text reflows;
   styles are read for bold, italic and alignment only, and SVG support is a straight-shape subset.
-- **Password-protected** files open only as PDF, `.docx` (ECMA-376 Agile) or `.odt` (ODF 1.2 AES-256-CBC); newer ODF
-  1.3 and legacy binary schemes are reported but not opened.
+- **Password-protected** files open as PDF, `.docx`/`.pptx` (ECMA-376 Agile) or `.odt` (ODF 1.2 AES-256-CBC);
+  newer ODF 1.3 and legacy binary schemes are reported but not opened.
 - **PDF form fields** need Android 12 or newer with the PDF SDK form extension, and saving highlights into a copy needs
   a newer extension; XFA forms cannot be filled and signature fields cannot be signed.
 - **PDF notes** stay in Papyrus; a saved copy carries plain highlights only. A PDF over 128 MB is not read for an

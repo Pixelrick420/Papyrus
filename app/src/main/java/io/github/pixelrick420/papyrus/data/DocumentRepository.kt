@@ -11,7 +11,7 @@ import io.github.pixelrick420.papyrus.viewer.OfficeEncryption
 import io.github.pixelrick420.papyrus.viewer.OutlineEntry
 import io.github.pixelrick420.papyrus.viewer.PdfEncryption
 import io.github.pixelrick420.papyrus.viewer.TextSniffer
-import io.github.pixelrick420.papyrus.viewer.textCacheKey
+import io.github.pixelrick420.papyrus.viewer.textCacheModified
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
@@ -146,7 +146,7 @@ class DocumentRepository(
             val path = uri.path ?: return 0
             return File(path).takeIf { it.isFile }?.lastModified()?.takeIf { it > 0 } ?: 0
         }
-        return textCacheKey(context, uri)?.lastModified ?: 0
+        return textCacheModified(context, uri) ?: 0
     }
 
     // Read aloud needs this for a PDF, whose pages are read one at a time so the viewer cannot tell if there is text.
@@ -189,7 +189,7 @@ class DocumentRepository(
         val entity = buildEntity(uri)
         // Not indexed by default: a row would put it in the library and persist a grant past the open.
         // With autosave encrypted on, it is indexed like any file, and the password is asked again on open.
-        if (entity.format in ENCRYPTABLE && !settings.current.autosaveEncrypted && isEncrypted(entity.format, uri)) {
+        if (entity.format in ENCRYPTABLE && !settings.current.autosaveEncrypted && isEncrypted(entity.format, uri, entity.sizeBytes)) {
             return@withContext handOver(entity)
         }
         if (!SafStorage.persistPermission(resolver, uri)) {
@@ -313,20 +313,15 @@ class DocumentRepository(
         // Another row already owns this URI, so the grant would be taken for nothing.
         val owner = dao.getByUri(pickedUri)
         if (owner != null && owner.id != expected.id) return@withContext false
-        if (!SafStorage.persistPermission(resolver, picked)) return@withContext false
-        // A handed-over document has no row to re-point, so the in-memory entry carries the new URI.
+        // A handed-over document has no row to re-point; its re-pick already carries a transient read grant.
         if (expected.id < 0) {
+            if (expected.uri != pickedUri) SafStorage.releasePermission(resolver, expected.uri.toUri())
             handedOver[expected.id] = expected.copy(uri = pickedUri)
             return@withContext true
         }
-        // The same URI is the grant just taken, so only a different old URI is released.
+        if (!SafStorage.persistPermission(resolver, picked)) return@withContext false
         val rebound = try {
-            dao.rebindUri(
-                id = expected.id,
-                uri = pickedUri,
-                oldUri = expected.uri.takeIf { it != pickedUri },
-                releaseGrant = { old -> SafStorage.releasePermission(resolver, old.toUri()) },
-            )
+            dao.rebindUri(id = expected.id, uri = pickedUri)
         } catch (e: Exception) {
             SafStorage.releasePermission(resolver, picked)
             throw e
@@ -335,11 +330,12 @@ class DocumentRepository(
             SafStorage.releasePermission(resolver, picked)
             return@withContext false
         }
+        if (expected.uri != pickedUri) SafStorage.releasePermission(resolver, expected.uri.toUri())
         true
     }
 
-    /** An unreadable file reads as not encrypted, so the renderer fails rather than prompting. */
-    private fun isEncrypted(format: DocumentFormat, uri: Uri): Boolean =
+    /** A damaged file reads as not encrypted, as in PDF, so rendering fails generically instead of prompting. */
+    private fun isEncrypted(format: DocumentFormat, uri: Uri, sizeBytes: Long): Boolean =
         when (format) {
             DocumentFormat.PDF -> PdfEncryption.status { openStream(uri) }.also { status ->
                 if (status != PdfEncryption.NOT_ENCRYPTED) {
@@ -347,7 +343,8 @@ class DocumentRepository(
                     knownPdfEncryption[uri.toString()] = status
                 }
             } != PdfEncryption.NOT_ENCRYPTED
-            DocumentFormat.DOCX, DocumentFormat.ODT, DocumentFormat.DOC -> OfficeEncryption.isEncrypted({ openStream(uri) })
+            DocumentFormat.DOCX, DocumentFormat.ODT, DocumentFormat.DOC ->
+                OfficeEncryption.isEncrypted({ openStream(uri) }, knownLength = sizeBytes)
             else -> false
         }
 

@@ -2,8 +2,11 @@ package io.github.pixelrick420.papyrus.viewer
 
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Test
+import java.io.ByteArrayInputStream
 import java.io.IOException
 import java.io.InputStream
 
@@ -60,5 +63,65 @@ class CompoundFileTest {
 
         assertEquals(payload.size.toLong(), cfb.streamSize("Payload"))
         assertArrayEquals(payload, cfb.read("Payload", 0, payload.size))
+    }
+
+    private class CountingStreams(private val bytes: ByteArray) {
+        var opens = 0
+            private set
+
+        val factory: () -> InputStream = {
+            opens++
+            ByteArrayInputStream(bytes)
+        }
+    }
+
+    @Test
+    fun `a bare name is root level and nested leaves are told apart by their storage`() {
+        val root = "root payload".toByteArray()
+        val left = "left payload".toByteArray()
+        val right = "right payload".toByteArray()
+        val bytes = DocFixtures.compound(
+            mapOf("Payload" to root, "First\\Payload" to left, "Second/Payload" to right),
+        )
+
+        val cfb = CompoundFile(DocFixtures.streamFactory(bytes))
+
+        assertArrayEquals(root, cfb.read("Payload", 0, root.size))
+        assertArrayEquals(left, cfb.read("First\\Payload", 0, left.size))
+        assertArrayEquals(left, cfb.read("First/Payload", 0, left.size))
+        assertArrayEquals(right, cfb.read("Second/Payload", 0, right.size))
+        assertFalse(cfb.hasStream("First"))
+        assertNull(cfb.streamSize("Missing\\Payload"))
+        assertThrows(IOException::class.java) { cfb.read("First", 0, 1) }
+    }
+
+    @Test
+    fun `a known length skips the probing open`() {
+        val bytes = DocFixtures.compound(mapOf("Payload" to "known length".toByteArray()))
+        val probed = CountingStreams(bytes)
+        val known = CountingStreams(bytes)
+
+        CompoundFile(probed.factory)
+        CompoundFile(known.factory, bytes.size.toLong())
+
+        assertEquals(probed.opens, known.opens + 1)
+    }
+
+    @Test
+    fun `one reader serves several forward reads from one open stream`() {
+        val payload = ByteArray(300) { it.toByte() }
+        val bytes = DocFixtures.compound(mapOf("Payload" to payload))
+        val counting = CountingStreams(bytes)
+        val cfb = CompoundFile(counting.factory, bytes.size.toLong())
+        val opened = counting.opens
+
+        cfb.openReader("Payload").use { reader ->
+            assertArrayEquals(payload.copyOfRange(0, 100), reader.read(0, 100))
+            assertArrayEquals(payload.copyOfRange(100, 100), reader.read(100, 100))
+            assertArrayEquals(ByteArray(0), reader.read(200, 0))
+        }
+
+        assertEquals(opened + 1, counting.opens)
+        assertThrows(IOException::class.java) { cfb.openReader("Payload").read(0, payload.size + 1) }
     }
 }

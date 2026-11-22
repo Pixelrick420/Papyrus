@@ -55,6 +55,17 @@ class MarkdownLongLineTest {
     }
 
     @Test
+    fun `a long local part that is never an address does not slow the scan`() {
+        val line = "a".repeat(200_000) + " user@example.com"
+
+        timed("long local part") {
+            val links = Autolinks.find(line)
+            assertEquals(1, links.size)
+            assertEquals("mailto:user@example.com", links.single().destination)
+        }
+    }
+
+    @Test
     fun `many short addresses with a dotted host are all found`() {
         val line = "user@mail.example.co.uk ".repeat(40_000)
 

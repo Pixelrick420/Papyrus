@@ -1,5 +1,6 @@
 package io.github.pixelrick420.papyrus.data
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -33,6 +34,7 @@ class SearchIndexer(
     private val startDelayMillis: Long = 0,
     /** Files at most this large ignore [mayIndex], but not [enabled]; zero turns the eager pass off. */
     private val eagerMaxBytes: Long = EAGER_MAX_BYTES,
+    private val onDocumentFailure: (documentId: Long, failureClass: String) -> Unit = { _, _ -> },
 ) {
     private val started = AtomicBoolean(false)
 
@@ -97,7 +99,7 @@ class SearchIndexer(
             if (documents.isEmpty()) return
             for (document in documents) {
                 if (!wanted()) return
-                indexOne(document, lastModified(document))
+                indexSafely(document, safeModified(document))
             }
         }
     }
@@ -111,8 +113,47 @@ class SearchIndexer(
             for (row in batch) {
                 yield()
                 after = row.document.id
-                val now = lastModified(row.document)?.takeIf { it > 0 } ?: continue
-                if (now != row.sourceModified) indexOne(row.document, now)
+                val now = safeModified(row.document)?.takeIf { it > 0 } ?: continue
+                if (now != row.sourceModified) indexSafely(row.document, now)
+            }
+        }
+    }
+
+    @Suppress("TooGenericExceptionCaught")
+    private suspend fun safeModified(document: DocumentEntity): Long? =
+        try {
+            lastModified(document)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            onDocumentFailure(document.id, failure.javaClass.simpleName)
+            null
+        }
+
+    @Suppress("TooGenericExceptionCaught")
+    private suspend fun indexSafely(document: DocumentEntity, modified: Long?) {
+        try {
+            indexOne(document, modified)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            onDocumentFailure(document.id, failure.javaClass.simpleName)
+            val row = DocumentTextEntity(
+                documentId = document.id,
+                text = "",
+                state = TextIndexState.FAILED,
+                charCount = 0,
+                sourceSize = document.sizeBytes,
+                indexedAt = System.currentTimeMillis() + FAILED_RETRY_MILLIS,
+                indexVersion = INDEX_VERSION,
+                sourceModified = modified?.takeIf { it > 0 } ?: 0,
+            )
+            try {
+                dao.replaceIfExists(row)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                // The batch continues even when the failure row itself cannot be written.
             }
         }
     }

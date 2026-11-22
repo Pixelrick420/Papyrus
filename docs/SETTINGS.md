@@ -12,7 +12,7 @@ Labels match the app; defaults are the app's own.
 - **Pretty print structured files**: indent JSON, XML, HTML and SVG at the chosen **Tab size** (2, 3, 4 or 8 spaces);
   the stored file is unchanged and oversized files open as stored.
 - **Autosave external docs**: add another app's document to the library; off uses the viewer's **Save to library**.
-- **Autosave encrypted docs**: same for protected PDF/Word/OpenDocument/PPTX; never stores the password.
+- **Autosave encrypted docs**: same for protected PDF/DOCX/ODT/PPTX; never stores the password.
 - **Remember reading position**: reopen at the saved position and show Home progress; stored values return if switched
   back on.
 - **Search inside documents**: background text index; small files are immediate, larger files pause while reading or

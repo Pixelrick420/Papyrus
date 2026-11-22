@@ -540,6 +540,16 @@ class EpubExtractorTest {
     }
 
     @Test
+    fun `whitespace between epub type tokens still finds the toc nav`() {
+        for (separator in listOf("\t", "\n")) {
+            val nav = EpubFixtures.xhtml(
+                """<nav epub:type="landmarks${separator}toc"><ol><li><a href="two.xhtml">Real</a></li></ol></nav>""",
+            )
+            assertEquals(listOf(OutlineEntry(3, 0, "Real")), read(EpubFixtures.epub(threeChapters, nav = nav)).outline)
+        }
+    }
+
+    @Test
     fun `an epub 2 ncx works and nests by navPoint`() {
         val ncx = EpubFixtures.ncxDoc(
             EpubFixtures.ncxPoint("Start", "one.xhtml", EpubFixtures.ncxPoint("Nested", "two.xhtml")) +
@@ -673,10 +683,17 @@ class EpubExtractorTest {
     }
 
     @Test
-    fun `an entry that climbs out of the archive is refused`() {
+    fun `an entry that climbs out of the archive is skipped`() {
         for (name in listOf("../evil.xhtml", "OEBPS/../../evil.xhtml", "/etc/passwd", "\\windows\\x", "C:\\x", "a\\..\\b")) {
-            expectFormatError(EpubFixtures.epub(listOf(chapter("<p>x</p>")), extra = mapOf(name to byteArrayOf(1))))
+            val bytes = EpubFixtures.epub(listOf(chapter("<p>x</p>")), extra = mapOf(name to byteArrayOf(1)))
+            assertEquals(listOf("x"), texts(read(bytes)))
         }
+    }
+
+    @Test
+    fun `an unsafe entry the spine wants is skipped too`() {
+        val chapters = listOf(chapter("<p>safe</p>", "safe.xhtml"), chapter("<p>evil</p>", "../evil.xhtml"))
+        assertEquals(listOf("safe"), texts(read(EpubFixtures.epub(chapters))))
     }
 
     @Test

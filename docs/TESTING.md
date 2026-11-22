@@ -19,10 +19,10 @@ minified APK strips classes the androidTest APK expects on its classpath. `Fresh
 clear the database, imported copies and settings before each test.
 
 `RetryRule` retries a failed test from a fresh install (fixed attempts and a whole-run cap) and logs `FLAKY` when a
-retry passes. The CI emulator job passes when at least `EMULATOR_MIN_PASS_PERCENT` (90) of tests pass; not-run tests
+retry passes. The CI emulator job passes when at least `EMULATOR_MIN_PASS_PERCENT` (95) of tests pass; not-run tests
 count as failures and a zero-test run fails. Failures appear in the job summary and `emulator-test-results/logcat.txt`.
 Local `connectedDebugAndroidTest` is strict. `GoldenImageTest` is the one strict instrumented lane, run separately
-with a class filter and a zero minimum. Plan 12's optional `@RegressionGuard` lane is not used; critical guards have
+with a class filter and a zero minimum. The optional `@RegressionGuard` lane is not used; critical guards have
 JVM equivalents in `check`.
 
 ## Static checks and timing

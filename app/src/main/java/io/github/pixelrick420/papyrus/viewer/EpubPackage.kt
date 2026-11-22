@@ -24,6 +24,7 @@ internal class ReadingItem(val item: ManifestItem, val ref: SpineItem)
 private const val PRE_PAGINATED = "pre-paginated"
 private const val ITEM_PRE_PAGINATED = "rendition:layout-pre-paginated"
 private const val ITEM_REFLOWABLE = "rendition:layout-reflowable"
+private val EPUB_TYPE_SEPARATORS = Regex("\\s+")
 
 internal class EpubPackage(
     val opfPath: String,
@@ -172,7 +173,7 @@ internal object EpubPackageReader {
                     when {
                         name == "nav" && !insideNav -> {
                             insideNav = true
-                            inToc = typeAttribute(parser).split(' ').contains("toc")
+                            inToc = typeAttribute(parser).split(EPUB_TYPE_SEPARATORS).contains("toc")
                             if (inToc) tocSeen = true
                             listDepth = 0
                         }

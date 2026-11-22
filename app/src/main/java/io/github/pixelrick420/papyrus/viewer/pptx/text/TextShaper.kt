@@ -31,7 +31,7 @@ internal class ShapedRun(
 
 /**
  * Flattens a paragraph into per-character styles, then splits it where the resolved font, the size,
- * the style or the platform's glyph coverage changes, and where bidi changes direction (§4.7 step 2–3).
+ * the style or the platform's glyph coverage changes, and where bidi changes direction (§4.7 step 2-3).
  */
 internal class TextShaper(private val slots: FontSlots = FontSlots()) {
 

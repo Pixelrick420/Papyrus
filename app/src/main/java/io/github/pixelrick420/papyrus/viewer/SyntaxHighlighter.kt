@@ -34,8 +34,21 @@ class SyntaxTokens {
 }
 
 // A chunk is 40 lines, so without this a comment crossing a boundary would colour as code from there on.
-class LexStates internal constructor(private val states: IntArray) {
+class LexStates internal constructor(
+    private val states: MutableList<Int>,
+    private val language: CodeLanguage? = null,
+    private val chunks: TextChunkView? = null,
+) {
     operator fun get(chunk: Int): Int = states.getOrElse(chunk) { 0 }
+
+    internal suspend fun ensure(chunk: Int) {
+        val source = chunks ?: return
+        val lang = language ?: return
+        while (states.size <= chunk) {
+            val index = states.size - 1
+            states += SyntaxHighlighter.endState(lang, source.load(index), states[index])
+        }
+    }
 }
 
 class Delimited(val open: String, val close: String, val kind: TokenKind)
@@ -94,14 +107,14 @@ object SyntaxHighlighter {
         Scanner(language, text, null).run(startState)
 
     fun chunkStartStates(language: CodeLanguage, chunks: List<String>): LexStates {
-        val states = IntArray(chunks.size)
-        var state = 0
-        for (i in chunks.indices) {
-            states[i] = state
-            state = endState(language, chunks[i], state)
-        }
+        val states = mutableListOf(0)
+        for (i in chunks.indices) states += endState(language, chunks[i], states[i])
         return LexStates(states)
     }
+
+    // Only decode chunks up to the one being shown; scanning every chunk up front decodes the whole file.
+    fun lazyChunkStartStates(language: CodeLanguage, chunks: TextChunkView): LexStates =
+        LexStates(mutableListOf(0), language, chunks)
 }
 
 // With [out] null this only tracks where strings and comments begin and end, which is all the state

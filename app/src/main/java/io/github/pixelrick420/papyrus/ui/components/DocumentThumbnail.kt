@@ -14,7 +14,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -39,12 +41,18 @@ fun DocumentThumbnail(
     modifier: Modifier = Modifier,
 ) {
     val latestDocument by rememberUpdatedState(document)
+    val cached by remember(document.id, document.sizeBytes, loader) {
+        mutableStateOf(loader.cachedResult(document))
+    }
     val result by produceState<ThumbnailResult?>(
-        initialValue = loader.cachedResult(document),
+        initialValue = cached,
         document.id,
         document.sizeBytes,
         loader,
     ) {
+        // produceState keeps its state object across key changes, so the old tile would stay.
+        // A same-size in-place edit still looks current: the cache key has no content version.
+        value = loader.cachedResult(latestDocument)
         if (value == null) value = loader.load(latestDocument)
     }
 

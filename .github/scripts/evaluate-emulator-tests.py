@@ -299,8 +299,8 @@ def main() -> int:
     parser.add_argument(
         "--min-pass-percent",
         type=float,
-        default=90.0,
-        help="the build fails when a smaller share of the counted tests passed (default: 90)",
+        default=95.0,
+        help="the build fails when a smaller share of the counted tests passed (default: 95)",
     )
     parser.add_argument(
         "--require-class",

@@ -16,6 +16,121 @@ internal const val LATEX_MAX_FORMULA_CHARS = 4096
 
 private const val RENDER_BATCH = 8
 
+internal val LATEX_RANGE_REGEX = Regex("""(?s)\$\$(.+?)\$\$""")
+
+private fun maskNonMathDollars(source: String): String {
+    val masked = source.toCharArray()
+    fun blank(from: Int, until: Int) {
+        for (i in from until until) if (masked[i] == '$') masked[i] = ' '
+    }
+
+    var pos = 0
+    var fence: Char? = null
+    var fenceLength = 0
+    while (pos < source.length) {
+        val lineEnd = source.indexOf('\n', pos).let { if (it < 0) source.length else it }
+        var indent = pos
+        while (indent < lineEnd && source[indent] == ' ') indent++
+        val marker = source.getOrNull(indent)
+        if (fence != null) {
+            var end = indent
+            while (end < lineEnd && source[end] == fence) end++
+            if (end - indent >= fenceLength && (end == lineEnd || source[end] == '\r')) {
+                fence = null
+                fenceLength = 0
+            } else {
+                blank(pos, lineEnd)
+            }
+        } else if (indent - pos >= 4) {
+            blank(pos, lineEnd)
+        } else if (marker == '`' || marker == '~') {
+            var end = indent
+            while (end < lineEnd && source[end] == marker) end++
+            if (end - indent >= 3) {
+                fence = marker
+                fenceLength = end - indent
+                blank(pos, lineEnd)
+            }
+        }
+        pos = if (lineEnd < source.length) lineEnd + 1 else source.length
+    }
+
+    var i = 0
+    while (i < source.length) {
+        when {
+            source.startsWith("<!--", i) -> {
+                val end = source.indexOf("-->", i + 4)
+                val stop = if (end < 0) source.length else end + 3
+                blank(i, stop)
+                i = stop
+            }
+            source[i] == '`' -> {
+                var run = 1
+                while (i + run < source.length && source[i + run] == '`') run++
+                var close = i + run
+                while (close < source.length) {
+                    if (source[close] == '`' && (close == 0 || source[close - 1] != '`') &&
+                        (close + run == source.length || source[close + run] != '`')
+                    ) break
+                    close++
+                }
+                if (close < source.length) {
+                    blank(i, close + run)
+                    i = close + run
+                } else {
+                    i += run
+                }
+            }
+            source[i] == '[' -> {
+                val labelEnd = labelEnd(source, i)
+                if (labelEnd >= 0 && source.getOrNull(labelEnd) == '(') {
+                    val destinationEnd = destinationEnd(source, labelEnd + 1)
+                    blank(labelEnd, destinationEnd)
+                    i = destinationEnd
+                } else {
+                    i++
+                }
+            }
+            else -> i++
+        }
+    }
+    return String(masked)
+}
+
+private fun labelEnd(source: String, start: Int): Int {
+    var depth = 0
+    var i = start
+    while (i < source.length) {
+        when (source[i]) {
+            '\\' -> i++
+            '[' -> depth++
+            ']' -> if (--depth == 0) return i + 1
+            '\n', '\r' -> return -1
+        }
+        i++
+    }
+    return -1
+}
+
+private fun destinationEnd(source: String, start: Int): Int {
+    var i = start
+    if (source.getOrNull(i) == '<') {
+        val close = source.indexOf('>', i + 1)
+        if (close < 0) return source.length
+        i = close + 1
+    }
+    var depth = 1
+    while (i < source.length) {
+        when (source[i]) {
+            '\\' -> i++
+            '(' -> depth++
+            ')' -> if (--depth == 0) return i + 1
+        }
+        i++
+    }
+    return source.length
+}
+
 class LatexSpanFactory(
     private val context: Context?,
     source: String,
@@ -72,11 +187,10 @@ class LatexSpanFactory(
     }
 
     private fun detectRanges(source: String): List<LatexRange> {
-        val regex = Regex("(?s)\\$\\$(.+?)\\$\\$")
-        return regex.findAll(source).take(LATEX_MAX_RANGES).map { match ->
+        return LATEX_RANGE_REGEX.findAll(maskNonMathDollars(source)).take(LATEX_MAX_RANGES).map { match ->
             val start = match.range.first
             val end = match.range.last + 1
-            val latex = match.groupValues[1].trim()
+            val latex = match.groups[1]?.let { source.substring(it.range) }.orEmpty().trim()
             LatexRange(start, end, latex, isBlockFormula(source, match.range), latex.length <= LATEX_MAX_FORMULA_CHARS)
         }.toList()
     }
