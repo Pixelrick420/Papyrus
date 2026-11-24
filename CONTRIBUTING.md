@@ -31,6 +31,11 @@ Issues and pull requests are welcome.
 - The three release APKs ship with a `papyrus-<tag>-SHA256SUMS.txt` file and a SLSA build provenance attestation; verify one with `gh attestation verify --owner Pixelrick420 <apk>`.
 - Changelogs are named by `versionCode` under `fastlane/metadata/android/en-US/changelogs/`. The archive starts at code 17 (v1.0): 0.x was a fresh-start preview with no release archive, so there is no gap to backfill.
 
+## Build tooling review notes
+
+- Versions were reviewed as one set (AGP 9.5.2, Compose compiler 2.4.21, KSP 2.3.14, detekt 2.0.0-alpha.6 against androidx-core 1.16.0, activity 1.10.1, lifecycle 2.9.0). None was changed without a full build: the Kotlin/KSP and AGP/Gradle couplings must be verified together in a dedicated dependency PR.
+- The configuration cache runs with Gradle's default fail-on-problem mode; warning mode and the integrity-check flag are intentionally not set.
+
 ## PPTX licensing
 
 Permissive code/data may be vendored with a NOTICE entry; copyleft code may not be copied; behavior may be studied
