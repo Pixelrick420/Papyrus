@@ -231,7 +231,7 @@
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div
     bind:this={carouselRef}
-    class="carousel-snap scrollbar-hide flex gap-4 overflow-x-auto px-[10%] pb-4 sm:px-0"
+    class="carousel-snap scrollbar-hide flex gap-4 overflow-x-auto px-[10%] pb-4 select-none sm:px-0"
     onscroll={handleScroll}
     onmousedown={handleMouseDown}
     onmousemove={handleMouseMove}
@@ -247,6 +247,7 @@
           <img
             src={item.src}
             alt={item.alt}
+            draggable={false}
             width="716"
             height="1600"
             class="h-auto w-full object-contain"
