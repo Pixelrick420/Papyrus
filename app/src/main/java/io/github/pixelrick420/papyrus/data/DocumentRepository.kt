@@ -9,6 +9,7 @@ import io.github.pixelrick420.papyrus.crash.CrashReportStore
 import io.github.pixelrick420.papyrus.viewer.NormRect
 import io.github.pixelrick420.papyrus.viewer.OfficeEncryption
 import io.github.pixelrick420.papyrus.viewer.OutlineEntry
+import io.github.pixelrick420.papyrus.viewer.localSourceFile
 import io.github.pixelrick420.papyrus.viewer.PdfEncryption
 import io.github.pixelrick420.papyrus.viewer.TextSniffer
 import io.github.pixelrick420.papyrus.viewer.textCacheModified
@@ -30,8 +31,18 @@ class DocumentRepository(
     private val pdfOutlineDao: PdfOutlineDao,
     private val searchDao: SearchDao,
     private val settings: SettingsRepository,
+    encryptionCheck: ((DocumentFormat, Uri, Long) -> Boolean)? = null,
+    persistGrant: ((Uri) -> Boolean)? = null,
+    releaseGrant: ((Uri) -> Unit)? = null,
 ) {
     private val resolver get() = context.contentResolver
+
+    private val isEncryptedFor: (DocumentFormat, Uri, Long) -> Boolean =
+        encryptionCheck ?: { format, uri, size -> isEncryptedSafely(format, uri, size) }
+    private val persistFor: (Uri) -> Boolean =
+        persistGrant ?: { uri: Uri -> SafStorage.persistPermission(resolver, uri) }
+    private val releaseFor: (Uri) -> Unit =
+        releaseGrant ?: { uri: Uri -> SafStorage.releasePermission(resolver, uri) }
 
     /** In-memory only, and several at once: a second external file opens beside the first. */
     private val handedOver = HandedOverStore<DocumentEntity>()
@@ -189,10 +200,10 @@ class DocumentRepository(
         val entity = buildEntity(uri)
         // Not indexed by default: a row would put it in the library and persist a grant past the open.
         // With autosave encrypted on, it is indexed like any file, and the password is asked again on open.
-        if (entity.format in ENCRYPTABLE && !settings.current.autosaveEncrypted && isEncrypted(entity.format, uri, entity.sizeBytes)) {
+        if (entity.format in ENCRYPTABLE && !settings.current.autosaveEncrypted && isEncryptedFor(entity.format, uri, entity.sizeBytes)) {
             return@withContext handOver(entity)
         }
-        if (!SafStorage.persistPermission(resolver, uri)) {
+        if (!persistFor(uri)) {
             // Grant could not be persisted (provider refused, OS cap reached). Hand over instead of
             // indexing a row that depends on a transient grant which will lapse on reboot.
             return@withContext handOver(entity)
@@ -236,8 +247,10 @@ class DocumentRepository(
                         lastOpenedAt = now,
                     ),
                 )
-                SafStorage.releasePermission(resolver, source.uri.toUri())
-                indexed = true
+                completeIndexedRepoint(
+                    markIndexed = { indexed = true },
+                    release = { releaseFor(source.uri.toUri()) },
+                )
                 indexedOnSource.id
             } else {
                 dao.upsertByUri(row).also { indexed = true }
@@ -334,6 +347,12 @@ class DocumentRepository(
         true
     }
 
+    private fun isEncryptedSafely(format: DocumentFormat, uri: Uri, sizeBytes: Long): Boolean = try {
+        isEncrypted(format, uri, sizeBytes)
+    } catch (_: OutOfMemoryError) {
+        false
+    }
+
     /** A damaged file reads as not encrypted, as in PDF, so rendering fails generically instead of prompting. */
     private fun isEncrypted(format: DocumentFormat, uri: Uri, sizeBytes: Long): Boolean =
         when (format) {
@@ -343,8 +362,8 @@ class DocumentRepository(
                     knownPdfEncryption[uri.toString()] = status
                 }
             } != PdfEncryption.NOT_ENCRYPTED
-            DocumentFormat.DOCX, DocumentFormat.ODT, DocumentFormat.DOC ->
-                OfficeEncryption.isEncrypted({ openStream(uri) }, knownLength = sizeBytes)
+            DocumentFormat.DOCX, DocumentFormat.PPTX, DocumentFormat.ODT, DocumentFormat.DOC ->
+                OfficeEncryption.isEncrypted({ openStream(uri) }, knownLength = sizeBytes, sourceFile = localSourceFile(uri.toString()))
             else -> false
         }
 
@@ -381,8 +400,17 @@ class DocumentRepository(
         val ENCRYPTABLE = setOf(
             DocumentFormat.PDF,
             DocumentFormat.DOCX,
+            DocumentFormat.PPTX,
             DocumentFormat.ODT,
             DocumentFormat.DOC,
         )
     }
+}
+
+internal fun completeIndexedRepoint(
+    markIndexed: () -> Unit,
+    release: () -> Unit,
+) {
+    markIndexed()
+    release()
 }
