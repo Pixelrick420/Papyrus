@@ -61,7 +61,7 @@ The README is the landing page. This is the reference for behavior that needs ex
 - EPUB, Word, OpenDocument and PPTX ZIPs are read with entry, size and ratio limits; bombs fail the file, unsafe EPUB
   entry names are skipped and Office media names are reduced to a basename. Bytes inflated only to skip unused entries
   use a separate 2 GiB budget, so a large embedded video does not fail the document. The ratio check still covers
-  skipped bytes.
+  skipped bytes; retained lossless image parts (BMP/TIFF) get a higher limit because they compress naturally.
 - Import name stems are capped at 120 UTF-16 code units and 200 UTF-8 bytes before the detected extension is appended.
 - Crash reports are local ACRA JSON with paths, URIs and storage locations redacted. Highlights and notes stay in the
   private database unless a copy is saved.

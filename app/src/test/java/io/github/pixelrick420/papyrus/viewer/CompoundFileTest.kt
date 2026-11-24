@@ -30,6 +30,29 @@ class CompoundFileTest {
         }
     }
 
+    private fun directoryOffset(bytes: ByteArray): Int = (u32(bytes, 0x30).toInt() + 1) * 512
+
+    private fun putU32(bytes: ByteArray, off: Int, value: Long) {
+        DocFixtures.u32Bytes(value).copyInto(bytes, off)
+    }
+
+    private fun withFreeDirectorySlot(bytes: ByteArray): ByteArray {
+        val at = directoryOffset(bytes)
+        val slots = (0 until 4).map { i -> bytes.copyOfRange(at + i * 128, at + (i + 1) * 128) }
+        val out = bytes.copyOf()
+        (listOf(slots[0], ByteArray(128), slots[1], slots[2])).forEachIndexed { i, slot ->
+            slot.copyInto(out, at + i * 128)
+        }
+        for (i in 0 until 4) {
+            for (field in listOf(0x44, 0x48, 0x4C)) {
+                val pos = at + i * 128 + field
+                val id = u32(out, pos)
+                if (id >= 1L && id <= Int.MAX_VALUE.toLong()) putU32(out, pos, id + 1)
+            }
+        }
+        return out
+    }
+
     @Test
     fun `readFully tolerates zero reads that make progress`() {
         val dest = ByteArray(4)
@@ -124,5 +147,29 @@ class CompoundFileTest {
         // The mini-stream payload loads its mini FAT table through one extra open.
         assertEquals(opened + 2, counting.opens)
         assertThrows(IOException::class.java) { cfb.openReader("Payload").read(0, payload.size + 1) }
+    }
+
+    @Test
+    fun freeDirectorySlotKeepsLaterStreamsReachable() {
+        val alpha = "alpha payload".toByteArray()
+        val beta = "beta payload".toByteArray()
+        val bytes = withFreeDirectorySlot(DocFixtures.compound(mapOf("Alpha" to alpha, "Beta" to beta)))
+
+        val cfb = CompoundFile(DocFixtures.streamFactory(bytes), bytes.size.toLong())
+
+        assertArrayEquals(alpha, cfb.read("Alpha", 0, alpha.size))
+        assertArrayEquals(beta, cfb.read("Beta", 0, beta.size))
+    }
+
+    @Test
+    fun v3IgnoresGarbageInTheHighStreamSizeDword() {
+        val payload = ByteArray(5_000) { it.toByte() }
+        val bytes = DocFixtures.compound(mapOf("Payload" to payload))
+        putU32(bytes, directoryOffset(bytes) + 128 + 0x7C, 0xDEADBEEF)
+
+        val cfb = CompoundFile(DocFixtures.streamFactory(bytes), bytes.size.toLong())
+
+        assertEquals(payload.size.toLong(), cfb.streamSize("Payload"))
+        assertArrayEquals(payload, cfb.read("Payload", 0, payload.size))
     }
 }

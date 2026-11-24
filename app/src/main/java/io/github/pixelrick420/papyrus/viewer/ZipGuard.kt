@@ -19,7 +19,7 @@ data class ZipLimits(
 
 // Bytes the caller reads are charged against the per-entry and archive caps. Bytes inflated only to finish an entry
 // the caller skipped are charged against a separate budget instead: they are discarded, so memory is not at risk,
-// but CPU is. The ratio check covers every inflated byte, retained or skipped, so a skipped bomb is still refused.
+// but CPU is. Lossless images get the higher ratio limit whether the caller retains or skips them.
 internal class BoundedZipInputStream private constructor(
     private val counting: CountingInputStream,
     private val limits: ZipLimits,
@@ -39,6 +39,8 @@ internal class BoundedZipInputStream private constructor(
     private var totalBytes = 0L
     private var skippedBytes = 0L
     private var finishing = false
+    private var skipping = false
+    private var entryMaxRatio = limits.maxRatio
 
     override fun getNextEntry(): ZipEntry? {
         // super.getNextEntry finishes the previous entry through the read below. Whatever it inflates is the
@@ -55,6 +57,7 @@ internal class BoundedZipInputStream private constructor(
         entryBytes = 0L
         retainedEntryBytes = 0L
         entryFrom = counting.count
+        entryMaxRatio = if (isLosslessImage(entry.name)) maxOf(limits.maxRatio, LOSSLESS_IMAGE_MAX_RATIO) else limits.maxRatio
         return entry
     }
 
@@ -69,10 +72,15 @@ internal class BoundedZipInputStream private constructor(
         if (n <= 0) return 0L
         val buffer = ByteArray(minOf(n, SKIP_BUFFER_BYTES.toLong()).toInt())
         var skipped = 0L
-        while (skipped < n) {
-            val got = read(buffer, 0, minOf(buffer.size.toLong(), n - skipped).toInt())
-            if (got < 0) break
-            skipped += got
+        skipping = true
+        try {
+            while (skipped < n) {
+                val got = read(buffer, 0, minOf(buffer.size.toLong(), n - skipped).toInt())
+                if (got < 0) break
+                skipped += got
+            }
+        } finally {
+            skipping = false
         }
         return skipped
     }
@@ -81,9 +89,9 @@ internal class BoundedZipInputStream private constructor(
         entryBytes += n
         if (entryBytes >= limits.ratioFloorBytes) {
             val compressed = (counting.count - entryFrom).coerceAtLeast(1L)
-            if (entryBytes / compressed > limits.maxRatio) throw fail("implausible compression")
+            if (entryBytes / compressed > entryMaxRatio) throw fail("implausible compression")
         }
-        if (finishing) {
+        if (finishing || skipping) {
             skippedBytes += n
             if (skippedBytes > limits.maxSkippedBytes) throw fail("too many skipped bytes")
         } else {
@@ -95,6 +103,11 @@ internal class BoundedZipInputStream private constructor(
 
     private companion object {
         const val SKIP_BUFFER_BYTES = 8 * 1024
+        const val LOSSLESS_IMAGE_MAX_RATIO = 5_000
+        private val LOSSLESS_IMAGE_EXTENSIONS = setOf("bmp", "dib", "tif", "tiff")
+
+        private fun isLosslessImage(name: String): Boolean =
+            name.substringAfterLast('.', "").lowercase() in LOSSLESS_IMAGE_EXTENSIONS
     }
 }
 

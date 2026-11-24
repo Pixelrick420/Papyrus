@@ -305,8 +305,13 @@ internal class CompoundFile(private val openStream: () -> InputStream, knownLeng
                 val nameBytes = (nameLen - 2).coerceIn(0, 64) and 1.inv()
                 val name = if (nameBytes > 0) String(sector, at, nameBytes, Charsets.UTF_16LE) else ""
                 val start = i32(sector, at + ENTRY_START_OFFSET)
-                val size = (i32(sector, at + ENTRY_SIZE_OFFSET).toLong() and 0xFFFFFFFFL) or
-                    ((i32(sector, at + ENTRY_SIZE_OFFSET + 4).toLong() and 0xFFFFFFFFL) shl 32)
+                val lowSize = i32(sector, at + ENTRY_SIZE_OFFSET).toLong() and 0xFFFFFFFFL
+                // v3 writers leave garbage in the high size DWORD.
+                val size = if (sectorSize == 512) {
+                    lowSize
+                } else {
+                    lowSize or ((i32(sector, at + ENTRY_SIZE_OFFSET + 4).toLong() and 0xFFFFFFFFL) shl 32)
+                }
                 out += Entry(
                     name,
                     type,
@@ -316,6 +321,9 @@ internal class CompoundFile(private val openStream: () -> InputStream, knownLeng
                     i32(sector, at + ENTRY_RIGHT_OFFSET),
                     i32(sector, at + ENTRY_CHILD_OFFSET),
                 )
+            } else {
+                // REGSIDs index every directory slot, so a free slot must keep its position.
+                out += Entry("", type, 0, 0, NO_STREAM, NO_STREAM, NO_STREAM)
             }
             at += ENTRY_SIZE
         }

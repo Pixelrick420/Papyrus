@@ -8,12 +8,16 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.IOException
 import java.io.InputStream
+import java.io.OutputStream
+import java.net.URI
 import java.security.GeneralSecurityException
 import java.security.MessageDigest
 import java.util.Base64
+import java.util.zip.CRC32
 import java.util.zip.DataFormatException
 import java.util.zip.Inflater
-import java.util.zip.ZipInputStream
+import java.util.zip.ZipEntry
+import java.util.zip.ZipFile
 import java.util.zip.ZipOutputStream
 import javax.crypto.Cipher
 import javax.crypto.Mac
@@ -21,6 +25,12 @@ import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
 
 class DocumentPasswordException : IOException("Password-protected document")
+
+internal fun localSourceFile(uri: String): File? = runCatching {
+    val parsed = URI.create(uri)
+    if (parsed.scheme != "file") return@runCatching null
+    parsed.path?.let(::File)?.takeIf { it.isFile }
+}.getOrNull()
 
 object OfficeEncryption {
 
@@ -32,12 +42,13 @@ object OfficeEncryption {
         openStream: () -> InputStream,
         newParserFactory: () -> XmlPullParser = { Xml.newPullParser() },
         knownLength: Long? = null,
+        sourceFile: File? = null,
     ): Party =
         try {
             val head = readHead(openStream)
             when {
                 isOle2(head) -> oleStatus(openStream, knownLength)
-                isZip(head) -> odfStatus(openStream, newParserFactory)
+                isZip(head) -> odfStatus(openStream, newParserFactory, sourceFile)
                 else -> Party.NOT_ENCRYPTED
             }
         } catch (expected: IOException) {
@@ -50,14 +61,24 @@ object OfficeEncryption {
             Party.ERROR
         }
 
+    fun status(file: File, newParserFactory: () -> XmlPullParser = { Xml.newPullParser() }): Party =
+        status({ file.inputStream() }, newParserFactory, file.length(), file)
+
     fun isEncrypted(
         openStream: () -> InputStream,
         newParserFactory: () -> XmlPullParser = { Xml.newPullParser() },
         knownLength: Long? = null,
-    ): Boolean = when (status(openStream, newParserFactory, knownLength)) {
+        sourceFile: File? = null,
+    ): Boolean = when (status(openStream, newParserFactory, knownLength, sourceFile)) {
         Party.PASSWORD, Party.UNSUPPORTED -> true
         Party.NOT_ENCRYPTED, Party.ERROR -> false
     }
+
+    fun isEncrypted(file: File, newParserFactory: () -> XmlPullParser = { Xml.newPullParser() }): Boolean =
+        when (status(file, newParserFactory)) {
+            Party.PASSWORD, Party.UNSUPPORTED -> true
+            Party.NOT_ENCRYPTED, Party.ERROR -> false
+        }
 
     fun decrypt(
         openStream: () -> InputStream,
@@ -66,13 +87,14 @@ object OfficeEncryption {
         newParserFactory: () -> XmlPullParser = { Xml.newPullParser() },
         ensureActive: () -> Unit = {},
         knownLength: Long? = null,
+        sourceFile: File? = null,
     ) {
         var completed = false
         try {
             val head = readHead(openStream)
             when {
                 isOle2(head) -> decryptAgile(openStream, password, target, newParserFactory, ensureActive, knownLength)
-                isZip(head) -> decryptOdf(openStream, password, target, newParserFactory, ensureActive)
+                isZip(head) -> decryptOdf(openStream, password, target, newParserFactory, ensureActive, sourceFile)
                 else -> throw IOException("unsupported encryption")
             }
             completed = true
@@ -80,6 +102,14 @@ object OfficeEncryption {
             if (!completed) target.delete()
         }
     }
+
+    fun decrypt(
+        file: File,
+        password: String,
+        target: File,
+        newParserFactory: () -> XmlPullParser = { Xml.newPullParser() },
+        ensureActive: () -> Unit = {},
+    ) = decrypt({ file.inputStream() }, password, target, newParserFactory, ensureActive, file.length(), file)
 
     private fun oleStatus(openStream: () -> InputStream, knownLength: Long?): Party {
         val cfb = CompoundFile(openStream, knownLength)
@@ -212,8 +242,12 @@ object OfficeEncryption {
         }
     }
 
-    private fun odfStatus(openStream: () -> InputStream, newParserFactory: () -> XmlPullParser): Party {
-        val entries = parseOdfManifest(openStream, newParserFactory)
+    private fun odfStatus(
+        openStream: () -> InputStream,
+        newParserFactory: () -> XmlPullParser,
+        sourceFile: File?,
+    ): Party {
+        val entries = parseOdfManifest(openStream, newParserFactory, sourceFile)
         val encrypted = entries.filter { it.encryption != null }
         if (encrypted.isEmpty()) return Party.NOT_ENCRYPTED
         return if (encrypted.all { entry -> entry.encryption?.let(::supportedOdf) == true }) {
@@ -229,48 +263,116 @@ object OfficeEncryption {
         target: File,
         newParserFactory: () -> XmlPullParser,
         ensureActive: () -> Unit,
+        sourceFile: File?,
     ) {
-        val entries = parseOdfManifest(openStream, newParserFactory).associateBy { it.path }
+        val entries = parseOdfManifest(openStream, newParserFactory, sourceFile).associateBy { it.path }
+        val deriver = OdfKeyDeriver(password, ensureActive)
         openStream().use { input ->
             BoundedZipInputStream(input).use { zip ->
                 ZipOutputStream(target.outputStream().buffered()).use { out ->
+                    val pending = ArrayList<OdfPlainEntry>()
+                    var mimetypeWritten = false
                     while (true) {
                         val entry = zip.nextEntry ?: break
                         if (entry.isDirectory) continue
                         val data = readBounded(zip)
                         val encryption = entries[entry.name]?.encryption
-                        val plain = if (encryption == null) data else decryptOdfEntry(data, encryption, password, ensureActive)
-                        out.putNextEntry(java.util.zip.ZipEntry(entry.name))
-                        out.write(plain)
-                        out.closeEntry()
+                        if (entry.name == ODF_MIMETYPE) {
+                            if (mimetypeWritten) continue
+                            val sink = ByteArrayOutputStream()
+                            if (encryption == null) sink.write(data) else decryptOdfEntry(data, encryption, deriver, ensureActive, sink)
+                            writeMimetype(out, sink.toByteArray())
+                            mimetypeWritten = true
+                            pending.forEach { writeOdfEntry(out, it) }
+                            pending.clear()
+                        } else if (!mimetypeWritten) {
+                            val sink = ByteArrayOutputStream()
+                            if (encryption == null) sink.write(data) else decryptOdfEntry(data, encryption, deriver, ensureActive, sink)
+                            pending += OdfPlainEntry(entry.name, sink.toByteArray())
+                        } else {
+                            out.putNextEntry(ZipEntry(entry.name))
+                            if (encryption == null) out.write(data) else decryptOdfEntry(data, encryption, deriver, ensureActive, out)
+                            out.closeEntry()
+                        }
                     }
+                    if (!mimetypeWritten) pending.forEach { writeOdfEntry(out, it) }
                 }
             }
+        }
+    }
+
+    private class OdfPlainEntry(val name: String, val data: ByteArray)
+
+    private fun writeMimetype(out: ZipOutputStream, data: ByteArray) {
+        val checksum = CRC32().also { it.update(data) }
+        val entry = ZipEntry(ODF_MIMETYPE).apply {
+            method = ZipEntry.STORED
+            size = data.size.toLong()
+            compressedSize = data.size.toLong()
+            crc = checksum.value
+        }
+        out.putNextEntry(entry)
+        out.write(data)
+        out.closeEntry()
+    }
+
+    private fun writeOdfEntry(out: ZipOutputStream, entry: OdfPlainEntry) {
+        out.putNextEntry(ZipEntry(entry.name))
+        out.write(entry.data)
+        out.closeEntry()
+    }
+
+    private class OdfKeyDeriver(private val password: String, private val ensureActive: () -> Unit) {
+        private var salt: ByteArray? = null
+        private var iterations = 0
+        private var keySize = 0
+        private var startKeyName: String? = null
+        private var key: ByteArray? = null
+
+        fun keyFor(encryption: OdfEncryption): ByteArray {
+            val cached = key
+            if (cached != null && encryption.salt.contentEquals(salt) &&
+                encryption.iterationCount == iterations && encryption.keySize == keySize &&
+                encryption.startKeyName == startKeyName
+            ) return cached
+            val derived = pbkdf2Sha1(
+                startKey(password, encryption.startKeyName),
+                encryption.salt,
+                encryption.iterationCount,
+                encryption.keySize,
+                ensureActive,
+            )
+            salt = encryption.salt.copyOf()
+            iterations = encryption.iterationCount
+            keySize = encryption.keySize
+            startKeyName = encryption.startKeyName
+            key = derived
+            return derived
         }
     }
 
     private fun decryptOdfEntry(
         data: ByteArray,
         encryption: OdfEncryption,
-        password: String,
+        deriver: OdfKeyDeriver,
         ensureActive: () -> Unit,
-    ): ByteArray {
+        out: OutputStream,
+    ) {
+        ensureActive()
         // The manifest sets the work the derivation does, so it is checked here too, not only for the prompt.
         if (!supportedOdf(encryption)) throw IOException("unsupported encryption")
         if (data.size % AES_BLOCK != 0) throw IOException("invalid encrypted entry")
-        val startKey = startKey(password, encryption.startKeyName)
-        val key = pbkdf2Sha1(startKey, encryption.salt, encryption.iterationCount, encryption.keySize, ensureActive)
-        val decrypted = aesCbcDecrypt(data, key, encryption.iv)
+        val decrypted = aesCbcDecrypt(data, deriver.keyFor(encryption), encryption.iv)
         val compressed = unpad(decrypted)
         verifyOdfChecksum(compressed, encryption)
-        return inflate(compressed)
+        inflate(compressed, out)
     }
 
     private fun startKey(password: String, name: String?): ByteArray {
         val bytes = password.toByteArray(Charsets.UTF_8)
         return when {
-            name == null || name.contains("sha256", ignoreCase = true) -> sha256(bytes)
-            name.contains("sha1", ignoreCase = true) -> sha1(bytes)
+            name == null || name.contains("sha1", ignoreCase = true) -> sha1(bytes)
+            name.contains("sha256", ignoreCase = true) -> sha256(bytes)
             else -> throw IOException("unsupported start key generation")
         }
     }
@@ -326,8 +428,12 @@ object OfficeEncryption {
             )
     }
 
-    private fun parseOdfManifest(openStream: () -> InputStream, newParserFactory: () -> XmlPullParser): List<OdfEntry> {
-        val manifest = readZipEntry(openStream, ODF_MANIFEST, MAX_MANIFEST_BYTES) ?: return emptyList()
+    private fun parseOdfManifest(
+        openStream: () -> InputStream,
+        newParserFactory: () -> XmlPullParser,
+        sourceFile: File?,
+    ): List<OdfEntry> {
+        val manifest = readZipEntry(sourceFile, openStream, ODF_MANIFEST, MAX_MANIFEST_BYTES) ?: return emptyList()
         val parser = newParserFactory()
         parser.setFeature(XmlPullParser.FEATURE_PROCESS_NAMESPACES, false)
         parser.setInput(ByteArrayInputStream(manifest), null)
@@ -442,31 +548,42 @@ object OfficeEncryption {
     }
 
     /** ODF compresses with raw RFC 1951 deflate; a stray zlib wrapper from another producer is retried. */
-    private fun inflate(data: ByteArray): ByteArray =
-        try {
-            inflate(data, nowrap = true)
-        } catch (expected: DataFormatException) {
-            inflate(data, nowrap = false)
+    private fun inflate(data: ByteArray, out: OutputStream) {
+        val nowrap = try {
+            inflateStream(data, nowrap = true, DISCARD)
+            true
+        } catch (_: DataFormatException) {
+            try {
+                inflateStream(data, nowrap = false, DISCARD)
+                false
+            } catch (expected: DataFormatException) {
+                throw IOException("invalid deflate stream")
+            }
         }
+        inflateStream(data, nowrap, out)
+    }
 
-    private fun inflate(data: ByteArray, nowrap: Boolean): ByteArray {
+    private fun inflateStream(data: ByteArray, nowrap: Boolean, out: OutputStream) {
         val inflater = Inflater(nowrap)
         try {
             inflater.setInput(data)
-            val out = ByteArrayOutputStream()
             val buffer = ByteArray(INFLATE_BUFFER)
+            var total = 0
             while (!inflater.finished()) {
                 val n = inflater.inflate(buffer)
-                if (n == 0) {
-                    if (inflater.needsInput() || inflater.needsDictionary()) throw DataFormatException("truncated deflate stream")
-                }
-                if (out.size() + n > MAX_DECOMPRESSED) throw IOException("entry is too large")
+                if (n == 0 && (inflater.needsInput() || inflater.needsDictionary())) throw DataFormatException("truncated deflate stream")
+                total += n
+                if (total > MAX_DECOMPRESSED) throw IOException("entry is too large")
                 out.write(buffer, 0, n)
             }
-            return out.toByteArray()
         } finally {
             inflater.end()
         }
+    }
+
+    private val DISCARD = object : OutputStream() {
+        override fun write(b: Int) = Unit
+        override fun write(b: ByteArray, off: Int, len: Int) = Unit
     }
 
     private fun unpad(data: ByteArray): ByteArray {
@@ -496,7 +613,27 @@ object OfficeEncryption {
         }
     }
 
-    private fun readZipEntry(openStream: () -> InputStream, name: String, max: Int): ByteArray? {
+    private fun readZipEntry(
+        sourceFile: File?,
+        openStream: () -> InputStream,
+        name: String,
+        max: Int,
+    ): ByteArray? {
+        if (sourceFile != null) {
+            ZipFile(sourceFile).use { zip ->
+                val entries = zip.entries()
+                if (entries.hasMoreElements() && entries.nextElement().name == OOXML_CONTENT_TYPES) return null
+                val entry = zip.getEntry(name) ?: return null
+                if (entry.size > max) throw IOException("entry is too large")
+                val compressed = entry.compressedSize.coerceAtLeast(1L)
+                val data = CountingInputStream(zip.getInputStream(entry)).use { readBounded(it, max) }
+                val limits = ZipLimits()
+                if (data.size >= limits.ratioFloorBytes && data.size / compressed > limits.maxRatio) {
+                    throw IOException("implausible compression")
+                }
+                return data
+            }
+        }
         openStream().use { input ->
             BoundedZipInputStream(input).use { zip ->
                 val first = zip.nextEntry ?: return null
@@ -510,11 +647,11 @@ object OfficeEncryption {
         }
     }
 
-    private fun readBounded(zip: ZipInputStream, max: Int = MAX_ENTRY_BYTES): ByteArray {
+    private fun readBounded(stream: InputStream, max: Int = MAX_ENTRY_BYTES): ByteArray {
         val out = ByteArrayOutputStream()
         val buffer = ByteArray(READ_BUFFER)
         while (true) {
-            val n = zip.read(buffer)
+            val n = stream.read(buffer)
             if (n < 0) return out.toByteArray()
             if (out.size() + n > max) throw IOException("entry is too large")
             out.write(buffer, 0, n)
@@ -579,6 +716,7 @@ private val BLOCK_KEY_VERIFIER_HASH_VALUE = byteArrayOf(0xD7.toByte(), 0xAA.toBy
 private val BLOCK_KEY_ENCRYPTED_VALUE = byteArrayOf(0x14, 0x6E, 0x0B, 0xE7.toByte(), 0xAB.toByte(), 0xAC.toByte(), 0xD0.toByte(), 0xD6.toByte())
 
 private const val ODF_MANIFEST = "META-INF/manifest.xml"
+private const val ODF_MIMETYPE = "mimetype"
 private const val OOXML_CONTENT_TYPES = "[Content_Types].xml"
 private const val ALGORITHM_AES256_CBC = "aes256-cbc"
 private const val CHECKSUM_BYTES = 1024
@@ -593,6 +731,6 @@ private const val MAX_PBKDF2_ITERATIONS = 1_000_000
 private const val ODF_KEY_BYTES = 32
 private const val MAX_MANIFEST_BYTES = 16 * 1024 * 1024
 private const val MAX_ENTRY_BYTES = 64 * 1024 * 1024
-private const val MAX_DECOMPRESSED = 256 * 1024 * 1024
+private const val MAX_DECOMPRESSED = 64 * 1024 * 1024
 private const val READ_BUFFER = 64 * 1024
 private const val INFLATE_BUFFER = 64 * 1024

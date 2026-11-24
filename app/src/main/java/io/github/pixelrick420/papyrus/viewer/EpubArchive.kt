@@ -58,17 +58,19 @@ internal class EpubArchive(
                     if (!isSafeEntryName(name)) continue
                     if (entry.isDirectory) continue
 
-                    val keep = wanted(name)
-                    val out = if (keep) ByteArrayOutputStream() else null
+                    if (!wanted(name)) {
+                        zip.skip(Long.MAX_VALUE)
+                        continue
+                    }
+                    val out = ByteArrayOutputStream()
                     var overPart = false
                     while (true) {
                         val n = zip.read(buffer)
                         if (n < 0) break
-                        if (out != null && !overPart) {
+                        if (!overPart) {
                             if (out.size() + n > limits.maxPartBytes) overPart = true else out.write(buffer, 0, n)
                         }
                     }
-                    if (out == null) continue
                     if (overPart || kept + out.size() > limits.maxTextBytes) {
                         skipped++
                         continue

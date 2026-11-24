@@ -4,6 +4,7 @@ import io.github.pixelrick420.papyrus.data.DocumentFormat
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -15,9 +16,15 @@ import java.io.FileInputStream
 import java.io.IOException
 import java.security.MessageDigest
 import java.util.Base64
+import java.util.zip.CRC32
+import java.util.zip.Deflater
+import java.util.zip.DeflaterOutputStream
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
+import javax.crypto.Cipher
+import javax.crypto.spec.IvParameterSpec
+import javax.crypto.spec.SecretKeySpec
 import kotlinx.coroutines.CancellationException
 
 // Fixtures are real and independently produced: msoffcrypto Agile `.docx` and a hand-rolled ODF 1.2 CBC package.
@@ -128,6 +135,151 @@ class OfficeEncryptionTest {
             opens++
             ByteArrayInputStream(bytes)
         }
+    }
+
+    private class EncPart(val path: String, val compressed: ByteArray, val iv: ByteArray = ByteArray(16) { 1 })
+
+    private fun rawDeflate(data: ByteArray): ByteArray {
+        val out = ByteArrayOutputStream()
+        val deflater = Deflater(Deflater.DEFAULT_COMPRESSION, true)
+        try {
+            DeflaterOutputStream(out, deflater).use { it.write(data) }
+        } finally {
+            deflater.end()
+        }
+        return out.toByteArray()
+    }
+
+    private fun highlyCompressibleZeros(total: Int): ByteArray {
+        val out = ByteArrayOutputStream()
+        val deflater = Deflater(Deflater.DEFAULT_COMPRESSION, true)
+        val block = ByteArray(64 * 1024)
+        try {
+            DeflaterOutputStream(out, deflater, block.size).use { sink ->
+                var left = total
+                while (left > 0) {
+                    val n = minOf(left, block.size)
+                    sink.write(block, 0, n)
+                    left -= n
+                }
+            }
+        } finally {
+            deflater.end()
+        }
+        return out.toByteArray()
+    }
+
+    private fun encryptedOdf(
+        parts: List<EncPart>,
+        password: String = "secret123",
+        iterations: Int = 1000,
+        startKeyName: String? = "http://www.w3.org/2000/09/xmldsig#sha256",
+        salt: ByteArray = ByteArray(16) { 2 },
+    ): ByteArray {
+        val passwordBytes = password.toByteArray(Charsets.UTF_8)
+        val start = if (startKeyName == null || startKeyName.contains("sha1", ignoreCase = true)) {
+            MessageDigest.getInstance("SHA-1").digest(passwordBytes)
+        } else {
+            MessageDigest.getInstance("SHA-256").digest(passwordBytes)
+        }
+        val key = OfficeEncryption.pbkdf2Sha1(start, salt, iterations, 32)
+        val manifest = StringBuilder(
+            """<?xml version="1.0" encoding="UTF-8"?>
+            <manifest:manifest xmlns:manifest="urn:oasis:names:tc:opendocument:xmlns:manifest:1.0" manifest:version="1.2">""".trimIndent(),
+        )
+        parts.forEach { part ->
+            val digest = MessageDigest.getInstance("SHA-1")
+                .digest(part.compressed.copyOf(minOf(1024, part.compressed.size)))
+            val checksum = Base64.getEncoder().encodeToString(digest)
+            val startKey = if (startKeyName == null) "" else
+                """<manifest:start-key-generation manifest:start-key-generation-name="$startKeyName" manifest:key-size="32"/>"""
+            manifest.append("""<manifest:file-entry manifest:full-path="${part.path}" manifest:media-type="text/xml">""")
+            manifest.append(
+                """<manifest:encryption-data manifest:checksum-type="urn:oasis:names:tc:opendocument:xmlns:manifest:1.0#sha1-1k" manifest:checksum="$checksum">""",
+            )
+            manifest.append(
+                """<manifest:algorithm manifest:algorithm-name="http://www.w3.org/2001/04/xmlenc#aes256-cbc" manifest:initialisation-vector="${Base64.getEncoder().encodeToString(part.iv)}"/>""",
+            )
+            manifest.append(
+                """<manifest:key-derivation manifest:key-derivation-name="PBKDF2" manifest:salt="${Base64.getEncoder().encodeToString(salt)}" manifest:iteration-count="$iterations" manifest:key-size="32"/>""",
+            )
+            manifest.append(startKey)
+            manifest.append("</manifest:encryption-data></manifest:file-entry>")
+        }
+        manifest.append("</manifest:manifest>")
+
+        val out = ByteArrayOutputStream()
+        ZipOutputStream(out).use { zip ->
+            val mime = "application/vnd.oasis.opendocument.text".toByteArray()
+            val crc = CRC32().also { it.update(mime) }
+            zip.putNextEntry(ZipEntry("mimetype").apply {
+                method = ZipEntry.STORED
+                size = mime.size.toLong()
+                compressedSize = mime.size.toLong()
+                this.crc = crc.value
+            })
+            zip.write(mime)
+            zip.closeEntry()
+            zip.putNextEntry(ZipEntry("META-INF/manifest.xml"))
+            zip.write(manifest.toString().toByteArray())
+            zip.closeEntry()
+            parts.forEach { part ->
+                val pad = 16 - part.compressed.size % 16
+                val padded = part.compressed + ByteArray(pad) { pad.toByte() }
+                val cipher = Cipher.getInstance("AES/CBC/NoPadding")
+                cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(key, "AES"), IvParameterSpec(part.iv))
+                zip.putNextEntry(ZipEntry(part.path))
+                zip.write(cipher.doFinal(padded))
+                zip.closeEntry()
+            }
+        }
+        return out.toByteArray()
+    }
+
+    private fun odfWithManifestLast(): ByteArray {
+        val entries = ArrayList<Pair<String, ByteArray>>()
+        ZipInputStream(ByteArrayInputStream(resource("odf12-encrypted.b64"))).use { zip ->
+            while (true) {
+                val entry = zip.nextEntry ?: break
+                entries += entry.name to zip.readBytes()
+            }
+        }
+        val out = ByteArrayOutputStream()
+        ZipOutputStream(out).use { rewritten ->
+            entries.filter { it.first != "META-INF/manifest.xml" }.forEach { (name, bytes) ->
+                rewritten.putNextEntry(ZipEntry(name))
+                rewritten.write(bytes)
+                rewritten.closeEntry()
+            }
+            val manifest = entries.first { it.first == "META-INF/manifest.xml" }
+            rewritten.putNextEntry(ZipEntry(manifest.first))
+            rewritten.write(manifest.second)
+            rewritten.closeEntry()
+        }
+        return out.toByteArray()
+    }
+
+    private fun odfWithMimetypeLast(): ByteArray {
+        val entries = ArrayList<Pair<String, ByteArray>>()
+        ZipInputStream(ByteArrayInputStream(resource("odf12-encrypted.b64"))).use { zip ->
+            while (true) {
+                val entry = zip.nextEntry ?: break
+                entries += entry.name to zip.readBytes()
+            }
+        }
+        val out = ByteArrayOutputStream()
+        ZipOutputStream(out).use { rewritten ->
+            entries.filter { it.first != "mimetype" }.forEach { (name, bytes) ->
+                rewritten.putNextEntry(ZipEntry(name))
+                rewritten.write(bytes)
+                rewritten.closeEntry()
+            }
+            val mimetype = entries.first { it.first == "mimetype" }
+            rewritten.putNextEntry(ZipEntry(mimetype.first))
+            rewritten.write(mimetype.second)
+            rewritten.closeEntry()
+        }
+        return out.toByteArray()
     }
 
     @Test
@@ -423,5 +575,144 @@ class OfficeEncryptionTest {
         )
 
         assertTrue(extractedText(target, DocumentFormat.DOCX).contains("Interop secret paragraph."))
+    }
+
+    @Test
+    fun `an omitted start key generation name derives the start key with sha1`() {
+        val content = OfficeFixtures.odtContent("<text:p>sha1 fallback</text:p>").toByteArray()
+        val bytes = encryptedOdf(listOf(EncPart("content.xml", rawDeflate(content))), startKeyName = null)
+        val target = temp.newFile("sha1-fallback.odt")
+
+        OfficeEncryption.decrypt(OfficeFixtures.streamFactory(bytes), "secret123", target, OfficeFixtures::parser)
+
+        assertTrue(extractedText(target, DocumentFormat.ODT).contains("sha1 fallback"))
+    }
+
+    @Test
+    fun `a zlib wrapped odf entry still decrypts`() {
+        val content = OfficeFixtures.odtContent("<text:p>wrapped deflate</text:p>").toByteArray()
+        val wrapped = ByteArrayOutputStream().also { out -> DeflaterOutputStream(out).use { it.write(content) } }.toByteArray()
+        val bytes = encryptedOdf(listOf(EncPart("content.xml", wrapped)))
+        val target = temp.newFile("wrapped.odt")
+
+        OfficeEncryption.decrypt(OfficeFixtures.streamFactory(bytes), "secret123", target, OfficeFixtures::parser)
+
+        assertTrue(extractedText(target, DocumentFormat.ODT).contains("wrapped deflate"))
+    }
+
+    @Test
+    fun `a highly compressible encrypted entry decrypts within the cap`() {
+        val text = "x".repeat(1024 * 1024)
+        val content = OfficeFixtures.odtContent("<text:p>$text</text:p>").toByteArray()
+        val bytes = encryptedOdf(listOf(EncPart("content.xml", rawDeflate(content))))
+        val target = temp.newFile("compressible.odt")
+
+        OfficeEncryption.decrypt(OfficeFixtures.streamFactory(bytes), "secret123", target, OfficeFixtures::parser)
+
+        ZipInputStream(FileInputStream(target)).use { zip ->
+            var decrypted: String? = null
+            while (true) {
+                val entry = zip.nextEntry ?: break
+                if (entry.name == "content.xml") decrypted = String(zip.readBytes(), Charsets.UTF_8)
+            }
+            assertTrue(decrypted!!.contains(text))
+        }
+    }
+
+    @Test(timeout = 20_000)
+    fun `an entry that inflates past the cap is refused`() {
+        val bytes = encryptedOdf(listOf(EncPart("content.xml", highlyCompressibleZeros(65 * 1024 * 1024))))
+        val target = temp.newFile("inflate-bomb.odt")
+
+        val failure = runCatching {
+            OfficeEncryption.decrypt(OfficeFixtures.streamFactory(bytes), "secret123", target, OfficeFixtures::parser)
+        }.exceptionOrNull()
+
+        assertTrue("got $failure", failure is IOException)
+        assertEquals("entry is too large", failure?.message)
+        assertFalse(target.exists())
+    }
+
+    @Test
+    fun `decrypt writes mimetype first uncompressed and without extra header data`() {
+        val bytes = odfWithMimetypeLast()
+        val target = temp.newFile("mimetype-first.odt")
+
+        OfficeEncryption.decrypt(OfficeFixtures.streamFactory(bytes), "secret123", target, OfficeFixtures::parser)
+
+        ZipInputStream(FileInputStream(target)).use { zip ->
+            val first = zip.nextEntry!!
+            assertEquals("mimetype", first.name)
+            assertEquals(ZipEntry.STORED, first.method)
+            assertTrue(first.extra?.isEmpty() != false)
+            assertEquals("application/vnd.oasis.opendocument.text", String(zip.readBytes(), Charsets.UTF_8))
+            assertEquals("META-INF/manifest.xml", zip.nextEntry!!.name)
+            assertEquals("content.xml", zip.nextEntry!!.name)
+        }
+    }
+
+    @Test(timeout = 20_000)
+    fun `a shared odf key derivation is reused across encrypted entries`() {
+        val content = OfficeFixtures.odtContent("<text:p>shared key</text:p>").toByteArray()
+        val single = encryptedOdf(listOf(EncPart("content.xml", rawDeflate(content))), iterations = 20_000)
+        val shared = encryptedOdf(
+            listOf(
+                EncPart("content.xml", rawDeflate(content)),
+                EncPart("styles.xml", rawDeflate(content), iv = ByteArray(16) { 3 }),
+            ),
+            iterations = 20_000,
+        )
+        var singleChecks = 0
+        var sharedChecks = 0
+
+        OfficeEncryption.decrypt(
+            OfficeFixtures.streamFactory(single), "secret123", temp.newFile("single.odt"), OfficeFixtures::parser,
+            ensureActive = { singleChecks++ },
+        )
+        OfficeEncryption.decrypt(
+            OfficeFixtures.streamFactory(shared), "secret123", temp.newFile("shared.odt"), OfficeFixtures::parser,
+            ensureActive = { sharedChecks++ },
+        )
+
+        assertTrue("expected one derivation: $singleChecks vs $sharedChecks", sharedChecks <= singleChecks + 4)
+    }
+
+    @Test
+    fun `a seekable file reads the manifest without inflating earlier entries`() {
+        val bytes = odfWithExtraEntry("Pictures/bomb.bin", ByteArray(8 * 1024 * 1024), first = true)
+        val file = temp.newFile("seek.odt").apply { writeBytes(bytes) }
+
+        assertEquals(OfficeEncryption.Party.PASSWORD, OfficeEncryption.status(file, OfficeFixtures::parser))
+        assertTrue(OfficeEncryption.isEncrypted(file, OfficeFixtures::parser))
+    }
+
+    @Test
+    fun `an odf manifest written last is found through the central directory of a file`() {
+        val file = temp.newFile("manifest-last.odt").apply { writeBytes(odfWithManifestLast()) }
+
+        assertEquals(OfficeEncryption.Party.PASSWORD, OfficeEncryption.status(file, OfficeFixtures::parser))
+        val target = temp.newFile("manifest-last-out.odt")
+        OfficeEncryption.decrypt(file, "secret123", target, OfficeFixtures::parser)
+        assertTrue(extractedText(target, DocumentFormat.ODT).contains("ODF confidential sentence."))
+    }
+
+    @Test
+    fun `an ooxml first entry also short circuits the seekable file probe`() {
+        val bytes = withFirstZipEntry(unsupportedOdf(), "[Content_Types].xml", "<Types/>".toByteArray())
+        val file = temp.newFile("ooxml-first.odt").apply { writeBytes(bytes) }
+
+        assertEquals(OfficeEncryption.Party.NOT_ENCRYPTED, OfficeEncryption.status(file, OfficeFixtures::parser))
+    }
+
+    @Test
+    fun `localSourceFile resolves only existing file uris`() {
+        val file = temp.newFile("source.odt")
+        val missing = java.io.File(temp.root, "missing.odt")
+
+        assertEquals(file, localSourceFile(file.toURI().toString()))
+        assertNull(localSourceFile("content://com.example.provider/document/1"))
+        assertNull(localSourceFile("content://${file.absolutePath}"))
+        assertNull(localSourceFile("not a uri with spaces"))
+        assertNull(localSourceFile(missing.toURI().toString()))
     }
 }

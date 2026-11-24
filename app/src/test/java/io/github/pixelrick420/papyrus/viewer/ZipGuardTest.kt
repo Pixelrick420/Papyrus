@@ -149,6 +149,56 @@ class ZipGuardTest {
     }
 
     @Test
+    fun skippedFlatImageIsAllowedButSkippedBinIsStillRatioChecked() {
+        val loose = small.copy(maxEntryBytes = 1_000_000, maxTotalBytes = 1_000_000)
+        val flat = ByteArray(50_000)
+
+        val imageThrown = runCatching {
+            BoundedZipInputStream(ByteArrayInputStream(zip("bomb.bmp" to flat)), loose).use { zip ->
+                zip.nextEntry
+                zip.skip(Long.MAX_VALUE)
+            }
+        }.exceptionOrNull()
+
+        assertNull(imageThrown)
+
+        val binThrown = runCatching {
+            BoundedZipInputStream(ByteArrayInputStream(zip("bomb.bin" to flat)), loose).use { zip ->
+                zip.nextEntry
+                zip.skip(Long.MAX_VALUE)
+            }
+        }.exceptionOrNull()
+
+        assertEquals("implausible compression", binThrown?.message)
+    }
+
+    @Test
+    fun compressibleImageEntryIsAllowedButBombStillFails() {
+        val loose = small.copy(maxEntryBytes = 1_000_000, maxTotalBytes = 1_000_000)
+        val flat = ByteArray(200_000)
+        val image = "ppt/media/flat.bmp" to flat
+
+        assertNull(refusal(zip(image), loose))
+        assertNull(refusal(zip(image), loose, read = false))
+        assertEquals("implausible compression", refusal(zip("bomb.bin" to flat), loose))
+    }
+
+    @Test
+    fun explicitSkipIsChargedToTheSkippedBudget() {
+        val limits = small.copy(maxEntryBytes = 1_000_000, maxTotalBytes = 1_000_000, maxSkippedBytes = 5_000)
+        val bytes = zip("video" to noise(10_000), "after" to noise(10))
+
+        val thrown = runCatching {
+            BoundedZipInputStream(ByteArrayInputStream(bytes), limits).use { zip ->
+                zip.nextEntry
+                zip.skip(Long.MAX_VALUE)
+            }
+        }.exceptionOrNull()
+
+        assertEquals("too many skipped bytes", thrown?.message)
+    }
+
+    @Test
     fun `the size and ratio of one entry do not count against the next`() {
         val loose = small.copy(maxEntryBytes = 600, maxTotalBytes = 1_000_000)
         val bytes = zip("1" to noise(500), "2" to noise(500), "3" to noise(500))

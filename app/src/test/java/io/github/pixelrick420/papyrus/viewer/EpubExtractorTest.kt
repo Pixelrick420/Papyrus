@@ -709,14 +709,37 @@ class EpubExtractorTest {
     }
 
     @Test
-    fun `an entry that inflates past its cap is refused whatever it declares`() {
+    fun `an unwanted entry that inflates past the retained cap is skipped`() {
         val big = ByteArray(300_000)
-        expectFormatError(EpubFixtures.epub(listOf(chapter("<p>x</p>")), extra = mapOf("OEBPS/big.bin" to big)), EpubLimits(maxEntryBytes = 100_000))
+        val book = read(EpubFixtures.epub(listOf(chapter("<p>x</p>")), extra = mapOf("OEBPS/big.bin" to big)), limits = EpubLimits(maxEntryBytes = 100_000))
+        assertEquals(listOf("x"), texts(book))
+        assertFalse(book.incomplete)
+    }
+
+    @Test
+    fun oversizedUnwantedMediaEntryLoads() {
+        val big = ByteArray(65 * 1024 * 1024)
+        val bytes = EpubFixtures.epub(listOf(chapter("<p>x</p>")), extra = mapOf("OEBPS/big.mp4" to big))
+        val book = read(bytes, limits = EpubLimits(maxRatio = 100_000))
+        assertEquals(listOf("x"), texts(book))
+        assertFalse(book.incomplete)
+    }
+
+    @Test
+    fun `an unwanted flat bitmap loads with default limits`() {
+        // Past the default ratio floor, so the skipped entry still goes through the ratio check.
+        val flat = ByteArray(2 * 1024 * 1024)
+        val bytes = EpubFixtures.epub(listOf(chapter("<p>intact</p>")), extra = mapOf("OEBPS/flat.bmp" to flat))
+
+        val book = read(bytes)
+
+        assertEquals(listOf("intact"), texts(book))
+        assertFalse(book.incomplete)
     }
 
     @Test
     fun `all entries together are capped too`() {
-        val extra = (1..5).associate { "OEBPS/f$it.bin" to ByteArray(60_000) { i -> (i * 31 + it).toByte() } }
+        val extra = (1..5).associate { "OEBPS/f$it.css" to ByteArray(60_000) { i -> (i * 31 + it).toByte() } }
         expectFormatError(
             EpubFixtures.epub(listOf(chapter("<p>x</p>")), extra = extra),
             EpubLimits(maxEntryBytes = 100_000, maxTotalBytes = 200_000, maxRatio = 10_000),
