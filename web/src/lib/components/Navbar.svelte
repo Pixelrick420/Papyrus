@@ -54,7 +54,7 @@
     <button
       class="absolute top-1/2 right-4 -translate-y-1/2 rounded-lg p-2 text-neutral-600 transition-colors hover:bg-neutral-100 sm:right-6 dark:text-neutral-300 dark:hover:bg-neutral-800"
       onclick={toggleTheme}
-      aria-label={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
+      aria-label="Toggle dark mode"
       aria-pressed={darkMode}
     >
       {#if darkMode}
