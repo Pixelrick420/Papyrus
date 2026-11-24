@@ -1,5 +1,3 @@
-@file:SuppressLint("InlinedApi", "NewApi")
-
 package io.github.pixelrick420.papyrus.viewer
 
 import android.annotation.SuppressLint
@@ -56,6 +54,7 @@ internal data class PdfCapabilities(
 
 internal object PdfEngineAvailability {
 
+    @SuppressLint("InlinedApi")
     fun kindOf(sdkInt: Int, extension: Int): PdfEngineKind = when {
         sdkInt >= Build.VERSION_CODES.VANILLA_ICE_CREAM -> PdfEngineKind.V35
         sdkInt >= Build.VERSION_CODES.S && extension >= PRE_V_EXTENSION -> PdfEngineKind.PRE_V
@@ -81,6 +80,7 @@ internal object PdfEngineAvailability {
     private const val ANNOTATION_EXTENSION = 18
 }
 
+@SuppressLint("InlinedApi", "NewApi")
 internal fun devicePdfCapabilities(): PdfCapabilities {
     val extension = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
         // A module that does not know the level answers with an exception; 0 is the safe reading.
@@ -133,6 +133,7 @@ internal sealed interface PlatformBoundary {
 
 internal object PdfEngineFactory {
 
+    @SuppressLint("NewApi")
     @Suppress("TooGenericExceptionCaught") // Vendors fail platform engine construction in different ways.
     fun create(descriptor: ParcelFileDescriptor, capabilities: PdfCapabilities): PdfEngine {
         if (capabilities.kind != PdfEngineKind.LEGACY) {
@@ -154,6 +155,7 @@ internal object PdfEngineFactory {
     }
 }
 
+@SuppressLint("NewApi")
 internal class PdfEngineV35(private val renderer: PdfRenderer) : PdfEngine {
     override val kind = PdfEngineKind.V35
     override val pageCount: Int get() = renderer.pageCount
@@ -198,6 +200,7 @@ internal class PdfEngineV35(private val renderer: PdfRenderer) : PdfEngine {
     }
 }
 
+@SuppressLint("NewApi")
 internal class PdfEnginePreV(private val renderer: PdfRendererPreV) : PdfEngine {
     override val kind = PdfEngineKind.PRE_V
     override val pageCount: Int get() = renderer.pageCount
@@ -280,6 +283,7 @@ internal class PdfEngineLegacy(private val renderer: PdfRenderer) : PdfEngine {
 }
 
 // Its own class rather than a method on the page: [HighlightAnnotation] exists only where the platform's annotation API does, and the page classes load on devices without it.
+@SuppressLint("NewApi")
 private object PdfHighlightWriter {
 
     fun add(page: PdfRenderer.Page, marks: List<List<NormRect>>): Boolean = write(marks, page.width, page.height) {
@@ -310,6 +314,7 @@ private object PdfHighlightWriter {
 private const val HIGHLIGHT_ANNOTATION_COLOR = 0xFFFFEB3B.toInt()
 
 // Its own class rather than a file-level value: [RenderParams] exists only where the platform PDF extension does, and this file's facade class loads on every device.
+@SuppressLint("NewApi", "InlinedApi")
 private object PdfDisplayParams {
     val value: RenderParams = RenderParams.Builder(RenderParams.RENDER_MODE_FOR_DISPLAY)
         .setRenderFlags(
@@ -321,6 +326,7 @@ private object PdfDisplayParams {
         .build()
 }
 
+@SuppressLint("NewApi")
 private fun PdfPageTextContent.line(): PlatformLine = PlatformLine(text, bounds.map { it.pageRect() })
 
 private fun RectF.pageRect(): PageRect = PageRect(left, top, right, bottom)
@@ -330,6 +336,7 @@ private fun NormRect.annotationRect(pageWidth: Float, pageHeight: Float): RectF 
 
 private fun Rect.centre(): Point = Point(centerX(), centerY())
 
+@SuppressLint("NewApi")
 private fun FormWidgetInfo.field(pageIndex: Int, pageWidth: Int, pageHeight: Int): PdfFormField {
     val box = widgetRect
     val items = listItems.orEmpty()
@@ -352,6 +359,7 @@ private fun Rect.pageRect(): PageRect =
     PageRect(left.toFloat(), top.toFloat(), right.toFloat(), bottom.toFloat())
 
 /** [edit] as the platform's record; a tap lands on the widget's own centre, which the caller supplies. */
+@SuppressLint("NewApi")
 private inline fun PdfFormEdit.record(pageIndex: Int, tapPoint: (Int) -> Point): FormEditRecord {
     val builder = when (this) {
         is PdfFormEdit.Text -> FormEditRecord
@@ -367,10 +375,13 @@ private inline fun PdfFormEdit.record(pageIndex: Int, tapPoint: (Int) -> Point):
     return builder.build()
 }
 
+@SuppressLint("NewApi")
 private fun PageMatchBounds.match(): PlatformMatch = PlatformMatch(textStartIndex, bounds.map { it.pageRect() })
 
+@SuppressLint("NewApi")
 private fun PageSelection.lines(): List<PlatformLine> = selectedTextContents.map { it.line() }
 
+@SuppressLint("NewApi")
 private fun PlatformBoundary.boundary(): SelectionBoundary = when (this) {
     is PlatformBoundary.Index -> SelectionBoundary(value)
     is PlatformBoundary.Point -> SelectionBoundary(Point(x, y))

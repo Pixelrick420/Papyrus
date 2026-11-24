@@ -98,6 +98,12 @@ class PdfPageTextTest {
     }
 
     @Test
+    fun `a mixed-case query finds lowercase page text after a platform search miss`() {
+        val text = "report"
+        assertEquals(1, page(text, line(text)).matches("Report").count)
+    }
+
+    @Test
     fun `a page with no boxes is still found but has nothing to draw`() {
         // Over the memory budget: searchable, not highlightable, so contains and matchGroups differ.
         val page = PdfPageText("find the needle", FloatArray(0))

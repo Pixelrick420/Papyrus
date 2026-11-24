@@ -3,6 +3,7 @@ package io.github.pixelrick420.papyrus.viewer
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -82,5 +83,37 @@ class PdfOpenFallbackTest {
         assertThrows(IOException::class.java) {
             copyBounded(ByteArrayInputStream(bytes), ByteArrayOutputStream(), bytes.size - 1L)
         }
+    }
+
+    @Test
+    fun nonSeekableRendererFailureRoutesToCopyFallback() {
+        assertTrue(shouldCopyAfterOpenFailure(IllegalArgumentException("file descriptor not seekable")))
+        assertTrue(shouldCopyAfterOpenFailure(IOException("read failed")))
+        assertFalse(shouldCopyAfterOpenFailure(PdfPasswordException()))
+        // A lost SAF grant is NoAccess, not a reason to copy the file.
+        assertFalse(shouldCopyAfterOpenFailure(SecurityException("grant lost")))
+    }
+
+    @Test
+    fun capitalisedQueryKeepsPlatformSearchNeedle() {
+        val caps = PdfCapabilities(
+            kind = PdfEngineKind.V35,
+            text = true,
+            search = true,
+            selection = true,
+            forms = true,
+            annotations = false,
+        )
+
+        assertEquals("Report", platformSearchNeedle(caps, "Report"))
+        assertEquals("report", platformSearchNeedle(caps, "report"))
+        assertNull(platformSearchNeedle(PdfCapabilities.legacy(), "Report"))
+    }
+
+    @Test
+    fun aMixedCaseQueryWithNoPlatformHitsIsRetriedByPdfBox() {
+        assertTrue(shouldRetryMixedCaseSearch("Report", 0))
+        assertFalse(shouldRetryMixedCaseSearch("Report", 1))
+        assertFalse(shouldRetryMixedCaseSearch("report", 0))
     }
 }

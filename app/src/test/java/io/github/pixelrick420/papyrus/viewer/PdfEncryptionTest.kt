@@ -7,6 +7,7 @@ import com.tom_roush.pdfbox.pdmodel.encryption.InvalidPasswordException
 import com.tom_roush.pdfbox.pdmodel.encryption.StandardProtectionPolicy
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -258,5 +259,27 @@ class PdfEncryptionTest {
             PdfEncryption.NOT_ENCRYPTED,
             PdfEncryption.status { throw IOException("provider went away") },
         )
+    }
+
+    private fun oomStream(): InputStream = object : InputStream() {
+        override fun read(): Int = throw OutOfMemoryError("heap exhausted")
+
+        override fun read(b: ByteArray, off: Int, len: Int): Int = throw OutOfMemoryError("heap exhausted")
+    }
+
+    @Test
+    fun authoritativeStatusReturnsSafeStatusOnOutOfMemory() {
+        assertEquals(PdfEncryption.NOT_ENCRYPTED, PdfEncryption.authoritativeStatus { oomStream() })
+    }
+
+    @Test
+    fun decryptDeletesTargetWhenOutOfMemoryIsThrown() {
+        val target = temp.newFile("oom.pdf").apply { writeText("plaintext") }
+
+        assertThrows(OutOfMemoryError::class.java) {
+            PdfEncryption.decrypt({ oomStream() }, "pw", target)
+        }
+
+        assertFalse("an OOM must not leave plaintext in the cache", target.exists())
     }
 }

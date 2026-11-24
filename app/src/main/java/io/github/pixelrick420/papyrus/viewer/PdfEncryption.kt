@@ -35,6 +35,9 @@ enum class PdfEncryption {
             } catch (e: Exception) {
                 // Unreadable/malformed: not the "locked" case, so let the renderer fail generically.
                 NOT_ENCRYPTED
+            } catch (e: OutOfMemoryError) {
+                // A whole-file load can exhaust the heap; that is not evidence of a locked file.
+                NOT_ENCRYPTED
             }
 
         // The `/Encrypt` trailer can sit at the end, near the start (linearized), or in a PDF 1.5 xref stream, so the whole stream is scanned in fixed chunks.
@@ -80,9 +83,9 @@ enum class PdfEncryption {
             return -1
         }
 
-        // Delete the partial plaintext copy before the failure is rethrown.
-        @Suppress("TooGenericExceptionCaught")
+        // A failed save, including one that exhausts the heap, must not leave plaintext in the cache.
         fun decrypt(openStream: () -> InputStream, password: String, target: File) {
+            var saved = false
             try {
                 openStream().use { stream ->
                     PDDocument.load(stream, password).use { document ->
@@ -90,9 +93,9 @@ enum class PdfEncryption {
                         document.save(target)
                     }
                 }
-            } catch (e: Exception) {
-                target.delete()
-                throw e
+                saved = true
+            } finally {
+                if (!saved) target.delete()
             }
         }
     }

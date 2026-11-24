@@ -12,6 +12,7 @@ import android.util.Log
 import android.util.LruCache
 import androidx.core.graphics.createBitmap
 import io.github.pixelrick420.papyrus.data.openRequired
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -33,6 +34,17 @@ import kotlin.math.roundToInt
 
 class PdfPasswordException : IOException("Password-protected PDF")
 
+internal fun shouldCopyAfterOpenFailure(failure: Throwable): Boolean =
+    failure !is PdfPasswordException && failure !is SecurityException
+
+internal fun platformSearchNeedle(capabilities: PdfCapabilities, query: String): String? {
+    if (!capabilities.search) return null
+    return PdfPageText.normalizeQuery(query).takeIf { it.isNotEmpty() }
+}
+
+internal fun shouldRetryMixedCaseSearch(query: String, platformHits: Int): Boolean =
+    platformHits == 0 && query != query.lowercase()
+
 @OptIn(ExperimentalCoroutinesApi::class)
 class PdfPageSource private constructor(
     private val descriptor: ParcelFileDescriptor,
@@ -51,7 +63,10 @@ class PdfPageSource private constructor(
     val canAnnotate: Boolean get() = capabilities.annotations
 
     private val dispatcher = Dispatchers.Default.limitedParallelism(1)
-    private val lock = Mutex()
+    private val searchDispatcher = Dispatchers.Default.limitedParallelism(1)
+    // Find walks every page; a separate dispatcher keeps that queue off a visible page's render.
+    // PdfRenderer is not thread-safe, so both dispatchers still share this engine mutex.
+    private val engineLock = Mutex()
     private var closed = false
 
     private val cacheBudgetBytes = bitmapCacheBudgetBytes()
@@ -90,7 +105,7 @@ class PdfPageSource private constructor(
         val key = PageKey(index, widthPx)
         cache.get(key)?.let { return it }
         return withContext(dispatcher) {
-            lock.withLock {
+            engineLock.withLock {
                 if (closed) return@withLock null
                 cache.get(key)?.let { return@withLock it }
                 // Checked with the lock held: the wait is where a page has time to scroll away.
@@ -126,13 +141,12 @@ class PdfPageSource private constructor(
         }
     }
 
-    // The platform scan is exact-case, so a query with capitals stays with the case-insensitive model.
+    // Platform search case-sensitivity is not guaranteed; let PDFBox retry a mixed-case query with no hits.
     internal suspend fun platformSearch(index: Int, query: String): PdfPageText.PageMatches? {
-        if (!capabilities.search || query != query.lowercase()) return null
-        val needle = PdfPageText.normalizeQuery(query)
-        if (needle.isEmpty()) return null
-        return withPage(index) { page ->
+        val needle = platformSearchNeedle(capabilities, query) ?: return null
+        return withSearchPage(index) { page ->
             val hits = page.search(needle)
+            if (shouldRetryMixedCaseSearch(needle, hits.size)) return@withSearchPage null
             PdfPageText.PageMatches(
                 count = hits.size,
                 groups = PdfPlatformText.groups(hits, page.width.toFloat(), page.height.toFloat()),
@@ -180,7 +194,7 @@ class PdfPageSource private constructor(
         destination: ParcelFileDescriptor,
         highlights: Map<Int, List<List<NormRect>>> = emptyMap(),
     ): Boolean = withContext(dispatcher) {
-        lock.withLock {
+        engineLock.withLock {
             if (closed) return@withLock false
             try {
                 if (highlights.isNotEmpty()) {
@@ -199,7 +213,7 @@ class PdfPageSource private constructor(
         }
     }
 
-    /** Called with [lock] held, since the engine allows one open page at a time. */
+    /** Called with [engineLock] held, since the engine allows one open page at a time. */
     private fun annotate(page: Int, marks: List<List<NormRect>>): Boolean {
         return try {
             engine.open(page).use { it.highlight(marks) }
@@ -213,20 +227,30 @@ class PdfPageSource private constructor(
     }
 
     private suspend fun <T> withPage(index: Int, attempt: (PdfEnginePage) -> T): T? =
-        withContext(dispatcher) {
-            lock.withLock {
-                if (closed) return@withLock null
-                try {
-                    engine.open(index).use(attempt)
-                } catch (ignored: Exception) {
-                    logPageFailure(index, ignored)
-                    null
-                } catch (ignored: LinkageError) {
-                    logPageFailure(index, ignored)
-                    null
-                }
+        withPageOn(dispatcher, engineLock, index, attempt)
+
+    private suspend fun <T> withSearchPage(index: Int, attempt: (PdfEnginePage) -> T): T? =
+        withPageOn(searchDispatcher, engineLock, index, attempt)
+
+    private suspend fun <T> withPageOn(
+        context: CoroutineDispatcher,
+        mutex: Mutex,
+        index: Int,
+        attempt: (PdfEnginePage) -> T,
+    ): T? = withContext(context) {
+        mutex.withLock {
+            if (closed) return@withLock null
+            try {
+                engine.open(index).use(attempt)
+            } catch (ignored: Exception) {
+                logPageFailure(index, ignored)
+                null
+            } catch (ignored: LinkageError) {
+                logPageFailure(index, ignored)
+                null
             }
         }
+    }
 
     /** Where and which class only, never what: a page can hold form values or text the reader typed. */
     private fun logPageFailure(index: Int, error: Throwable) {
@@ -240,7 +264,7 @@ class PdfPageSource private constructor(
         synchronized(openSources) { openSources.remove(this) }
         CoroutineScope(dispatcher).launch {
             runCatching {
-                lock.withLock {
+                engineLock.withLock {
                     if (closed) return@withLock
                     closed = true
                     runCatching { cache.evictAll() }
@@ -275,46 +299,48 @@ class PdfPageSource private constructor(
         /** Upper bound on a page bitmap's height, so a degenerate page size never asks for a bitmap the device cannot hold. */
         internal const val MAX_PAGE_HEIGHT_PX = 16_384
 
-        // An unseekable PDF gets one bounded copy; the descriptor and copy are closed on every other path.
+        // An unseekable PDF gets one bounded copy; the descriptor is closed unless the source owns it.
         @Suppress("SwallowedException", "TooGenericExceptionCaught")
         suspend fun open(context: Context, uri: Uri): PdfPageSource = withContext(Dispatchers.IO) {
             val resolver = context.contentResolver
             val usableSpace = context.cacheDir.usableSpace
             val pfd = resolver.openFileDescriptor(uri, "r") ?: throw FileNotFoundException(uri.toString())
+            var directOpen = false
             try {
-                return@withContext openDescriptor(pfd, null)
-            } catch (e: PdfPasswordException) {
-                pfd.close()
-                throw e
-            } catch (e: IOException) {
-                val fallback = pdfOpenFallback(
-                    statSize = pfd.statSize,
-                    seekable = isSeekable(pfd),
-                    hasPdfHeader = runCatching { hasPdfHeader(resolver.openInputStream(uri)) }.getOrDefault(false),
-                    usableSpace = usableSpace,
-                )
-                pfd.close()
-                when (fallback) {
-                    PdfOpenFallback.FAIL_FORMAT -> throw IOException("Not a seekable PDF", e)
-                    PdfOpenFallback.FAIL_NO_SPACE -> throw IOException("Not enough cache space for this PDF", e)
-                    PdfOpenFallback.COPY -> Unit
-                }
-            }
-            val dir = File(context.cacheDir, PDF_VIEW_DIR).apply { mkdirs() }
-            val copy = File.createTempFile("view-", ".pdf", dir)
-            val limit = minOf(MAX_PDF_COPY_BYTES, usableSpace)
-            try {
-                resolver.openRequired(uri).use { input -> copy.outputStream().use { copyBounded(input, it, limit) } }
-                val copyPfd = ParcelFileDescriptor.open(copy, ParcelFileDescriptor.MODE_READ_ONLY)
                 try {
-                    openDescriptor(copyPfd, copy)
+                    return@withContext openDescriptor(pfd, null).also { directOpen = true }
                 } catch (e: Exception) {
-                    copyPfd.close()
+                    if (!shouldCopyAfterOpenFailure(e)) throw e
+                    val fallback = pdfOpenFallback(
+                        statSize = pfd.statSize,
+                        seekable = isSeekable(pfd),
+                        hasPdfHeader = runCatching { hasPdfHeader(resolver.openInputStream(uri)) }.getOrDefault(false),
+                        usableSpace = usableSpace,
+                    )
+                    when (fallback) {
+                        PdfOpenFallback.FAIL_FORMAT -> throw IOException("Not a seekable PDF", e)
+                        PdfOpenFallback.FAIL_NO_SPACE -> throw IOException("Not enough cache space for this PDF", e)
+                        PdfOpenFallback.COPY -> Unit
+                    }
+                }
+                val dir = File(context.cacheDir, PDF_VIEW_DIR).apply { mkdirs() }
+                val copy = File.createTempFile("view-", ".pdf", dir)
+                val limit = minOf(MAX_PDF_COPY_BYTES, usableSpace)
+                try {
+                    resolver.openRequired(uri).use { input -> copy.outputStream().use { copyBounded(input, it, limit) } }
+                    val copyPfd = ParcelFileDescriptor.open(copy, ParcelFileDescriptor.MODE_READ_ONLY)
+                    try {
+                        return@withContext openDescriptor(copyPfd, copy)
+                    } catch (e: Exception) {
+                        copyPfd.close()
+                        throw e
+                    }
+                } catch (e: Exception) {
+                    copy.delete()
                     throw e
                 }
-            } catch (e: Exception) {
-                copy.delete()
-                throw e
+            } finally {
+                if (!directOpen) pfd.close()
             }
         }
 
