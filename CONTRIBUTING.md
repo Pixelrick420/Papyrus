@@ -25,6 +25,12 @@ Issues and pull requests are welcome.
 - `GoldenImageTest` is exempt from that tolerance and must pass in full; a golden diff is a deterministic regression, not device flakiness.
 - After editing an install task, check its configuration-cache entry with `./gradlew --configuration-cache --dry-run installLocalDebug installLocalRelease`.
 
+## Releases
+
+- A tag publishes only when its commit passed both CI jobs on `main` (Test and build, Emulator tests).
+- The three release APKs ship with a `papyrus-<tag>-SHA256SUMS.txt` file and a SLSA build provenance attestation; verify one with `gh attestation verify --owner Pixelrick420 <apk>`.
+- Changelogs are named by `versionCode` under `fastlane/metadata/android/en-US/changelogs/`. The archive starts at code 17 (v1.0): 0.x was a fresh-start preview with no release archive, so there is no gap to backfill.
+
 ## PPTX licensing
 
 Permissive code/data may be vendored with a NOTICE entry; copyleft code may not be copied; behavior may be studied
