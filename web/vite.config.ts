@@ -4,7 +4,16 @@ import tailwindcss from '@tailwindcss/vite';
 import { defineConfig } from 'vite';
 import adapter from '@sveltejs/adapter-static';
 
+const siteUrl = (process.env.PUBLIC_SITE_URL ?? 'https://papyrus-viewer.vercel.app/').replace(
+  /\/+$/,
+  ''
+);
+process.env.PUBLIC_SITE_URL = siteUrl;
+
 export default defineConfig({
+  define: {
+    'import.meta.env.PUBLIC_SITE_URL': JSON.stringify(siteUrl),
+  },
   plugins: [
     tailwindcss(),
     sveltekit({
