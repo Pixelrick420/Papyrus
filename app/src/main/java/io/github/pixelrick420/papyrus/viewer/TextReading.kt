@@ -7,6 +7,7 @@ import java.io.InputStreamReader
 import java.io.Reader
 import java.io.SequenceInputStream
 import java.nio.charset.Charset
+import kotlin.coroutines.cancellation.CancellationException
 
 const val TEXT_LINES_PER_CHUNK = 40
 
@@ -15,6 +16,17 @@ interface TextChunkView {
     val size: Int
     fun peek(index: Int): String?
     suspend fun load(index: Int): String
+}
+
+// Null when the provider cannot supply the chunk (revoked grant, storage gone); a failure is never cached, so the next ask retries.
+@Suppress("TooGenericExceptionCaught")
+internal suspend fun TextChunkView.loadOrNull(index: Int, onFailure: (Exception) -> Unit = {}): String? = try {
+    load(index)
+} catch (e: CancellationException) {
+    throw e
+} catch (e: Exception) {
+    onFailure(e)
+    null
 }
 
 internal class ListChunkView(private val chunks: List<String>) : TextChunkView {

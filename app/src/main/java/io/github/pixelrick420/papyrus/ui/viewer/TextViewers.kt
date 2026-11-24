@@ -9,6 +9,7 @@ import android.text.style.BackgroundColorSpan
 import android.text.style.CharacterStyle
 import android.text.style.ForegroundColorSpan
 import android.text.style.UpdateAppearance
+import android.util.Log
 import android.util.TypedValue
 import android.widget.TextView
 import io.github.pixelrick420.papyrus.viewer.LATEX_RANGE_REGEX
@@ -89,6 +90,7 @@ import io.github.pixelrick420.papyrus.viewer.OfficeCell
 import io.github.pixelrick420.papyrus.viewer.SyntaxHighlighter
 import io.github.pixelrick420.papyrus.viewer.TEXT_LINES_PER_CHUNK
 import io.github.pixelrick420.papyrus.viewer.TextChunkView
+import io.github.pixelrick420.papyrus.viewer.loadOrNull
 import io.github.pixelrick420.papyrus.viewer.numberedLines
 import io.github.pixelrick420.papyrus.viewer.direction
 import io.noties.markwon.Markwon
@@ -101,7 +103,6 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.IOException
 import kotlin.math.roundToInt
 
 @Composable
@@ -553,7 +554,10 @@ fun PlainTextViewer(
     LaunchedEffect(chunks, listState) {
         snapshotFlow { listState.firstVisibleItemIndex }.collectLatest { first ->
             withContext(Dispatchers.IO) {
-                for (i in (first - PREFETCH_BEHIND).coerceAtLeast(0)..(first + PREFETCH_AHEAD).coerceAtMost(chunks.size - 1)) chunks.load(i)
+                for (i in (first - PREFETCH_BEHIND).coerceAtLeast(0)..(first + PREFETCH_AHEAD).coerceAtMost(chunks.size - 1)) {
+                    // Best effort: a chunk that fails here shows its retry row when it scrolls into view.
+                    chunks.loadOrNull(i) { Log.w(TAG, "Chunk $i prefetch failed: ${it.javaClass.simpleName}") }
+                }
             }
         }
     }
@@ -762,11 +766,7 @@ private fun TextChunk(
         reload,
     ) {
         if (initial == null) {
-            value = try {
-                ChunkText.Ready(chunks.load(index))
-            } catch (_: IOException) {
-                ChunkText.Failed
-            }
+            value = chunks.loadOrNull(index)?.let(ChunkText::Ready) ?: ChunkText.Failed
         }
     }
     when (val result = loaded) {
@@ -1202,6 +1202,7 @@ private const val COLUMN_PROBE = "0000000000"
 private const val LINE_PROBE = "Mg"
 private const val GUTTER_ALPHA = 0.7f
 private const val NUMBER_LAYOUT_CACHE = 64
+private const val TAG = "TextViewers"
 private const val PREFETCH_BEHIND = 2
 private const val PREFETCH_AHEAD = 8
 private const val TRUNCATED_ITEM_KEY = "truncated"
