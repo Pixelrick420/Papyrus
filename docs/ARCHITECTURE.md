@@ -47,12 +47,15 @@ are no longer written.
 ## Content search
 
 - Indexer uses `document_text` as its queue; states are `INDEXED`, `FAILED`, `SKIPPED` and `TOO_LARGE`.
-- A `FAILED` row is eligible again after five minutes (`indexedAt`), but there is no timer: it is retried only on the
-  next indexing pass. `SKIPPED` and `TOO_LARGE` are terminal.
+- A `FAILED` row is eligible again at its `indexedAt` deadline (5 minutes, then 30 minutes, 2 hours and 24 hours), but
+  there is no timer: it is retried only on the next indexing pass. After the last failure it becomes `SKIPPED`, as are
+  `TOO_LARGE` and DRM-protected files.
 - At or below `SearchIndexer.EAGER_MAX_BYTES`, text is read at once, even while a document is open or battery saver is
   on. The **Search inside documents** switch still applies. Larger files pause while reading or under battery saver.
-- A document changes when its recorded size differs, or when the provider reports a different modified time for a row
-  that already has one recorded (`sourceModified != 0`); rows without a recorded time are left alone. The indexer checks
+- Opening a library document refreshes its recorded size and modified time from the provider, so an external edit is
+  detected on the next indexing pass. A document changes when its recorded size differs (a size of 0 means the provider
+  did not report one), or when the provider reports a different modified time for a row that already has one recorded
+  (`sourceModified != 0`); rows without a recorded time are left alone. The indexer checks
   the modified time via `textCacheModified`, which queries the provider for metadata only; it does not read the
   document bytes.
 - Queries split on anything that is not a letter, number or Unicode mark. Only the first few terms are kept; a
