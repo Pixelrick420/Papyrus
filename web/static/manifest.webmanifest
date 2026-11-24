@@ -1,7 +1,7 @@
 {
   "name": "Papyrus",
   "short_name": "Papyrus",
-  "description": "Offline document viewer for Android: PDF, Word, OpenDocument, EPUB, Markdown, text and code.",
+  "description": "Offline document viewer for Android: PDF, Word, OpenDocument, EPUB, PowerPoint, Markdown, text and code.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",

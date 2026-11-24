@@ -50,6 +50,7 @@ enum class DocumentFormat(
             "json", "jsonc", "json5", "yaml", "yml", "toml", "ini", "cfg", "conf", "env", "properties",
             "xml", "svg", "html", "htm", "css", "scss", "sass", "less", "vue", "svelte", "gradle",
             "cmake", "mk", "makefile", "dockerfile", "patch", "diff", "gitignore", "editorconfig",
+            "tex", "rst", "adoc", "nfo",
         ),
         // No MIME types: providers report these as text/plain or octet-stream, which the picker
         // filter admits anyway.
