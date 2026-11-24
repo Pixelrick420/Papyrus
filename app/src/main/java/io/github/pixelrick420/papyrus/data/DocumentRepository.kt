@@ -186,7 +186,15 @@ class DocumentRepository(
 
     suspend fun getById(id: Long): DocumentEntity? =
         crashReports[id] ?: if (id < 0) handedOver[id] else dao.getById(id)
-    suspend fun markOpened(id: Long) = dao.touch(id, System.currentTimeMillis())
+
+    // A provider can replace a file behind the same URI: refresh the size the cache comparisons rely on.
+    suspend fun markOpened(id: Long) = withContext(Dispatchers.IO) {
+        val now = System.currentTimeMillis()
+        val row = dao.getById(id)
+        val size = if (row == null) 0L else SafStorage.queryMetadata(context, row.uri.toUri()).sizeBytes
+        if (size > 0 && size != row?.sizeBytes) dao.touchWithSize(id, now, size) else dao.touch(id, now)
+    }
+
     suspend fun updateFormat(id: Long, format: DocumentFormat) = dao.updateFormat(id, format)
 
     suspend fun setStarred(ids: List<Long>, starred: Boolean) {

@@ -35,6 +35,9 @@ interface DocumentDao {
     @Query("UPDATE documents SET lastOpenedAt = :timestamp WHERE id = :id")
     suspend fun touch(id: Long, timestamp: Long)
 
+    @Query("UPDATE documents SET lastOpenedAt = :timestamp, sizeBytes = :sizeBytes WHERE id = :id")
+    suspend fun touchWithSize(id: Long, timestamp: Long, sizeBytes: Long)
+
     /** Re-binds the row to a new URI: SAF re-picking the same document returns a different one. */
     @Query("UPDATE documents SET uri = :uri WHERE id = :id")
     suspend fun updateUri(id: Long, uri: String)

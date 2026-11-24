@@ -89,6 +89,20 @@ class DocumentRepositoryBehaviourTest {
     }
 
     @Test
+    fun markOpenedRefreshesTheSizeOfAChangedSource() = runBlocking {
+        val (source, uri) = sourceFile("changed.pptx")
+        val dao = database.documentDao()
+        val id = dao.insertIgnore(sourceEntity(uri, source).copy(sizeBytes = 1))
+
+        source.writeBytes(byteArrayOf(1, 2, 3, 4, 5, 6, 7))
+        repository().markOpened(id)
+
+        val row = dao.getById(id)!!
+        assertEquals(source.length(), row.sizeBytes)
+        assertTrue(row.lastOpenedAt > 0)
+    }
+
+    @Test
     fun saveToLibraryInsertsRowForNewSource() = runBlocking {
         val (source, uri) = sourceFile("new-source.pptx")
         var releaseCalls = 0
