@@ -201,7 +201,8 @@ class SearchIndexer(
 internal fun Flow<List<Pair<Long, Long>>>.eagerArrivals(maxBytes: Long): Flow<Unit> = flow {
     var before = emptySet<Pair<Long, Long>>()
     this@eagerArrivals.collect { library ->
-        val small = library.filterTo(HashSet()) { (_, size) -> size <= maxBytes }
+        // A provider that reports no size must not be mistaken for a tiny file.
+        val small = library.filterTo(HashSet()) { (_, size) -> size in 1..maxBytes }
         if (small.any { it !in before }) emit(Unit)
         before = small
     }

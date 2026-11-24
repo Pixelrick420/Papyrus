@@ -44,7 +44,7 @@ internal class FakeSearchDao : SearchDao {
         limit: Int,
     ): List<DocumentEntity> {
         eagerPendingQueries += maxBytes to limit
-        return take(limit) { it.sizeBytes <= maxBytes }
+        return take(limit) { it.sizeBytes in 1..maxBytes }
     }
 
     private fun take(limit: Int, include: (DocumentEntity) -> Boolean): List<DocumentEntity> {

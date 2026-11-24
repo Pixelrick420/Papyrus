@@ -37,7 +37,7 @@ interface SearchDao {
     // Includes stale rows and FAILED rows whose deadline passed; a failed row waits for the next pass.
     @Query(
         "SELECT d.* FROM documents d LEFT JOIN document_text t ON t.rowid = d.id " +
-            "WHERE t.rowid IS NULL OR t.indexVersion < :version OR t.sourceSize != d.sizeBytes " +
+            "WHERE t.rowid IS NULL OR t.indexVersion < :version OR (d.sizeBytes > 0 AND t.sourceSize != d.sizeBytes) " +
             "OR (t.state = 'FAILED' AND t.indexedAt <= :now) " +
             "ORDER BY d.id LIMIT :limit",
     )
@@ -46,9 +46,9 @@ interface SearchDao {
     // Narrowed by size so large files cannot hide small ones.
     @Query(
         "SELECT d.* FROM documents d LEFT JOIN document_text t ON t.rowid = d.id " +
-            "WHERE (t.rowid IS NULL OR t.indexVersion < :version OR t.sourceSize != d.sizeBytes " +
+            "WHERE (t.rowid IS NULL OR t.indexVersion < :version OR (d.sizeBytes > 0 AND t.sourceSize != d.sizeBytes) " +
             "OR (t.state = 'FAILED' AND t.indexedAt <= :now)) " +
-            "AND d.sizeBytes <= :maxBytes " +
+            "AND d.sizeBytes > 0 AND d.sizeBytes <= :maxBytes " +
             "ORDER BY d.id LIMIT :limit",
     )
     suspend fun pendingUpTo(version: Int, maxBytes: Long, now: Long, limit: Int): List<DocumentEntity>

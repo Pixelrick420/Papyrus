@@ -128,7 +128,7 @@ class DocumentRepository(
         if (document.id <= 0) return@withContext null
         val row = pdfOutlineDao.get(document.id) ?: return@withContext null
         val modified = sourceModified(document)
-        if (row.sourceSize != document.sizeBytes || row.cacheVersion != PDF_OUTLINE_CACHE_VERSION ||
+        if ((document.sizeBytes > 0 && row.sourceSize != document.sizeBytes) || row.cacheVersion != PDF_OUTLINE_CACHE_VERSION ||
             row.sourceModified == 0L || row.sourceModified != modified
         ) {
             return@withContext null
@@ -166,7 +166,7 @@ class DocumentRepository(
             flowOf(null)
         } else {
             searchDao.observeTextSummary(document.id)
-                .map { rows -> rows.firstOrNull()?.takeIf { it.sourceSize == document.sizeBytes } }
+                .map { rows -> rows.firstOrNull()?.takeIf { document.sizeBytes <= 0 || it.sourceSize == document.sizeBytes } }
         }
 
     private fun handOver(entity: DocumentEntity): Long = handedOver.add { id -> entity.copy(id = id) }

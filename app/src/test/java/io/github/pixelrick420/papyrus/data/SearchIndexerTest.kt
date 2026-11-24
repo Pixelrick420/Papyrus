@@ -616,6 +616,22 @@ class SearchIndexerTest {
     }
 
     @Test
+    fun `a size the provider did not report does not wake the eager pass`() {
+        assertEquals(0, wakeups(emptyList(), listOf(1L to 0L)))
+        assertEquals(0, wakeups(emptyList(), listOf(1L to -1L)))
+    }
+
+    @Test
+    fun `the eager pass asks only for files with a known size`() = runBlocking {
+        dao.queue +=
+            listOf(document(1, size = 0), document(2, size = -1), document(3, size = SMALL))
+
+        extraction().indexEager()
+
+        assertEquals(listOf(3L), extracted)
+    }
+
+    @Test
     fun `a document leaving the library does not`() {
         assertEquals(1, wakeups(listOf(1L to SMALL, 2L to SMALL), listOf(1L to SMALL)))
     }
