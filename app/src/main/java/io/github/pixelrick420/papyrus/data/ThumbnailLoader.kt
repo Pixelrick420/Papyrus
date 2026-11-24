@@ -316,6 +316,11 @@ internal fun thumbnailFailureSpecFor(error: Throwable): ThumbnailFailureSpec = w
         ThumbnailResult.Unavailable(error.message ?: "missing"),
         ThumbnailFailureCache.SHORT_TTL,
     )
+    // Memory pressure is transient; a permanent verdict would hide the thumbnail for the session.
+    is OutOfMemoryError -> ThumbnailFailureSpec(
+        ThumbnailResult.Unavailable("OutOfMemoryError"),
+        ThumbnailFailureCache.SHORT_TTL,
+    )
     else -> ThumbnailFailureSpec(
         ThumbnailResult.Unavailable(error.javaClass.simpleName),
         ThumbnailFailureCache.PERMANENT_TTL,

@@ -31,6 +31,18 @@ class ThumbnailFailureCacheTest {
     }
 
     @Test
+    fun `an out of memory failure is retried after a short ttl`() {
+        val spec = thumbnailFailureSpecFor(OutOfMemoryError())
+
+        assertEquals(ThumbnailFailureCache.SHORT_TTL, spec.ttlMillis)
+
+        cache.put("1@10", spec.result, spec.ttlMillis)
+        clock.advance(spec.ttlMillis)
+
+        assertNull(cache.get("1@10"))
+    }
+
+    @Test
     fun `the least recently used failure is evicted`() {
         val first = ThumbnailResult.NoAccess
         val second = ThumbnailResult.Unavailable("bad")
