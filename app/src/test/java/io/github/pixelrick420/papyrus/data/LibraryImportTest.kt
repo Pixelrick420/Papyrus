@@ -195,6 +195,15 @@ class LibraryImportTest {
     }
 
     @Test
+    fun `a fingerprint is a lowercase sha-256 hex string`() {
+        val bytes = "hello papyrus".toByteArray()
+
+        val fingerprint = LibraryImport.fingerprint { ByteArrayInputStream(bytes) }!!
+
+        assertEquals("169ff73e26728d9a28d63f3958f6cec4db496da3b35167488ef7afd89c140836", fingerprint.hash)
+    }
+
+    @Test
     fun `a candidate with the source's bytes has the same fingerprint`() {
         val bytes = "hello papyrus".toByteArray()
         val fingerprint = LibraryImport.fingerprint { ByteArrayInputStream(bytes) }!!

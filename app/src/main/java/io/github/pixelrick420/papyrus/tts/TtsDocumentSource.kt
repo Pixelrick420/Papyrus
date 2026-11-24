@@ -117,8 +117,12 @@ object TtsDocumentSource {
             var sourceEnd = i
             while (lineStart < n) {
                 val end = lineEnd(text, lineStart)
-                val line = text.substring(lineStart, end).trim()
-                if (line.isEmpty()) break
+                var from = lineStart
+                var to = end
+                while (from < to && text[from].isWhitespace()) from++
+                while (to > from && text[to - 1].isWhitespace()) to--
+                if (from == to) break
+                val line = text.substring(from, to)
                 if (sb.isNotEmpty()) sb.append(' ')
                 sb.append(line)
                 sourceEnd = end
@@ -173,6 +177,10 @@ object TtsDocumentSource {
         return i + 1
     }
 
-    private fun lineIsBlank(text: String, start: Int, end: Int): Boolean =
-        text.substring(start, end).isBlank()
+    private fun lineIsBlank(text: String, start: Int, end: Int): Boolean {
+        for (i in start until end) {
+            if (!text[i].isWhitespace()) return false
+        }
+        return true
+    }
 }

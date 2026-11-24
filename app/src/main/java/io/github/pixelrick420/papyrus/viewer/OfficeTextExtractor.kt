@@ -205,6 +205,8 @@ class OfficeTextExtractor(
         private const val ODT_BODY = "content.xml"
         private const val ODT_STYLES = "styles.xml"
 
+        private val UNSAFE_NAME = Regex("[^A-Za-z0-9._-]")
+
         private val DOCX_PARTS = setOf(
             DOCX_BODY, DOCX_RELS, DOCX_STYLES, DOCX_NUMBERING, DOCX_FOOTNOTES, DOCX_ENDNOTES, DOCX_COMMENTS,
         )
@@ -222,7 +224,7 @@ class OfficeTextExtractor(
         /** Zip-slip guard: media names come from the document, so never trust their path shape. */
         fun sanitiseName(zipName: String): String =
             zipName.substringAfterLast('/')
-                .replace(Regex("[^A-Za-z0-9._-]"), "_")
+                .replace(UNSAFE_NAME, "_")
                 .ifBlank { "image" }
 
         fun guessMimeType(name: String): String = when (name.substringAfterLast('.').lowercase()) {

@@ -95,7 +95,13 @@ object LibraryImport {
                 size += read
             }
         }
-        Fingerprint(size, digest.digest().joinToString("") { "%02x".format(it) })
+        val bytes = digest.digest()
+        val hash = StringBuilder(bytes.size * 2)
+        for (byte in bytes) {
+            val value = byte.toInt() and 0xff
+            hash.append(HEX_DIGITS[value ushr 4]).append(HEX_DIGITS[value and 0x0f])
+        }
+        Fingerprint(size, hash.toString())
     }.getOrNull()
 
     internal fun sameFingerprint(candidate: File, source: Fingerprint): Boolean = runCatching {
@@ -187,7 +193,7 @@ object LibraryImport {
         while (index < stem.length) {
             val codePoint = stem.codePointAt(index)
             val charCount = Character.charCount(codePoint)
-            val codePointBytes = String(Character.toChars(codePoint)).toByteArray(Charsets.UTF_8).size
+            val codePointBytes = utf8Length(codePoint)
             if (units + charCount > MAX_STEM_LENGTH || bytes + codePointBytes > MAX_STEM_BYTES) break
             cut.appendCodePoint(codePoint)
             units += charCount
@@ -195,6 +201,15 @@ object LibraryImport {
             index += charCount
         }
         return cut.toString().trimEnd(' ', '.').ifEmpty { FALLBACK_STEM }
+    }
+
+    private val HEX_DIGITS = "0123456789abcdef".toCharArray()
+
+    private fun utf8Length(codePoint: Int): Int = when {
+        codePoint <= 0x7f -> 1
+        codePoint <= 0x7ff -> 2
+        codePoint <= 0xffff -> 3
+        else -> 4
     }
 
     private const val IMPORTS_DIR = "imports"
