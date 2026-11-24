@@ -78,6 +78,7 @@ object SafStorage {
         val resolver = context.contentResolver
         val found = querySafely<Pair<String?, Long>>(null to 0L) {
             var name: String? = null
+            // Zero is kept as "unknown" when the provider omits a size; callers never treat it as an empty file.
             var size = 0L
             resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE), null, null, null)
                 ?.use { c ->
