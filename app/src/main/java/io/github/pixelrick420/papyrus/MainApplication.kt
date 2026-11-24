@@ -72,7 +72,12 @@ class MainApplication : Application() {
     }
 
     val searchIndexer: SearchIndexer by lazy {
-        val extractor = DocumentTextExtractor(this, indexerDispatcher) { uri -> contentResolver.openRequired(uri) }
+        val extractor = DocumentTextExtractor(
+            context = this,
+            dispatcher = indexerDispatcher,
+            openStream = { uri -> contentResolver.openRequired(uri) },
+            onFailure = { id, failure -> reportSilent(IllegalStateException("text extraction $id failed", failure)) },
+        )
         val enabled = settings.settings.map { it.contentIndexing }
         val gate = IndexingGate(
             enabled = enabled,

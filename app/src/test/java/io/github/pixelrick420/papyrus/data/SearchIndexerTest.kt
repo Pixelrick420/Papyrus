@@ -140,6 +140,36 @@ class SearchIndexerTest {
     }
 
     @Test
+    fun repeatedFailuresBackOffAndASuccessClearsTheCount() {
+        var fail = true
+        val indexer = SearchIndexer(
+            dao = dao,
+            extract = {
+                ExtractedText("", if (fail) TextIndexState.FAILED else TextIndexState.INDEXED)
+            },
+            library = emptyFlow(),
+        )
+        val base = SearchIndexer.FAILED_RETRY_MILLIS
+
+        repeat(3) { attempt ->
+            dao.queue += document(1)
+            val before = System.currentTimeMillis()
+            runBlocking { indexer.indexPending() }
+            val delay = dao.written.last().indexedAt - before
+            val expected = base shl attempt
+            assertTrue("attempt $attempt had delay $delay, expected $expected", delay in expected..expected + 10_000)
+            assertEquals(attempt + 1, dao.written.last().failureCount)
+        }
+
+        fail = false
+        dao.queue += document(1)
+        val before = System.currentTimeMillis()
+        runBlocking { indexer.indexPending() }
+        assertTrue(dao.written.last().indexedAt in before..System.currentTimeMillis())
+        assertEquals(0, dao.written.last().failureCount)
+    }
+
+    @Test
     fun doubleFailureOnFailedRowEndsDrain() {
         val failingDao = ThrowingWritesDao(dao, setOf(1L))
         dao.queueUntilWritten = true

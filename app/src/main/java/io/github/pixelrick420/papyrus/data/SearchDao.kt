@@ -65,6 +65,9 @@ interface SearchDao {
     @Query("SELECT id FROM documents WHERE id = :id")
     suspend fun existingId(id: Long): Long?
 
+    @Query("SELECT COALESCE(failureCount, 0) FROM document_text WHERE rowid = :id")
+    suspend fun failureCount(id: Long): Int
+
     // Reads only the summary columns, never the text.
     @Query("SELECT state, charCount, sourceSize FROM document_text WHERE rowid = :id")
     fun observeTextSummary(id: Long): Flow<List<TextSummaryRow>>

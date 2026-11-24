@@ -35,6 +35,7 @@ class DocumentTextExtractor(
     private val context: Context,
     private val dispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val openStream: (Uri) -> InputStream,
+    private val onFailure: (documentId: Long, failure: Throwable) -> Unit = { _, _ -> },
 ) {
 
     // Keyed by what the provider says the bytes are now (URI, modified time, size); only indexed text is kept, since a failure may differ next time.
@@ -58,8 +59,9 @@ class DocumentTextExtractor(
             throw cancellation
         } catch (expectedDrm: EpubProtectedException) {
             ExtractedText("", TextIndexState.SKIPPED)
-        } catch (ignored: Throwable) {
+        } catch (failure: Throwable) {
             // A huge or malformed document must not kill the indexer or stall its queue.
+            onFailure(document.id, failure)
             ExtractedText("", TextIndexState.FAILED)
         }
         if (key != null && result.state == TextIndexState.INDEXED) extracted.put(key, result)

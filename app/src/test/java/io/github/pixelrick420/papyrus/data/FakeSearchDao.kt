@@ -64,6 +64,9 @@ internal class FakeSearchDao : SearchDao {
 
     override suspend fun existingId(id: Long): Long? = if (existingIds?.contains(id) != false) id else null
 
+    override suspend fun failureCount(id: Long): Int =
+        written.lastOrNull { it.documentId == id }?.failureCount ?: 0
+
     override suspend fun replaceIfExists(row: DocumentTextEntity): Boolean {
         if (existingIds?.contains(row.documentId) == false) return false
         deleteText(row.documentId)

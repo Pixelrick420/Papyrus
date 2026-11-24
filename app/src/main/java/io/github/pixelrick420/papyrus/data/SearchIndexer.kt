@@ -140,15 +140,18 @@ class SearchIndexer(
         throw cancelled
     } catch (failure: Throwable) {
         onDocumentFailure(document.id, failure.javaClass.simpleName)
+        val failures = dao.failureCount(document.id) + 1
+        val now = System.currentTimeMillis()
         val row = DocumentTextEntity(
             documentId = document.id,
             text = "",
             state = TextIndexState.FAILED,
             charCount = 0,
             sourceSize = document.sizeBytes,
-            indexedAt = System.currentTimeMillis() + FAILED_RETRY_MILLIS,
+            indexedAt = now + retryDelay(failures),
             indexVersion = INDEX_VERSION,
             sourceModified = modified?.takeIf { it > 0 } ?: 0,
+            failureCount = failures,
         )
         try {
             dao.replaceIfExists(row)
@@ -166,8 +169,10 @@ class SearchIndexer(
         yield()
         val extracted = extract(document)
         val now = System.currentTimeMillis()
+        val failed = extracted.state == TextIndexState.FAILED
+        val failures = if (failed) dao.failureCount(document.id) + 1 else 0
         // A failed row waits for its deadline and then the next pass; there is no retry timer.
-        val retryAt = if (extracted.state == TextIndexState.FAILED) now + FAILED_RETRY_MILLIS else now
+        val retryAt = if (failed) now + retryDelay(failures) else now
         val row = DocumentTextEntity(
             documentId = document.id,
             text = extracted.text,
@@ -177,16 +182,24 @@ class SearchIndexer(
             indexedAt = retryAt,
             indexVersion = INDEX_VERSION,
             sourceModified = modified?.takeIf { it > 0 } ?: 0,
+            failureCount = failures,
         )
         // The document may have been removed while its text was being read, so the write rechecks the parent.
         dao.replaceIfExists(row)
     }
+
+    private fun retryDelay(failures: Int): Long =
+        (FAILED_RETRY_MILLIS shl minOf(failures - 1, MAX_BACKOFF_SHIFT)).coerceAtMost(MAX_FAILED_RETRY_MILLIS)
 
     companion object {
         // Bump whenever the stored text of a document would come out different; it re-indexes the library.
         const val INDEX_VERSION = 1
 
         const val FAILED_RETRY_MILLIS = 5 * 60 * 1_000L
+
+        private const val MAX_BACKOFF_SHIFT = 6
+
+        private const val MAX_FAILED_RETRY_MILLIS = 4 * 60 * 60 * 1_000L
 
         private const val BATCH_SIZE = 16
 

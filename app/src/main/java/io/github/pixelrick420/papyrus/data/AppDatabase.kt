@@ -7,7 +7,7 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-/** Current databases start at schema 1 and migrate in place to 2; 0.x data is not carried over. */
+/** Current databases start at schema 1 and migrate in place to 3; 0.x data is not carried over. */
 @Database(
     entities = [
         DocumentEntity::class,
@@ -18,7 +18,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         DocumentTextEntity::class,
         DocumentTextFtsEntity::class,
     ],
-    version = 2,
+    version = 3,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -38,9 +38,15 @@ abstract class AppDatabase : RoomDatabase() {
     companion object {
         private const val DB_NAME = "papyrus-v1.db"
 
-        private val OUTLINE_SOURCE_MODIFIED = object : Migration(1, 2) {
+        internal val OUTLINE_SOURCE_MODIFIED = object : Migration(1, 2) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE pdf_outlines ADD COLUMN sourceModified INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
+        internal val TEXT_FAILURE_COUNT = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE document_text ADD COLUMN failureCount INTEGER NOT NULL DEFAULT 0")
             }
         }
 
@@ -52,7 +58,7 @@ abstract class AppDatabase : RoomDatabase() {
                 instance ?: run {
                     LegacyDatabase.deleteIfPresent(context.applicationContext)
                     Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, DB_NAME)
-                        .addMigrations(OUTLINE_SOURCE_MODIFIED)
+                        .addMigrations(OUTLINE_SOURCE_MODIFIED, TEXT_FAILURE_COUNT)
                         .build()
                         .also { instance = it }
                 }

@@ -46,6 +46,9 @@ data class DocumentTextEntity(
     // 0 when the provider reported no modified time; compared to detect edits without opening the file.
     @ColumnInfo(defaultValue = "0")
     val sourceModified: Long = 0,
+    // Consecutive failures, cleared on success; sets the next retry delay.
+    @ColumnInfo(defaultValue = "0")
+    val failureCount: Int = 0,
 )
 
 // Room's content-sync triggers keep this current, so [SearchDao] has no insert or update; Room requires `rowid` and we never set it.
