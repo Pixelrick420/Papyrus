@@ -183,7 +183,7 @@ class PdfEncryptionTest {
         for (bytes in listOf(PdfEncryptionFixtures.linearizedUserPassword, PdfEncryptionFixtures.xrefStreamUserPassword)) {
             val source = CountingSource(bytes)
             assertEquals(PdfEncryption.USER_PASSWORD, PdfEncryption.status(source))
-            assertEquals("scan once, then the authoritative check once", 2, source.opens)
+            assertEquals("the /Encrypt scan hands its descriptor to PdfBox", 1, source.opens)
         }
     }
 
@@ -198,6 +198,17 @@ class PdfEncryptionTest {
     fun `pdfbox written encrypted files are still recognised through the screen`() {
         assertEquals(PdfEncryption.OWNER_ONLY, PdfEncryption.status(factory(protectedPdf("owner-secret", ""))))
         assertEquals(PdfEncryption.USER_PASSWORD, PdfEncryption.status(factory(protectedPdf("owner-secret", "user-secret"))))
+    }
+
+    @Test
+    fun aScanPastTheReplayBufferReopensTheSource() {
+        val bytes = ByteArray(9 * 1024 * 1024) { 'x'.code.toByte() }
+        "/Encrypt".toByteArray().copyInto(bytes, 8 * 1024 * 1024 + 1024)
+        val source = CountingSource(bytes)
+
+        PdfEncryption.status(source)
+
+        assertEquals("a large scan cannot be replayed, so PdfBox gets a fresh descriptor", 2, source.opens)
     }
 
     @Test
@@ -224,7 +235,7 @@ class PdfEncryptionTest {
         val source = CountingSource(bytes)
 
         assertEquals(PdfEncryption.NOT_ENCRYPTED, PdfEncryption.status(source))
-        assertEquals(2, source.opens)
+        assertEquals("the false positive is resolved from the same descriptor", 1, source.opens)
     }
 
     @Test

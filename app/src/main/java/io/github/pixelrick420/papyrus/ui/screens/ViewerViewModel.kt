@@ -1117,18 +1117,8 @@ class ViewerViewModel(
         return ViewerContent.Pdf(source, ratios.asStateFlow())
     }
 
-    // If the renderer still wants a password the byte screen was wrong, so the real parser decides the lock kind.
-    @Suppress("TooGenericExceptionCaught", "SwallowedException")
     private suspend fun openUnencryptedPdf(uri: Uri): ViewerContent =
-        try {
-            pdfContent(PdfPageSource.open(app, uri))
-        } catch (e: PdfPasswordException) {
-            when (PdfEncryption.authoritativeStatus { openStream(uri) }) {
-                PdfEncryption.USER_PASSWORD -> ViewerContent.NeedsPassword()
-                PdfEncryption.OWNER_ONLY -> unlockPdf(uri, "")
-                PdfEncryption.NOT_ENCRYPTED -> throw e
-            }
-        }
+        pdfContent(PdfPageSource.open(app, uri))
 
     // The plaintext copy must be deleted before the failure, including cancellation, is rethrown.
     private suspend fun unlockPdf(uri: Uri, password: String): ViewerContent {

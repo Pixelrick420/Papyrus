@@ -15,20 +15,38 @@ enum class PdfEncryption {
 
         private const val MAX_SCAN_BYTES = 512L shl 20
         private const val SCAN_CHUNK = 64 * 1024
+        private const val MAX_REPLAY_BYTES = 8L * 1024 * 1024
         private val ENCRYPT_TOKEN = "/Encrypt".toByteArray(Charsets.US_ASCII)
 
-        // One allocation-free pass instead of a PdfBox load, which reads and parses the whole file; only a file mentioning `/Encrypt` goes to [authoritativeStatus].
-        fun status(openStream: () -> InputStream): PdfEncryption =
-            if (mentionsEncryption(openStream)) authoritativeStatus(openStream) else NOT_ENCRYPTED
+        // One scan instead of a PdfBox load for a plain file; a file mentioning `/Encrypt` is replayed from the same descriptor when it fits the small replay buffer.
+        @Suppress("TooGenericExceptionCaught")
+        fun status(openStream: () -> InputStream): PdfEncryption = try {
+            val source = try {
+                openStream()
+            } catch (_: Exception) {
+                return NOT_ENCRYPTED
+            }
+            ReplayInputStream(source, MAX_REPLAY_BYTES).use { stream ->
+                when {
+                    !mentionsEncryption(stream) -> NOT_ENCRYPTED
+                    stream.rewind() -> authoritativeStatus(stream)
+                    // A large scan cannot be replayed in memory, so the parser gets a fresh descriptor.
+                    else -> authoritativeStatus(openStream)
+                }
+            }
+        } catch (_: OutOfMemoryError) {
+            NOT_ENCRYPTED
+        }
+
+        fun authoritativeStatus(openStream: () -> InputStream): PdfEncryption =
+            openStream().use(::authoritativeStatus)
 
         // A bad file is classified as unencrypted here so the renderer reports the real damage.
         @Suppress("TooGenericExceptionCaught", "SwallowedException")
-        fun authoritativeStatus(openStream: () -> InputStream): PdfEncryption =
+        fun authoritativeStatus(stream: InputStream): PdfEncryption =
             try {
-                openStream().use { stream ->
-                    PDDocument.load(stream).use { document ->
-                        if (document.isEncrypted) OWNER_ONLY else NOT_ENCRYPTED
-                    }
+                PDDocument.load(stream).use { document ->
+                    if (document.isEncrypted) OWNER_ONLY else NOT_ENCRYPTED
                 }
             } catch (e: InvalidPasswordException) {
                 USER_PASSWORD
@@ -42,10 +60,13 @@ enum class PdfEncryption {
 
         // The `/Encrypt` trailer can sit at the end, near the start (linearized), or in a PDF 1.5 xref stream, so the whole stream is scanned in fixed chunks.
         // A failed scan is not evidence of encryption; the renderer still opens the file.
-        @Suppress("TooGenericExceptionCaught", "SwallowedException")
         internal fun mentionsEncryption(openStream: () -> InputStream, scanLimit: Long = MAX_SCAN_BYTES): Boolean =
+            openStream().use { mentionsEncryption(it, scanLimit) }
+
+        @Suppress("TooGenericExceptionCaught", "SwallowedException")
+        internal fun mentionsEncryption(stream: InputStream, scanLimit: Long = MAX_SCAN_BYTES): Boolean =
             try {
-                openStream().use { containsToken(it, scanLimit) }
+                containsToken(stream, scanLimit)
             } catch (e: Exception) {
                 false
             }
@@ -98,5 +119,46 @@ enum class PdfEncryption {
                 if (!saved) target.delete()
             }
         }
+    }
+}
+
+// Keeps the scanned prefix so a short PDF can be handed to PdfBox without opening the source twice.
+private class ReplayInputStream(
+    private val source: InputStream,
+    private val maxBytes: Long,
+) : InputStream() {
+    private val recorded = java.io.ByteArrayOutputStream()
+    private var replay: java.io.ByteArrayInputStream? = null
+
+    fun rewind(): Boolean {
+        if (recorded.size() > maxBytes) return false
+        replay = java.io.ByteArrayInputStream(recorded.toByteArray())
+        return true
+    }
+
+    override fun read(): Int {
+        replay?.let { bytes ->
+            val value = bytes.read()
+            if (value >= 0) return value
+            replay = null
+        }
+        val value = source.read()
+        if (value >= 0) recorded.write(value)
+        return value
+    }
+
+    override fun read(bytes: ByteArray, offset: Int, length: Int): Int {
+        replay?.let { buffer ->
+            val count = buffer.read(bytes, offset, length)
+            if (count >= 0) return count
+            replay = null
+        }
+        val count = source.read(bytes, offset, length)
+        if (count > 0) recorded.write(bytes, offset, count)
+        return count
+    }
+
+    override fun close() {
+        source.close()
     }
 }

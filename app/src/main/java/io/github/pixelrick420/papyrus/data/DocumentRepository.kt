@@ -11,7 +11,10 @@ import io.github.pixelrick420.papyrus.viewer.OfficeEncryption
 import io.github.pixelrick420.papyrus.viewer.OutlineEntry
 import io.github.pixelrick420.papyrus.viewer.localSourceFile
 import io.github.pixelrick420.papyrus.viewer.PdfEncryption
+import io.github.pixelrick420.papyrus.viewer.PdfEncryptionVerdictKey
+import io.github.pixelrick420.papyrus.viewer.PdfEncryptionVerdicts
 import io.github.pixelrick420.papyrus.viewer.TextSniffer
+import io.github.pixelrick420.papyrus.viewer.textCacheMetadata
 import io.github.pixelrick420.papyrus.viewer.textCacheModified
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -20,7 +23,6 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.InputStream
-import java.util.concurrent.ConcurrentHashMap
 
 class DocumentRepository(
     private val context: Context,
@@ -53,8 +55,10 @@ class DocumentRepository(
         openSource = { source -> openStream(source.uri.toUri()) },
     )
 
-    // Remembers the encryption verdict so the next viewer skips the whole-file check; read once, then forgotten.
-    private val knownPdfEncryption = ConcurrentHashMap<String, PdfEncryption>()
+    // A verdict belongs to one version of a source; size and modified time invalidate it when that source changes.
+    private val pdfVerdicts = PdfEncryptionVerdicts(MAX_KNOWN_PDF_STATUS) { key ->
+        PdfEncryption.status { openStream(key.uri.toUri()) }
+    }
 
     val documents: Flow<List<DocumentEntity>> = dao.observeAll()
 
@@ -307,7 +311,7 @@ class DocumentRepository(
     }
 
     suspend fun pdfEncryption(uri: Uri): PdfEncryption = withContext(Dispatchers.IO) {
-        knownPdfEncryption.remove(uri.toString()) ?: PdfEncryption.status { openStream(uri) }
+        pdfVerdicts.of(pdfVerdictKey(uri))
     }
 
     suspend fun probeShare(document: DocumentEntity): SafAccess =
@@ -361,15 +365,18 @@ class DocumentRepository(
         false
     }
 
+    private fun pdfVerdictKey(uri: Uri): PdfEncryptionVerdictKey {
+        val id = uri.toString()
+        val file = localSourceFile(id)
+        if (file != null) return PdfEncryptionVerdictKey(id, file.length(), file.lastModified())
+        val metadata = textCacheMetadata(context, uri)
+        return PdfEncryptionVerdictKey(id, metadata?.size ?: 0L, metadata?.modified ?: 0L)
+    }
+
     /** A damaged file reads as not encrypted, as in PDF, so rendering fails generically instead of prompting. */
     private fun isEncrypted(format: DocumentFormat, uri: Uri, sizeBytes: Long): Boolean =
         when (format) {
-            DocumentFormat.PDF -> PdfEncryption.status { openStream(uri) }.also { status ->
-                if (status != PdfEncryption.NOT_ENCRYPTED) {
-                    if (knownPdfEncryption.size >= MAX_KNOWN_PDF_STATUS) knownPdfEncryption.clear()
-                    knownPdfEncryption[uri.toString()] = status
-                }
-            } != PdfEncryption.NOT_ENCRYPTED
+            DocumentFormat.PDF -> pdfVerdicts.of(pdfVerdictKey(uri)) != PdfEncryption.NOT_ENCRYPTED
             DocumentFormat.DOCX, DocumentFormat.PPTX, DocumentFormat.ODT, DocumentFormat.DOC ->
                 OfficeEncryption.isEncrypted({ openStream(uri) }, knownLength = sizeBytes, sourceFile = localSourceFile(uri.toString()))
             else -> false

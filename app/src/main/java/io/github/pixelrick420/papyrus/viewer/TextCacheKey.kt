@@ -22,9 +22,9 @@ data class TextCacheKey(
 // [fromPlatform] keeps the platform engine's reading and PDFBox's apart: they differ in spacing and boxes.
 data class PageTextKey(val document: TextCacheKey, val page: Int, val fromPlatform: Boolean)
 
-private data class TextCacheMetadata(val modified: Long, val size: Long)
+internal data class TextCacheMetadata(val modified: Long, val size: Long)
 
-private fun textCacheMetadata(context: Context, uri: Uri): TextCacheMetadata? {
+internal fun textCacheMetadata(context: Context, uri: Uri): TextCacheMetadata? {
     if (uri.scheme != ContentResolver.SCHEME_CONTENT) return null
     val columns = arrayOf(DocumentsContract.Document.COLUMN_LAST_MODIFIED, OpenableColumns.SIZE)
     val stat = try {
