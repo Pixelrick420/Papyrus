@@ -66,7 +66,7 @@
                 <data android:mimeType="application/json" />
                 <data android:mimeType="application/javascript" />
                 <data android:mimeType="image/svg+xml" />
-                <data android:mimeType="application/octet-stream" />
+                <!-- No octet-stream here: it would offer Papyrus for binaries it cannot open. -->
                 <data android:mimeType="application/csv" />
                 <data android:mimeType="application/x-sh" />
                 <data android:mimeType="text/x-shellscript" />
