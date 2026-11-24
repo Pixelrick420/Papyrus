@@ -57,7 +57,7 @@ The README is the landing page. This is the reference for behavior that needs ex
 
 - No network or storage permission. Foreground-service and media-playback permissions keep speech running with the
   screen off; `POST_NOTIFICATIONS` is asked on first read aloud (Android 13+). A `<queries>` entry exposes the chosen
-  TTS engine.
+  TTS engine. Papyrus sends text only to that engine; a cloud-backed engine may process it under its own policy.
 - EPUB, Word, OpenDocument and PPTX ZIPs are read with entry, size and ratio limits; bombs fail the file, unsafe EPUB
   entry names are skipped and Office media names are reduced to a basename. Bytes inflated only to skip unused entries
   use a separate 2 GiB budget, so a large embedded video does not fail the document. The ratio check still covers

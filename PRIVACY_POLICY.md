@@ -10,5 +10,9 @@ Papyrus does not collect user data.
 - Search text is stored in a private on-device database, removed with the document, and not kept for protected
   documents, files over the size cap or text past the indexing cap.
 - Notes, bookmarks and reading positions stay in that database, are removed with the document, and never leave the
-  device. Highlights also stay there, except that **Save highlighted copy** writes plain highlights into a PDF copy;
-  notes are not exported.
+  device. Highlights also stay there, except that **Save highlighted copy** writes plain highlights into a PDF copy
+  through the system file picker; notes are not exported.
+- **Read aloud** passes the spoken text to the Android text-to-speech engine selected on the device. Papyrus itself has
+  no network permission, but a cloud-backed engine may process that text under its own privacy policy.
+- Sharing a document or a saved copy uses Android's share sheet or file picker; the destination is chosen by you and
+  Papyrus does not send the file itself.

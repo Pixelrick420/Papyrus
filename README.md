@@ -101,8 +101,9 @@ enforced by `AccessibilitySemanticsTest` are in [ACCESSIBILITY.md](ACCESSIBILITY
 
 ### Privacy
 
-Papyrus declares no network permission and sends nothing off the device; its index, highlights, notes and crash logs
-stay in app storage, and document paths are redacted from crash reports. The full policy is
+Papyrus declares no network permission and sends nothing off the device itself; its index, highlights, notes and crash
+logs stay in app storage, and document paths are redacted from crash reports. **Read aloud** uses the system
+text-to-speech engine, which may be cloud-backed and follow its own policy. The full policy is
 [PRIVACY_POLICY.md](PRIVACY_POLICY.md).
 
 Detailed feature notes are in [docs/FEATURES.md](docs/FEATURES.md) and every setting in
