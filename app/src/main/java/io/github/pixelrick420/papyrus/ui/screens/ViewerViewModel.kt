@@ -142,6 +142,7 @@ import java.io.FileNotFoundException
 import java.io.IOException
 import java.io.InputStream
 import java.nio.charset.Charset
+import java.util.UUID
 import kotlin.coroutines.cancellation.CancellationException
 
 sealed interface ViewerContent {
@@ -343,6 +344,9 @@ private fun SlideDeck.toContent(): ViewerContent.Slides = ViewerContent.Slides(
     semanticTexts = semanticTexts,
 )
 
+internal fun officeMediaDir(cacheDir: File, documentId: Long, openId: String = UUID.randomUUID().toString()): File =
+    File(cacheDir, OFFICE_MEDIA_DIR).resolve(documentId.toString()).resolve(openId)
+
 class ViewerViewModel(
     private val app: MainApplication,
     private val savedState: SavedStateHandle,
@@ -403,8 +407,8 @@ class ViewerViewModel(
     /** The decrypted copy of a password-protected document; owned here so close deletes the plaintext. */
     private val unlocked = UnlockedCopy()
 
-    /** Per document: a shared directory would let a viewer delete another's images. */
-    private val mediaDir: File by lazy { File(app.cacheDir, OFFICE_MEDIA_DIR).resolve(documentId.toString()) }
+    /** Unique per open, so a delayed delete cannot remove another viewer's images. */
+    private val mediaDir: File by lazy { officeMediaDir(app.cacheDir, documentId) }
 
     /** When the reading position may be saved. Declared above `init`: `load()` runs inline on the main
      * dispatcher and would otherwise reach it before it exists. */
@@ -1641,8 +1645,10 @@ class ViewerViewModel(
         app.applicationScope.launch {
             unlocked.discard()
         }
-        // mediaDir is keyed by document id; an async delete could remove images a reopened viewer just wrote.
-        // MainApplication's startup sweep owns that directory instead.
+        val openedMediaDir = mediaDir
+        app.applicationScope.launch {
+            openedMediaDir.deleteRecursively()
+        }
     }
 
     private companion object {

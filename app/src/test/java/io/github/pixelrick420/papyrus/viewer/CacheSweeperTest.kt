@@ -1,7 +1,9 @@
 package io.github.pixelrick420.papyrus.viewer
 
+import io.github.pixelrick420.papyrus.ui.screens.officeMediaDir
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -67,6 +69,23 @@ class CacheSweeperTest {
 
         assertTrue(link.exists())
         assertEquals("private", target.readText())
+    }
+
+    @Test
+    fun `each open gets an office media directory of its own`() {
+        val cache = temp.newFolder("cache")
+        val first = officeMediaDir(cache, 42L, "first")
+        val second = officeMediaDir(cache, 42L, "second")
+        assertNotEquals(first, second)
+        assertTrue(File(cache, OFFICE_MEDIA_DIR).resolve("42") in listOf(first.parentFile, second.parentFile))
+
+        first.mkdirs()
+        File(first, "pic.png").writeText("image")
+        second.mkdirs()
+
+        assertTrue(first.deleteRecursively())
+        assertTrue(second.exists())
+        assertEquals(0, second.listFiles()!!.size)
     }
 
     private companion object {

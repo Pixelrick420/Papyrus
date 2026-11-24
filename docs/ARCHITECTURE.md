@@ -38,7 +38,7 @@ unlocked copy waits for its directory sweep. Age cut-offs are measured from the 
 | `pdf-unlock/` | PDF password unlocking | `MainApplication.sweepUnlocked` at startup; `UnlockedCopy` on replace/discard |
 | `office-unlock/` | Office password unlocking | `MainApplication.sweepUnlocked` at startup; `UnlockedCopy` on replace/discard |
 | `pdf-view/` | `PdfPageSource` copies of non-seekable PDF descriptors | startup age sweep; `PdfPageSource.close` |
-| `office-media/` | viewer image extraction, in `<document id>/` | `ViewerViewModel.onCleared`; startup age sweep |
+| `office-media/` | viewer image extraction, in `<document id>/<open id>/` | `ViewerViewModel.onCleared` deletes that open's subtree; startup age sweep clears leftovers |
 | `pptx-<uuid>/` | `SlidePageSource` media extraction | `SlidePageSource.close`; startup age sweep |
 
 `pdf-view/` holds the `view-*.pdf` copies written for non-seekable PDF descriptors; older copies at the cache root

@@ -360,6 +360,25 @@ class OfficeTextExtractorTest {
     }
 
     @Test
+    fun `a fresh media dir per open writes the original name instead of a suffixed copy`() {
+        val bytes = OfficeFixtures.docx(
+            bodyXml = OfficeFixtures.docxBody(
+                """<w:p><w:r><w:drawing><a:blip r:embed="rId7"/></w:drawing></w:r></w:p>""",
+            ),
+            relsXml = OfficeFixtures.docxRels("rId7" to "media/pic.png"),
+            media = mapOf("pic.png" to OfficeFixtures.PNG_1X1),
+        )
+        val first = temp.newFolder("first-open")
+        val second = temp.newFolder("second-open")
+
+        extractor(first).extract(OfficeFixtures.streamFactory(bytes), DocumentFormat.DOCX)
+        extractor(second).extract(OfficeFixtures.streamFactory(bytes), DocumentFormat.DOCX)
+
+        assertEquals(listOf("pic.png"), first.listFiles()!!.map { it.name })
+        assertEquals(listOf("pic.png"), second.listFiles()!!.map { it.name })
+    }
+
+    @Test
     fun `a relationship with no media entry is skipped and the text still renders`() {
         val bytes = OfficeFixtures.docx(
             bodyXml = OfficeFixtures.docxBody(
