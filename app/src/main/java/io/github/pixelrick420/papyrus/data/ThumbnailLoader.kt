@@ -18,6 +18,7 @@ import io.github.pixelrick420.papyrus.viewer.OfficeBlock
 import io.github.pixelrick420.papyrus.viewer.OfficeEncryption
 import io.github.pixelrick420.papyrus.viewer.OfficeTextExtractor
 import io.github.pixelrick420.papyrus.viewer.PdfPageSource
+import io.github.pixelrick420.papyrus.viewer.localSourceFile
 import io.github.pixelrick420.papyrus.viewer.pptx.SlidePageSource
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
@@ -89,7 +90,6 @@ class ThumbnailLoader(private val context: Context) {
     private class Gate(val mutex: Mutex, var users: Int = 0)
 
     // A thumbnail is decoration: no parse or provider failure should crash the list.
-    @Suppress("TooGenericExceptionCaught", "SwallowedException")
     suspend fun load(document: DocumentEntity): ThumbnailResult = withContext(Dispatchers.IO) {
         val cacheKey = thumbnailCacheKey(document)
         cachedResult(document)?.let { return@withContext it }
@@ -97,23 +97,17 @@ class ThumbnailLoader(private val context: Context) {
         try {
             gate.mutex.withLock {
                 cachedResult(document)?.let { return@withLock it }
-                val bitmap = try {
+                val attempt = attemptThumbnailRender {
                     renderSlots.withPermit {
                         ensureActive()
                         renderAttempts.incrementAndGet()
                         render(document)
                     }
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: SecurityException) {
-                    return@withLock remember(cacheKey, ThumbnailResult.NoAccess, ThumbnailFailureCache.SHORT_TTL)
-                } catch (e: FileNotFoundException) {
-                    val failure = ThumbnailResult.Unavailable(e.message ?: "missing")
-                    return@withLock remember(cacheKey, failure, ThumbnailFailureCache.SHORT_TTL)
-                } catch (e: Exception) {
-                    // Broad on purpose: a thumbnail is decoration, so no parse failure should crash the app.
-                    val failure = ThumbnailResult.Unavailable(e.javaClass.simpleName)
-                    return@withLock remember(cacheKey, failure, ThumbnailFailureCache.PERMANENT_TTL)
+                }
+                val bitmap = when (attempt) {
+                    is ThumbnailAttempt.Failed ->
+                        return@withLock remember(cacheKey, attempt.spec.result, attempt.spec.ttlMillis)
+                    is ThumbnailAttempt.Rendered -> attempt.value
                 }
                 if (bitmap == null) {
                     remember(
@@ -154,9 +148,9 @@ class ThumbnailLoader(private val context: Context) {
             renderTile(page)
         }
 
-    private fun renderText(uri: Uri): Bitmap? = openStream(uri)?.use { input ->
-        val head = readHead(input, MAX_THUMBNAIL_SOURCE_BYTES) ?: return@use null
-        if (!io.github.pixelrick420.papyrus.viewer.TextSniffer.looksLikeText(head)) return@use null
+    private fun renderText(uri: Uri): Bitmap? = withThumbnailStream({ openStream(uri) }) { input ->
+        val head = readHead(input, MAX_THUMBNAIL_SOURCE_BYTES) ?: return@withThumbnailStream null
+        if (!io.github.pixelrick420.papyrus.viewer.TextSniffer.looksLikeText(head)) return@withThumbnailStream null
         val lines = String(head, Charsets.UTF_8).lineSequence().take(MAX_THUMBNAIL_LINES).toList()
         drawTextTile(lines)
     }
@@ -164,7 +158,7 @@ class ThumbnailLoader(private val context: Context) {
     private fun renderOffice(document: DocumentEntity): Bitmap? {
         // mediaDir = null: thumbnails are text only, and writing media would double the cacheDir cost.
         val uri = document.uri.toUri()
-        if (OfficeEncryption.isEncrypted(openStream = { requiredStream(uri) }, knownLength = document.sizeBytes)) {
+        if (OfficeEncryption.isEncrypted(openStream = { requiredStream(uri) }, knownLength = document.sizeBytes, sourceFile = localSourceFile(uri.toString()))) {
             throw IOException("encrypted office document")
         }
         val blocks = if (document.format == DocumentFormat.DOC) {
@@ -197,21 +191,13 @@ class ThumbnailLoader(private val context: Context) {
         return drawTextTile(previewLines(extractor.extract(open, previewChapters = EPUB_PREVIEW_CHAPTERS).blocks))
     }
 
-    private suspend fun renderPptx(uri: Uri): Bitmap? = try {
-        withTimeoutOrNull(PPTX_THUMBNAIL_BUDGET_MS) {
-            // No text index for a thumbnail, and skip hidden leading slides so the tile shows a real page.
-            SlidePageSource.open(context, uri, buildTextIndex = false).use { source ->
-                val first = (0 until source.pageCount).firstOrNull { it !in source.hidden } ?: 0
-                val page = source.render(first, THUMBNAIL_PDF_WIDTH_PX) ?: return@withTimeoutOrNull null
-                renderTile(page)
-            }
+    private suspend fun renderPptx(uri: Uri): Bitmap? = withPptxThumbnailBudget {
+        // No text index for a thumbnail, and skip hidden leading slides so the tile shows a real page.
+        SlidePageSource.open(context, uri, buildTextIndex = false).use { source ->
+            val first = (0 until source.pageCount).firstOrNull { it !in source.hidden } ?: 0
+            val page = source.render(first, THUMBNAIL_PDF_WIDTH_PX) ?: return@withPptxThumbnailBudget null
+            renderTile(page)
         }
-    } catch (e: CancellationException) {
-        throw e
-    } catch (_: OutOfMemoryError) {
-        null
-    } catch (_: Exception) {
-        null
     }
 
     // Never holds the cover at full size: refuses a picture claiming more than [MAX_COVER_PIXELS], subsamples, then fills the tile anchored at the top so a tall cover keeps its title.
@@ -241,13 +227,9 @@ class ThumbnailLoader(private val context: Context) {
         return tile
     }
 
-    private fun openStream(uri: Uri): InputStream? = try {
-        context.contentResolver.openInputStream(uri)
-    } catch (_: SecurityException) {
-        null
-    }
+    private fun openStream(uri: Uri): InputStream? = context.contentResolver.openInputStream(uri)
 
-    private fun requiredStream(uri: Uri): InputStream = openStream(uri) ?: throw FileNotFoundException(uri.toString())
+    private fun requiredStream(uri: Uri): InputStream = requireThumbnailStream(uri.toString()) { openStream(uri) }
 
     private fun readHead(input: InputStream, limit: Int): ByteArray? {
         val out = ByteArrayOutputStream()
@@ -296,7 +278,7 @@ class ThumbnailLoader(private val context: Context) {
         private const val MAX_THUMBNAIL_SOURCE_BYTES = 16 * 1024
         private const val EPUB_PREVIEW_CHAPTERS = 3
         private const val MAX_CONCURRENT_RENDERS = 2
-        private const val PPTX_THUMBNAIL_BUDGET_MS = 5_000L
+        internal const val PPTX_THUMBNAIL_BUDGET_MS = 5_000L
 
         /** Pixels a cover may claim before it is not worth decoding for a 132 by 176 tile. */
         private const val MAX_COVER_PIXELS = 40L * 1000 * 1000
@@ -308,3 +290,52 @@ class ThumbnailLoader(private val context: Context) {
 
 internal fun fillScale(sourceWidth: Int, sourceHeight: Int, tileWidth: Int, tileHeight: Int): Float =
     maxOf(tileWidth.toFloat() / sourceWidth, tileHeight.toFloat() / sourceHeight)
+
+internal data class ThumbnailFailureSpec(val result: ThumbnailResult, val ttlMillis: Long)
+
+internal sealed interface ThumbnailAttempt<out T> {
+    data class Rendered<out T>(val value: T?) : ThumbnailAttempt<T>
+    data class Failed(val spec: ThumbnailFailureSpec) : ThumbnailAttempt<Nothing>
+}
+
+@Suppress("TooGenericExceptionCaught")
+internal suspend fun <T> attemptThumbnailRender(render: suspend () -> T?): ThumbnailAttempt<T> = try {
+    ThumbnailAttempt.Rendered(render())
+} catch (e: CancellationException) {
+    throw e
+} catch (e: Error) {
+    ThumbnailAttempt.Failed(thumbnailFailureSpecFor(e))
+} catch (e: Exception) {
+    ThumbnailAttempt.Failed(thumbnailFailureSpecFor(e))
+}
+
+internal fun thumbnailFailureSpecFor(error: Throwable): ThumbnailFailureSpec = when (error) {
+    is CancellationException -> throw error
+    is SecurityException -> ThumbnailFailureSpec(ThumbnailResult.NoAccess, ThumbnailFailureCache.SHORT_TTL)
+    is FileNotFoundException -> ThumbnailFailureSpec(
+        ThumbnailResult.Unavailable(error.message ?: "missing"),
+        ThumbnailFailureCache.SHORT_TTL,
+    )
+    else -> ThumbnailFailureSpec(
+        ThumbnailResult.Unavailable(error.javaClass.simpleName),
+        ThumbnailFailureCache.PERMANENT_TTL,
+    )
+}
+
+internal fun <T> withThumbnailStream(open: () -> InputStream?, block: (InputStream) -> T?): T? =
+    open()?.use(block)
+
+internal fun requireThumbnailStream(message: String, open: () -> InputStream?): InputStream =
+    open() ?: throw FileNotFoundException(message)
+
+internal suspend fun <T> withPptxThumbnailBudget(render: suspend () -> T?): T? = try {
+    withTimeoutOrNull(ThumbnailLoader.PPTX_THUMBNAIL_BUDGET_MS) { render() }
+} catch (e: CancellationException) {
+    throw e
+} catch (_: OutOfMemoryError) {
+    null
+} catch (e: SecurityException) {
+    throw e
+} catch (_: Exception) {
+    null
+}
