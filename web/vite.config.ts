@@ -13,8 +13,8 @@ export default defineConfig({
         base: '',
       },
       prerender: {
-        handleHttpError: 'warn',
-        handleMissingId: 'warn',
+        handleHttpError: 'fail',
+        handleMissingId: 'fail',
       },
     }),
   ],
