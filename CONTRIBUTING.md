@@ -18,6 +18,13 @@ Issues and pull requests are welcome.
 - Downgrades are unsupported: Room has no `onDowngrade` handler, so installing an older build over a newer database fails. Uninstalling clears local data.
 - UI strings live only in `app/src/main/res/values/strings.xml`; translations and locale-specific fallback are not part of this project yet.
 
+## Tests
+
+- `./gradlew check` covers JVM tests; instrumented tests need a device or emulator (`./gradlew connectedDebugAndroidTest`).
+- CI keeps a 95% soft gate on the emulator suite: too few results, or fewer declared tests reported, fails even when the pass rate looks fine.
+- `GoldenImageTest` is exempt from that tolerance and must pass in full; a golden diff is a deterministic regression, not device flakiness.
+- After editing an install task, check its configuration-cache entry with `./gradlew --configuration-cache --dry-run installLocalDebug installLocalRelease`.
+
 ## PPTX licensing
 
 Permissive code/data may be vendored with a NOTICE entry; copyleft code may not be copied; behavior may be studied

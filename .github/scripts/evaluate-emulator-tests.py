@@ -1,6 +1,7 @@
 """Decides whether the emulator job passes.
 
-The emulator suite is a soft gate: individual failing tests are reported but do not fail the build.
+The emulator suite stays a 95% soft gate: device flakiness is tolerated for the aggregate suite, while
+deterministic golden-image classes are graded strictly through --require-class (see build.yml).
 The build fails when LESS than --min-pass-percent of the suite passed (at least that share must pass). The
 rest, "did not pass", counts three things, so that a run cannot look healthy by not running:
 
