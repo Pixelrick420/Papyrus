@@ -14,20 +14,18 @@ class ThumbnailLoaderTest {
     fun rendererOutOfMemoryErrorDegradesToUnavailable() = runBlocking {
         val attempt = attemptThumbnailRender<String> { throw OutOfMemoryError("heap") }
 
-        assertEquals(
-            ThumbnailResult.Unavailable("OutOfMemoryError"),
-            (attempt as ThumbnailAttempt.Failed).spec.result,
-        )
+        val spec = (attempt as ThumbnailAttempt.Failed).spec
+        assertEquals(ThumbnailResult.Unavailable("OutOfMemoryError"), spec.result)
+        assertEquals(ThumbnailFailureCache.SHORT_TTL, spec.ttlMillis)
     }
 
     @Test
     fun rendererStackOverflowErrorDegradesToUnavailable() = runBlocking {
         val attempt = attemptThumbnailRender<String> { throw StackOverflowError() }
 
-        assertEquals(
-            ThumbnailResult.Unavailable("StackOverflowError"),
-            (attempt as ThumbnailAttempt.Failed).spec.result,
-        )
+        val spec = (attempt as ThumbnailAttempt.Failed).spec
+        assertEquals(ThumbnailResult.Unavailable("StackOverflowError"), spec.result)
+        assertEquals(ThumbnailFailureCache.PERMANENT_TTL, spec.ttlMillis)
     }
 
     @Test
