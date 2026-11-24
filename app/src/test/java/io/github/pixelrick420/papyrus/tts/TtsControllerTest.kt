@@ -1,10 +1,12 @@
 package io.github.pixelrick420.papyrus.tts
 
+import android.speech.tts.TextToSpeech
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.util.Locale
 
 /** Pure queue logic behind a fake [SpeechEngine]: no Android, no real voice. */
 class TtsControllerTest {
@@ -533,5 +535,65 @@ class TtsControllerTest {
         assertEquals(1.0f, TtsController.nextSpeed(0.5f), 0.0001f)
         assertEquals(2.0f, TtsController.nextSpeed(1.5f), 0.0001f)
         assertEquals(0.5f, TtsController.nextSpeed(2.0f), 0.0001f)
+    }
+
+    private class LanguageSetter(vararg codes: Int) {
+        val locales = mutableListOf<Locale>()
+        private val remaining = codes.toMutableList()
+
+        fun invoke(locale: Locale): Int {
+            locales += locale
+            val code = remaining.removeAt(0)
+            if (code == THROW) error("engine rejected the locale")
+            return code
+        }
+
+        companion object {
+            const val THROW = Int.MIN_VALUE
+        }
+    }
+
+    @Test
+    fun `a supported device locale is kept without a fallback`() {
+        val setter = LanguageSetter(TextToSpeech.SUCCESS)
+
+        val result = resolveTtsLanguage(Locale.FRENCH, setter::invoke)
+
+        assertEquals(TextToSpeech.SUCCESS, result)
+        assertEquals(listOf(Locale.FRENCH), setter.locales)
+    }
+
+    @Test
+    fun `both missing-data codes fall back to English`() {
+        for (code in listOf(TextToSpeech.LANG_MISSING_DATA, TextToSpeech.LANG_NOT_SUPPORTED)) {
+            val setter = LanguageSetter(code, TextToSpeech.SUCCESS)
+
+            val result = resolveTtsLanguage(Locale.FRENCH, setter::invoke)
+
+            assertEquals(TextToSpeech.SUCCESS, result)
+            assertEquals(listOf(Locale.FRENCH, Locale.ENGLISH), setter.locales)
+        }
+    }
+
+    @Test
+    fun `an unrelated code never triggers a fallback`() {
+        val setter = LanguageSetter(1)
+
+        assertEquals(1, resolveTtsLanguage(Locale.FRENCH, setter::invoke))
+        assertEquals(listOf(Locale.FRENCH), setter.locales)
+    }
+
+    @Test
+    fun `a throwing setter reports the missing-data result`() {
+        val direct = LanguageSetter(LanguageSetter.THROW, TextToSpeech.SUCCESS)
+        assertEquals(TextToSpeech.SUCCESS, resolveTtsLanguage(Locale.FRENCH, direct::invoke))
+        assertEquals(listOf(Locale.FRENCH, Locale.ENGLISH), direct.locales)
+
+        val fallback = LanguageSetter(LanguageSetter.THROW, LanguageSetter.THROW)
+        assertEquals(
+            TextToSpeech.LANG_MISSING_DATA,
+            resolveTtsLanguage(Locale.FRENCH, fallback::invoke),
+        )
+        assertEquals(listOf(Locale.FRENCH, Locale.ENGLISH), fallback.locales)
     }
 }

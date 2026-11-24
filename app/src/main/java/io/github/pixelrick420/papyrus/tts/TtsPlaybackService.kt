@@ -32,6 +32,13 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import java.util.Locale
 
+// The property setter discards the platform's support code; the method returns it.
+internal fun resolveTtsLanguage(locale: Locale, setLanguage: (Locale) -> Int): Int {
+    val direct = runCatching { setLanguage(locale) }.getOrDefault(TextToSpeech.LANG_MISSING_DATA)
+    if (direct != TextToSpeech.LANG_MISSING_DATA && direct != TextToSpeech.LANG_NOT_SUPPORTED) return direct
+    return runCatching { setLanguage(Locale.ENGLISH) }.getOrDefault(TextToSpeech.LANG_MISSING_DATA)
+}
+
 // Foreground service owning the TextToSpeech engine, so reading aloud outlives the viewer and the screen going off.
 class TtsPlaybackService : Service(), TextToSpeech.OnInitListener {
 
@@ -185,13 +192,9 @@ class TtsPlaybackService : Service(), TextToSpeech.OnInitListener {
             return
         }
         tts.setAudioAttributes(speechAttributes)
-        // Falls back to English if device locale lacks TTS data; errors only if English is also missing.
-        val defaultResult = runCatching { tts.language = Locale.getDefault() }.getOrDefault(-1)
-        if (defaultResult == TextToSpeech.LANG_MISSING_DATA || defaultResult == TextToSpeech.LANG_NOT_SUPPORTED) {
-            val fallbackResult = runCatching { tts.language = Locale.ENGLISH }.getOrDefault(-1)
-            if (fallbackResult == TextToSpeech.LANG_MISSING_DATA || fallbackResult == TextToSpeech.LANG_NOT_SUPPORTED) {
-                controller?.onError(getString(R.string.tts_error_locale))
-            }
+        val result = resolveTtsLanguage(Locale.getDefault(), tts::setLanguage)
+        if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
+            controller?.onError(getString(R.string.tts_error_locale))
         }
         tts.setSpeechRate(pendingRate)
         pendingSpeak?.let { (text, id) ->
