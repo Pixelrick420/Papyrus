@@ -126,7 +126,9 @@ fun PapyrusNavGraph(
             } else {
                 // Still registered for share intents and hardware keyboards, though no UI navigates here.
                 HomeScreen(
-                    onOpenDocument = { id, query -> navController.navigate(Routes.viewer(id, query)) },
+                    onOpenDocument = { id, query ->
+                        navController.navigate(Routes.viewer(id, query)) { launchSingleTop = true }
+                    },
                     onOpenSettings = openSettings,
                 )
             }

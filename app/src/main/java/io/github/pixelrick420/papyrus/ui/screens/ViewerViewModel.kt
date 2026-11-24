@@ -99,6 +99,7 @@ import io.github.pixelrick420.papyrus.viewer.TextSniffer
 import io.github.pixelrick420.papyrus.viewer.UnlockedCopy
 import io.github.pixelrick420.papyrus.viewer.chunkText
 import io.github.pixelrick420.papyrus.viewer.isProse
+import io.github.pixelrick420.papyrus.viewer.localSourceFile
 import io.github.pixelrick420.papyrus.viewer.skipTo
 import io.github.pixelrick420.papyrus.viewer.readTextString
 import io.github.pixelrick420.papyrus.ui.viewer.ARRIVAL_FADE_MILLIS
@@ -342,7 +343,6 @@ private fun SlideDeck.toContent(): ViewerContent.Slides = ViewerContent.Slides(
     semanticTexts = semanticTexts,
 )
 
-@Suppress("TooGenericExceptionCaught", "SwallowedException")
 class ViewerViewModel(
     private val app: MainApplication,
     private val savedState: SavedStateHandle,
@@ -454,7 +454,7 @@ class ViewerViewModel(
                     repository.saveReadingProgress(id, sample)
                 } catch (e: CancellationException) {
                     throw e
-                } catch (e: Exception) {
+                } catch (_: Exception) {
                     // Best effort: a missed save only means the previous position is reopened.
                 }
             }
@@ -736,6 +736,7 @@ class ViewerViewModel(
     fun ttsDocumentId(): String = _state.value.document?.id?.toString().orEmpty()
 
     // A PDF grows its units as pages are read; every other format reuses the text path already loaded.
+    @Suppress("TooGenericExceptionCaught")
     fun startReadAloud() {
         val document = _state.value.document ?: return
         val content = _state.value.content
@@ -746,11 +747,14 @@ class ViewerViewModel(
                     _messages.value = UiText(R.string.viewer_pdf_no_text)
                     return@launch
                 }
-                val units = PdfTtsUnits(pageCount) { index -> pageText(index)?.text.orEmpty() }
                 val kind = LocationKind.forFormat(document.format) ?: LocationKind.PAGE
                 val location = restoreTarget()?.location?.takeIf { it.kind == kind }
                     ?: ReadingLocation(kind, 0)
-                units.publishThrough(location.unit.coerceIn(0, pageCount - 1))
+                val units = withContext(Dispatchers.IO) {
+                    val built = PdfTtsUnits(pageCount) { index -> pageText(index)?.text.orEmpty() }
+                    built.publishThrough(location.unit.coerceIn(0, pageCount - 1))
+                    built
+                }
                 if (units.isEmpty()) {
                     _messages.value = UiText(R.string.viewer_pdf_no_text)
                     return@launch
@@ -768,17 +772,17 @@ class ViewerViewModel(
                 }
                 return@launch
             }
-            val units = when (content) {
-                // Counting the units reads every chunk, which for a large file is not for the main thread.
-                is ViewerContent.PlainText -> withContext(Dispatchers.IO) {
-                    TtsDocumentSource.unitsFromChunks(content.chunks) { ensureActive() }
+            // Counting the units reads every chunk, which for a large file is not for the main thread.
+            val units = withContext(Dispatchers.IO) {
+                when (content) {
+                    is ViewerContent.PlainText -> TtsDocumentSource.unitsFromChunks(content.chunks) { ensureActive() }
+                    is ViewerContent.Markdown -> TtsDocumentSource.unitsFromMarkdown(content.text.toString())
+                    is ViewerContent.Office -> TtsDocumentSource.units(document.format, officeBlocks = content.blocks)
+                    is ViewerContent.Slides -> TtsDocumentSource.unitsFromSlides(
+                        content.slideTexts.mapIndexed { index, text -> if (index in content.hidden) "" else text }
+                    )
+                    else -> emptyList()
                 }
-                is ViewerContent.Markdown -> TtsDocumentSource.unitsFromMarkdown(content.text.toString())
-                is ViewerContent.Office -> TtsDocumentSource.units(document.format, officeBlocks = content.blocks)
-                is ViewerContent.Slides -> TtsDocumentSource.unitsFromSlides(
-                    content.slideTexts.mapIndexed { index, text -> if (index in content.hidden) "" else text }
-                )
-                else -> emptyList()
             }
             if (units.isEmpty()) {
                 _messages.value = UiText(R.string.viewer_pdf_no_text)
@@ -1001,7 +1005,9 @@ class ViewerViewModel(
                     ViewerContent.Office(blocks, incomplete = parsed.truncated, encoding = read.encoding)
                 }
             }
-            DocumentFormat.DOCX, DocumentFormat.ODT -> when (OfficeEncryption.status({ openStream(uri) })) {
+            DocumentFormat.DOCX, DocumentFormat.ODT -> when (
+                OfficeEncryption.status({ openStream(uri) }, sourceFile = localSourceFile(uri.toString()))
+            ) {
                 OfficeEncryption.Party.NOT_ENCRYPTED -> {
                     val blocks = extractOffice(uri, format)
                     if (blocks.isEmpty()) ViewerContent.Failed(UiText(R.string.viewer_error_empty)) else ViewerContent.Office(blocks)
@@ -1027,7 +1033,13 @@ class ViewerViewModel(
             } catch (expected: EpubProtectedException) {
                 ViewerContent.Failed(UiText(R.string.viewer_error_epub_protected))
             }
-            DocumentFormat.DOC -> when (OfficeEncryption.status({ openStream(uri) }, knownLength = doc.sizeBytes)) {
+            DocumentFormat.DOC -> when (
+                OfficeEncryption.status(
+                    { openStream(uri) },
+                    knownLength = doc.sizeBytes,
+                    sourceFile = localSourceFile(uri.toString()),
+                )
+            ) {
                 OfficeEncryption.Party.NOT_ENCRYPTED -> {
                     val blocks = DocTextExtractor.extract({ openStream(uri) }, knownLength = doc.sizeBytes)
                     if (blocks.isEmpty()) ViewerContent.Failed(UiText(R.string.viewer_error_empty)) else ViewerContent.Office(blocks)
@@ -1035,7 +1047,9 @@ class ViewerViewModel(
                 OfficeEncryption.Party.ERROR -> ViewerContent.Failed(UiText(R.string.viewer_error_generic))
                 else -> ViewerContent.Failed(UiText(R.string.viewer_error_password))
             }
-            DocumentFormat.PPTX -> when (OfficeEncryption.status({ openStream(uri) })) {
+            DocumentFormat.PPTX -> when (
+                OfficeEncryption.status({ openStream(uri) }, sourceFile = localSourceFile(uri.toString()))
+            ) {
                 OfficeEncryption.Party.NOT_ENCRYPTED -> {
                     SlideDeckLoader.load(app, uri).toContent()
                 }
@@ -1081,13 +1095,13 @@ class ViewerViewModel(
             // Page one sets the initial layout; the rest arrive in chunks so a long PDF opens before every page is measured.
             val first = source.loadAspectRatio(0)
             ratios.value = List(source.pageCount) { first }
+            val updated = ratios.value.toMutableList()
             var start = 1
             while (start < source.pageCount) {
                 ensureActive()
                 val end = minOf(start + ASPECT_CHUNK_PAGES, source.pageCount)
-                val updated = ratios.value.toMutableList()
                 for (index in start until end) updated[index] = source.loadAspectRatio(index)
-                ratios.value = updated
+                ratios.value = updated.toList()
                 start = end
             }
         }
@@ -1108,64 +1122,71 @@ class ViewerViewModel(
         }
 
     // The plaintext copy must be deleted before the failure, including cancellation, is rethrown.
-    @Suppress("TooGenericExceptionCaught", "SwallowedException", "SuspendFunSwallowedCancellation")
     private suspend fun unlockPdf(uri: Uri, password: String): ViewerContent {
         app.awaitUnlockedSweep()
         val dir = File(app.cacheDir, PDF_UNLOCK_DIR).apply { mkdirs() }
         val target = File.createTempFile("unlock-", ".pdf", dir)
+        var kept = false
         try {
             PdfEncryption.decrypt({ openStream(uri) }, password, target)
             val source = PdfPageSource.openFile(target)
+            val content = pdfContent(source)
             // Kept only once it has opened, and the copy it replaces goes with it.
             unlocked.keep(target, target.toUri().toString())
-            return pdfContent(source)
-        } catch (e: InvalidPasswordException) {
-            target.delete()
+            kept = true
+            return content
+        } catch (_: InvalidPasswordException) {
             return ViewerContent.NeedsPassword(incorrect = true)
-        } catch (e: Exception) {
-            target.delete()
-            throw e
+        } finally {
+            if (!kept) target.delete()
         }
     }
 
     /** Office decryption writes a plaintext copy, so it is only kept once extraction/loading has succeeded. */
     // The plaintext copy must be deleted before the failure, including cancellation, is rethrown.
-    @Suppress("TooGenericExceptionCaught", "SwallowedException", "SuspendFunSwallowedCancellation")
     private suspend fun unlockOffice(uri: Uri, format: DocumentFormat, password: String): ViewerContent {
         val ctx = currentCoroutineContext()
         app.awaitUnlockedSweep()
         val dir = File(app.cacheDir, OFFICE_UNLOCK_DIR).apply { mkdirs() }
         val target = File.createTempFile("unlock-", ".${format.name.lowercase()}", dir)
-        if (format == DocumentFormat.PPTX) {
-            val deck = try {
-                OfficeEncryption.decrypt({ openStream(uri) }, password, target, ensureActive = { ctx.ensureActive() })
-                SlideDeckLoader.loadFile(app, target)
-            } catch (expected: DocumentPasswordException) {
-                target.delete()
-                return ViewerContent.NeedsPassword(incorrect = true)
-            } catch (e: Exception) {
-                target.delete()
-                throw e
+        var kept = false
+        try {
+            if (format == DocumentFormat.PPTX) {
+                val deck = try {
+                    OfficeEncryption.decrypt(
+                        { openStream(uri) },
+                        password,
+                        target,
+                        ensureActive = { ctx.ensureActive() },
+                        sourceFile = localSourceFile(uri.toString()),
+                    )
+                    SlideDeckLoader.loadFile(app, target)
+                } catch (_: DocumentPasswordException) {
+                    return ViewerContent.NeedsPassword(incorrect = true)
+                }
+                unlocked.keep(target, target.toUri().toString())
+                kept = true
+                return deck.toContent()
             }
+            val blocks = try {
+                OfficeEncryption.decrypt(
+                    { openStream(uri) },
+                    password,
+                    target,
+                    ensureActive = { ctx.ensureActive() },
+                    sourceFile = localSourceFile(uri.toString()),
+                )
+                extractOffice(target.toUri(), format)
+            } catch (_: DocumentPasswordException) {
+                return ViewerContent.NeedsPassword(incorrect = true)
+            }
+            if (blocks.isEmpty()) return ViewerContent.Failed(UiText(R.string.viewer_error_empty))
             unlocked.keep(target, target.toUri().toString())
-            return deck.toContent()
+            kept = true
+            return ViewerContent.Office(blocks)
+        } finally {
+            if (!kept) target.delete()
         }
-        val blocks = try {
-            OfficeEncryption.decrypt({ openStream(uri) }, password, target, ensureActive = { ctx.ensureActive() })
-            extractOffice(target.toUri(), format)
-        } catch (expected: DocumentPasswordException) {
-            target.delete()
-            return ViewerContent.NeedsPassword(incorrect = true)
-        } catch (e: Exception) {
-            target.delete()
-            throw e
-        }
-        if (blocks.isEmpty()) {
-            target.delete()
-            return ViewerContent.Failed(UiText(R.string.viewer_error_empty))
-        }
-        unlocked.keep(target, target.toUri().toString())
-        return ViewerContent.Office(blocks)
     }
 
     private fun sniffsAsText(uri: Uri): Boolean = runCatching {
@@ -1346,6 +1367,8 @@ class ViewerViewModel(
                 throw e
             } catch (e: Exception) {
                 failureFor(e)
+            } catch (_: OutOfMemoryError) {
+                ViewerContent.Failed(UiText(R.string.viewer_error_too_large))
             }
             _state.update { it.copy(content = content, loadingThumbnail = null) }
             if (content is ViewerContent.Slides) collectSlideIndex(content)
@@ -1468,7 +1491,6 @@ class ViewerViewModel(
     }
 
     // The platform engine's own search answers first: it reads the page it already renders, so even a file too large to parse again stays searchable.
-    // It is exact-case, so capitalised queries and unreadable pages go to the PdfBox text model.
     private suspend fun findPdfPages(query: String, warnOverBudget: Boolean): FindResult {
         val source = (_state.value.content as? ViewerContent.Pdf)?.source
         val found = HashMap<Int, PdfPageText.PageMatches>()
@@ -1555,7 +1577,6 @@ class ViewerViewModel(
     }
 
     /** [picked] is checked against the title, so a wrong pick cannot re-point the row. */
-    @Suppress("TooGenericExceptionCaught", "SwallowedException")
     fun regrant(picked: Uri) {
         val doc = _state.value.document ?: return
         viewModelScope.launch {
@@ -1563,7 +1584,7 @@ class ViewerViewModel(
                 repository.regrant(doc, picked)
             } catch (e: CancellationException) {
                 throw e
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 false
             }
             if (ok) {
@@ -1616,9 +1637,12 @@ class ViewerViewModel(
         outbox.close()
         _state.value.content.closePageSource()
         pageTextSource?.close()
-        unlocked.discard()
-        // Unconditional: own dir per document, and any format may have written images.
-        mediaDir.deleteRecursively()
+        // The application scope outlives this cancelled ViewModel.
+        app.applicationScope.launch {
+            unlocked.discard()
+        }
+        // mediaDir is keyed by document id; an async delete could remove images a reopened viewer just wrote.
+        // MainApplication's startup sweep owns that directory instead.
     }
 
     private companion object {

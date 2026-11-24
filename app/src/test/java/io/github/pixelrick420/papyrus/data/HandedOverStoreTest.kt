@@ -96,8 +96,20 @@ class HandedOverStoreTest {
     }
 
     @Test
+    fun defaultCapacityKeepsLiveViewers() {
+        assertEquals(64, HandedOverStore.DEFAULT_CAPACITY)
+        val store = HandedOverStore<String>()
+        val ids = List(HandedOverStore.DEFAULT_CAPACITY) { store.add { "document $it" } }
+
+        ids.forEach { assertEquals("document $it", store[it]) }
+        val oldest = ids.first()
+        store.add { "one too many" }
+        assertNull("the oldest live viewer should be the first to go", store[oldest])
+    }
+
+    @Test
     fun `adds from many threads get distinct ids and stay within capacity`() {
-        val capacity = 16
+        val capacity = HandedOverStore.DEFAULT_CAPACITY
         val store = HandedOverStore<Long>(capacity)
         val threads = 8
         val perThread = 250

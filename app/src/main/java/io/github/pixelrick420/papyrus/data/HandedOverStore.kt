@@ -39,7 +39,7 @@ internal class HandedOverStore<T>(
     companion object {
         /** Ids are negative (Room's are positive) and -1 is the viewer's sentinel, so counting starts at -2. */
         const val FIRST_ID = -2L
-        const val DEFAULT_CAPACITY = 16
+        const val DEFAULT_CAPACITY = 64
         private const val INITIAL_SIZE = 16
         private const val LOAD_FACTOR = 0.75f
     }
