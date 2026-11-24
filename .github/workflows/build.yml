@@ -60,8 +60,8 @@ jobs:
   instrumentation-tests:
     # Keep this job id: setup-gradle's cache key includes it, so renaming orphans the remote cache.
     name: Emulator tests
-    # Pushes to main only: a pull request gets the unit tests and the build, not the costly emulator run.
-    if: github.ref_type == 'branch' && github.event_name == 'push'
+    # Pull requests and branch pushes run the emulator suite; tag pushes go to the release job.
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref_type == 'branch')
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
