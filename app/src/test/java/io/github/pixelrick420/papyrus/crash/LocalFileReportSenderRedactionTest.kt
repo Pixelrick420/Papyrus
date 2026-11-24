@@ -79,6 +79,13 @@ class LocalFileReportSenderRedactionTest {
     }
 
     @Test
+    fun `a report title is redacted without knowing app roots`() {
+        assertEquals("[redacted]", LocalFileReportSender.redact("content://host/My Contract.pdf"))
+        assertEquals("[redacted]", LocalFileReportSender.redact("file:///storage/emulated/0/My Contract.pdf"))
+        assertEquals("crash-123.json", LocalFileReportSender.redact("crash-123.json"))
+    }
+
+    @Test
     fun `single-root overload still covers the original shapes`() {
         val root = "/data/user/0/io.github.pixelrick420.papyrus/files"
         assertEquals("[redacted]", LocalFileReportSender.redact("$root/My Contract.pdf", root))

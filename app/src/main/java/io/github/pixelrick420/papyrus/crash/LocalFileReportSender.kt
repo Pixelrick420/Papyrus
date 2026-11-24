@@ -35,11 +35,13 @@ class LocalFileReportSender : ReportSender {
     }
 
     internal companion object {
-        private val CONTENT_URI = Regex("""content://\S+""")
+        private val CONTENT_URI = Regex("""content://(?:[^\s]|\s(?=[^\s]*[./]))*""")
         // Names can hold spaces, so a file path or an imported file's path is redacted to the end of its line.
         private val FILE_URI = Regex("""file://.*""")
         private val IMPORTS = Regex("""\S*imports/.*""")
         private val STORAGE_PATH = Regex("""(?<![\w])/(?:storage|sdcard|mnt|data|cache)/[^\r\n]*""")
+
+        internal fun redact(text: String): String = redact(text, emptyList<String>())
 
         internal fun redact(text: String, root: String): String = redact(text, listOf(root))
 

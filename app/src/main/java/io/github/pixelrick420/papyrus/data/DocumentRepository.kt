@@ -6,6 +6,7 @@ import android.net.Uri
 import androidx.core.content.FileProvider
 import androidx.core.net.toUri
 import io.github.pixelrick420.papyrus.crash.CrashReportStore
+import io.github.pixelrick420.papyrus.crash.LocalFileReportSender
 import io.github.pixelrick420.papyrus.viewer.NormRect
 import io.github.pixelrick420.papyrus.viewer.OfficeEncryption
 import io.github.pixelrick420.papyrus.viewer.OutlineEntry
@@ -179,7 +180,7 @@ class DocumentRepository(
         val entity = DocumentEntity(
             id = 0,
             uri = Uri.fromFile(file).toString(),
-            title = file.name,
+            title = LocalFileReportSender.redact(file.name),
             format = DocumentFormat.CODE,
             sizeBytes = file.length(),
             createdAt = file.lastModified(),
