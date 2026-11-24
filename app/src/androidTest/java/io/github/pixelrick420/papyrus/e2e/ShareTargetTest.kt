@@ -31,6 +31,24 @@ class ShareTargetTest : E2eTest() {
     }
 
     @Test
+    fun aSharedPdfSurvivesActivityRecreation() {
+        val fixture = Fixtures.bytes("recreated.pdf", Documents.pdf("recreated text"))
+        val intent = sendIntent("application/pdf").apply {
+            putExtra(Intent.EXTRA_STREAM, fixture.uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+
+        val scenario = ActivityScenario.launch<MainActivity>(intent)
+        try {
+            scenario.recreate()
+            app.assertShown(app.text("recreated.pdf"), AppDriver.LOAD_TIMEOUT_MS)
+            app.assertShown(app.descContains("recreated text"), AppDriver.LOAD_TIMEOUT_MS)
+        } finally {
+            scenario.close()
+        }
+    }
+
+    @Test
     fun sharedTextWithoutAStreamLeavesTheLibraryAlone() {
         val intent = sendIntent("text/plain").apply { putExtra(Intent.EXTRA_TEXT, "just words") }
 

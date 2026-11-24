@@ -37,7 +37,15 @@ class MainActivity : ComponentActivity() {
         val settings = app.settings
         // Styled before the first frame so a forced theme never flashes the wrong bars.
         applySystemBars(settings.current.themeMode.isDark(deviceInDarkMode()))
-        if (savedInstanceState == null) externalDocument = viewUri(intent)?.let(::handover)
+        if (savedInstanceState == null) {
+            externalDocument = viewUri(intent)?.let(::handover)
+        } else {
+            savedInstanceState.getString(KEY_HANDOVER_URI)?.let { uri ->
+                val seq = savedInstanceState.getLong(KEY_HANDOVER_SEQ)
+                handoverSeq = seq
+                externalDocument = Handover(uri.toUri(), seq)
+            }
+        }
 
         val repository = app.repository
         setContent {
@@ -66,6 +74,14 @@ class MainActivity : ComponentActivity() {
                     onExternalDocumentHandled = { externalDocument = null },
                 )
             }
+        }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        externalDocument?.let { handover ->
+            outState.putString(KEY_HANDOVER_URI, handover.uri.toString())
+            outState.putLong(KEY_HANDOVER_SEQ, handover.seq)
         }
     }
 
@@ -104,6 +120,8 @@ class MainActivity : ComponentActivity() {
 
     private companion object {
         const val TAG = "MainActivity"
+        const val KEY_HANDOVER_URI = "handover_uri"
+        const val KEY_HANDOVER_SEQ = "handover_seq"
         val NAV_SCRIM_LIGHT = Color.argb(0xe6, 0xFF, 0xFF, 0xFF)
         val NAV_SCRIM_DARK = Color.argb(0x80, 0x1b, 0x1b, 0x1b)
     }

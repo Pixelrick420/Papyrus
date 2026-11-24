@@ -799,6 +799,11 @@ class ViewerViewModel(
         }
     }
 
+    private fun ttsStartRefused() {
+        tts.stop()
+        _messages.value = UiText(R.string.tts_error_start)
+    }
+
     private fun prepareReadAloud(document: DocumentEntity, units: List<TtsUnit>, location: ReadingLocation) {
         tts.prepare(
             documentId = document.id.toString(),
@@ -812,9 +817,9 @@ class ViewerViewModel(
             TtsPlaybackService.start(app)
         } catch (_: IllegalStateException) {
             // Android 12+ refuses a foreground service start once the app has left the foreground.
-            tts.stop()
+            ttsStartRefused()
         } catch (_: SecurityException) {
-            tts.stop()
+            ttsStartRefused()
         }
     }
 
@@ -919,7 +924,7 @@ class ViewerViewModel(
         }
         is IOException ->
             ViewerContent.Failed(UiText(R.string.viewer_error_corrupt))
-        else -> ViewerContent.Failed(UiText(R.string.viewer_error_generic, e.localizedMessage ?: e.javaClass.simpleName))
+        else -> ViewerContent.Failed(UiText(R.string.viewer_error_generic, e.javaClass.simpleName))
     }
 
     private fun autosaveIfEnabled() {
@@ -1226,6 +1231,7 @@ class ViewerViewModel(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                app.reportSilent(e)
                 null
             }
             val saved = savedId != null
