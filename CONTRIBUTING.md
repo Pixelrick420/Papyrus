@@ -7,6 +7,12 @@ Issues and pull requests are welcome.
 - Accessibility changes must follow [ACCESSIBILITY.md](ACCESSIBILITY.md) and `AccessibilitySemanticsTest`.
 - Screenshots live in `fastlane/metadata/android/en-US/images/`.
 
+## Code style
+
+- Kotlin follows the official style (`kotlin.code.style=official`); keep comments to one short line about a non-obvious why.
+- `./gradlew detektDebug` runs the type-resolution rules; plain `detekt` only runs the AST rules.
+- Install tasks capture only plain values (paths and strings) in `doLast`: the configuration cache is on for every build.
+
 ## Compatibility policy
 
 - Downgrades are unsupported: Room has no `onDowngrade` handler, so installing an older build over a newer database fails. Uninstalling clears local data.

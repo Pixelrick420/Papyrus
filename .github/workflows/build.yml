@@ -35,6 +35,10 @@ jobs:
       - name: Check
         run: ./gradlew --no-daemon check
 
+      # Dry-run still stores the configuration-cache entry, so a captured non-serialisable value fails here.
+      - name: Verify install tasks with configuration cache
+        run: ./gradlew --no-daemon --configuration-cache --dry-run installLocalDebug installLocalRelease
+
       - name: Assemble release
         run: ./gradlew --no-daemon assembleRelease
 

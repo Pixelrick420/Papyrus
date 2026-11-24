@@ -230,71 +230,52 @@ tasks.named("check") { dependsOn("detektDebug") }
 // `release` is unsigned unless PAPYRUS_* properties were given, so adb gets a throwaway debug-signed copy. The debug key must never become the release signing config.
 
 val sdkDirectory = androidComponents.sdkComponents.sdkDirectory.get().asFile
-val adb = sdkDirectory.resolve("platform-tools/adb")
-val apksigner = sdkDirectory.resolve(
-    "build-tools/${android.buildToolsVersion}/apksigner",
-)
-val debugKeystore = File(System.getProperty("user.home"), ".android/debug.keystore")
+val adbPath = sdkDirectory.resolve("platform-tools/adb").absolutePath
+val apksignerPath = sdkDirectory.resolve("build-tools/${android.buildToolsVersion}/apksigner").absolutePath
+val debugKeystorePath = File(System.getProperty("user.home"), ".android/debug.keystore").absolutePath
+val apkOutputDir = layout.buildDirectory.dir("outputs/apk").get().asFile.absolutePath
 
-fun runCommand(command: List<String>): String {
-    val process = ProcessBuilder(command).redirectErrorStream(true).start()
-    val output = process.inputStream.bufferedReader().readText().trim()
-    val exit = process.waitFor()
-    check(exit == 0) { "Command failed (exit $exit): ${command.joinToString(" ")}\n$output" }
-    return output
-}
-
-fun runAdb(vararg args: String): String = runCommand(listOf(adb.absolutePath) + args)
-
-// Probes the signed and `-unsigned` APK names, since `release` only gets a signing config when PAPYRUS_* properties were given.
-fun pickApk(variant: String): File {
-    val out = layout.buildDirectory.dir("outputs/apk/$variant").get().asFile
-    return listOf(File(out, "app-universal-$variant.apk"), File(out, "app-universal-$variant-unsigned.apk"))
-        .firstOrNull { it.isFile }
-        ?: error("No APK for $variant in ${out.absolutePath}. Did assemble$variant run?")
-}
-
-fun isAlreadySigned(apk: File): Boolean = !apk.name.contains("-unsigned")
-
-fun signForLocalInstall(apk: File): File {
-    require(apk.isFile) { "APK not found: ${apk.absolutePath}" }
-    require(apksigner.isFile) { "apksigner not found: ${apksigner.absolutePath}" }
-    require(debugKeystore.isFile) { "Debug keystore not found: ${debugKeystore.absolutePath}" }
-
-    val signed = File(apk.parentFile, "${apk.nameWithoutExtension}-local-signed.apk")
-    Files.copy(apk.toPath(), signed.toPath(), StandardCopyOption.REPLACE_EXISTING)
-
-    runCommand(
-        listOf(
-            apksigner.absolutePath, "sign",
-            "--ks", debugKeystore.absolutePath,
-            "--ks-pass", "pass:android",
-            "--key-pass", "pass:android",
-            "--ks-key-alias", "androiddebugkey",
-            "--min-sdk-version", "26",
-            signed.absolutePath,
-        ),
-    )
-
-    return signed
-}
-
-fun registerLocalInstall(
-    name: String,
-    variant: String,
-    apkProvider: () -> File,
-) {
+fun registerLocalInstall(name: String, variant: String, apkNames: List<String>) {
     tasks.register(name) {
         group = "install"
         description = "Builds and installs the $variant APK on the connected device."
         dependsOn("assemble$variant")
 
+        val adb = adbPath
+        val apksigner = apksignerPath
+        val keystore = debugKeystorePath
+        val outputDir = apkOutputDir
         doLast {
-            val picked = apkProvider()
-            val toInstall = if (isAlreadySigned(picked)) picked else signForLocalInstall(picked)
-            logger.lifecycle("Installing ${toInstall.name} (${toInstall.length() / 1024 / 1024} MB)")
-            val result = runAdb("install", "-r", "-t", toInstall.absolutePath)
-            logger.lifecycle(result)
+            val apk = apkNames.firstNotNullOfOrNull { candidate ->
+                File(outputDir, candidate).takeIf { it.isFile }
+            } ?: error("No APK for $variant in $outputDir. Did assemble$variant run?")
+
+            val toInstall = if (apk.name.contains("-unsigned")) {
+                val signed = File(apk.parentFile, "${apk.nameWithoutExtension}-local-signed.apk")
+                Files.copy(apk.toPath(), signed.toPath(), StandardCopyOption.REPLACE_EXISTING)
+                val signer = ProcessBuilder(
+                    listOf(
+                        apksigner, "sign",
+                        "--ks", keystore,
+                        "--ks-pass", "pass:android",
+                        "--key-pass", "pass:android",
+                        "--ks-key-alias", "androiddebugkey",
+                        "--min-sdk-version", "26",
+                        signed.absolutePath,
+                    ),
+                ).redirectErrorStream(true).start()
+                val signOutput = signer.inputStream.bufferedReader().readText().trim()
+                check(signer.waitFor() == 0) { "apksigner failed: $signOutput" }
+                signed
+            } else {
+                apk
+            }
+
+            val installer = ProcessBuilder(listOf(adb, "install", "-r", "-t", toInstall.absolutePath))
+                .redirectErrorStream(true).start()
+            val output = installer.inputStream.bufferedReader().readText().trim()
+            check(installer.waitFor() == 0) { "adb install failed: $output" }
+            logger.lifecycle("Installed ${toInstall.name} (${toInstall.length() / 1024 / 1024} MB): $output")
         }
     }
 }
@@ -302,11 +283,11 @@ fun registerLocalInstall(
 registerLocalInstall(
     name = "installLocalDebug",
     variant = "Debug",
-    apkProvider = { pickApk("debug") },
+    apkNames = listOf("debug/app-universal-debug.apk", "debug/app-universal-debug-unsigned.apk"),
 )
 
 registerLocalInstall(
     name = "installLocalRelease",
     variant = "Release",
-    apkProvider = { pickApk("release") },
+    apkNames = listOf("release/app-universal-release.apk", "release/app-universal-release-unsigned.apk"),
 )
