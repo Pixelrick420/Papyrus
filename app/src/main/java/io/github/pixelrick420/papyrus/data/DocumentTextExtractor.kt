@@ -14,10 +14,13 @@ import io.github.pixelrick420.papyrus.viewer.PdfEncryption
 import io.github.pixelrick420.papyrus.viewer.localSourceFile
 import io.github.pixelrick420.papyrus.viewer.PdfPageTextSource
 import io.github.pixelrick420.papyrus.viewer.TextCacheKey
+import io.github.pixelrick420.papyrus.viewer.TextCacheLookupKey
+import io.github.pixelrick420.papyrus.viewer.TextCacheWriteKeys
 import io.github.pixelrick420.papyrus.viewer.pptx.SlideTextIndex
 import io.github.pixelrick420.papyrus.viewer.pptx.text.FontCatalog
 import io.github.pixelrick420.papyrus.viewer.readTextString
 import io.github.pixelrick420.papyrus.viewer.textCacheKey
+import io.github.pixelrick420.papyrus.viewer.textCacheLookupKey
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -40,10 +43,11 @@ class DocumentTextExtractor(
     private val maxSourceBytes: Long = MAX_SOURCE_BYTES,
 ) {
 
-    // Keyed by what the provider says the bytes are now (URI, modified time, size); only indexed text is kept, since a failure may differ next time.
+    // Lookups use provider metadata alone; the descriptor is statted only when a result is written.
     private val extracted = BoundedCache<TextCacheKey, ExtractedText>(MAX_CACHED_BYTES) {
         it.text.length * 2L + CACHED_OVERHEAD_BYTES
     }
+    private val extractedWriteKeys = TextCacheWriteKeys<TextCacheKey>()
 
     private val fonts by lazy { FontCatalog(context.assets) }
 
@@ -53,8 +57,8 @@ class DocumentTextExtractor(
         if (document.sizeBytes > MAX_SOURCE_BYTES) {
             return@withContext ExtractedText("", TextIndexState.TOO_LARGE)
         }
-        val key = textCacheKey(context, document.uri.toUri())
-        key?.let { extracted.get(it) }?.let { return@withContext it }
+        val lookup = textCacheLookupKey(context, document.uri.toUri())
+        lookup?.let { extractedWriteKeys.get(it) }?.let { extracted.get(it) }?.let { return@withContext it }
         val result = try {
             read(document) ?: ExtractedText("", TextIndexState.SKIPPED)
         } catch (cancellation: CancellationException) {
@@ -69,7 +73,11 @@ class DocumentTextExtractor(
             onFailure(document.id, failure)
             ExtractedText("", TextIndexState.FAILED)
         }
-        if (key != null && result.state == TextIndexState.INDEXED) extracted.put(key, result)
+        if (lookup != null && result.state == TextIndexState.INDEXED) {
+            val key = textCacheKey(context, document.uri.toUri(), lookup)
+            extractedWriteKeys.put(lookup, key)
+            extracted.put(key, result)
+        }
         result
     }
 

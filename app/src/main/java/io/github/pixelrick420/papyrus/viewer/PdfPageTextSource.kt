@@ -44,14 +44,21 @@ class PdfPageTextSource(
     @Volatile
     private var storeOrNull: PageStore? = null
 
-    private class PageStore(private val cache: PageTexts, private val document: TextCacheKey) {
+    private class PageStore(
+        private val cache: PageTexts,
+        private val readKey: () -> TextCacheKey?,
+        private val writeKey: () -> TextCacheKey?,
+        private val onWrite: (TextCacheKey) -> Unit,
+    ) {
         fun get(page: Int, fromPlatform: Boolean): PdfPageText? =
-            cache.get(PageTextKey(document, page, fromPlatform))
+            readKey()?.let { cache.get(PageTextKey(it, page, fromPlatform)) }
 
         /** A page past the extractor's box budget has text but no boxes, which a selection cannot use. */
         fun keep(page: Int, text: PdfPageText) {
             if (text.hasBoxes || text.text.isBlank()) {
-                cache.put(PageTextKey(document, page, text.fromPlatform), text)
+                val key = writeKey() ?: return
+                onWrite(key)
+                cache.put(PageTextKey(key, page, text.fromPlatform), text)
             }
         }
     }
@@ -59,13 +66,18 @@ class PdfPageTextSource(
     private fun store(): PageStore = storeOrNull ?: openStore().also { storeOrNull = it }
 
     private fun openStore(): PageStore {
-        val key = textCacheKey(context, uri)
-        // Without a key nothing says the bytes are unchanged, so the pages stay with this source alone.
-        return if (key != null) {
-            PageStore(shared, key)
-        } else {
-            PageStore(ownPages, TextCacheKey(uri.toString(), 0L, 0L))
+        val lookup = textCacheLookupKey(context, uri)
+        if (lookup != null) {
+            return PageStore(
+                shared,
+                readKey = { pageWriteKeys.get(lookup) },
+                writeKey = { textCacheKey(context, uri, lookup) },
+                onWrite = { pageWriteKeys.put(lookup, it) },
+            )
         }
+        // Without a key nothing says the bytes are unchanged, so the pages stay with this source alone.
+        val ownKey = TextCacheKey(uri.toString(), 0L, 0L)
+        return PageStore(ownPages, { ownKey }, { ownKey }, {})
     }
 
     suspend fun cached(index: Int, fromPlatform: Boolean): PdfPageText? =
@@ -189,5 +201,6 @@ class PdfPageTextSource(
         const val PAGE_SEPARATOR = "\n"
 
         private val shared = newPageTextCache()
+        private val pageWriteKeys = TextCacheWriteKeys<TextCacheKey>()
     }
 }

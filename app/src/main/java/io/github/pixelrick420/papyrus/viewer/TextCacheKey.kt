@@ -8,9 +8,17 @@ import android.os.Build
 import android.provider.DocumentsContract
 import android.provider.OpenableColumns
 import android.system.Os
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 
-// A file that was edited is never answered from what it used to say: the provider's timestamps can be coarse, so the descriptor's nanosecond stat and identity are folded in too.
+// Provider metadata is enough to find a cached entry; a descriptor is only opened when an entry is written.
+data class TextCacheLookupKey(
+    val uri: String,
+    val lastModified: Long,
+    val sizeBytes: Long,
+)
+
+// A file that was edited is never written under the old identity: the descriptor's nanosecond stat and identity are folded in too.
 data class TextCacheKey(
     val uri: String,
     val lastModified: Long,
@@ -45,11 +53,31 @@ internal fun textCacheMetadata(context: Context, uri: Uri): TextCacheMetadata? {
 fun textCacheModified(context: Context, uri: Uri): Long? = textCacheMetadata(context, uri)?.modified
 
 // Only a content URI whose provider reports both a modified time and a size gets one; a file URI is never keyed, which keeps a protected PDF's decrypted copy out of anything that outlives its viewer.
-fun textCacheKey(context: Context, uri: Uri): TextCacheKey? {
+fun textCacheLookupKey(context: Context, uri: Uri): TextCacheLookupKey? {
     val stat = textCacheMetadata(context, uri) ?: return null
-    val revision = descriptorRevision(context, uri) ?: unreusableRevision()
-    return TextCacheKey(uri.toString(), stat.modified, stat.size, revision)
+    return TextCacheLookupKey(uri.toString(), stat.modified, stat.size)
 }
+
+fun textCacheKey(context: Context, uri: Uri): TextCacheKey? {
+    val lookup = textCacheLookupKey(context, uri) ?: return null
+    return textCacheKey(context, uri, lookup)
+}
+
+internal fun textCacheKey(
+    context: Context,
+    uri: Uri,
+    lookup: TextCacheLookupKey,
+): TextCacheKey = textCacheKey(lookup) { descriptorRevision(context, uri) }
+
+internal fun textCacheKey(
+    lookup: TextCacheLookupKey,
+    revision: () -> Long?,
+): TextCacheKey = TextCacheKey(
+    lookup.uri,
+    lookup.lastModified,
+    lookup.sizeBytes,
+    revision() ?: unreusableRevision(),
+)
 
 private fun descriptorRevision(context: Context, uri: Uri): Long? = try {
     context.contentResolver.openFileDescriptor(uri, "r")?.use { descriptor ->
@@ -73,6 +101,19 @@ private fun descriptorRevision(context: Context, uri: Uri): Long? = try {
 private val unreusableCounter = AtomicLong(System.nanoTime())
 
 private fun unreusableRevision(): Long = unreusableCounter.incrementAndGet()
+
+// The metadata address of the newest write key for a source, so a hit never has to stat its descriptor.
+internal class TextCacheWriteKeys<K : Any> {
+    private val keys = ConcurrentHashMap<TextCacheLookupKey, K>()
+
+    fun get(lookup: TextCacheLookupKey): K? = keys[lookup]
+
+    fun put(lookup: TextCacheLookupKey, key: K) {
+        keys[lookup] = key
+    }
+
+    fun clear() = keys.clear()
+}
 
 private fun Cursor.longOrNull(column: String): Long? {
     val index = getColumnIndex(column)
