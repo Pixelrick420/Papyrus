@@ -8,10 +8,10 @@ import org.acra.sender.ReportSender
 import org.acra.sender.ReportSenderException
 import org.acra.sender.ReportSenderFactory
 import java.io.File
-import java.io.IOException
 import java.util.regex.Pattern
 
 class LocalFileReportSender : ReportSender {
+    @Suppress("TooGenericExceptionCaught")
     override fun send(context: Context, errorContent: CrashReportData) {
         try {
             val dir = CrashReportStore.directory(context).apply { mkdirs() }
@@ -20,7 +20,7 @@ class LocalFileReportSender : ReportSender {
             redactReport(errorContent, listOf(context.filesDir.absolutePath, context.cacheDir.absolutePath))
             File(dir, "crash-${System.currentTimeMillis()}-$id.json").writeText(errorContent.toJSON())
             CrashReportStore.prune(context)
-        } catch (e: IOException) {
+        } catch (e: Exception) {
             throw ReportSenderException("Unable to store crash report locally", e)
         }
     }

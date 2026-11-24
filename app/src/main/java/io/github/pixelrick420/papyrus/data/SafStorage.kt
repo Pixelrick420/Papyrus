@@ -6,6 +6,7 @@ import android.content.Intent
 import android.net.Uri
 import android.provider.OpenableColumns
 import androidx.activity.result.contract.ActivityResultContracts
+import kotlinx.coroutines.CancellationException
 import java.io.FileNotFoundException
 import java.io.IOException
 import java.io.InputStream
@@ -13,6 +14,15 @@ import java.io.InputStream
 /** Opens a URI or fails with the same exception a missing file would raise. */
 internal fun ContentResolver.openRequired(uri: Uri): InputStream =
     openInputStream(uri) ?: throw FileNotFoundException(uri.toString())
+
+@Suppress("TooGenericExceptionCaught")
+internal fun <T> querySafely(default: T, query: () -> T): T = try {
+    query()
+} catch (cancelled: CancellationException) {
+    throw cancelled
+} catch (_: Exception) {
+    default
+}
 
 enum class SafAccess {
     Readable,
@@ -66,9 +76,9 @@ object SafStorage {
 
     fun queryMetadata(context: Context, uri: Uri): Metadata {
         val resolver = context.contentResolver
-        var name: String? = null
-        var size = 0L
-        try {
+        val found = querySafely<Pair<String?, Long>>(null to 0L) {
+            var name: String? = null
+            var size = 0L
             resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE), null, null, null)
                 ?.use { c ->
                     if (c.moveToFirst()) {
@@ -76,19 +86,13 @@ object SafStorage {
                         if (!c.isNull(1)) size = c.getLong(1)
                     }
                 }
-        } catch (_: SecurityException) {
-        } catch (_: IllegalArgumentException) {
+            name to size
         }
-        return Metadata(name ?: uri.lastPathSegment ?: "document", size, queryMimeType(resolver, uri))
+        return Metadata(found.first ?: uri.lastPathSegment ?: "document", found.second, queryMimeType(resolver, uri))
     }
 
-    fun queryMimeType(resolver: ContentResolver, uri: Uri): String? = try {
-        resolver.getType(uri)
-    } catch (_: SecurityException) {
-        null
-    } catch (_: IllegalArgumentException) {
-        null
-    }
+    fun queryMimeType(resolver: ContentResolver, uri: Uri): String? =
+        querySafely<String?>(null) { resolver.getType(uri) }
 
     // Opens the stream, as the receiving app will, so Readable means the URI is worth passing on; closes without reading.
     fun probeAccess(resolver: ContentResolver, uri: Uri): SafAccess = try {

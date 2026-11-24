@@ -41,14 +41,13 @@ class SearchIndexer(
     /** One pass at a time, so the eager and gated passes do not extract the same document twice. */
     private val passLock = Mutex()
 
-    // Set once [indexChanged] has gone through the whole library: a pass paused part way resumes the
-    // check, a finished one does not repeat it.
+    // Set once [indexChanged] has scanned the library; an interrupted pass restarts from the first row.
     private val changesChecked = AtomicBoolean(false)
 
     fun start(scope: CoroutineScope) {
         if (!started.compareAndSet(false, true)) return
-        scope.launch {
-            indexEager()
+        val job = scope.launch {
+            if (startDelayMillis > 0) delay(startDelayMillis)
             // Outside the gated collector, so closing the gate does not cancel the eager pass.
             launch {
                 // The setting coming back on is a reason to look again too: a closed gate would
@@ -59,11 +58,12 @@ class SearchIndexer(
                     indexEager()
                 }
             }
-            if (startDelayMillis > 0) delay(startDelayMillis)
+            indexEager()
             mayIndex.distinctUntilChanged().collectLatest { allowed ->
                 if (allowed) indexWhileOpen()
             }
         }
+        job.invokeOnCompletion { started.set(false) }
     }
 
     private suspend fun indexWhileOpen() {
@@ -94,12 +94,14 @@ class SearchIndexer(
         wanted: suspend () -> Boolean = { true },
         batch: suspend () -> List<DocumentEntity>,
     ) {
+        // A document whose FAILED row could not be written stays in the DB queue; drop it for this pass only.
+        val unwritable = HashSet<Long>()
         while (wanted()) {
-            val documents = batch()
+            val documents = batch().filterNot { it.id in unwritable }
             if (documents.isEmpty()) return
             for (document in documents) {
                 if (!wanted()) return
-                indexSafely(document, safeModified(document))
+                if (!indexSafely(document, safeModified(document))) unwritable += document.id
             }
         }
     }
@@ -125,36 +127,36 @@ class SearchIndexer(
             lastModified(document)
         } catch (cancelled: CancellationException) {
             throw cancelled
-        } catch (failure: Exception) {
+        } catch (failure: Throwable) {
             onDocumentFailure(document.id, failure.javaClass.simpleName)
             null
         }
 
     @Suppress("TooGenericExceptionCaught")
-    private suspend fun indexSafely(document: DocumentEntity, modified: Long?) {
+    private suspend fun indexSafely(document: DocumentEntity, modified: Long?): Boolean = try {
+        indexOne(document, modified)
+        true
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (failure: Throwable) {
+        onDocumentFailure(document.id, failure.javaClass.simpleName)
+        val row = DocumentTextEntity(
+            documentId = document.id,
+            text = "",
+            state = TextIndexState.FAILED,
+            charCount = 0,
+            sourceSize = document.sizeBytes,
+            indexedAt = System.currentTimeMillis() + FAILED_RETRY_MILLIS,
+            indexVersion = INDEX_VERSION,
+            sourceModified = modified?.takeIf { it > 0 } ?: 0,
+        )
         try {
-            indexOne(document, modified)
+            dao.replaceIfExists(row)
+            true
         } catch (cancelled: CancellationException) {
             throw cancelled
-        } catch (failure: Exception) {
-            onDocumentFailure(document.id, failure.javaClass.simpleName)
-            val row = DocumentTextEntity(
-                documentId = document.id,
-                text = "",
-                state = TextIndexState.FAILED,
-                charCount = 0,
-                sourceSize = document.sizeBytes,
-                indexedAt = System.currentTimeMillis() + FAILED_RETRY_MILLIS,
-                indexVersion = INDEX_VERSION,
-                sourceModified = modified?.takeIf { it > 0 } ?: 0,
-            )
-            try {
-                dao.replaceIfExists(row)
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (_: Exception) {
-                // The batch continues even when the failure row itself cannot be written.
-            }
+        } catch (_: Throwable) {
+            false
         }
     }
 

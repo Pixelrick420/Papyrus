@@ -1,5 +1,6 @@
 package io.github.pixelrick420.papyrus.data
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.delay
@@ -12,6 +13,7 @@ import kotlinx.coroutines.job
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.yield
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -23,6 +25,16 @@ class SearchIndexerTest {
     private companion object {
         const val SMALL = 1_000L
         const val LARGE = SearchIndexer.EAGER_MAX_BYTES + 1
+    }
+
+    private class ThrowingWritesDao(
+        private val delegate: FakeSearchDao,
+        private val failFor: Set<Long>,
+    ) : SearchDao by delegate {
+        override suspend fun replaceIfExists(row: DocumentTextEntity): Boolean {
+            if (row.documentId in failFor) throw IllegalStateException("write failed")
+            return delegate.replaceIfExists(row)
+        }
     }
 
     private fun document(id: Long, title: String = "Document $id", size: Long = 1_000) = DocumentEntity(
@@ -125,6 +137,63 @@ class SearchIndexerTest {
         assertEquals("", row.text)
         assertEquals(0, row.charCount)
         assertTrue(row.indexedAt >= before + SearchIndexer.FAILED_RETRY_MILLIS)
+    }
+
+    @Test
+    fun doubleFailureOnFailedRowEndsDrain() {
+        val failingDao = ThrowingWritesDao(dao, setOf(1L))
+        dao.queueUntilWritten = true
+        dao.queue += listOf(document(1), document(2))
+        val indexer = SearchIndexer(
+            dao = failingDao,
+            extract = { doc ->
+                extracted += doc.id
+                throw IllegalStateException("extract failed")
+            },
+            library = emptyFlow(),
+        )
+
+        runBlocking { indexer.indexPending() }
+
+        assertEquals(listOf(1L, 2L), extracted)
+        assertEquals(listOf(2L), dao.written.map { it.documentId })
+        assertEquals(2, dao.pendingQueries.size)
+    }
+
+    @Test
+    fun stackOverflowErrorInExtractionIsRecordedAndDrainContinues() {
+        dao.queue += listOf(document(1), document(2))
+        val indexer = SearchIndexer(
+            dao = dao,
+            extract = { doc ->
+                extracted += doc.id
+                if (doc.id == 1L) throw StackOverflowError("bad document")
+                ExtractedText("text", TextIndexState.INDEXED)
+            },
+            library = emptyFlow(),
+        )
+        val before = System.currentTimeMillis()
+
+        runBlocking { indexer.indexPending() }
+
+        assertEquals(listOf(1L, 2L), extracted)
+        val failed = dao.written.first { it.documentId == 1L }
+        assertEquals(TextIndexState.FAILED, failed.state)
+        assertTrue(failed.indexedAt >= before + SearchIndexer.FAILED_RETRY_MILLIS)
+        assertEquals(TextIndexState.INDEXED, dao.written.first { it.documentId == 2L }.state)
+    }
+
+    @Test
+    fun cancellationFromExtractionIsRethrown() {
+        dao.queue += document(1)
+        val indexer = SearchIndexer(
+            dao = dao,
+            extract = { throw CancellationException("cancelled") },
+            library = emptyFlow(),
+        )
+
+        assertThrows(CancellationException::class.java) { runBlocking { indexer.indexPending() } }
+        assertTrue(dao.written.isEmpty())
     }
 
     @Test
@@ -398,6 +467,25 @@ class SearchIndexerTest {
     }
 
     @Test
+    fun eagerPassWaitsForStartDelay() {
+        dao.queue += document(1, size = 4_096)
+
+        whileIndexing(
+            gatedIndexer(
+                MutableStateFlow(true),
+                startDelayMillis = 300,
+                eagerMaxBytes = SearchIndexer.EAGER_MAX_BYTES,
+            ),
+        ) {
+            delay(100)
+            assertTrue("the eager pass ran before the delay", extracted.isEmpty())
+            delay(300)
+        }
+
+        assertEquals(listOf(1L), extracted)
+    }
+
+    @Test
     fun `a small file is indexed while indexing is not allowed`() {
         dao.queue +=
             listOf(document(1, size = 4_096), document(2, size = SearchIndexer.EAGER_MAX_BYTES + 1))
@@ -410,8 +498,8 @@ class SearchIndexerTest {
             ),
         ) {
             repeat(20) { yield() }
-            delay(50)
-            assertEquals("the small file should not wait for the gate or the delay", listOf(1L), extracted)
+            delay(400)
+            assertEquals("the small file should wait for the delay but not the gate", listOf(1L), extracted)
         }
 
         assertEquals(listOf(1L), dao.written.map { it.documentId })
@@ -634,7 +722,7 @@ class SearchIndexerTest {
 
         whileIndexing(behindGate()) {
             repeat(20) { yield() }
-            delay(50)
+            delay(400)
         }
 
         assertEquals(listOf(1L), dao.written.map { it.documentId })
@@ -647,7 +735,7 @@ class SearchIndexerTest {
 
         whileIndexing(behindGate()) {
             repeat(20) { yield() }
-            delay(50)
+            delay(400)
         }
 
         assertEquals(listOf(1L), dao.written.map { it.documentId })
@@ -660,7 +748,7 @@ class SearchIndexerTest {
 
         whileIndexing(behindGate()) {
             repeat(20) { yield() }
-            delay(50)
+            delay(400)
         }
 
         assertEquals(listOf(1L), dao.written.map { it.documentId })
@@ -676,7 +764,7 @@ class SearchIndexerTest {
 
         whileIndexing(behindGate()) {
             repeat(20) { yield() }
-            delay(50)
+            delay(400)
         }
 
         assertEquals(listOf(1L), extracted)
@@ -731,7 +819,7 @@ class SearchIndexerTest {
 
         whileIndexing(behindGate()) {
             repeat(20) { yield() }
-            delay(50)
+            delay(400)
             assertEquals(listOf(2L), extracted)
 
             reading.value = false

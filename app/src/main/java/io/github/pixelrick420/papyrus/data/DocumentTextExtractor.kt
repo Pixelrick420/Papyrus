@@ -11,6 +11,7 @@ import io.github.pixelrick420.papyrus.viewer.EpubProtectedException
 import io.github.pixelrick420.papyrus.viewer.OfficeEncryption
 import io.github.pixelrick420.papyrus.viewer.OfficeTextExtractor
 import io.github.pixelrick420.papyrus.viewer.PdfEncryption
+import io.github.pixelrick420.papyrus.viewer.localSourceFile
 import io.github.pixelrick420.papyrus.viewer.PdfPageTextSource
 import io.github.pixelrick420.papyrus.viewer.TextCacheKey
 import io.github.pixelrick420.papyrus.viewer.pptx.SlideTextIndex
@@ -43,6 +44,7 @@ class DocumentTextExtractor(
 
     private val fonts by lazy { FontCatalog(context.assets) }
 
+    @Suppress("TooGenericExceptionCaught")
     suspend fun extract(document: DocumentEntity): ExtractedText = withContext(dispatcher) {
         // Checked before any open: a 2 GB scan should not be read just to be told it is too large.
         if (document.sizeBytes > MAX_SOURCE_BYTES) {
@@ -56,11 +58,8 @@ class DocumentTextExtractor(
             throw cancellation
         } catch (expectedDrm: EpubProtectedException) {
             ExtractedText("", TextIndexState.SKIPPED)
-        } catch (ignoredOom: OutOfMemoryError) {
-            // Deliberate: a single huge document must not kill the background indexer or stall its queue.
-            ExtractedText("", TextIndexState.FAILED)
-        } catch (ignored: Exception) {
-            // A bad document must not stall the index queue, so every parse failure ends as FAILED.
+        } catch (ignored: Throwable) {
+            // A huge or malformed document must not kill the indexer or stall its queue.
             ExtractedText("", TextIndexState.FAILED)
         }
         if (key != null && result.state == TextIndexState.INDEXED) extracted.put(key, result)
@@ -89,7 +88,7 @@ class DocumentTextExtractor(
 
     private fun readOffice(document: DocumentEntity): ExtractedText {
         val uri = document.uri.toUri()
-        if (OfficeEncryption.isEncrypted({ openStream(uri) })) {
+        if (OfficeEncryption.isEncrypted({ openStream(uri) }, sourceFile = localSourceFile(uri.toString()))) {
             return ExtractedText("", TextIndexState.SKIPPED)
         }
         // mediaDir = null, as in ThumbnailLoader: indexing needs the words, not the pictures.
@@ -98,14 +97,14 @@ class DocumentTextExtractor(
     }
 
     private fun readDoc(uri: Uri, sizeBytes: Long): ExtractedText {
-        if (OfficeEncryption.isEncrypted({ openStream(uri) }, knownLength = sizeBytes)) {
+        if (OfficeEncryption.isEncrypted({ openStream(uri) }, knownLength = sizeBytes, sourceFile = localSourceFile(uri.toString()))) {
             return ExtractedText("", TextIndexState.SKIPPED)
         }
         return indexable(officeBlocksToText(DocTextExtractor.extract({ openStream(uri) }, knownLength = sizeBytes), MAX_INDEX_CHARS))
     }
 
     private fun readPptx(uri: Uri): ExtractedText {
-        if (OfficeEncryption.isEncrypted({ openStream(uri) })) {
+        if (OfficeEncryption.isEncrypted({ openStream(uri) }, sourceFile = localSourceFile(uri.toString()))) {
             return ExtractedText("", TextIndexState.SKIPPED)
         }
         // mediaDir = null: a deck's words are indexed, not its pictures.
