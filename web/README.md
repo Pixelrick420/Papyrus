@@ -34,3 +34,9 @@ substituted into the canonical, Open Graph, Twitter and JSON-LD URLs in `src/app
 `static/manifest.webmanifest` is kept as lightweight install metadata. There is no service worker, so the site is not a
 fully offline PWA and install prompts are not guaranteed. Its single 512x512 icon is declared `any maskable`, and
 `orientation` is `any` because the site is readable in either orientation.
+
+## Dependency pin
+
+`@lucide/svelte` is pinned to exactly `1.75.0`. Vite pre-bundling (`optimizeDeps.include`) has no exact-version
+requirement, so a caret range would also work; the pin is kept to avoid an unrelated lockfile change. `package.json`
+cannot carry comments, so the decision is recorded here.
