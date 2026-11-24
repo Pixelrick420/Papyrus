@@ -7,7 +7,7 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-/** Current databases start at schema 1 and migrate in place to 3; 0.x data is not carried over. */
+/** Installable databases start at schema 1 and migrate in place to 3; pre-1.0 data is deleted. */
 @Database(
     entities = [
         DocumentEntity::class,
@@ -36,6 +36,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun searchDao(): SearchDao
 
     companion object {
+        // Historical filename, kept so existing installs keep their library; the legacy file is papyrus.db.
         private const val DB_NAME = "papyrus-v1.db"
 
         internal val OUTLINE_SOURCE_MODIFIED = object : Migration(1, 2) {

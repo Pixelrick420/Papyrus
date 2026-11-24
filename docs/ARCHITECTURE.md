@@ -25,8 +25,13 @@ Papyrus is Kotlin, Jetpack Compose and Room.
 
 Child rows use `ON DELETE CASCADE`. `documents` rows are never written with `OnConflictStrategy.REPLACE`, which would
 delete and reinsert them and cascade the children away. Page count and MIME type are read live. Version 2 adds
-`pdf_outlines.sourceModified` and migrates a 2.0/2.1 database (schema version 1) in place. Version 2 shipped in 2.1.1;
-2.0 changed the application ID, so 1.x data was not carried over. Schemas are exported to `app/schemas/`.
+`pdf_outlines.sourceModified`; version 3 adds `document_text.failureCount` for indexed-text retry backoff. Both migrate
+a schema-1 database in place through those two steps. Version 2 shipped in 2.1.1. Schemas are exported to `app/schemas/`.
+
+The installable database file keeps the historical name `papyrus-v1.db`, even though the app version is no longer 1.x;
+renaming it would orphan existing libraries. The pre-1.0 `papyrus.db` is deleted at startup because 1.0 changed the
+application ID. Room has no downgrade migration: installing an older build over a newer database is unsupported, and
+an uninstall is the supported way to clear local data.
 
 ## Cache layout
 

@@ -7,6 +7,11 @@ Issues and pull requests are welcome.
 - Accessibility changes must follow [ACCESSIBILITY.md](ACCESSIBILITY.md) and `AccessibilitySemanticsTest`.
 - Screenshots live in `fastlane/metadata/android/en-US/images/`.
 
+## Compatibility policy
+
+- Downgrades are unsupported: Room has no `onDowngrade` handler, so installing an older build over a newer database fails. Uninstalling clears local data.
+- UI strings live only in `app/src/main/res/values/strings.xml`; translations and locale-specific fallback are not part of this project yet.
+
 ## PPTX licensing
 
 Permissive code/data may be vendored with a NOTICE entry; copyleft code may not be copied; behavior may be studied
