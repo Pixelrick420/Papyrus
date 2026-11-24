@@ -28,3 +28,9 @@ Set `PUBLIC_SITE_URL` in the Vercel project (or in any build that needs a non-de
 for example `https://papyrus-viewer.vercel.app/`. It is read at build time, normalised to remove trailing slashes, and
 substituted into the canonical, Open Graph, Twitter and JSON-LD URLs in `src/app.html`. When unset it defaults to
 `https://papyrus-viewer.vercel.app/`.
+
+## PWA metadata
+
+`static/manifest.webmanifest` is kept as lightweight install metadata. There is no service worker, so the site is not a
+fully offline PWA and install prompts are not guaranteed. Its single 512x512 icon is declared `any maskable`, and
+`orientation` is `any` because the site is readable in either orientation.
