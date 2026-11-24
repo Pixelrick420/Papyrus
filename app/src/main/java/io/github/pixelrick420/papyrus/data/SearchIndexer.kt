@@ -141,18 +141,7 @@ class SearchIndexer(
     } catch (failure: Throwable) {
         onDocumentFailure(document.id, failure.javaClass.simpleName)
         val failures = dao.failureCount(document.id) + 1
-        val now = System.currentTimeMillis()
-        val row = DocumentTextEntity(
-            documentId = document.id,
-            text = "",
-            state = TextIndexState.FAILED,
-            charCount = 0,
-            sourceSize = document.sizeBytes,
-            indexedAt = now + retryDelay(failures),
-            indexVersion = INDEX_VERSION,
-            sourceModified = modified?.takeIf { it > 0 } ?: 0,
-            failureCount = failures,
-        )
+        val row = failedRow(document, modified, failures, System.currentTimeMillis())
         try {
             dao.replaceIfExists(row)
             true
@@ -170,26 +159,44 @@ class SearchIndexer(
         val extracted = extract(document)
         val now = System.currentTimeMillis()
         val failed = extracted.state == TextIndexState.FAILED
-        val failures = if (failed) dao.failureCount(document.id) + 1 else 0
-        // A failed row waits for its deadline and then the next pass; there is no retry timer.
-        val retryAt = if (failed) now + retryDelay(failures) else now
-        val row = DocumentTextEntity(
-            documentId = document.id,
-            text = extracted.text,
-            state = extracted.state,
-            charCount = extracted.text.length,
-            sourceSize = document.sizeBytes,
-            indexedAt = retryAt,
-            indexVersion = INDEX_VERSION,
-            sourceModified = modified?.takeIf { it > 0 } ?: 0,
-            failureCount = failures,
-        )
+        val row = if (failed) {
+            failedRow(document, modified, dao.failureCount(document.id) + 1, now)
+        } else {
+            DocumentTextEntity(
+                documentId = document.id,
+                text = extracted.text,
+                state = extracted.state,
+                charCount = extracted.text.length,
+                sourceSize = document.sizeBytes,
+                indexedAt = now,
+                indexVersion = INDEX_VERSION,
+                sourceModified = modified?.takeIf { it > 0 } ?: 0,
+            )
+        }
         // The document may have been removed while its text was being read, so the write rechecks the parent.
         dao.replaceIfExists(row)
     }
 
-    private fun retryDelay(failures: Int): Long =
-        (FAILED_RETRY_MILLIS shl minOf(failures - 1, MAX_BACKOFF_SHIFT)).coerceAtMost(MAX_FAILED_RETRY_MILLIS)
+    // A failed row waits for its deadline and then the next pass; after the last step it stays skipped.
+    private fun failedRow(
+        document: DocumentEntity,
+        modified: Long?,
+        failures: Int,
+        now: Long,
+    ): DocumentTextEntity {
+        val terminal = failures >= MAX_FAILURES
+        return DocumentTextEntity(
+            documentId = document.id,
+            text = "",
+            state = if (terminal) TextIndexState.SKIPPED else TextIndexState.FAILED,
+            charCount = 0,
+            sourceSize = document.sizeBytes,
+            indexedAt = if (terminal) now else now + RETRY_DELAYS[failures - 1],
+            indexVersion = INDEX_VERSION,
+            sourceModified = modified?.takeIf { it > 0 } ?: 0,
+            failureCount = failures,
+        )
+    }
 
     companion object {
         // Bump whenever the stored text of a document would come out different; it re-indexes the library.
@@ -197,9 +204,14 @@ class SearchIndexer(
 
         const val FAILED_RETRY_MILLIS = 5 * 60 * 1_000L
 
-        private const val MAX_BACKOFF_SHIFT = 6
+        private val RETRY_DELAYS = longArrayOf(
+            FAILED_RETRY_MILLIS,
+            30 * 60 * 1_000L,
+            2 * 60 * 60 * 1_000L,
+            24 * 60 * 60 * 1_000L,
+        )
 
-        private const val MAX_FAILED_RETRY_MILLIS = 4 * 60 * 60 * 1_000L
+        private const val MAX_FAILURES = 5
 
         private const val BATCH_SIZE = 16
 

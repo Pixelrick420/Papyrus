@@ -140,31 +140,53 @@ class SearchIndexerTest {
     }
 
     @Test
-    fun repeatedFailuresBackOffAndASuccessClearsTheCount() {
-        var fail = true
+    fun repeatedFailuresBackOffAndThenStop() {
         val indexer = SearchIndexer(
             dao = dao,
-            extract = {
-                ExtractedText("", if (fail) TextIndexState.FAILED else TextIndexState.INDEXED)
-            },
+            extract = { ExtractedText("", TextIndexState.FAILED) },
             library = emptyFlow(),
         )
-        val base = SearchIndexer.FAILED_RETRY_MILLIS
+        val delays = listOf(
+            SearchIndexer.FAILED_RETRY_MILLIS,
+            30 * 60 * 1_000L,
+            2 * 60 * 60 * 1_000L,
+            24 * 60 * 60 * 1_000L,
+        )
 
-        repeat(3) { attempt ->
+        delays.forEachIndexed { attempt, expected ->
             dao.queue += document(1)
             val before = System.currentTimeMillis()
             runBlocking { indexer.indexPending() }
-            val delay = dao.written.last().indexedAt - before
-            val expected = base shl attempt
-            assertTrue("attempt $attempt had delay $delay, expected $expected", delay in expected..expected + 10_000)
+            val actual = dao.written.last().indexedAt - before
+            assertTrue("attempt $attempt had delay $actual, expected $expected", actual in expected..expected + 10_000)
+            assertEquals(TextIndexState.FAILED, dao.written.last().state)
             assertEquals(attempt + 1, dao.written.last().failureCount)
         }
 
-        fail = false
         dao.queue += document(1)
-        val before = System.currentTimeMillis()
         runBlocking { indexer.indexPending() }
+        assertEquals(TextIndexState.SKIPPED, dao.written.last().state)
+        assertEquals(5, dao.written.last().failureCount)
+    }
+
+    @Test
+    fun aSuccessAfterAFailureClearsTheCount() {
+        var fail = true
+        val indexer = SearchIndexer(
+            dao = dao,
+            extract = { ExtractedText("", if (fail) TextIndexState.FAILED else TextIndexState.INDEXED) },
+            library = emptyFlow(),
+        )
+
+        dao.queue += document(1)
+        runBlocking { indexer.indexPending() }
+        assertEquals(1, dao.written.last().failureCount)
+
+        fail = false
+        val before = System.currentTimeMillis()
+        dao.queue += document(1)
+        runBlocking { indexer.indexPending() }
+        assertEquals(TextIndexState.INDEXED, dao.written.last().state)
         assertTrue(dao.written.last().indexedAt in before..System.currentTimeMillis())
         assertEquals(0, dao.written.last().failureCount)
     }
