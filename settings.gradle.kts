@@ -26,5 +26,11 @@ dependencyResolutionManagement {
     }
 }
 
+buildCache {
+    local {
+        isEnabled = true
+    }
+}
+
 rootProject.name = "Papyrus"
 include(":app")
