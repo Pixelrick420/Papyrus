@@ -279,7 +279,7 @@ internal class OdtBodyParser(
             "svg:title", "svg:desc" -> altText = StringBuilder()
             "text:tab" -> appendText("\t")
             "text:line-break" -> appendText("\n")
-            "text:s" -> repeat(p.attr("text:c")?.toIntOrNull() ?: 1) { appendText(" ") }
+            "text:s" -> repeat(p.countAttr("text:c")) { appendText(" ") }
         }
     }
 

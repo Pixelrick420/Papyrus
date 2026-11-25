@@ -359,4 +359,77 @@ class PrettyPrintTest {
         assertEquals("{\n  \"a\": \"it's, ok\"\n}", json("{\"a\": \"it's, ok\"}"))
         assertNull(json("{'a: 1}"))
     }
+
+    @Test
+    fun `a bracket ending a line comment is not taken for the bracket just opened`() {
+        assertEquals("{\n  \"a\": 1\n  // {\n}", json("{\"a\":1 // {\n}"))
+        assertEquals("[\n  1\n  // [\n]", json("[1 // [\n]"))
+        assertEquals("{\n  // {\n}", json("{ // {\n}"))
+        assertEquals("{}", json("{ }"))
+    }
+
+    @Test
+    fun `a file nested past the indent limit stops indenting further`() {
+        val deepest = "x".repeat(5_000)
+        val source = "[".repeat(40) + "\"$deepest\"" + "]".repeat(40)
+
+        val lines = json(source)!!.lines()
+
+        assertEquals(64, lines.maxOf { line -> line.takeWhile { it == ' ' }.length })
+        assertEquals(lines.size, lines.count { it.isNotBlank() })
+        assertEquals(source, lines.joinToString("") { it.trim() })
+    }
+
+    @Test(timeout = 5_000)
+    fun `json that would balloon fails and opens as stored`() {
+        val nested = "[".repeat(10_000) + "]".repeat(10_000)
+
+        assertNull(json(nested))
+        assertNull(json("[".repeat(20_000)))
+        val opened = PrettyPrint.formatOnOpen(PrettyKind.JSON, nested)
+        assertTrue(opened.failed)
+        assertEquals(nested, opened.text)
+    }
+
+    @Test(timeout = 5_000)
+    fun `xml and html that would balloon fail and open as stored`() {
+        val xmlNested = "<a>".repeat(10_000) + "</a>".repeat(10_000)
+        val htmlNested = "<div>".repeat(10_000)
+
+        assertNull(xml(xmlNested))
+        assertNull(html(htmlNested))
+        assertEquals(htmlNested, PrettyPrint.formatOnOpen(PrettyKind.HTML, htmlNested).text)
+    }
+
+    @Test
+    fun `a file whose indent grows modestly is still formatted`() {
+        val source = "{\"a\":{\"b\":{\"c\":{\"d\":[1,2,3]}}}}"
+
+        for (width in PrettyPrint.INDENT_CHOICES) assertTrue(PrettyPrint.format(PrettyKind.JSON, source, width) != null)
+    }
+
+    @Test
+    fun `blank text and tags inside pre stay exactly as written`() {
+        val body = "  <b>x</b> <i>y</i>\n"
+
+        val formatted = html("<div><pre>$body</pre></div>")!!
+
+        assertEquals("<div>\n  <pre>$body</pre>\n</div>", formatted)
+        assertEquals(formatted, html(formatted))
+    }
+
+    @Test
+    fun `blank text inside textarea and xhtml pre is kept`() {
+        assertEquals("<form>\n  <textarea>\n\n</textarea>\n</form>", html("<form><textarea>\n\n</textarea></form>"))
+        assertEquals(
+            "<html>\n  <body>\n    <pre>a\n\n<b>x</b>\n </pre>\n  </body>\n</html>",
+            xml("<html><body><pre>a\n\n<b>x</b>\n </pre></body></html>"),
+        )
+    }
+
+    @Test
+    fun `whitespace stays kept until the outermost pre closes`() {
+        assertEquals("<pre><pre></pre> </pre>", html("<pre><pre></pre> </pre>"))
+        assertEquals("<div>\n  <p>a</p>\n</div>", html("<div> <p>a</p> </div>"))
+    }
 }

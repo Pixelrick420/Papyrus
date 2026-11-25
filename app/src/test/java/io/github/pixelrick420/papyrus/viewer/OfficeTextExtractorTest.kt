@@ -108,6 +108,21 @@ class OfficeTextExtractorTest {
     }
 
     @Test
+    fun `an odt space run is clamped like every other repeat count`() {
+        val bytes = OfficeFixtures.odt(
+            OfficeFixtures.odtContent("""<text:p>a<text:s text:c="2000000000"/>b</text:p><text:p>c<text:s text:c="-5"/>d</text:p>"""),
+        )
+
+        assertEquals(
+            listOf(
+                OfficeBlock.Paragraph("a" + " ".repeat(MAX_MERGE_SPAN) + "b"),
+                OfficeBlock.Paragraph("c d"),
+            ),
+            extractOdt(bytes),
+        )
+    }
+
+    @Test
     fun `docx table cells carry their grid column`() {
         val bytes = OfficeFixtures.docx(
             OfficeFixtures.docxBody(

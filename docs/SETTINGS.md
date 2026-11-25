@@ -11,7 +11,8 @@ Labels match the app; each entry gives its startup default.
 - **Hyphenation**: on by default for syllables in prose text files, not code or `.log`; a `.txt` that looks like code is
   still prose.
 - **Pretty print structured files**: on by default; indents JSON, XML, HTML and SVG at the chosen **Tab size** (2 by
-  default; 3, 4 and 8 also available). The stored file is unchanged and oversized files open as stored.
+  default; 3, 4 and 8 also available). The stored file is unchanged, and files too large or too deeply nested to
+  format open as stored.
 - **Autosave external docs**: off by default; on adds another app's document to the library, off uses the viewer's
   **Save to library**.
 - **Autosave encrypted docs**: off by default; on does the same for protected PDF/DOCX/ODT/DOC/PPTX, and never stores

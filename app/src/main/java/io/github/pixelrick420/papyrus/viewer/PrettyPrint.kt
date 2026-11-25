@@ -40,6 +40,7 @@ object PrettyPrint {
         return PrettyOutcome(formatted, failed = false)
     }
 
+    // Null when the text is structurally broken or would balloon past the output limit; either way the caller shows it as stored.
     fun format(kind: PrettyKind, text: String, indent: Int = DEFAULT_INDENT): String? {
         val step = " ".repeat(indentOrDefault(indent))
         return when (kind) {
@@ -50,6 +51,16 @@ object PrettyPrint {
     }
 }
 
+// Past this depth every line indents alike, so a file of `[[[[…` cannot ask for a megabyte of whitespace per line.
+private const val MAX_INDENT_DEPTH = 32
+
+// The output may outgrow the input by this factor plus a constant for tiny files; a hostile file fails to format instead of exhausting memory.
+private const val MAX_OUTPUT_GROWTH = 4
+private const val OUTPUT_SLACK = 4096
+
+private fun outputLimit(inputLength: Int): Int =
+    (inputLength.toLong() * MAX_OUTPUT_GROWTH + OUTPUT_SLACK).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+
 // A newline is kept off a preceding `//` comment's line, so the comma never lands inside the comment.
 // Strings and comments are copied byte-for-byte, so escapes, number lexemes (1E+3, 12345678901234567890) and key order are untouched.
 private fun formatJson(text: String, step: String): String? {
@@ -57,8 +68,10 @@ private fun formatJson(text: String, step: String): String? {
     if (text.isBlank()) return text
     val layout = JsonLayout(step)
     val out = layout.out
+    val limit = outputLimit(text.length)
     var i = 0
     while (i < text.length) {
+        if (out.length > limit) return null
         val c = text[i]
         when {
             c.isWhitespace() -> i++
@@ -72,6 +85,7 @@ private fun formatJson(text: String, step: String): String? {
                 layout.startToken()
                 out.append(c)
                 layout.opened.append(c)
+                layout.openedAt = out.length
                 layout.indent++
                 i++
             }
@@ -129,13 +143,16 @@ private class JsonLayout(private val step: String) {
 
     val opened = StringBuilder()
 
+    // Where the output stood just after the latest opener: still there at its close means nothing sat between them.
+    var openedAt = -1
+
     fun startToken() {
         if (attach) {
             attach = false
             return
         }
         if (out.isNotEmpty() && out.last() != '\n') out.append('\n')
-        repeat(indent) { out.append(step) }
+        repeat(minOf(indent, MAX_INDENT_DEPTH)) { out.append(step) }
         pendingBreak = false
     }
 
@@ -145,7 +162,7 @@ private class JsonLayout(private val step: String) {
         if (opened.isEmpty() || opened.last() != expected) return false
         opened.setLength(opened.length - 1)
         indent--
-        if (out.lastOrNull() == expected) {
+        if (out.length == openedAt) {
             // An empty {} / [] never took a line of its own; it stays on one.
             out.append(c)
         } else {
@@ -195,16 +212,19 @@ private fun formatMarkup(strict: Boolean, text: String, step: String): String? {
     // Nothing to format; the stored bytes pass through, no toast.
     if (text.isBlank()) return text
     val out = StringBuilder(text.length + text.length / 8)
-    val stack = ArrayList<String>()
+    val limit = outputLimit(text.length)
+    val stack = OpenElements(strict)
     var inline = false
     var i = 0
     while (i < text.length) {
+        if (out.length > limit) return null
         if (text[i] != '<') {
             val end = text.indexOf('<', i).let { if (it < 0) text.length else it }
             val node = text.substring(i, end)
             // Blank text between constructs is the whitespace being re-laid; real text is content
-            // and stays byte-for-byte, and a construct right after it stays on its line.
-            if (node.isNotBlank()) {
+            // and stays byte-for-byte, and a construct right after it stays on its line. In a `<pre>`
+            // even blank text is content.
+            if (node.isNotBlank() || stack.keepsWhitespace) {
                 out.append(node)
                 inline = true
             }
@@ -217,33 +237,35 @@ private fun formatMarkup(strict: Boolean, text: String, step: String): String? {
             i++
             continue
         }
+        // Inside a `<pre>` nothing may start a line of its own, or the break and indent would become content.
+        val flow = inline || stack.keepsWhitespace
         when {
             text.startsWith("<!--", i) -> {
                 val end = delimitedEnd(text, i, "-->", 4) ?: return null
-                i = emit(out, stack.size, inline, text, i, end, step)
+                i = emit(out, stack.size, flow, text, i, end, step)
                 inline = false
             }
             text.startsWith("<![CDATA[", i) -> {
                 val end = delimitedEnd(text, i, "]]>", 9) ?: return null
-                i = emit(out, stack.size, inline, text, i, end, step)
+                i = emit(out, stack.size, flow, text, i, end, step)
                 inline = false
             }
             text.startsWith("<?", i) -> {
                 val end = delimitedEnd(text, i, "?>", 2) ?: return null
-                i = emit(out, stack.size, inline, text, i, end, step)
+                i = emit(out, stack.size, flow, text, i, end, step)
                 inline = false
             }
             text.startsWith("<!", i) -> {
                 val end = doctypeEnd(text, i) ?: return null
-                i = emit(out, stack.size, inline, text, i, end, step)
+                i = emit(out, stack.size, flow, text, i, end, step)
                 inline = false
             }
             else -> {
                 val construct = tagConstruct(text, i) ?: return null
                 // A close tag is indented at its own level, which is one above its content.
                 val depth = if (construct.closing) (stack.size - 1).coerceAtLeast(0) else stack.size
-                i = emit(out, depth, inline, text, i, construct.end, step)
-                if (!applyToStack(stack, construct, strict)) return null
+                i = emit(out, depth, flow, text, i, construct.end, step)
+                if (!stack.apply(construct)) return null
                 inline = false
                 if (!strict && !construct.closing && !construct.selfClosing &&
                     construct.name.orEmpty().lowercase() in RAW_TEXT_ELEMENTS
@@ -258,7 +280,7 @@ private fun formatMarkup(strict: Boolean, text: String, step: String): String? {
             }
         }
     }
-    if (strict && stack.isNotEmpty()) return null
+    if (strict && !stack.isEmpty) return null
     return out.toString()
 }
 
@@ -273,7 +295,7 @@ private fun emit(
 ): Int {
     if (!inline) {
         if (out.isNotEmpty()) out.append('\n')
-        repeat(depth) { out.append(step) }
+        repeat(minOf(depth, MAX_INDENT_DEPTH)) { out.append(step) }
     }
     out.append(text, from, to)
     return to
@@ -331,21 +353,39 @@ private fun tagConstruct(text: String, start: Int): MarkupConstruct? {
     return null
 }
 
-// XML matches strictly and fails on a mismatch or stray close; HTML never fails: a close drops its element and anything an implied close (`<li>a<li>b`) left open above it.
-private fun applyToStack(stack: MutableList<String>, construct: MarkupConstruct, strict: Boolean): Boolean {
-    val name = construct.name.orEmpty()
-    if (construct.closing) {
-        if (strict) {
-            if (stack.isEmpty() || stack.last() != name) return false
-            stack.removeAt(stack.lastIndex)
-        } else {
-            val at = stack.indexOfLast { it.equals(name, ignoreCase = true) }
-            if (at >= 0) stack.subList(at, stack.size).clear()
+// The open elements, and how many of them keep their whitespace.
+private class OpenElements(private val strict: Boolean) {
+    private val names = ArrayList<String>()
+    private var keeping = 0
+
+    val size get() = names.size
+
+    val isEmpty get() = names.isEmpty()
+
+    val keepsWhitespace get() = keeping > 0
+
+    // XML matches strictly and fails on a mismatch or stray close; HTML never fails: a close drops its element and anything an implied close (`<li>a<li>b`) left open above it.
+    fun apply(construct: MarkupConstruct): Boolean {
+        val name = construct.name.orEmpty()
+        if (construct.closing) {
+            if (strict) {
+                if (names.isEmpty() || names.last() != name) return false
+                dropFrom(names.lastIndex)
+            } else {
+                val at = names.indexOfLast { it.equals(name, ignoreCase = true) }
+                if (at >= 0) dropFrom(at)
+            }
+        } else if (!construct.selfClosing && (strict || name.lowercase() !in VOID_ELEMENTS)) {
+            names += name
+            if (name.lowercase() in WHITESPACE_ELEMENTS) keeping++
         }
-    } else if (!construct.selfClosing && (strict || name.lowercase() !in VOID_ELEMENTS)) {
-        stack += name
+        return true
     }
-    return true
+
+    private fun dropFrom(at: Int) {
+        for (k in at until names.size) if (names[k].lowercase() in WHITESPACE_ELEMENTS) keeping--
+        names.subList(at, names.size).clear()
+    }
 }
 
 private fun rawBodyEnd(text: String, from: Int, name: String): Int? {
@@ -362,6 +402,9 @@ private fun rawBodyEnd(text: String, from: Int, name: String): Int? {
 private val VOID_ELEMENTS = setOf(
     "area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr",
 )
+
+/** Elements whose body is laid out exactly as written, blank text included. */
+private val WHITESPACE_ELEMENTS = setOf("pre", "textarea")
 
 /** HTML elements whose bodies are code, not markup: `<` and `>` inside them are not tags. */
 private val RAW_TEXT_ELEMENTS = setOf("script", "style")
