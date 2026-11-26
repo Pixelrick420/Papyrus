@@ -401,7 +401,7 @@ class HomeViewModel(
         viewModelScope.launch {
             if (uris.size == 1) {
                 try {
-                    open(repository.register(uris.first()))
+                    open(repository.register(uris.first()).id)
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
@@ -409,23 +409,23 @@ class HomeViewModel(
                 }
                 return@launch
             }
-            var added = 0
-            var skipped = 0
+            val tally = PickTally()
             for (uri in uris) {
                 try {
-                    // register returns a negative id for a transient (password-protected) PDF: opened, not added.
-                    if (repository.register(uri) > 0) added++ else skipped++
+                    tally.record(repository.register(uri))
                 } catch (e: CancellationException) {
                     throw e
-                } catch (e: Exception) {
+                } catch (_: Exception) {
+                    tally.recordFailure()
                 }
             }
-            if (added > 0) {
+            if (tally.added > 0) {
                 onAdded()
-                _messages.send(UiText(R.string.home_added_files, added))
+                _messages.send(UiText(R.string.home_added_files, tally.added))
             }
-            if (skipped > 0) _messages.send(UiText(R.string.home_skipped_encrypted, skipped))
-            if (added == 0 && skipped == 0) _messages.send(UiText(R.string.home_open_failed))
+            if (tally.encrypted > 0) _messages.send(UiText(R.string.home_skipped_encrypted, tally.encrypted))
+            if (tally.grantRefused > 0) _messages.send(UiText(R.string.home_skipped_no_access, tally.grantRefused))
+            if (tally.failed > 0) _messages.send(UiText(R.string.home_failed_files, tally.failed))
         }
     }
 

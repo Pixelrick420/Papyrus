@@ -7,6 +7,10 @@
     <string
         name="home_skipped_encrypted"
     >Skipped %1$d password-protected file(s)</string>
+    <string
+        name="home_skipped_no_access"
+    >Couldn\'t add %1$d file(s): their app didn\'t allow lasting access</string>
+    <string name="home_failed_files">Couldn\'t read %1$d file(s)</string>
     <string name="home_menu">More options</string>
     <string name="action_share">Share</string>
     <string name="action_remove">Remove</string>

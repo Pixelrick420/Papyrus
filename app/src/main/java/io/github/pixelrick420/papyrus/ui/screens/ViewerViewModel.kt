@@ -400,9 +400,7 @@ class ViewerViewModel(
     /** Cancelled per reload, so a quick encoding pick and a settings toggle leave the later one on screen. */
     private var reloadJob: Job? = null
 
-    /** One page at a time; keyed by URI so a re-grant never reads the dead one. */
-    private var pageTextSource: PdfPageTextSource? = null
-    private var pageTextSourceUri: String? = null
+    private val pageSources = PageSourceHolder { uri -> PdfPageTextSource(app, uri.toUri()) }
 
     /** The decrypted copy of a password-protected document; owned here so close deletes the plaintext. */
     private val unlocked = UnlockedCopy()
@@ -492,9 +490,7 @@ class ViewerViewModel(
             _state.value = next
             closePrevious()
         }
-        pageTextSource?.close()
-        pageTextSource = null
-        pageTextSourceUri = null
+        pageSources.reset()
         unlocked.discard()
         try {
             val doc = repository.getById(documentId)?.let { withCurrentFormat(it) }
@@ -1495,8 +1491,11 @@ class ViewerViewModel(
         val source = (_state.value.content as? ViewerContent.Pdf)?.source
         val found = HashMap<Int, PdfPageText.PageMatches>()
         val missed = ArrayList<Int>()
+        // A newer keystroke cancels this job; the scan stops between pages instead of finishing the file.
+        val running = currentCoroutineContext()
         if (source != null) {
             for (index in 0 until source.pageCount) {
+                running.ensureActive()
                 val match = source.platformSearch(index, query)
                 if (match == null) missed += index else found[index] = match
             }
@@ -1507,6 +1506,7 @@ class ViewerViewModel(
             } else {
                 val pages = pdfPageText ?: extractPageText().also { pdfPageText = it }
                 for (index in if (source == null) pages.indices else missed) {
+                    running.ensureActive()
                     val page = pages.getOrNull(index) ?: continue
                     found[index] = page.matches(query)
                 }
@@ -1565,16 +1565,7 @@ class ViewerViewModel(
 
     suspend fun pageLinks(index: Int): List<PdfPageLink>? = pageSource()?.links(index)
 
-    private fun pageSource(): PdfPageTextSource? {
-        val uri = contentUri
-        if (uri.isEmpty()) return null
-        return pageTextSource?.takeIf { pageTextSourceUri == uri }
-            ?: PdfPageTextSource(app, uri.toUri()).also {
-                pageTextSource?.close()
-                pageTextSource = it
-                pageTextSourceUri = uri
-            }
-    }
+    private fun pageSource(): PdfPageTextSource? = contentUri.takeIf { it.isNotEmpty() }?.let(pageSources::get)
 
     /** [picked] is checked against the title, so a wrong pick cannot re-point the row. */
     fun regrant(picked: Uri) {
@@ -1636,7 +1627,7 @@ class ViewerViewModel(
         commitPosition(force = true)
         outbox.close()
         _state.value.content.closePageSource()
-        pageTextSource?.close()
+        pageSources.release()
         // The application scope outlives this cancelled ViewModel.
         app.applicationScope.launch {
             unlocked.discard()

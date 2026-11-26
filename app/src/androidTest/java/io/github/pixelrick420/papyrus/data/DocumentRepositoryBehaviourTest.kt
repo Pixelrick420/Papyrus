@@ -36,6 +36,7 @@ class DocumentRepositoryBehaviourTest {
 
     @After
     fun tearDown() {
+        File(importsDir(), REPICK_DIR).deleteRecursively()
         importsDir().listFiles().orEmpty()
             .filterNot { it.name in importsBefore }
             .forEach { it.delete() }
@@ -51,11 +52,78 @@ class DocumentRepositoryBehaviourTest {
         )
         val (_, uri) = sourceFile("encrypted.pptx")
 
-        val id = repo.register(uri)
+        val result = repo.register(uri)
 
-        assertTrue(id < 0)
+        assertTrue(result is Registration.Encrypted)
+        assertTrue(result.id < 0)
         assertNull(database.documentDao().getByUri(uri.toString()))
         assertEquals(0, persistCalls)
+    }
+
+    @Test
+    fun aRefusedGrantIsHandedOverAndReportedAsRefused() = runBlocking {
+        val repo = repository(encryptionCheck = { _, _, _ -> false }, persistGrant = { false })
+        val (_, uri) = sourceFile("refused.pptx")
+
+        val result = repo.register(uri)
+
+        assertTrue(result is Registration.GrantRefused)
+        assertTrue(result.id < 0)
+        assertNull(database.documentDao().getByUri(uri.toString()))
+    }
+
+    @Test
+    fun aGrantedFileIsAddedWithItsRowId() = runBlocking {
+        val repo = repository(encryptionCheck = { _, _, _ -> false }, persistGrant = { true })
+        val (_, uri) = sourceFile("granted.pptx")
+
+        val result = repo.register(uri)
+
+        assertTrue(result is Registration.Added)
+        assertEquals(database.documentDao().getByUri(uri.toString())!!.id, result.id)
+    }
+
+    @Test
+    fun regrantOfAHandedOverDocumentKeepsTheOldGrantWhileALibraryRowStillUsesIt() = runBlocking {
+        val released = mutableListOf<Uri>()
+        val repo = repository(releaseGrant = { released += it })
+        val (oldFile, oldUri) = sourceFile("shared.pptx")
+        val newUri = repickedUri("shared.pptx")
+        database.documentDao().insertIgnore(sourceEntity(oldUri, oldFile).copy(id = EXISTING_ID))
+        val handedOver = repo.getById(repo.openHandedOver(oldUri))!!
+
+        assertTrue(repo.regrant(handedOver, newUri))
+
+        assertTrue(released.isEmpty())
+        assertEquals(newUri.toString(), repo.getById(handedOver.id)!!.uri)
+    }
+
+    @Test
+    fun regrantOfAHandedOverDocumentReleasesTheOldGrantWhenNothingElseUsesIt() = runBlocking {
+        val released = mutableListOf<Uri>()
+        val repo = repository(releaseGrant = { released += it })
+        val (_, oldUri) = sourceFile("alone.pptx")
+        val newUri = repickedUri("alone.pptx")
+        val handedOver = repo.getById(repo.openHandedOver(oldUri))!!
+
+        assertTrue(repo.regrant(handedOver, newUri))
+
+        assertEquals(listOf(oldUri), released)
+    }
+
+    @Test
+    fun regrantOfALibraryRowRebindsItAndReleasesTheOldGrant() = runBlocking {
+        val released = mutableListOf<Uri>()
+        val repo = repository(persistGrant = { true }, releaseGrant = { released += it })
+        val (oldFile, oldUri) = sourceFile("moved.pptx")
+        val newUri = repickedUri("moved.pptx")
+        val dao = database.documentDao()
+        dao.insertIgnore(sourceEntity(oldUri, oldFile).copy(id = EXISTING_ID))
+
+        assertTrue(repo.regrant(dao.getById(EXISTING_ID)!!, newUri))
+
+        assertEquals(newUri.toString(), dao.getById(EXISTING_ID)!!.uri)
+        assertEquals(listOf(oldUri), released)
     }
 
     @Test
@@ -155,6 +223,19 @@ class DocumentRepositoryBehaviourTest {
         )
     }
 
+    // The same name in another folder: a re-pick of the file must match by name, so it needs its own URI.
+    private fun repickedUri(name: String): Uri {
+        val dir = File(importsDir(), REPICK_DIR)
+        dir.mkdirs()
+        val file = File(dir, name)
+        file.writeBytes(byteArrayOf(1, 2, 3, 4, 5))
+        return FileProvider.getUriForFile(
+            context,
+            "${context.packageName}${DocumentRepository.FILE_PROVIDER_SUFFIX}",
+            file,
+        )
+    }
+
     private fun sourceEntity(uri: Uri, source: File) = DocumentEntity(
         uri = uri.toString(),
         title = source.name,
@@ -168,5 +249,6 @@ class DocumentRepositoryBehaviourTest {
 
     private companion object {
         const val EXISTING_ID = 42L
+        const val REPICK_DIR = "repick"
     }
 }

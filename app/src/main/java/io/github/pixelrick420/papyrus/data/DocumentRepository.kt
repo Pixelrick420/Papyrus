@@ -209,20 +209,21 @@ class DocumentRepository(
         withContext(Dispatchers.IO) { library.chunked(MAX_IDS_PER_STATEMENT).forEach { dao.setStarred(it, starred) } }
     }
 
-    suspend fun register(uri: Uri): Long = withContext(Dispatchers.IO) {
+    suspend fun register(uri: Uri): Registration = withContext(Dispatchers.IO) {
         val entity = buildEntity(uri)
         // Not indexed by default: a row would put it in the library and persist a grant past the open.
         // With autosave encrypted on, it is indexed like any file, and the password is asked again on open.
         if (entity.format in ENCRYPTABLE && !settings.current.autosaveEncrypted && isEncryptedFor(entity.format, uri, entity.sizeBytes)) {
-            return@withContext handOver(entity)
+            return@withContext Registration.Encrypted(handOver(entity))
         }
         if (!persistFor(uri)) {
             // Grant could not be persisted (provider refused, OS cap reached). Hand over instead of
             // indexing a row that depends on a transient grant which will lapse on reboot.
-            return@withContext handOver(entity)
+            return@withContext Registration.GrantRefused(handOver(entity))
         }
         // buildEntity stamps lastOpenedAt, and upsertByUri carries it onto an existing row too.
-        dao.upsertByUri(entity)
+        // A non-positive id means the insert was ignored, which is a failure, not a handed-over document.
+        Registration.Added(dao.upsertByUri(entity).also { check(it > 0) { "The row was not inserted" } })
     }
 
     // The intent's read grant lasts only for this entry.
@@ -341,23 +342,28 @@ class DocumentRepository(
         if (owner != null && owner.id != expected.id) return@withContext false
         // A handed-over document has no row to re-point; its re-pick already carries a transient read grant.
         if (expected.id < 0) {
-            if (expected.uri != pickedUri) SafStorage.releasePermission(resolver, expected.uri.toUri())
+            if (expected.uri != pickedUri) releaseIfUnreferenced(expected.uri)
             handedOver[expected.id] = expected.copy(uri = pickedUri)
             return@withContext true
         }
-        if (!SafStorage.persistPermission(resolver, picked)) return@withContext false
+        if (!persistFor(picked)) return@withContext false
         val rebound = try {
             dao.rebindUri(id = expected.id, uri = pickedUri)
         } catch (e: Exception) {
-            SafStorage.releasePermission(resolver, picked)
+            releaseFor(picked)
             throw e
         }
         if (!rebound) {
-            SafStorage.releasePermission(resolver, picked)
+            releaseFor(picked)
             return@withContext false
         }
-        if (expected.uri != pickedUri) SafStorage.releasePermission(resolver, expected.uri.toUri())
+        if (expected.uri != pickedUri) releaseIfUnreferenced(expected.uri)
         true
+    }
+
+    // A persisted grant belongs to the URI, not to one document, so it stays while any row still reads through it.
+    private suspend fun releaseIfUnreferenced(uri: String) {
+        if (dao.getByUri(uri) == null) releaseFor(uri.toUri())
     }
 
     private fun isEncryptedSafely(format: DocumentFormat, uri: Uri, sizeBytes: Long): Boolean = try {
