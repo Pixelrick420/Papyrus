@@ -138,7 +138,7 @@
   }
 
   :focus-visible {
-    @apply ring-primary-500 ring-2 ring-offset-2 ring-offset-white outline-none dark:ring-offset-neutral-950;
+    @apply ring-primary-500 dark:ring-primary-300 ring-2 ring-offset-2 ring-offset-white outline-none dark:ring-offset-neutral-950;
   }
 
   .skip-link {
@@ -175,10 +175,5 @@
   .carousel-snap {
     scroll-snap-type: x mandatory;
     -webkit-overflow-scrolling: touch;
-  }
-
-  .carousel-item {
-    scroll-snap-align: start;
-    flex-shrink: 0;
   }
 }

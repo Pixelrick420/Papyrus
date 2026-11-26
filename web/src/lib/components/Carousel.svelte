@@ -261,7 +261,7 @@
 
   {#if showArrows && pageCount > 1}
     <button
-      class="focus-visible:ring-primary-500 absolute top-1/2 left-0 z-10 -translate-x-3 -translate-y-1/2 rounded-full bg-white/90 p-2 text-neutral-700 shadow-lg transition-all duration-200 hover:bg-white focus-visible:ring-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-white/90 md:-translate-x-4 dark:bg-neutral-800/90 dark:text-neutral-200 dark:hover:bg-neutral-700 dark:disabled:hover:bg-neutral-800/90"
+      class="focus-visible:ring-primary-500 dark:focus-visible:ring-primary-300 absolute top-1/2 left-0 z-10 -translate-x-3 -translate-y-1/2 rounded-full bg-white/90 p-2 text-neutral-700 shadow-lg transition-all duration-200 hover:bg-white focus-visible:ring-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-white/90 md:-translate-x-4 dark:bg-neutral-800/90 dark:text-neutral-200 dark:hover:bg-neutral-700 dark:disabled:hover:bg-neutral-800/90"
       onclick={prevSlide}
       disabled={currentPage === 0}
       aria-label="Previous screenshot"
@@ -269,7 +269,7 @@
       <Icon name="ChevronLeft" size={20} />
     </button>
     <button
-      class="focus-visible:ring-primary-500 absolute top-1/2 right-0 z-10 translate-x-3 -translate-y-1/2 rounded-full bg-white/90 p-2 text-neutral-700 shadow-lg transition-all duration-200 hover:bg-white focus-visible:ring-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-white/90 md:translate-x-4 dark:bg-neutral-800/90 dark:text-neutral-200 dark:hover:bg-neutral-700 dark:disabled:hover:bg-neutral-800/90"
+      class="focus-visible:ring-primary-500 dark:focus-visible:ring-primary-300 absolute top-1/2 right-0 z-10 translate-x-3 -translate-y-1/2 rounded-full bg-white/90 p-2 text-neutral-700 shadow-lg transition-all duration-200 hover:bg-white focus-visible:ring-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-white/90 md:translate-x-4 dark:bg-neutral-800/90 dark:text-neutral-200 dark:hover:bg-neutral-700 dark:disabled:hover:bg-neutral-800/90"
       onclick={nextSlide}
       disabled={currentPage === pageCount - 1}
       aria-label="Next screenshot"
@@ -282,7 +282,7 @@
     <div class="mt-6 flex justify-center gap-1" role="group" aria-label="Screenshot pages">
       {#each Array(pageCount) as _, page (page)}
         <button
-          class="focus-visible:ring-primary-500 group flex h-6 w-6 items-center justify-center rounded-full focus-visible:ring-2 focus-visible:outline-none"
+          class="focus-visible:ring-primary-500 dark:focus-visible:ring-primary-300 group flex h-6 w-6 items-center justify-center rounded-full focus-visible:ring-2 focus-visible:outline-none"
           onclick={() => goToPage(page)}
           aria-current={page === currentPage ? 'true' : undefined}
           aria-label={`Go to screenshot ${page * effectivePerPage + 1}${effectivePerPage > 1 ? ` to ${Math.min((page + 1) * effectivePerPage, items.length)}` : ''}`}
@@ -299,22 +299,22 @@
       {/each}
     </div>
   {/if}
-
-  <style>
-    .scrollbar-hide {
-      -ms-overflow-style: none;
-      scrollbar-width: none;
-    }
-    .scrollbar-hide::-webkit-scrollbar {
-      display: none;
-    }
-    .carousel-item {
-      scroll-snap-align: center;
-    }
-    @media (min-width: 640px) {
-      .carousel-item {
-        scroll-snap-align: start;
-      }
-    }
-  </style>
 </div>
+
+<style>
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+  .carousel-item {
+    scroll-snap-align: center;
+  }
+  @media (min-width: 640px) {
+    .carousel-item {
+      scroll-snap-align: start;
+    }
+  }
+</style>
