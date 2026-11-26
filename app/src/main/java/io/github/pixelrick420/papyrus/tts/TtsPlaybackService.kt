@@ -301,22 +301,32 @@ class TtsPlaybackService : Service(), TextToSpeech.OnInitListener {
             state.documentTitle.isNotEmpty() -> state.documentTitle
             else -> getString(R.string.viewer_read_aloud)
         }
+        val toggleAction = Notification.Action.Builder(Icon.createWithResource(this, toggleIcon), toggleTitle, toggleIntent).build()
+        val stopAction = Notification.Action.Builder(
+            Icon.createWithResource(this, android.R.drawable.ic_menu_close_clear_cancel),
+            getString(R.string.viewer_read_aloud_stop),
+            stopIntent,
+        ).build()
+        // A locked screen shows this instead, so the document's title never appears there; an error text is generic.
+        val lockScreen = Notification.Builder(this, CHANNEL_ID)
+            .setContentTitle(getString(R.string.viewer_read_aloud))
+            .setContentText(if (state.hasError) state.errorMessage else getString(R.string.tts_notification_public))
+            .setSmallIcon(R.drawable.ic_tts)
+            .setContentIntent(open)
+            .addAction(toggleAction)
+            .addAction(stopAction)
+            .build()
         return Notification.Builder(this, CHANNEL_ID)
             .setContentTitle(getString(R.string.viewer_read_aloud))
             .setContentText(text)
             .setSmallIcon(R.drawable.ic_tts)
             .setContentIntent(open)
             .setOngoing(state.isPlaying || state.isPaused)
-            .setVisibility(Notification.VISIBILITY_PUBLIC)
+            .setVisibility(Notification.VISIBILITY_PRIVATE)
+            .setPublicVersion(lockScreen)
             .setStyle(Notification.MediaStyle().setMediaSession(mediaSession.sessionToken))
-            .addAction(Notification.Action.Builder(Icon.createWithResource(this, toggleIcon), toggleTitle, toggleIntent).build())
-            .addAction(
-                Notification.Action.Builder(
-                    Icon.createWithResource(this, android.R.drawable.ic_menu_close_clear_cancel),
-                    getString(R.string.viewer_read_aloud_stop),
-                    stopIntent,
-                ).build(),
-            )
+            .addAction(toggleAction)
+            .addAction(stopAction)
             .build()
     }
 

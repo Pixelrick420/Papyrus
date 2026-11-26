@@ -63,8 +63,9 @@ The README is the landing page. This is the reference for behavior that needs ex
   use a separate 2 GiB budget, so a large embedded video does not fail the document. The ratio check still covers
   skipped bytes; retained lossless image parts (BMP/TIFF) get a higher limit because they compress naturally.
 - Import name stems are capped at 120 UTF-16 code units and 200 UTF-8 bytes before the detected extension is appended.
-- Crash reports are local ACRA JSON with paths, URIs and storage locations redacted. Highlights and notes stay in the
-  private database unless a copy is saved.
+- Crash reports are local ACRA JSON with paths, URIs and storage locations redacted, and XML and PDF parser messages
+  cut to one short line without quoted text. Highlights and notes stay in the private database unless a copy is saved.
+- The read-aloud notification shows only "Reading aloud" on a locked screen, not the document title.
 
 See [PRIVACY_POLICY.md](../PRIVACY_POLICY.md), [SETTINGS.md](SETTINGS.md) and
 [ACCESSIBILITY.md](../ACCESSIBILITY.md).

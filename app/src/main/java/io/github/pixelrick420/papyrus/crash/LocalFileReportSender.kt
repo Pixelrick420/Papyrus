@@ -29,7 +29,8 @@ class LocalFileReportSender : ReportSender {
         val rootRegexes = rootRegexes(roots)
         for ((key, value) in errorContent.toMap()) {
             if (value !is String) continue
-            val sanitized = redact(value, rootRegexes)
+            // A parser's message quotes the document it was reading, and a stack trace carries it.
+            val sanitized = redactParserMessages(redact(value, rootRegexes))
             if (sanitized != value) errorContent.put(key, sanitized)
         }
     }

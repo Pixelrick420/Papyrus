@@ -376,6 +376,7 @@ access</string>
     <string name="tts_speed">Speed</string>
     <string name="tts_speed_value">%1$s×</string>
     <string name="tts_notification_channel">Read aloud</string>
+    <string name="tts_notification_public">Reading aloud</string>
     <string
         name="tts_error_engine"
     >No speech engine is available on this device</string>
