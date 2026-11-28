@@ -1,0 +1,9 @@
+Papyrus 2.1.2 fixes reliability and recovery issues found after 2.1.1.
+
+- External documents handed to Papyrus recover more reliably after process death or recreation
+- Large, damaged or memory-heavy PDFs fail safely during encryption checks, text extraction, search and indexing
+- Library indexing is more resilient with retries, backoff, size refresh and clearer terminal failures
+- Thumbnails recover better after memory pressure, and failed renders are no longer retried on every scroll
+- Password-protected, shared and externally handed-over files open more consistently
+- Read aloud, viewer error reporting and crash report redaction are more reliable
+- Office, archive and temporary file handling is hardened against damaged or oversized input

@@ -56,8 +56,8 @@ android {
         applicationId = "io.github.pixelrick420.papyrus"
         minSdk = 26
         targetSdk = 36
-        versionCode = 20
-        versionName = "2.1.1"
+        versionCode = 21
+        versionName = "2.1.2"
         testInstrumentationRunner = "io.github.pixelrick420.papyrus.e2e.PapyrusTestRunner"
     }
 
