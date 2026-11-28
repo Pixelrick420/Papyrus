@@ -29,7 +29,6 @@ class MainActivity : ComponentActivity() {
 
     private var externalDocument by mutableStateOf<Handover?>(null)
     private var handoverSeq = 0L
-    private var lastHandledHandover: Handover? = null
 
     @Suppress("TooGenericExceptionCaught")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -72,10 +71,7 @@ class MainActivity : ComponentActivity() {
                             null
                         }
                     },
-                    onExternalDocumentHandled = {
-                        lastHandledHandover = externalDocument
-                        externalDocument = null
-                    },
+                    onExternalDocumentHandled = { externalDocument = null },
                 )
             }
         }
@@ -83,8 +79,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
-        val handover = externalDocument ?: lastHandledHandover
-        handover?.let {
+        externalDocument?.let {
             outState.putString(KEY_HANDOVER_URI, it.uri.toString())
             outState.putLong(KEY_HANDOVER_SEQ, it.seq)
         }
@@ -96,7 +91,7 @@ class MainActivity : ComponentActivity() {
         viewUri(intent)?.let { externalDocument = handover(it) }
     }
 
-    private fun handover(uri: Uri): Handover = Handover(uri, ++handoverSeq).also { lastHandledHandover = null }
+    private fun handover(uri: Uri): Handover = Handover(uri, ++handoverSeq)
 
     private fun viewUri(intent: Intent?): Uri? {
         if (intent == null) return null
