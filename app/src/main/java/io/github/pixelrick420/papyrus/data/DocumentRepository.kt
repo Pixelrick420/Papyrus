@@ -56,6 +56,8 @@ class DocumentRepository(
         openSource = { source -> openStream(source.uri.toUri()) },
     )
 
+    fun isHandedOverId(id: Long): Boolean = id < 0 && id > CRASH_REPORT_FIRST_ID
+
     // A verdict belongs to one version of a source; size and modified time invalidate it when that source changes.
     private val pdfVerdicts = PdfEncryptionVerdicts(MAX_KNOWN_PDF_STATUS) { key ->
         PdfEncryption.status { openStream(key.uri.toUri()) }
@@ -229,6 +231,14 @@ class DocumentRepository(
     // The intent's read grant lasts only for this entry.
     suspend fun openHandedOver(uri: Uri): Long = withContext(Dispatchers.IO) {
         handOver(buildEntity(uri))
+    }
+
+    suspend fun restoreHandedOver(id: Long, uri: Uri): DocumentEntity? = withContext(Dispatchers.IO) {
+        if (!isHandedOverId(id)) return@withContext null
+        handedOver[id]?.let { return@withContext it }
+        val entity = buildEntity(uri).copy(id = id)
+        if (!handedOver.restore(id, entity)) return@withContext null
+        handedOver[id]
     }
 
     // A failed insert deletes the copy again. An encrypted PDF is copied as-is; the password is never read or kept.

@@ -32,16 +32,24 @@ object Routes {
     const val ARG_DOCUMENT_ID = "documentId"
     const val ARG_QUERY = "query"
     const val ARG_CRASH_REPORT = "crashReport"
-    const val VIEWER = "viewer/{$ARG_DOCUMENT_ID}?$ARG_QUERY={$ARG_QUERY}&$ARG_CRASH_REPORT={$ARG_CRASH_REPORT}"
+    const val ARG_HANDOVER_URI = "handoverUri"
+    const val VIEWER =
+        "viewer/{$ARG_DOCUMENT_ID}?$ARG_QUERY={$ARG_QUERY}&$ARG_CRASH_REPORT={$ARG_CRASH_REPORT}&$ARG_HANDOVER_URI={$ARG_HANDOVER_URI}"
     const val SETTINGS = "settings"
     const val CRASH_REPORTS = "crash_reports"
 
     // Only the Room row id travels, plus the search word a content result should land on; the query
     // is encoded because it can hold spaces, quotes, `&` and non-ASCII.
-    fun viewer(documentId: Long, query: String? = null, isCrashReport: Boolean = false): String {
+    fun viewer(
+        documentId: Long,
+        query: String? = null,
+        isCrashReport: Boolean = false,
+        handoverUri: String? = null,
+    ): String {
         val params = mutableListOf<String>()
         if (query != null) params.add("$ARG_QUERY=${Uri.encode(query)}")
         if (isCrashReport) params.add("$ARG_CRASH_REPORT=true")
+        if (handoverUri != null) params.add("$ARG_HANDOVER_URI=${Uri.encode(handoverUri)}")
         return if (params.isEmpty()) "viewer/$documentId" else "viewer/$documentId?${params.joinToString("&")}"
     }
 }
@@ -59,6 +67,11 @@ internal fun NavGraphBuilder.viewerDestination(onBack: () -> Unit) {
             navArgument(Routes.ARG_CRASH_REPORT) {
                 type = NavType.BoolType
                 defaultValue = false
+            },
+            navArgument(Routes.ARG_HANDOVER_URI) {
+                type = NavType.StringType
+                nullable = true
+                defaultValue = null
             },
         ),
     ) {
@@ -93,7 +106,7 @@ fun PapyrusNavGraph(
         // A second handover arriving while the first is still open: that viewer was not entered
         // from Home either, so it goes as well instead of becoming the place back lands.
         navController.popBackStack(Routes.VIEWER, inclusive = true)
-        navController.navigate(Routes.viewer(id)) {
+        navController.navigate(Routes.viewer(id, handoverUri = handover.uri.toString())) {
             // Home is popped rather than left underneath. The caller opened a document, not
             // Papyrus, so there is no Home behind this viewer to go back to.
             popUpTo(Routes.HOME) { inclusive = true }

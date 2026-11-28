@@ -95,11 +95,13 @@ class PdfPageTextSource(
         }
     }
 
-    private fun read(index: Int): PdfPageText? {
+    private fun read(index: Int): PdfPageText? = runCatching {
         val open = document ?: open() ?: return null
         if (index !in 0 until open.numberOfPages) return null
-        return PdfTextExtractor.extractPage(open, index)
-    }
+        PdfTextExtractor.extractPage(open, index)
+    }.onFailure { err ->
+        if (err is OutOfMemoryError || err !is Exception) markUnreadable()
+    }.getOrNull()
 
     suspend fun links(index: Int): List<PdfPageLink>? = lock.withLock {
         if (closed) return@withLock null
@@ -107,11 +109,13 @@ class PdfPageTextSource(
         withContext(Dispatchers.IO) { readLinks(index) }?.also { linkPages[index] = it }
     }
 
-    private fun readLinks(index: Int): List<PdfPageLink>? {
+    private fun readLinks(index: Int): List<PdfPageLink>? = runCatching {
         val open = document ?: open() ?: return null
         if (index !in 0 until open.numberOfPages) return null
-        return PdfLinkExtractor.extract(open, index)
-    }
+        PdfLinkExtractor.extract(open, index)
+    }.onFailure { err ->
+        if (err is OutOfMemoryError || err !is Exception) markUnreadable()
+    }.getOrNull()
 
     // Read under the same lock as the pages, off the main thread, so it never delays the first page; [emit] must not block.
     suspend fun outline(emit: (List<OutlineEntry>) -> Unit = {}): List<OutlineEntry>? = lock.withLock {
@@ -123,10 +127,12 @@ class PdfPageTextSource(
         withContext(Dispatchers.IO) { readOutline(emit) }?.also { outlineCache = it }
     }
 
-    private fun readOutline(emit: (List<OutlineEntry>) -> Unit): List<OutlineEntry>? {
+    private fun readOutline(emit: (List<OutlineEntry>) -> Unit): List<OutlineEntry>? = runCatching {
         val open = document ?: open() ?: return null
-        return PdfOutlineReader.read(open, emit)
-    }
+        PdfOutlineReader.read(open, emit)
+    }.onFailure { err ->
+        if (err is OutOfMemoryError || err !is Exception) markUnreadable()
+    }.getOrNull()
 
     // One whole-document pass on the open document, so find shares this parse instead of opening a second copy; pages already held are taken as they are, and the pages this pass reads are kept for other readers.
     suspend fun allPages(): List<PdfPageText>? = lock.withLock {
@@ -137,9 +143,13 @@ class PdfPageTextSource(
                 val open = document ?: open()
                 val pages = store()
                 open?.let { opened ->
-                    PdfTextExtractor.extract(opened) { pages.get(it, fromPlatform = false) }.also { all ->
-                        all.forEachIndexed { index, text -> pages.keep(index, text) }
-                    }
+                    runCatching {
+                        PdfTextExtractor.extract(opened) { pages.get(it, fromPlatform = false) }.also { all ->
+                            all.forEachIndexed { index, text -> pages.keep(index, text) }
+                        }
+                    }.onFailure { err ->
+                        if (err is OutOfMemoryError || err !is Exception) markUnreadable()
+                    }.getOrNull()
                 }
             }
         }
@@ -150,7 +160,7 @@ class PdfPageTextSource(
         if (closed) null else withContext(dispatcher) { readAllText(maxChars) }
     }
 
-    private fun readAllText(maxChars: Int): String? {
+    private fun readAllText(maxChars: Int): String? = runCatching {
         val open = document ?: open() ?: return null
         if (maxChars <= 0) return ""
         val pages = store()
@@ -162,8 +172,10 @@ class PdfPageTextSource(
             // would push out the pages a reader has open.
             text.append((pages.get(index, fromPlatform = false) ?: PdfTextExtractor.extractPage(open, index)).text)
         }
-        return if (text.length <= maxChars) text.toString() else text.substring(0, maxChars)
-    }
+        if (text.length <= maxChars) text.toString() else text.substring(0, maxChars)
+    }.onFailure { err ->
+        if (err is OutOfMemoryError || err !is Exception) markUnreadable()
+    }.getOrNull()
 
     /** A document that failed to load is not retried: loading is the expensive part, and it would fail the same way. */
     private fun open(): PDDocument? {
@@ -171,13 +183,20 @@ class PdfPageTextSource(
         PDFBoxResourceLoader.init(context)
         val loaded = try {
             context.contentResolver.openInputStream(uri)?.use { PDDocument.load(it) }
-        } catch (ignored: Exception) {
-            // PdfBox throws unchecked on malformed files, so catch Exception, not just IOException.
+        } catch (_: Exception) {
+            null
+        } catch (_: Throwable) {
             null
         }
         if (loaded == null) unreadable = true
         document = loaded
         return loaded
+    }
+
+    private fun markUnreadable() {
+        unreadable = true
+        runCatching { document?.close() }
+        document = null
     }
 
     // Detached cleanup: a failure, including cancellation, must never escape the close scope.

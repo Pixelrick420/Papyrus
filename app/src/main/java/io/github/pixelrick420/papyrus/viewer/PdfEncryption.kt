@@ -36,6 +36,8 @@ enum class PdfEncryption {
             }
         } catch (_: OutOfMemoryError) {
             NOT_ENCRYPTED
+        } catch (_: Throwable) {
+            NOT_ENCRYPTED
         }
 
         fun authoritativeStatus(openStream: () -> InputStream): PdfEncryption =
@@ -67,7 +69,9 @@ enum class PdfEncryption {
         internal fun mentionsEncryption(stream: InputStream, scanLimit: Long = MAX_SCAN_BYTES): Boolean =
             try {
                 containsToken(stream, scanLimit)
-            } catch (e: Exception) {
+            } catch (_: Exception) {
+                false
+            } catch (_: Throwable) {
                 false
             }
 
@@ -129,9 +133,10 @@ private class ReplayInputStream(
 ) : InputStream() {
     private val recorded = java.io.ByteArrayOutputStream()
     private var replay: java.io.ByteArrayInputStream? = null
+    private var totalRead = 0L
 
     fun rewind(): Boolean {
-        if (recorded.size() > maxBytes) return false
+        if (totalRead > maxBytes) return false
         replay = java.io.ByteArrayInputStream(recorded.toByteArray())
         return true
     }
@@ -143,7 +148,7 @@ private class ReplayInputStream(
             replay = null
         }
         val value = source.read()
-        if (value >= 0) recorded.write(value)
+        if (value >= 0) record(value)
         return value
     }
 
@@ -154,8 +159,22 @@ private class ReplayInputStream(
             replay = null
         }
         val count = source.read(bytes, offset, length)
-        if (count > 0) recorded.write(bytes, offset, count)
+        if (count > 0) record(bytes, offset, count)
         return count
+    }
+
+    private fun record(value: Int) {
+        if (totalRead < maxBytes) recorded.write(value)
+        totalRead++
+    }
+
+    private fun record(bytes: ByteArray, offset: Int, length: Int) {
+        val remaining = maxBytes - totalRead
+        if (remaining > 0) {
+            val keep = minOf(length.toLong(), remaining).toInt()
+            recorded.write(bytes, offset, keep)
+        }
+        totalRead += length
     }
 
     override fun close() {

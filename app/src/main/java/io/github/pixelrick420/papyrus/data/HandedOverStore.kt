@@ -28,6 +28,16 @@ internal class HandedOverStore<T>(
         trim()
     }
 
+    @Synchronized
+    fun restore(id: Long, entry: T): Boolean {
+        if (entries.containsKey(id)) return true
+        if (id >= FIRST_ID) return false
+        entries[id] = entry
+        if (id < nextId) nextId = id
+        trim()
+        return entries[id] === entry
+    }
+
     private fun trim() {
         while (entries.size > capacity) {
             val oldest = entries.keys.iterator()

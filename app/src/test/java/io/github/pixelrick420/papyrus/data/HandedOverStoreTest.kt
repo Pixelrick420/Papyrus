@@ -80,6 +80,36 @@ class HandedOverStoreTest {
     }
 
     @Test
+    fun `restore puts an entry back under its original id`() {
+        val store = HandedOverStore<String>()
+
+        val restored = store.restore(-7L, "recovered")
+
+        assertEquals(true, restored)
+        assertEquals("recovered", store[-7L])
+    }
+
+    @Test
+    fun `restore does not overwrite an existing entry`() {
+        val store = HandedOverStore<String>()
+        val id = store.add { "live" }
+
+        val restored = store.restore(id, "other")
+
+        assertEquals(true, restored)
+        assertEquals("live", store[id])
+    }
+
+    @Test
+    fun `restore rejects ids outside the handover range`() {
+        val store = HandedOverStore<String>()
+
+        assertEquals(false, store.restore(HandedOverStore.FIRST_ID, "nope"))
+        assertEquals(false, store.restore(0L, "nope"))
+        assertNull(store[0L])
+    }
+
+    @Test
     fun `setting replaces an entry and stores one that aged out again`() {
         val store = HandedOverStore<String>(capacity = 1)
         val first = store.add { "first" }

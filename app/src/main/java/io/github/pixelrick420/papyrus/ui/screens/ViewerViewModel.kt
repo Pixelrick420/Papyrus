@@ -358,6 +358,7 @@ class ViewerViewModel(
     // kept in the saved-state handle so a restore after process death finds the copy.
     private var documentId: Long =
         savedState[KEY_SAVED_DOCUMENT_ID] ?: savedState[Routes.ARG_DOCUMENT_ID] ?: -1L
+    private val handoverUri: String? = savedState[Routes.ARG_HANDOVER_URI]
 
     private val isCrashReport: Boolean =
         savedState.get<Boolean>(Routes.ARG_CRASH_REPORT) == true || documentId <= -1000000L
@@ -493,7 +494,7 @@ class ViewerViewModel(
         pageSources.reset()
         unlocked.discard()
         try {
-            val doc = repository.getById(documentId)?.let { withCurrentFormat(it) }
+            val doc = resolveDocument()?.let { withCurrentFormat(it) }
             if (doc == null) {
                 replaceContent(ViewerUiState(content = ViewerContent.Failed(UiText(R.string.viewer_error_not_found))))
                 return
@@ -530,6 +531,19 @@ class ViewerViewModel(
         } finally {
             // A cancelled load that never swapped state must leave the still-visible source open.
             if (_state.value.content !== previous) closePrevious()
+        }
+    }
+
+    private suspend fun resolveDocument(): DocumentEntity? {
+        repository.getById(documentId)?.let { return it }
+        val uri = handoverUri?.toUri() ?: return null
+        if (!repository.isHandedOverId(documentId)) return null
+        return try {
+            repository.restoreHandedOver(documentId, uri)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            null
         }
     }
 
@@ -1239,6 +1253,7 @@ class ViewerViewModel(
         val saved = repository.getById(savedId) ?: return
         documentId = savedId
         savedState[KEY_SAVED_DOCUMENT_ID] = savedId
+        savedState.remove<String>(Routes.ARG_HANDOVER_URI)
         _state.update { current ->
             val shown = current.document ?: return@update current
             current.copy(document = saved.copy(id = shown.id), canSaveToLibrary = false)

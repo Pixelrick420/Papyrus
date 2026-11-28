@@ -293,4 +293,45 @@ class PdfEncryptionTest {
 
         assertFalse("an OOM must not leave plaintext in the cache", target.exists())
     }
+
+    @Test
+    fun `a large scan does not keep more than the replay buffer`() {
+        val stream = CountingInputStream(ByteArray(9 * 1024 * 1024) { 'x'.code.toByte() })
+
+        assertFalse(PdfEncryption.mentionsEncryption(stream, scanLimit = 16L * 1024 * 1024))
+
+        assertTrue("scan should read the whole stream", stream.readBytes >= 9 * 1024 * 1024)
+    }
+
+    @Test
+    fun `a token found after the replay cap reopens the source`() {
+        val bytes = ByteArray(9 * 1024 * 1024) { 'x'.code.toByte() }
+        "/Encrypt".toByteArray().copyInto(bytes, 8 * 1024 * 1024 + 1024)
+        val source = CountingSource(bytes)
+
+        assertEquals(PdfEncryption.authoritativeStatus(factory(bytes)), PdfEncryption.status(source))
+
+        assertEquals("a replay past the cap needs a fresh descriptor for PdfBox", 2, source.opens)
+    }
+
+    private class CountingInputStream(private val bytes: ByteArray) : InputStream() {
+        var readBytes = 0L
+            private set
+        private var index = 0
+
+        override fun read(): Int {
+            if (index >= bytes.size) return -1
+            readBytes++
+            return bytes[index++].toInt() and 0xff
+        }
+
+        override fun read(b: ByteArray, off: Int, len: Int): Int {
+            if (index >= bytes.size) return -1
+            val count = minOf(len, bytes.size - index)
+            System.arraycopy(bytes, index, b, off, count)
+            index += count
+            readBytes += count
+            return count
+        }
+    }
 }
